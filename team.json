@@ -6,6 +6,6 @@
     { "role": "data",      "github": "HugoAngin",  "paths": ["agents/data/"] },
     { "role": "research",  "github": "Knull",      "paths": ["agents/research/"] },
     { "role": "execution", "github": "sirExile44", "paths": ["agents/execution/"] },
-    { "role": "eval",      "github": null,         "paths": ["agents/eval/"] }
+    { "role": "eval",      "github": "t7acct",     "paths": ["agents/eval/"] }
   ]
 }

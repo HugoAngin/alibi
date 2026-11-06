@@ -1,0 +1,11 @@
+{
+  "repo": "eliohd/winthrutheory-eceb0cdd-submission-repo",
+  "board_issue": 1,
+  "members": [
+    { "role": "lead",      "github": "eliohd",     "paths": ["agents/lead/"] },
+    { "role": "data",      "github": "HugoAngin",  "paths": ["agents/data/"] },
+    { "role": "research",  "github": "Knull",      "paths": ["agents/research/"] },
+    { "role": "execution", "github": "sirExile44", "paths": ["agents/execution/"] },
+    { "role": "eval",      "github": null,         "paths": ["agents/eval/"] }
+  ]
+}

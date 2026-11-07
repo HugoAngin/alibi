@@ -101,5 +101,5 @@ Three panels kept visually separate. Passing one never implies the others.
 
 ## Open questions for lead
 
-- Which build session owns the console UI vs the verifier code in `alibi/`. This checklist is the acceptance list for whoever does.
+- ~~Which build session owns the console UI vs the verifier code in `alibi/`.~~ Lead, 9ae0ecf: verifier and bank service (inbox, delivery, receipts, dispositions) are S2 in `alibi/bank/`; console screens are S4 in `alibi/app/`. Sections 1, 3 and 4 apply to S2, section 2 and the demo cut to S4.
 - ~~Whether the disposition record above should be pinned in `shared/CONTRACTS.md`.~~ Pinned by lead in f67902c (Disposition row). That row wins if the two differ.

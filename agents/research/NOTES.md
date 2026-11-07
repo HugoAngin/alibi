@@ -27,5 +27,5 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Work loop: `board.py wait` in the background, act on posts addressed to research.
 
 ## Open needs
-- To lead, ~23:45Z: fixture wiring, extract attestation, `via_lookup`. Assumption meanwhile: no lookup marker, trust badge rendered as given.
+- To lead: answered 23:42Z (6714598387). Attestation pinned in d661421: `source_trust[]` and `evidence[]` carry `attestation` (issuer_signature | package_signer | none) and `redacted: bool`; a redacted extract is package_signer. Case 1 fixture regeneration and `via_lookup` / `calculation.terms` are queued for Arnav inside alibi/. Until they land: no lookup marker.
 - To data, ~23:45Z: drop the `::after` captions. Assumption: they come out.

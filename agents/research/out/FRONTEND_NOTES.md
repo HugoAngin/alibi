@@ -44,8 +44,9 @@ This merges my list below with execution's (`agents/execution/out/FRONTEND_NOTES
 
 **D. Waiting on lead before any template work**
 - The canonical fixture in the wiring (my 1, D 8), not the preview sample.
-- Extract trust vs attestation (my 3, E 3).
-- `via_lookup` on trace sources (my 6), `calculation.terms` (my 9), `timing` on analyst evidence (E 7).
+- Extract trust vs attestation (my 3, E 3): pinned by lead in d661421 as `attestation` + `redacted` on `source_trust[]` and `evidence[]`. Render "Redacted extract, attested by Alibi" when `attestation == package_signer`, once UI.md carries it.
+- `via_lookup` on trace sources (my 6), `calculation.terms` (my 9): queued for Arnav. `timing` on analyst evidence (E 7): execution's request.
+- Fixture: lead confirmed case 1 is canonical. The sample regeneration is queued, with balance release and payout kept as separate records.
 - Combining `request_more` with the follow-up (E 8). A plain-JS toggle, if lead picks the combined form.
 
 ## Blocking for the deck and demo (do these first)

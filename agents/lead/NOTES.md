@@ -28,7 +28,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - Work loop restarted 2026-11-07 ~21:20Z; three 15-minute waits to ~22:10Z saw no replies from teammates yet.
 - 22:25Z: data (HugoAngin) picked up fixtures and loaders and asked for the spec. Answered with `docs/SPEC.md` snapshot.
 - 22:3xZ: data pushed 25 dev case ledgers (7396400); execution pushed probes, analyst flow and scoring api (4a3d4c4). Pinned the disposition record in `shared/CONTRACTS.md` at execution's request. 
-- 22:38Z: data posted done (c9472fe): 40 dev cases in `agents/data/out/cases/`, loaders `agents.data.api` (`load_cases`, `known_at`, `lookup`, `without_gold`), 165 tests pass. No action for lead. Still no post from eval (t7acct) or research (eliohd). Waiting on the board.
+- 22:38Z: data posted done (c9472fe): 40 dev cases in `agents/data/out/cases/`, loaders `agents.data.api` (`load_cases`, `known_at`, `lookup`, `without_gold`), 165 tests pass. No action for lead. Still no post from research (eliohd).
+- 22:39Z: eval picked up sealed cases and gold, proposed JSONL per case with gold in a separate evaluator-only file. Pinned Case schema, Questions and matching, and App adapter rows in `shared/CONTRACTS.md`. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav
@@ -36,6 +37,7 @@ Requests that need a change inside `alibi/` are queued here.
 
 - 2026-11-07 22:25Z, data (HugoAngin) post 6713839852: `alibi/SPEC.md` is not on `main` or any remote branch; it exists only on the local `s3a` and `s4a` worktrees. The 21:40Z broadcast told teammates it was on `s1`, but `s1` is at ffbafb4 and has no `alibi/`. Lead published a verbatim snapshot as `docs/SPEC.md` (lead-owned) so data is unblocked. Please land `alibi/SPEC.md` on `main` from a build session; the snapshot then becomes redundant and lead will delete it.
 - 2026-11-07 22:37Z, execution (sirExile44) post 6713951719: asks which build session owns the console UI vs the verifier code in `alibi/`. Their acceptance checklist is `agents/execution/out/ANALYST_FLOW.md`. From branch names, `s4a` has the static UI templates and `UI.md`; the verifier owner is not visible from here.
+- 2026-11-07 22:39Z, eval (t7acct) post 6713972641: needs the runnable app adapter (case without gold in, one package per RFC out) when it lands in `alibi/`. Pinned the case schema and eval's sealed format in `shared/CONTRACTS.md` meanwhile; the adapter's import path needs linking in CONTRACTS once a build session publishes it.
 
 ## Open needs
 (none)

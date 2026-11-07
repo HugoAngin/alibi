@@ -11,10 +11,8 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Numbers stay `{{PH-nn}}` until `eval` verifies them. Development numbers are labelled as such and never shown as held-out.
 - Slides 13 and 15 have no drafted headline. It is written only after the numbers land, including if Alibi does not beat a baseline.
 
-## Gaps raised in DECK.md (lead decides)
-- Pre-policy unsafe proposals and lookup counts are required by SPEC Evaluation but are not in the CONTRACTS results keys.
-- eval needs to tag lookup-dependent sealed cases for slide 15.
-- Gemini model ID is not pinned in `docs/TASK.md`.
+## Gaps raised in DECK.md
+- All three closed by lead in c44079b (22:44Z): results keys `unsafe_proposals`, `lookups`, `observed_inputs`; sealed gold keeps `requires_retrieval`; models `gemini-3.8-flash` and `gemini-4-argon` pinned. DECK.md registry updated to match.
 
 ## Next
 - Work loop: `board.py wait` in the background, act on posts addressed to research.

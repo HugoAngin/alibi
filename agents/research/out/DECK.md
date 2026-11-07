@@ -65,7 +65,7 @@ Every team is scored from the deck alone, so each rubric row needs evidence a ju
 
 - **Working title:** Code decides, agents interpret.
 - **Claim:** Deterministic joins run first. Four Gemini roles (Matcher, Detective, Challenger, Curator) get separate inputs and return schema-validated proposals. The backend alone does arithmetic, policy, consent, signing and delivery.
-- **Evidence:** SPEC architecture diagram, redrawn. One line per role from SPEC "Agent boundaries". Gemini model ID `{{PH-06}}`.
+- **Evidence:** SPEC architecture diagram, redrawn. One line per role from SPEC "Agent boundaries". Gemini models: `gemini-3.8-flash` for routine calls, `gemini-4-argon` for the frontier role (pinned in `docs/TASK.md`). Which role uses which: `{{PH-06}}`.
 - **Supplied by:** lead (diagram), research (role lines and model ID once pinned in `docs/TASK.md`).
 
 ### 6. Traceable reasoning: one claim, end to end (Traceable 25%)
@@ -206,7 +206,7 @@ Each placeholder is filled from a verified record or an artefact. `Key` is the m
 | PH-03 | 4 | Sealed case count | eval freeze record | | lockbox | eval |
 | PH-04 | 4 | Sealed family count | eval freeze record | | lockbox | eval |
 | PH-05 | 4 | Adversarial case count | eval freeze record | | lockbox | eval |
-| PH-06 | 5, 12 | Gemini model ID and config | `docs/TASK.md` | all | | research |
+| PH-06 | 5, 12 | Role-to-model mapping and config (IDs pinned in `docs/TASK.md`) | `alibi/llm/config.py` | all | | research |
 | PH-07 | 6 | Claim-to-source trace | screenshot | Alibi | demo | lead |
 | PH-08 | 7 | Invalidation on correction | SP-06 outcome | Alibi | dev | execution |
 | PH-09 | 8 | Private review preview | screenshot | Alibi | demo | lead |
@@ -224,18 +224,20 @@ Each placeholder is filled from a verified record or an artefact. `Key` is the m
 | PH-26–28 | 13 | Citation accuracy | `citation_accuracy` | rules, one-pass, Alibi | lockbox | eval |
 | PH-29–31 | 13 | Gap recall | `gap_recall` | rules, one-pass, Alibi | lockbox | eval |
 | PH-32–34 | 13 | Forbidden and unnecessary items | `forbidden_items`, `unnecessary_items` | rules, one-pass, Alibi | lockbox | eval |
-| PH-35–37 | 13 | Pre-policy unsafe proposals | not in CONTRACTS keys yet | rules, one-pass, Alibi | lockbox | eval |
+| PH-35–37 | 13 | Pre-policy unsafe proposals | `unsafe_proposals` | rules, one-pass, Alibi | lockbox | eval |
 | PH-38 | 14 | Intervals or win/tie/loss | eval report | all | lockbox | eval |
 | PH-39 | 14 | Latency, calls, tokens, cost | `model_calls`, `tokens`, `cost_usd_estimate` | all | lockbox | eval |
 | PH-40 | 14 | One representative failure | case number and trace | Alibi | lockbox | eval, research |
 | PH-41 | 15 | Adaptive retrieval headline | written after PH-43 | | lockbox | research |
 | PH-42 | 15 | Live tool selection | screenshot or log | Alibi | demo | research |
-| PH-43 | 15 | Safe-complete on lookup-dependent cases | `safe_complete_rate` on the subset | one-pass, Alibi | lockbox | eval |
-| PH-44 | 15 | Lookup counts | not in CONTRACTS keys yet | all | lockbox | eval |
+| PH-43 | 15 | Safe-complete on lookup-dependent cases | `safe_complete_rate` on cases with non-empty `requires_retrieval` | one-pass, Alibi | lockbox | eval |
+| PH-44 | 15 | Lookup counts and records read | `lookups`, `observed_inputs` | all | lockbox | eval |
 | PH-45 | 16 | Untested or replayed features | integration status | | | lead |
 
-## Gaps to raise
+## Gaps raised and closed
 
-- PH-35–37 (pre-policy unsafe proposals) and PH-44 (lookup counts) are required by SPEC Evaluation but are not in the results keys in `shared/CONTRACTS.md`. Lead decides whether to add them.
-- PH-43 needs eval to tag which sealed cases depend on a lookup, like `gold.requires_retrieval` in the development cases.
-- The Gemini model ID is not pinned in `docs/TASK.md` yet (PH-06).
+Lead closed all three in `c44079b` (2026-11-07 22:44Z):
+
+- Results keys `unsafe_proposals`, `lookups` and `observed_inputs` added to `shared/CONTRACTS.md` (PH-35–37, PH-44).
+- Sealed gold keeps `requires_retrieval`, so eval can split lookup-dependent cases (PH-43).
+- Gemini model IDs pinned in `docs/TASK.md` (PH-06). The role-to-model mapping still comes from `alibi/llm/config.py`.

@@ -2,7 +2,7 @@
 
 ## Before the agents start
 
-- [ ] Confirm the deadline and team size with the organisers. Devfolio says hacking ends at **13:00 on Sunday** and teams are **2 to 4**. The event site says **18:00** and **3 to 5**. Until they answer, plan to 13:00, and check now that all five of you can join one Devfolio project. Details are in [`SUBMISSION.md`](SUBMISSION.md).
+- [ ] The deadline is **13:00 on Sunday 8 Nov** and we are a team of **5**. Check now that all five of you can join one Devfolio project. Details are in [`SUBMISSION.md`](SUBMISSION.md).
 - [ ] Everyone accepts the repo invite, clones, and runs `./tools/setup.sh`. On Windows, use Git Bash.
 - [ ] Everyone confirms their role in `team.json`.
 - [ ] Check the event rules on pre-written code and AI tools. This repo should hold only workflow tooling until the task is announced.
@@ -40,7 +40,7 @@ Add the usual prompt after the model, for example `claude --model sonnet "Read t
 
 ## Before the deadline
 
-Work back from the confirmed deadline. If it is 13:00 on Sunday, T-3h is 10:00.
+The deadline is 13:00 on Sunday 8 Nov, so T-3h is 10:00, T-2h is 11:00, T-1h is 12:00, and T-30m is 12:30.
 
 - **T-3h:** Stop adding features. Only fix and verify from here on.
 - **T-2h:** `eval` runs `python3 tools/results.py verify --all`, which reruns every record in a clean checkout, then scores the chosen strategy on the lockbox once with `results.py add --split lockbox`.

@@ -8,6 +8,8 @@ Not announced yet. On the day, `lead` fills in each section below. Every agent r
 
 ## Deadline and what to submit
 
+Hacking ends at 13:00 on Sunday 8 Nov. Requirements are to be confirmed.
+
 ## Rules on tools, data and pre-written code
 
 ## What judges want

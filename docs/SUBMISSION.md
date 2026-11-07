@@ -4,17 +4,17 @@ Owned by `lead`. Everything the team needs to hand in, and the text to start fro
 
 ## Confirm these first
 
-The two official pages disagree. Ask the organisers, in person or at info@uclai.co.uk, and write the answers here.
+The two official pages disagree on some of these, so the Answer column is what counts. For anything still blank, ask the organisers, in person or at info@uclai.co.uk, and write the answer here.
 
 | Question | Devfolio says | Event site says | Answer |
 | --- | --- | --- | --- |
-| When does hacking end? | Sunday 8 Nov, 13:00 | Sunday 8 Nov, 18:00 | |
-| Team size | 2 to 4 | 3 to 5 | |
+| When does hacking end? | Sunday 8 Nov, 13:00 | Sunday 8 Nov, 18:00 | **Sunday 8 Nov, 13:00** |
+| Team size | 2 to 4 | 3 to 5 | **5** |
 | What must a submission include? | Not published | "Info coming soon" | |
 | Repo visibility, demo video, slides? | Not published | Not published | |
 | Rules on AI tools and pre-written code? | Devfolio Code of Conduct only | Not published | |
 
-Sources, checked on Saturday morning: [agentverse.devfolio.co](https://agentverse.devfolio.co/), [its schedule](https://agentverse.devfolio.co/schedule), [agentverse.uclai.co.uk](https://agentverse.uclai.co.uk/). Until the organisers answer, plan to 13:00 and make sure all five of you can join one Devfolio project.
+Sources, checked on Saturday morning: [agentverse.devfolio.co](https://agentverse.devfolio.co/), [its schedule](https://agentverse.devfolio.co/schedule), [agentverse.uclai.co.uk](https://agentverse.uclai.co.uk/). Make sure all five of you can join one Devfolio project.
 
 ## Devfolio entry
 

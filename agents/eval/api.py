@@ -8,11 +8,12 @@ from datetime import datetime
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from agents.eval.case_io import request_context
-from agents.eval.score_capture import score_capture
+from agents.eval.probe_capture import score_probe_steps
+from agents.eval.score_capture import compare_captures, score_capture
 from agents.eval.sharing_delivery import BankInbox, Delivery, body_digest, parse_envelope, sign_package
 from agents.eval.sharing_privacy import ApprovalError, ApprovalStore, TrustedState
 
-__all__ = ["dispatch_approved", "request_context", "score_capture"]
+__all__ = ["compare_captures", "dispatch_approved", "request_context", "score_capture", "score_probe_steps"]
 
 
 def dispatch_approved(

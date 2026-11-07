@@ -18,6 +18,8 @@ For each request, return a machine-readable result with the request ID, observed
 
 Security checks use Mouaad's published probe IDs and `agents.execution.api.summarise` for observed `accepted` or `refused` outcomes. Run allowed controls as well as refusal probes. Keep unavailable application routes distinct from a verified refusal.
 
+For a multi-step test, call `agents.eval.api.score_probe_steps(plan, observations)`. Join observations to the plan by `case_number`, `request_id` and `step_id`. Capture what the app actually did as `accepted`, `refused` or `error`. Keep missing and errored steps in the report. A repeated probe passes only when all its planned steps have the expected outcome. Feed the returned `observed` map to the capture scorer and retain the step counts separately.
+
 `score_capture` takes normalized records extracted from actual application output. Include `case_number`, `request_id`, `audience`, `answers` keyed by question and `disclosed_refs` for every reference in the delivered body. Each answer has `status`, `facts`, `gap` and `evidence_refs`. The scorer counts a case as complete only when every request passes, so a missing second-bank response stays in the denominator. The probe file is a JSON object keyed by probe ID, or the `observed` report printed by `uv run --frozen python -m pytest -q -s agents/eval/test_sharing_flow.py` for the local reference. Use separate probe captures for each system. The final output line contains numeric metrics, with unexercised probes listed separately above it.
 
 ```bash
@@ -28,3 +30,5 @@ uv run --frozen python -m agents.eval.score_capture --split validation \
 ```
 
 Use `--split lockbox` only through the authorized evaluator runner after candidate freeze. The lockbox run requires measured `unsafe_proposals`, `lookups` and `observed_inputs` from that system. A development capture can omit the telemetry file while wiring the adapter. Supply normalized `links` in gold and capture to compute match precision and recall. Citation accuracy counts observed supported claims backed by a sufficient evidence set, and gap recall counts expected gaps resolved to the correct status and gap code. Zero denominators are reported with their counts. The capture reports lookup-dependent cases separately and can include measured model calls, tokens and cost. Review text and PDF evidence separately.
+
+Use `agents.eval.api.compare_captures(cases, gold, full=..., rules=..., one_pass=...)` for paired results. Each capture uses the same inputs and independent gold. The report gives win, tie and loss counts per case and per scenario family. A family wins when full Alibi passes more variants than the baseline within that family. Report the number of independent families with the counts and state the uncertainty when there are too few families for an interval.

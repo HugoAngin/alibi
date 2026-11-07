@@ -1,6 +1,6 @@
 import pytest
 
-from agents.eval.score_capture import score_capture
+from agents.eval.score_capture import compare_captures, score_capture
 
 
 def test_capture_counts_a_missing_second_bank_and_reports_unexercised_probes():
@@ -64,3 +64,28 @@ def test_missing_request_lowers_link_recall_and_false_link_lowers_precision():
     assert metrics["match_precision"] == 0.5
     assert metrics["match_recall"] == 0.5
     assert metrics["citation_accuracy"] == 1.0
+
+
+def test_comparison_groups_correlated_variants_and_keeps_missing_runs():
+    question = "q.source_of_funds"
+    cases, gold, observed = [], [], []
+    for number, family in enumerate(("alpha", "alpha", "alpha", "beta", "gamma"), 1):
+        rfc = {"request_id": "a", "audience": "bank_a"}
+        cases.append({"case_number": number, "family": family, "rfcs": [rfc]})
+        row = {"case_number": number, **rfc}
+        answer = {"status": "unresolved", "gap": "settlement_not_found"}
+        gold.append({**row, "answers": {question: {**answer, "evidence_sets": [[]]}}})
+        observed.append({**row, "disclosed_refs": [], "answers": {
+            question: {**answer, "evidence_refs": []},
+        }})
+
+    report = compare_captures(cases, gold, full=observed[:3], rules=observed[3:4], one_pass=[])
+    assert report["independent_families"] == 3
+    assert report["rules"] == {
+        "case_wins": 3, "case_ties": 1, "case_losses": 1,
+        "family_wins": 1, "family_ties": 1, "family_losses": 1,
+    }
+    assert report["one_pass"] == {
+        "case_wins": 3, "case_ties": 2, "case_losses": 0,
+        "family_wins": 1, "family_ties": 2, "family_losses": 0,
+    }

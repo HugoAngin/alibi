@@ -64,9 +64,7 @@ def _link_metrics(requests: dict, targets: dict, observed: dict) -> dict:
     }
 
 
-def score_capture(cases: list[dict], gold: list[dict], predictions: list[dict], probes: dict,
-                  *, telemetry: dict | None = None) -> dict:
-    """Keep missing outcomes in the denominator and group both banks by case."""
+def _score_requests(cases: list[dict], gold: list[dict], predictions: list[dict]):
     requests = _index([
         {**rfc, "case_number": case["case_number"]}
         for case in cases for rfc in case["rfcs"]
@@ -82,9 +80,45 @@ def score_capture(cases: list[dict], gold: list[dict], predictions: list[dict], 
     for key, request in requests.items():
         target = {**targets[key], "audience": request["audience"]}
         by_case[key[0]].append(score_request(target, observed.get(key)))
+    return requests, targets, observed, by_case
+
+
+def _passing_cases(by_case: dict) -> set[int]:
+    return {number for number, scores in by_case.items() if all(score["safe_complete"] for score in scores)}
+
+
+def compare_captures(cases: list[dict], gold: list[dict], *,
+                     full: list[dict], rules: list[dict], one_pass: list[dict]) -> dict:
+    """Compare on identical inputs, grouping variants into independent scenario families."""
+    _, _, _, full_scores = _score_requests(cases, gold, full)
+    full_passes = _passing_cases(full_scores)
+    families = defaultdict(set)
+    for case in cases:
+        family = case.get("family")
+        if not isinstance(family, str) or not family:
+            raise ValueError("comparison needs a family for each case")
+        families[family].add(case["case_number"])
+
+    results = {}
+    for name, predictions in (("rules", rules), ("one_pass", one_pass)):
+        _, _, _, scores = _score_requests(cases, gold, predictions)
+        passes = _passing_cases(scores)
+        wins, losses = full_passes - passes, passes - full_passes
+        differences = [len(wins & members) - len(losses & members) for members in families.values()]
+        results[name] = {
+            "case_wins": len(wins), "case_ties": len(cases) - len(wins) - len(losses),
+            "case_losses": len(losses), "family_wins": sum(diff > 0 for diff in differences),
+            "family_ties": differences.count(0), "family_losses": sum(diff < 0 for diff in differences),
+        }
+    return {"cases": len(cases), "independent_families": len(families), **results}
+
+
+def score_capture(cases: list[dict], gold: list[dict], predictions: list[dict], probes: dict,
+                  *, telemetry: dict | None = None) -> dict:
+    """Keep missing outcomes in the denominator and group both banks by case."""
+    requests, targets, observed, by_case = _score_requests(cases, gold, predictions)
     scores = [score for case_scores in by_case.values() for score in case_scores]
-    passed_cases = {number for number, case_scores in by_case.items()
-                    if all(score["safe_complete"] for score in case_scores)}
+    passed_cases = _passing_cases(by_case)
 
     security = summarise(probes)
     unexercised = sorted(set(probe_ids()) - probes.keys())

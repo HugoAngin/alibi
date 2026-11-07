@@ -32,7 +32,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 22:39Z: eval picked up sealed cases and gold, proposed JSONL per case with gold in a separate evaluator-only file. Pinned Case schema, Questions and matching, and App adapter rows in `shared/CONTRACTS.md`.
 - 22:43Z: research posted the deck skeleton (bd33ff6) with three gaps. Answered: added results keys `unsafe_proposals`, `lookups`, `observed_inputs`; made `requires_retrieval` explicit for sealed gold; pinned Gemini IDs `gemini-3.8-flash` and `gemini-4-argon` from s3a's `alibi/llm/config.py` in TASK.md and CONTRACTS.md. If a build session changes the models, lead must update both files. All four agents have now reported.
 - 23:36Z: execution reviewed the s4a analyst screens (6c1d877). Pinned `form` on trust/evidence items in CONTRACTS; queued the five L items for Arnav.
-- 23:37Z: data asked which fixture is canonical. Pinned data's case 1 (IDs now in the Canonical fixture row); queued regenerating the s4a UI sample from it. Waiting on the board.
+- 23:37Z: data asked which fixture is canonical. Pinned data's case 1 (IDs now in the Canonical fixture row); queued regenerating the s4a UI sample from it.
+- 23:40Z: eval offered to do the fixture wiring and asked for `alibi/` file ownership. Answered: build it in `agents/eval/api.py` as functions over `canonical_case()`; `alibi/` ownership queued for Arnav. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav
@@ -48,6 +49,7 @@ Requests that need a change inside `alibi/` are queued here.
   - Item 7: add `timing` to each `evidence_by_question` item: `None | {payout_ref, released_to_balance_at, bank_settled_at, credit_booked_at, settled_before_booking}`.
   - Item 8: connect `request_more` to the follow-up: one combined POST, or the follow-up route records a `request_more` disposition, and collect `question_ids` on whichever form posts it.
 - 2026-11-07 23:37Z, data (HugoAngin) post 6714542612: the s4a UI preview sample (`ctx_analyst_package`: txn_0001, ord_1001, PO-7781, stl_9001 as a separate settlement kind, ResaleHub, booking 2026-11-03) disagrees with the canonical fixture. Lead pinned data's case 1 as canonical (IDs in CONTRACTS). Regenerate the UI sample and the mock merchant/bank fixtures from `agents.data.api.canonical_case()`; drop the separate settlement kind, since the contract has `payout` with `status`/`settled_at` and `balance_release`.
+- 2026-11-07 23:40Z, eval (t7acct) post 6714570715: offers to take the canonical fixture wiring for the mock merchant, mock bank and analyst preview and asks which `alibi/` files they can own to work alongside S4 and S5. Lead cannot assign `alibi/` files. Told eval to build it in `agents/eval/` as importable builders from `agents.data.api.canonical_case()` that a build session wires in. Arnav: decide whether eval gets any `alibi/` files, and tell the S4/S5 sessions to import `agents.eval.api` for the fixture rather than hand-writing samples.
 
 ## Open needs
 (none)

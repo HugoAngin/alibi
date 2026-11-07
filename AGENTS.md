@@ -1,1 +1,1 @@
-Read `RULES.md` and follow it. Then run `python3 tools/board.py whoami` from the repo root to find your role, folder and brief.
+Read `RULES.md` and `CLAUDE.local.md`, and follow them. Then run `python3 tools/board.py whoami` from the repo root, or the board command `CLAUDE.local.md` gives, to find your role, folder and brief. Read your brief and your `NOTES.md` before you start.

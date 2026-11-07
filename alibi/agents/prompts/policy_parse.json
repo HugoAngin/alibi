@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "description": "Policy parse output: typed rules compiled from plain-English privacy instructions, plus anything that needs clarifying.",
+  "properties": {
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule_id": {"type": "string"},
+          "kind": {
+            "type": "string",
+            "enum": ["deny", "generalise", "age_limit", "recipient_restrict", "alert_preference"]
+          },
+          "target": {
+            "type": "string",
+            "enum": ["category", "merchant", "field", "record_kind", "all"],
+            "description": "What the rule applies to."
+          },
+          "value": {
+            "type": "string",
+            "description": "The category, merchant alias, field name or record kind named in the rule, lower-cased; empty for target 'all'."
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "max_age_days": {"type": "integer", "minimum": 0},
+              "recipients": {"type": "array", "items": {"type": "string"}},
+              "replacement": {"type": "string"},
+              "alert_kind": {"type": "string"},
+              "enabled": {"type": "boolean"}
+            }
+          },
+          "source_text": {"type": "string", "maxLength": 300},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "required": ["rule_id", "kind", "target", "value", "params", "source_text", "confidence"]
+      }
+    },
+    "clarifications": {
+      "type": "array",
+      "description": "Instructions that could not be compiled to exactly one rule. The user is asked these before anything is shared.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_text": {"type": "string", "maxLength": 300},
+          "question": {"type": "string", "maxLength": 300}
+        },
+        "required": ["source_text", "question"]
+      }
+    },
+    "plain_summary": {
+      "type": "string",
+      "maxLength": 600,
+      "description": "One or two sentences restating the compiled rules for the user to confirm."
+    }
+  },
+  "required": ["rules", "clarifications", "plain_summary"]
+}

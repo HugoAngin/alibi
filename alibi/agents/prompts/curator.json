@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "description": "Curator output: proposed per-question disclosures, private exclusions and unresolved gaps.",
+  "properties": {
+    "disclosures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question_id": {"type": "string"},
+          "record_id": {"type": "string"},
+          "revision": {"type": "integer", "minimum": 1},
+          "form": {
+            "type": "string",
+            "enum": ["full", "extract", "generalised"],
+            "description": "full = whole record; extract = only the fields named in 'fields'; generalised = a category or total without identifying detail."
+          },
+          "fields": {"type": "array", "items": {"type": "string"}},
+          "reason": {"type": "string", "maxLength": 200}
+        },
+        "required": ["question_id", "record_id", "revision", "form", "fields", "reason"]
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "description": "Shareable items deliberately left out. Private to the holder; never sent.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "record_id": {"type": "string"},
+          "revision": {"type": "integer", "minimum": 1},
+          "reason": {
+            "type": "string",
+            "enum": ["not_needed_for_any_question", "policy_denied", "policy_generalised", "outside_time_scope", "duplicate_evidence", "unresolved_trust"]
+          },
+          "note": {"type": "string", "maxLength": 200}
+        },
+        "required": ["record_id", "revision", "reason", "note"]
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question_id": {"type": "string"},
+          "description": {"type": "string", "maxLength": 300}
+        },
+        "required": ["question_id", "description"]
+      }
+    },
+    "rationale": {"type": "string", "maxLength": 600}
+  },
+  "required": ["disclosures", "exclusions", "gaps", "rationale"]
+}

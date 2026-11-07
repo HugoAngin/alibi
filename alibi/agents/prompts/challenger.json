@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "description": "Challenger output: a proposed revised status for one candidate claim and at most one next retrieval.",
+  "properties": {
+    "claim_id": {"type": "string"},
+    "proposed_status": {"type": "string", "enum": ["supported", "contradicted", "unresolved"]},
+    "bank_settlement_established": {
+      "type": "boolean",
+      "description": "true only when a supplied record shows the funds reached the bank account at or before the bank credit's booking time. Release to a platform or seller balance is not bank settlement."
+    },
+    "payout_reference": {
+      "type": "string",
+      "description": "The payout or settlement reference that ties the merchant side to the bank credit, copied exactly from the material, or an empty string if none is visible."
+    },
+    "confirming_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "record_id": {"type": "string"},
+          "revision": {"type": "integer", "minimum": 1},
+          "why": {"type": "string", "maxLength": 200}
+        },
+        "required": ["record_id", "revision", "why"]
+      }
+    },
+    "conflicting_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "record_id": {"type": "string"},
+          "revision": {"type": "integer", "minimum": 1},
+          "why": {"type": "string", "maxLength": 200}
+        },
+        "required": ["record_id", "revision", "why"]
+      }
+    },
+    "missing_evidence": {"type": "array", "items": {"type": "string", "maxLength": 200}},
+    "next_action": {
+      "type": "object",
+      "properties": {
+        "type": {"type": "string", "enum": ["lookup_settlement", "refresh_txn", "none"]},
+        "args": {
+          "type": "object",
+          "properties": {
+            "payout_reference": {"type": "string"},
+            "merchant_id": {"type": "string"},
+            "record_id": {"type": "string"},
+            "txn_id": {"type": "string"}
+          }
+        },
+        "reason": {"type": "string", "maxLength": 300}
+      },
+      "required": ["type", "args", "reason"]
+    },
+    "trace": {
+      "type": "array",
+      "description": "Ordered one-line steps: what was checked, in which record and revision, and what it showed.",
+      "items": {"type": "string", "maxLength": 200}
+    },
+    "rationale": {"type": "string", "maxLength": 600}
+  },
+  "required": [
+    "claim_id",
+    "proposed_status",
+    "bank_settlement_established",
+    "payout_reference",
+    "confirming_refs",
+    "conflicting_refs",
+    "missing_evidence",
+    "next_action",
+    "trace",
+    "rationale"
+  ]
+}

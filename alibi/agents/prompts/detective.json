@@ -1,0 +1,89 @@
+{
+  "type": "object",
+  "description": "Detective output: observable alerts and one candidate claim per stated question.",
+  "properties": {
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "unexplained_credit",
+              "unusual_inflow",
+              "unusual_outflow",
+              "amount_discrepancy",
+              "settlement_discrepancy",
+              "merchant_unverified"
+            ]
+          },
+          "summary": {"type": "string", "maxLength": 300},
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "record_id": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1}
+              },
+              "required": ["record_id", "revision"]
+            }
+          },
+          "suggested_evidence": {"type": "string", "maxLength": 300}
+        },
+        "required": ["kind", "summary", "refs", "suggested_evidence"]
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim_id": {"type": "string"},
+          "question_id": {"type": "string"},
+          "statement": {"type": "string", "maxLength": 400},
+          "status": {"type": "string", "enum": ["supported", "unresolved", "contradicted"]},
+          "refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "record_id": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1},
+                "role": {"type": "string", "enum": ["confirms", "conflicts", "context"]}
+              },
+              "required": ["record_id", "revision", "role"]
+            }
+          },
+          "gaps": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+          "next_checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["lookup_settlement", "refresh_txn", "merchant_lookup", "none"]
+                },
+                "args": {
+                  "type": "object",
+                  "properties": {
+                    "payout_reference": {"type": "string"},
+                    "txn_id": {"type": "string"},
+                    "merchant_id": {"type": "string"},
+                    "record_id": {"type": "string"}
+                  }
+                },
+                "reason": {"type": "string", "maxLength": 300}
+              },
+              "required": ["type", "args", "reason"]
+            }
+          }
+        },
+        "required": ["claim_id", "question_id", "statement", "status", "refs", "gaps", "next_checks"]
+      }
+    }
+  },
+  "required": ["alerts", "claims"]
+}

@@ -17,6 +17,37 @@ Phase 1 change list for `alibi/app/templates/`, from `docs/FRONTEND.md`. No temp
 | L | Need to lead: a new variable, a route, or sample or wiring data. |
 | D | Need to data: `alibi/app/static/alibi.css`. |
 
+## Phase 2 template work order (merged)
+
+This merges my list below with execution's (`agents/execution/out/FRONTEND_NOTES.md`, "E") and data's (`agents/data/out/FRONTEND_NOTES.md`, "D"). Data's CSS patch `agents/data/out/alibi_css_phase2.patch` keys on the hooks in A, so those go in first and use data's class names exactly. Nothing below renames a variable or a form field.
+
+**A. Hooks for data's CSS** (D 1, 2, 3, 6, 7)
+1. `trace__step--question|claim|lookups|sources|calculation|status` on each trace step `<li>`, plus `data-status="{{ step.status }}"` on the step card.
+2. Wrap the review groups in `<section class="review-group review-group--included|excluded|generalised|gaps">`, keeping the existing ids inside.
+3. `data-label="<column header>"` on every `<td>` in the passport home, transaction and analyst package tables. This replaces my item 4's `table.stack` idea: data's CSS stacks any `.table` row whose cells carry `data-label`.
+4. `panel--auth`, `panel--trust`, `panel--claims` on the three analyst panels, keeping the ids (E 2).
+
+**B. Correctness on the analyst screen** (E 1, 4, 5, 6)
+5. When `authentication.status` is not `valid` or `replayed`, render only the summary, the authentication panel and one refusal block with the failed checks; skip trust, claims, evidence, reconciliation, contradictions, gaps, disposition and follow-up. `replayed` gets one line, "Duplicate receipt; showing the original result." In the inbox, show "—" for claim counts on non-valid packages.
+6. `analyst_name` input `readonly` (name unchanged). The route must still ignore it (E 4, lead).
+7. `#disposition-note` gets `required` and the label "Reason (required)", name still `note`.
+8. Hide the disposition and follow-up forms when `current.disposition` is `clear` or `escalate`, with "Final for this package." Highlight the follow-up form when it is `request_more`.
+
+**C. Judges' reading path**
+9. Trace: Lookups before Sources, status reason in the step head (my 5, 8). Data's CSS counter numbers steps by order, and A1 replaces its `:nth-child` selectors, so the reorder is safe once A1 is in.
+10. Analyst panels: one-line question under each title in the template, using execution's wording ("Is this the package Alibi signed for us?", "Who vouches for each attachment?", "Does the evidence support each answer?"). I will ask data to drop the `::after` role captions so the text is not doubled and screen readers get it. Move "These three are independent…" to the top of `#checks` (E 2, my 17). Short digest with the full value in `title` (my 16).
+11. Review: excluded rule-id duplication, approval details in `<details>`, preview link as a secondary button (my 11–13). Data's patch fixes the misplaced `pending` badge in CSS.
+12. Refusal: plain one-line reason on top, retry as a quiet link (my 20, 21).
+13. Passport home section order (my 22, D 6). Transaction "Compared to" row fix (my 19).
+14. `when(iso)` macro in `partials/` for holder-screen times (my 23). This needs no `.py` change, so data's request for a lead filter can be dropped.
+15. Copy (my 25). Disposition option labels such as "Clear (no further questions)" come from `disposition_form.options[].label`, which is sample or route data, so they go to lead (E 9).
+
+**D. Waiting on lead before any template work**
+- The canonical fixture in the wiring (my 1, D 8), not the preview sample.
+- Extract trust vs attestation (my 3, E 3).
+- `via_lookup` on trace sources (my 6), `calculation.terms` (my 9), `timing` on analyst evidence (E 7).
+- Combining `request_more` with the follow-up (E 8). A plain-JS toggle, if lead picks the combined form.
+
 ## Blocking for the deck and demo (do these first)
 
 1. **L: The preview sample data is not Maya's canonical fixture.** It uses `txn_0001` booked 3 Nov, `po_7781`, `ord_1001` and question ids `q1`–`q3`. The canonical fixture is `txn-0001-004` booked 28 Oct, `PO-0001-01`, and `q.source_of_funds`, `q.breakdown`, `q.sales_refunds_in_period`. Deck slides 2, 3 and 6–11 must show the wired app on case 1, so no screenshot can come from the preview.

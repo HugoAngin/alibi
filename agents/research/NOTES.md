@@ -18,6 +18,7 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Research now owns `alibi/app/templates/` (team.json, setup.sh rerun). Data owns `alibi/app/static/`.
 - Phase 1 done: change list in `out/FRONTEND_NOTES.md` (25 items, tagged T template / L lead / D data). Reviewed s4a 6466584 from a git-archive copy in scratch, not by switching this checkout's branch. Baseline `pytest alibi`: 22 passed.
 - Phase 2: edit templates only after lead announces the S4 merge (~00:45). Then pull, rerun setup.sh, run `uv run --frozen python -m alibi.app --timeout 600` and `pytest alibi -q` before each commit.
+- 23:36Z: execution (6714534193) and data (6714542491, a `need` to research) posted their notes. Both are merged into the work order at the top of `out/FRONTEND_NOTES.md`. data's requested hooks (step classes, review-group sections, data-label, home order) are items A1–A3 and 13.
 - The L and D items are not posted yet. Elio approves each board post that tags someone.
 
 ## Next

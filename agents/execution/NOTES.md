@@ -15,10 +15,13 @@ Security probe list and analyst disposition flow as a checklist in `agents/execu
 - 22:38Z lead pinned the disposition record in `shared/CONTRACTS.md` (f67902c). 
 - 22:42Z lead (9ae0ecf): verifier + bank service (inbox, delivery, receipts, dispositions) = build session S2 in `alibi/bank/`; console screens = S4 in `alibi/app/`. `PROBES.md` is the acceptance list for the S5 integration run, keep it current (edit `probes.json`, rerun `python -m agents.execution.probes`).
 
+- 23:33Z lead need (df8cb9d): frontend Phase 1. Reviewed analyst screens on s4a (6466584, pytest alibi 22 passed) and wrote `out/FRONTEND_NOTES.md`: 6 must-fix (rejected packages still show evidence, identical verification panels, redacted extract badged issuer_verified, editable analyst name, optional reason, terminal dispositions still editable), 4 should-fix. Execution edits no templates; Elio owns `alibi/app/templates/`, Hugo `alibi/app/static/`, lead the `.py`.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing outcomes count as failed.
 
 ## Next
+- After the S4 merge (~00:45): recheck the analyst screens on main against FRONTEND_NOTES.md and PROBES.md.
 - Wait on the board. Likely next asks: policy, signing and receipt contracts (SPEC says execution supplies them early), or a reference verifier.
 
 ## Open needs

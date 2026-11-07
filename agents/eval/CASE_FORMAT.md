@@ -22,6 +22,8 @@ For a multi-step test, call `agents.eval.api.score_probe_steps(plan, observation
 
 `score_capture` takes normalized records extracted from actual application output. Include `case_number`, `request_id`, `audience`, `answers` keyed by question and `disclosed_refs` for every reference in the delivered body. Each answer has `status`, `facts`, `gap` and `evidence_refs`. The scorer counts a case as complete only when every request passes, so a missing second-bank response stays in the denominator. The probe file is a JSON object keyed by probe ID, or the `observed` report printed by `uv run --frozen python -m pytest -q -s agents/eval/test_sharing_flow.py` for the local reference. Use separate probe captures for each system. The final output line contains numeric metrics, with unexercised probes listed separately above it.
 
+For the supported source question, capture `payout_references` and `settled_at` as parallel arrays ordered by payout record ID. For a computed breakdown, capture `breakdown_minor` with `sales`, `refunds`, `fees` and `net`. A contradiction supported by a cited payout status can instead carry `cited_payout_status`. For the period answer, capture `sales_minor`, `refunds_minor`, `sale_count` and `refund_count`. Use an empty facts object when no facts are asserted. These fields describe the actual answer and its evidence. The adapter must never populate them from gold.
+
 ```bash
 uv run --frozen python -m agents.eval.score_capture --split validation \
   --inputs data/dev-inputs.jsonl --gold data/dev-gold.jsonl \

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "alibi.eval.prediction.v2",
+  "title": "Alibi evaluation: one prediction (one case number, one request)",
+  "description": "What a system under test emits per (case_number, request_id). Refs use the gold syntax bank:<txn_id>, merchant:<record_id>, import:<record_id>. Question IDs are the pinned ones. Unknown extra properties are allowed (a trace, debug fields) but the properties named here are checked. See alibi/eval/predictions.md.",
+  "type": "object",
+  "required": ["case_number", "request_id", "claims", "package", "failure"],
+  "properties": {
+    "case_number": {"type": "integer", "minimum": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "system": {"type": "string", "description": "Label only: rules, one_pass, alibi, ..."},
+    "links": {"type": "array", "items": {"$ref": "#/$defs/link"},
+              "description": "Case level: the link state of each bank transaction the case asks about. Read from the first request of a case that carries it."},
+    "claims": {
+      "description": "One claim per RFC question, keyed by question ID (a list of claim objects with a question_id is also accepted).",
+      "anyOf": [
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/claim"}},
+        {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/claim"}, {"type": "object", "required": ["question_id"], "properties": {"question_id": {"type": "string"}}}]}}
+      ]
+    },
+    "package": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/package"}],
+                "description": "The package body the recipient receives for this request. null or no attachments is an empty package."},
+    "proposed_package": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/package"}],
+                         "description": "Optional pre-policy proposal, scored separately as unsafe_proposals and prepolicy_* so the common gate does not hide differences."},
+    "exclusions": {"type": "array", "items": {"$ref": "#/$defs/exclusion"},
+                   "description": "The private exclusion list. Never part of the package."},
+    "cost": {"$ref": "#/$defs/cost"},
+    "retrieval": {"$ref": "#/$defs/retrieval"},
+    "failure": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/failure"}]}
+  },
+  "$defs": {
+    "ref": {"type": "string", "pattern": "^(bank|merchant|import):[A-Za-z0-9][A-Za-z0-9_.-]*$"},
+    "link": {
+      "type": "object",
+      "required": ["txn_id", "state", "payout_record_ids"],
+      "properties": {
+        "txn_id": {"type": "string", "minLength": 1},
+        "state": {"type": "string", "enum": ["unmatched", "ambiguous", "linked"]},
+        "payout_record_ids": {"type": "array", "items": {"type": "string"}},
+        "candidate_record_ids": {"type": "array", "items": {"type": "string"}},
+        "method": {"type": ["string", "null"]}
+      }
+    },
+    "claim": {
+      "type": "object",
+      "required": ["status", "gap", "facts", "evidence_refs"],
+      "properties": {
+        "question_id": {"type": "string"},
+        "status": {"type": "string", "enum": ["supported", "contradicted", "unresolved"]},
+        "gap": {"type": ["string", "null"], "description": "One of the nine pinned gap codes, or null."},
+        "facts": {"type": "object"},
+        "evidence_refs": {"type": "array", "items": {"$ref": "#/$defs/ref"}},
+        "statement": {"type": "string"},
+        "rationale": {"type": "string"},
+        "calculation": {"type": ["object", "null"]}
+      }
+    },
+    "attachment": {
+      "type": "object",
+      "required": ["ref"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "form": {"type": "string", "enum": ["full_record", "redacted_extract"]},
+        "fields": {"type": "array", "items": {"type": "string"}},
+        "content": {"type": "object"},
+        "source_trust": {"type": "string", "enum": ["issuer_verified", "bank_observed", "self_supplied"]}
+      }
+    },
+    "package": {
+      "type": "object",
+      "required": ["attachments"],
+      "properties": {
+        "request_id": {"type": "string"},
+        "audience": {"type": "string"},
+        "empty": {"type": "boolean"},
+        "attachments": {"type": "array", "items": {"$ref": "#/$defs/attachment"}},
+        "claims": {"description": "Optional: the claims as sent, when they differ from the top-level claims (used for proposed_package)."}
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "required": ["ref", "reason"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/ref"},
+        "reason": {"type": "string"},
+        "note": {"type": "string"}
+      }
+    },
+    "cost": {
+      "type": "object",
+      "properties": {
+        "model_calls": {"type": "integer", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "latency_ms": {"type": "number", "minimum": 0},
+        "cost_usd_estimate": {"type": "number", "minimum": 0}
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "properties": {
+        "lookups": {"type": "integer", "minimum": 0},
+        "observed_inputs": {"type": "integer", "minimum": 0},
+        "strategy": {"type": "string"}
+      }
+    },
+    "failure": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"type": "string", "enum": ["timeout", "error", "budget_exceeded", "invalid_output", "unavailable", "abstained"]},
+        "detail": {"type": "string"}
+      }
+    }
+  }
+}

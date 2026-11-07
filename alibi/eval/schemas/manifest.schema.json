@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "alibi.eval.manifest.v2",
+  "title": "Alibi evaluation seal manifest",
+  "description": "Commitments written by the evaluation owner at the freeze: sha256 digests over every sealed case and gold entry (canonical JSON: sorted keys, no whitespace, UTF-8, so line endings never matter), the candidate commit, the model configuration and the scoring rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "manifest_id", "created_at", "purpose", "cases", "gold", "set_sha256", "candidate", "model_config", "scoring"],
+  "properties": {
+    "schema_version": {"const": "alibi.eval.manifest.v2"},
+    "manifest_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "purpose": {"type": "string", "enum": ["sealed", "adversarial", "dev"]},
+    "frozen_by": {"type": "string"},
+    "note": {"type": "string"},
+    "cases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "files", "entries"],
+      "properties": {
+        "path": {"type": "string"},
+        "files": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["file", "cases", "sha256"],
+          "properties": {"file": {"type": "string"}, "cases": {"type": "integer", "minimum": 0},
+                         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}},
+        "entries": {"type": "array", "minItems": 1, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["case_number", "family", "request_ids", "sha256"],
+          "properties": {"case_number": {"type": "integer", "minimum": 1},
+                         "family": {"type": ["string", "null"]},
+                         "request_ids": {"type": "array", "items": {"type": "string"}},
+                         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}}
+      }
+    },
+    "gold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "entries"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "entries": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["case_number", "sha256"],
+          "properties": {"case_number": {"type": "integer", "minimum": 1},
+                         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}}
+      }
+    },
+    "set_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 over the sorted case and gold digests."},
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty"],
+      "properties": {
+        "commit": {"type": "string", "minLength": 7},
+        "dirty": {"type": "boolean"},
+        "description": {"type": "string"},
+        "systems": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "model_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "content"],
+      "properties": {
+        "path": {"type": ["string", "null"]},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "content": {"type": "object"}
+      }
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules_version", "sha256", "files", "command"],
+      "properties": {
+        "rules_version": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "files": {"type": "array", "items": {"type": "string"}},
+        "command": {"type": "string"}
+      }
+    }
+  }
+}

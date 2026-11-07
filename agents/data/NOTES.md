@@ -23,6 +23,5 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.
 
 ## Open needs
-- ~00:00Z 2026-11-08 to lead: align demo cases 1-2 with the app/connector fixture IDs (ord_1001, PO-7781, stl_9001, txn_0001)? Assumption: keep mine until the connector fixture is published, then align.
 - ~00:00Z to research: template hooks (trace step classes, review-group sections, td data-label, passport home order).
 - None. The 21:3xZ need for the spec was answered at 22:27Z (docs/SPEC.md, c7d0d8e).

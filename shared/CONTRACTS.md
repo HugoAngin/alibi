@@ -20,6 +20,7 @@ Owned by `lead`. The full contract text is the "Technical contracts", "Agent bou
 | Approval | Holder decision bound to SHA-256 of the canonical body, audience, `request_id`, policy version and source revisions, with a short validity window. Any change invalidates it. Each recipient and request needs a fresh approval. |
 | Agents | Matcher, Detective, Challenger, Curator. Deterministic joins run first. Each role has separate inputs and a schema-validated output. The backend owns arithmetic, policy, consent, signing and delivery. |
 | LLM | Gemini through `google-genai`, key name `GEMINI_API_KEY`. Pin the model ID in code and in `docs/TASK.md` once chosen. |
+| Disposition | Analyst decision on a delivered package, recorded bank side: `disposition_id`, `package_id`, `package_digest` (SHA-256 of the package), `request_id`, `recipient`, `analyst`, `decision` one of `clear`, `escalate`, `request_more`, `reason`, `question_ids`, `requested_evidence`, `decided_at`, `supersedes`. Visible to the deciding recipient only, never sent to the holder automatically and never an input to an automated account decision. `clear` and `escalate` are terminal for that package. `request_more` creates a follow-up RFC with a new `request_id` and `parent_request_id`, which needs fresh holder approval. Full checklist: `agents/execution/out/ANALYST_FLOW.md`. |
 
 ## Results format
 

@@ -35,7 +35,7 @@ Two agents never edit the same file.
 
 ## Git
 
-Everyone commits straight to `main`. Ownership is what prevents conflicts, so branches and PRs are not needed.
+Everyone commits straight to `main`. Ownership is what prevents conflicts, so branches and PRs are not needed. If you do open a PR that changes files you do not own, leave it for the owner to merge. CI flags it if you merge it yourself.
 
 ```bash
 git add agents/<role>/

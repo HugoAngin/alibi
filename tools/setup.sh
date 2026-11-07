@@ -31,8 +31,16 @@ git config team.login "$login"
 git config core.hooksPath .githooks
 git config rebase.autoStash true
 
+if [ "$role" = "lead" ]; then
+  scope="You own \`agents/lead/\` and everything outside \`agents/\`. You do not write in other agents' folders."
+  edits="edits in other agents' folders"
+else
+  scope="You write only inside \`agents/$role/\`."
+  edits="edits outside agents/$role/"
+fi
+
 cat > CLAUDE.local.md <<LOCAL
-You are the \`$role\` agent, GitHub username \`$login\`. You write only inside \`agents/$role/\`.
+You are the \`$role\` agent, GitHub username \`$login\`. $scope
 On this machine, run the board as \`$py tools/board.py\` and project code as \`uv run --frozen python -m ...\`.
 
 @agents/$role/BRIEF.md
@@ -41,7 +49,7 @@ LOCAL
 
 $py tools/team.py local-settings "$role"
 echo "Claude Code: board and git commands allowed, force-push and --no-verify blocked,"
-echo "and edits outside agents/$role/ refused. See .claude/settings.local.json."
+echo "and $edits refused. See .claude/settings.local.json."
 
 if command -v uv >/dev/null; then uv sync --frozen --quiet; else echo "uv not found, skipping the Python environment."; fi
 echo "Ready: $login is $role. Start your agent from this folder."

@@ -21,7 +21,7 @@ What to do when something breaks. Humans run these commands, or tell their agent
 | Hook: `is owned by` | The file belongs to someone else. Run `git restore --staged <file>` and `git restore <file>`, then post a `need` to the owner. |
 | Hook: `over the 10 MB limit` | Run `git restore --staged <file>`, move the file to `data/`, and commit the command that rebuilds it instead. |
 | Hook: `looks like ... API key` | Run `git restore --staged <file>`, move the key to `.env`, and read it from the environment. If it is a false positive, the human, not the agent, commits with `--no-verify`. |
-| CI posts `BLOCKED` on the board | The file's owner, or `lead`, runs `git revert <sha>` and pushes. If the commit touched several owners' files, `lead` reverts it with `TEAM_OVERRIDE=1` and `[team-override]` in the message. Whoever pushed it posts what it needed to the owner. |
+| CI posts `BLOCKED` on the board | If `lead` wants to keep the change, `lead` says so on the board and no revert is needed. Otherwise, the file's owner, or `lead`, runs `git revert <sha>` and pushes. If the commit touched several owners' files, `lead` reverts it with `TEAM_OVERRIDE=1` and `[team-override]` in the message. Whoever pushed it posts what it needed to the owner. |
 | `git push` is rejected | `main` moved. Run `git pull --rebase origin main` and push again. Never force-push. |
 | `git pull --rebase` stops on a conflict | Two people changed one file, which ownership should prevent. Run `git rebase --abort` and tell `lead`. |
 | `board.py` refuses `done` | Push first. Generated files you do not want to commit go in `data/` or in `agents/<role>/.gitignore`. |

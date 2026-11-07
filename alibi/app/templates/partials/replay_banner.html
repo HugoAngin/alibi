@@ -1,0 +1,9 @@
+{#
+  Replay banner. Included by base.html when replay_mode is true.
+  Uses: replay {label, recorded_at, source}
+#}
+<div class="banner banner--replay" role="status">
+  <p class="banner__title">{{ replay.label if replay else "Recorded run" }}</p>
+  <p>This screen is showing a recorded run, not live agent or connector activity.
+    {% if replay %}Recorded {{ replay.recorded_at }} from <code>{{ replay.source }}</code>.{% endif %}</p>
+</div>

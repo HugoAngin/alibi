@@ -1,0 +1,71 @@
+{#
+  Base layout. Every Alibi template extends this file.
+
+  Variables (see alibi/app/UI.md, "Common context"):
+    page_title    str
+    area          "holder" | "analyst" | "public"
+    nav_items     list of {key, label, href, active}
+    actor         {name, role}
+    replay_mode   bool
+    replay        {label, recorded_at, source} or None
+    flashes       list of {kind: "info"|"success"|"error", text}
+    static_prefix str, e.g. "/static"
+    now_utc       str, UTC ISO-8601
+
+  Blocks: title, head, header_extra, content, footer, scripts
+#}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}{{ page_title }} · Alibi{% endblock %}</title>
+  <link rel="stylesheet" href="{{ static_prefix }}/alibi.css">
+  {% block head %}{% endblock %}
+</head>
+<body class="area-{{ area }}">
+  <header class="site-header">
+    <div class="site-header__inner">
+      <a class="brand" href="{{ nav_items[0].href if nav_items else '/' }}">Alibi
+        {% if area == "analyst" %}<span class="brand__area">Bank verification</span>
+        {% elif area == "holder" %}<span class="brand__area">Financial passport</span>
+        {% endif %}
+      </a>
+      <span class="actor">{{ actor.name }} · {{ actor.role }}</span>
+      {% block header_extra %}{% endblock %}
+    </div>
+  </header>
+  {% if nav_items %}
+  <nav class="site-nav" aria-label="Main">
+    <ul>
+      {% for item in nav_items %}
+      <li><a href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  <main class="page" id="main">
+    {% if replay_mode %}
+      {% include "partials/replay_banner.html" %}
+    {% endif %}
+    {% if flashes %}
+    <ul class="flashes" aria-live="polite">
+      {% for flash in flashes %}
+      <li class="banner banner--{{ flash.kind }}">{{ flash.text }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    {% block footer %}
+    <p>Alibi demo. Synthetic records only. Times are UTC. Money is shown from integer minor units. Rendered {{ now_utc }}.</p>
+    {% endblock %}
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

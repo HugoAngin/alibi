@@ -1,0 +1,26 @@
+{#
+  Money macros. Import with:
+    {% from "partials/money.html" import money, money_raw %}
+
+  money(amount) takes {"minor": int, "currency": "GBP"} and prints e.g. "£2,160.00"
+  or "−£180.00" for a negative amount. Unknown currencies print the ISO code.
+  money_raw(amount) prints the stored integer, e.g. "216000 GBP".
+#}
+
+{% macro money(amount, show_sign=False) -%}
+{%- set symbols = {"GBP": "£", "EUR": "€", "USD": "$"} -%}
+{%- set minor = amount.minor -%}
+{%- set neg = minor < 0 -%}
+{%- set abs_minor = -minor if neg else minor -%}
+{%- set units = abs_minor // 100 -%}
+{%- set cents = abs_minor % 100 -%}
+{%- set sym = symbols.get(amount.currency) -%}
+<span class="money{% if neg %} money--negative{% endif %}" data-minor="{{ minor }}" data-currency="{{ amount.currency }}">
+{%- if neg %}−{% elif show_sign %}+{% endif -%}
+{%- if sym %}{{ sym }}{{ "{:,}".format(units) }}.{{ "%02d" | format(cents) }}{% else %}{{ "{:,}".format(units) }}.{{ "%02d" | format(cents) }} {{ amount.currency }}{% endif -%}
+</span>
+{%- endmacro %}
+
+{% macro money_raw(amount) -%}
+<code class="money-raw">{{ amount.minor }} {{ amount.currency }}</code>
+{%- endmacro %}

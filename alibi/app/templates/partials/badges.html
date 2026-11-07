@@ -1,0 +1,30 @@
+{#
+  Badge macros. Import with:
+    {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+
+  Each badge has a text mark plus a distinct border style (see alibi.css),
+  so the three trust states and three claim states stay distinct in grayscale.
+#}
+
+{% macro trust_badge(trust) -%}
+{%- set marks = {"issuer_verified": "●", "bank_observed": "◆", "self_supplied": "○"} -%}
+{%- set labels = {"issuer_verified": "Issuer verified", "bank_observed": "Bank observed", "self_supplied": "Self-supplied"} -%}
+<span class="badge badge--trust badge--trust-{{ trust }}" title="Source trust: {{ labels.get(trust, trust) }}"><span class="badge__mark" aria-hidden="true">{{ marks.get(trust, "·") }}</span>{{ labels.get(trust, trust) }}</span>
+{%- endmacro %}
+
+{% macro claim_badge(status) -%}
+{%- set marks = {"supported": "✓", "contradicted": "✕", "unresolved": "?"} -%}
+{%- set labels = {"supported": "Supported", "contradicted": "Contradicted", "unresolved": "Unresolved"} -%}
+<span class="badge badge--claim badge--claim-{{ status }}" title="Claim status: {{ labels.get(status, status) }}"><span class="badge__mark" aria-hidden="true">{{ marks.get(status, "·") }}</span>{{ labels.get(status, status) }}</span>
+{%- endmacro %}
+
+{% macro link_badge(state, count=None) -%}
+{%- set marks = {"linked": "=", "ambiguous": "~", "unmatched": "–"} -%}
+{%- set labels = {"linked": "Linked", "ambiguous": "Ambiguous", "unmatched": "Unmatched"} -%}
+<span class="badge badge--link badge--link-{{ state }}" title="Link state: {{ labels.get(state, state) }}"><span class="badge__mark" aria-hidden="true">{{ marks.get(state, "·") }}</span>{{ labels.get(state, state) }}{% if count is not none and count %} ({{ count }}){% endif %}</span>
+{%- endmacro %}
+
+{# Neutral status badge for connection, request, package and check states. #}
+{% macro status_badge(value, label=None) -%}
+<span class="badge badge--status badge--status-{{ value }}">{{ label if label else (value | replace("_", " ")) }}</span>
+{%- endmacro %}

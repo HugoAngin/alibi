@@ -81,9 +81,9 @@ uv run --frozen python -m <the end-to-end entry point>
 
 | Name | GitHub | Role |
 | --- | --- | --- |
-| Elio Haddad | eliohd | lead |
+| Arnav Mahajan | Knull | lead |
 | | HugoAngin | data |
-| Arnav Mahajan | Knull | research |
+| Elio Haddad | eliohd | research |
 | | sirExile44 | execution |
 | | t7acct | eval |
 ~~~

@@ -1,0 +1,1 @@
+{"lockbox_from": 1000, "unit": "case number", "note": "Cases >= 1000 are the sealed evaluation and adversarial sets, owned by eval and committed only after the candidate freeze. See shared/CONTRACTS.md."}

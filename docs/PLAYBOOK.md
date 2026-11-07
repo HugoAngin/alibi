@@ -20,7 +20,7 @@ Add the usual prompt after the model, for example `claude --model sonnet "Read t
 
 ## First 30 minutes
 
-1. Elio gives the task to `lead`, which fills in `docs/TASK.md`.
+1. Arnav gives the task to `lead`, which fills in `docs/TASK.md`.
 2. Spend 10 minutes together agreeing the approach. This is the most valuable human decision of the event.
 3. If the five roles do not fit the task, rename them now, before agents start. Update `team.json`, then `git mv` the folders, and commit with `TEAM_OVERRIDE=1` and `[team-override]` in the message. Only lead's account can use these. Everyone then runs `./tools/setup.sh` again.
 4. `lead` writes the contracts in `shared/`, covering the data, the split, the interface and the results format that [`shared/README.md`](../shared/README.md) lists. Set the lockbox in `shared/splits.json` before anyone studies the data. Once someone has looked at a period, it cannot be the lockbox.

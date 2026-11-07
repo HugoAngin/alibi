@@ -106,7 +106,7 @@ What it changes:
 - Heading spacing inside cards, the approval box and result blocks.
 - Trace: numbered steps, solid rail, source chips, boxed calculation, and a status step marked as the end of the chain.
 - Review: included, excluded and generalised lists get solid, dashed and dotted rules plus the text marks "sent", "not sent" and "sent in less detail". Excluded items are muted rather than faded.
-- Analyst panels: authentication solid, source trust dashed, claim status double, each with a one-line role caption.
+- Analyst panels: authentication solid, source trust dashed, claim status double. The role caption I first drafted was dropped at research's request (post 6714588820), because the template prints the role question itself.
 - Revisions: HISTORICAL (muted) and ACTIVE (solid) labels.
 - Refusal: a REFUSED mark and a red title; successful dispatch gets a DELIVERED mark.
 - Phone tables: rows stack below 600 px, for `table.stack` or any `.table` whose cells carry `data-label` (research item 4). `td[data-label]::before` prints the label.

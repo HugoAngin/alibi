@@ -1,5 +1,5 @@
 diff --git a/alibi/app/static/alibi.css b/alibi/app/static/alibi.css
-index 4940c7a..5316059 100644
+index 4940c7a..81fe99f 100644
 --- a/alibi/app/static/alibi.css
 +++ b/alibi/app/static/alibi.css
 @@ -170,7 +170,7 @@ small, .small { font-size: 0.875rem; }
@@ -11,7 +11,7 @@ index 4940c7a..5316059 100644
    content: "Private to you";
    font-size: 0.75rem;
    color: var(--fg-muted);
-@@ -417,6 +417,111 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
+@@ -417,6 +417,104 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
  .result--refused { border-color: var(--bad); }
  .result__reason { font-family: var(--mono); font-size: 0.9rem; white-space: pre-wrap; background: var(--bg-muted); border: 1px solid var(--line); padding: 0.75rem; border-radius: var(--radius); }
  
@@ -83,14 +83,7 @@ index 4940c7a..5316059 100644
 +.panel--auth .badge--status-fail, .panel--auth .badge--status-invalid {
 +  color: var(--bad); border: 2px solid var(--bad);
 +}
-+#authentication > .panel__title::after,
-+#source-trust > .panel__title::after,
-+#claim-status > .panel__title::after {
-+  display: block; text-transform: none; letter-spacing: 0; font-size: 0.8rem; margin-top: 0.15rem;
-+}
-+#authentication > .panel__title::after { content: "Who signed it and that it is unaltered. Not whether claims are true."; }
-+#source-trust > .panel__title::after { content: "How far each attached source can be trusted."; }
-+#claim-status > .panel__title::after { content: "What the evidence supports, question by question."; }
++/* The one-line role question under each panel title comes from the template (research). */
 +#source-trust .items > li + li { border-top: 1px dashed var(--line); }
 +
 +/* Transaction: the older revision is history, the newer one is active. */
@@ -123,7 +116,7 @@ index 4940c7a..5316059 100644
  /* ---------- print ---------- */
  
  .print-only { display: none; }
-@@ -435,5 +540,7 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
+@@ -435,5 +533,7 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
    a { color: #000; text-decoration: none; }
    a[href]::after { content: ""; }
    pre { white-space: pre-wrap; border: 1px solid #000; }

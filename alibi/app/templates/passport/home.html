@@ -1,0 +1,256 @@
+{#
+  Passport home (ctx_passport_home in alibi/app/preview_render.py).
+
+  Context variables used, beyond the base.html set:
+    holder            {name, subject_ref}
+    connections       list of {connection_id, name, kind, status, trust, last_synced_at, record_count, href}
+    transactions      list of {txn_id, revision, booked_at, description, amount{minor,currency},
+                               direction, link_state, linked_count, href}
+    evidence_status   {linked, ambiguous, unmatched, total, last_checked_at, superseded_sources}
+    alerts            list of {alert_id, kind, severity, title, created_at, status, href}
+    rules             list of {rule_id, text, status, summary, href}
+    requests          list of {request_id, recipient, question_count, received_at, expires_at, status, href}
+    sharing_history   list of {package_id, request_id, recipient, sent_at, expires_at, item_count, status, href}
+#}
+{% extends "base.html" %}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">Financial passport</h1>
+<p class="page-lede">Your connections, transactions and the evidence linked to them. Only you see this page.</p>
+
+<div class="stack">
+
+  <section class="card section-anchor" id="holder" aria-labelledby="holder-title">
+    <div class="card__head">
+      <h2 id="holder-title">Holder</h2>
+    </div>
+    <dl class="kv">
+      <dt>Name</dt>
+      <dd>{{ holder.name }}</dd>
+      <dt>Subject reference</dt>
+      <dd><code>{{ holder.subject_ref }}</code></dd>
+    </dl>
+  </section>
+
+  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
+    <div class="card__head">
+      <h2 id="connections-title">Connections</h2>
+      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
+    </div>
+    {% if connections %}
+    <ul class="items">
+      {% for c in connections %}
+      <li id="{{ c.connection_id }}">
+        <div class="item__head">
+          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
+          <span class="cluster">
+            {{ status_badge(c.status) }}
+            {{ trust_badge(c.trust) }}
+          </span>
+        </div>
+        <div class="item__meta">
+          Kind: {{ c.kind }} ·
+          Last synced {{ c.last_synced_at }} ·
+          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
+          <code>{{ c.connection_id }}</code>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No connections yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="transactions" aria-labelledby="transactions-title">
+    <div class="card__head">
+      <h2 id="transactions-title">Transactions</h2>
+      <span class="item__meta">Link state is separate from source trust and claim status.</span>
+    </div>
+    {% if transactions %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Booked</th>
+            <th scope="col">Description</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col">Link state</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in transactions %}
+          <tr id="{{ t.txn_id }}">
+            <td class="nowrap">{{ t.booked_at }}</td>
+            <td>
+              <a href="{{ t.href }}">{{ t.description }}</a>
+              <div class="item__meta"><code>{{ t.txn_id }}</code> r{{ t.revision }} · {{ t.direction }}</div>
+            </td>
+            <td class="num"><span class="item__amount amount--{{ t.direction }}">{{ money(t.amount) }}</span></td>
+            <td>{{ link_badge(t.link_state, t.linked_count) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">No transactions in the feed yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="evidence" aria-labelledby="evidence-title">
+    <div class="card__head">
+      <h2 id="evidence-title">Evidence status</h2>
+      <span class="item__meta">Last checked {{ evidence_status.last_checked_at }}</span>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat__value">{{ evidence_status.linked }}</div>
+        <div class="stat__label">Linked</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value">{{ evidence_status.ambiguous }}</div>
+        <div class="stat__label">Ambiguous</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value">{{ evidence_status.unmatched }}</div>
+        <div class="stat__label">Unmatched</div>
+      </div>
+      <div class="stat">
+        <div class="stat__value">{{ evidence_status.total }}</div>
+        <div class="stat__label">Total transactions</div>
+      </div>
+    </div>
+    <p class="small muted">
+      {{ evidence_status.superseded_sources }} source record{{ "" if evidence_status.superseded_sources == 1 else "s" }} superseded by a newer revision. Older revisions stay viewable.
+    </p>
+  </section>
+
+  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
+    <div class="card__head">
+      <h2 id="alerts-title">Alerts</h2>
+      <a href="/alerts" class="small">All alerts</a>
+    </div>
+    {% if alerts %}
+    <ul class="items">
+      {% for a in alerts %}
+      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
+        <div class="item__head">
+          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
+          <span class="cluster">
+            {{ status_badge(a.severity) }}
+            {{ status_badge(a.status) }}
+          </span>
+        </div>
+        <div class="item__meta">Created {{ a.created_at }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No alerts.</p>
+    {% endif %}
+  </section>
+
+  <section class="card card--private section-anchor" id="rules" aria-labelledby="rules-title">
+    <div class="card__head">
+      <h2 id="rules-title">Privacy rules</h2>
+      <a href="/rules" class="small">Manage rules</a>
+    </div>
+    {% if rules %}
+    <ul class="items">
+      {% for r in rules %}
+      <li id="{{ r.rule_id }}">
+        <div class="item__head">
+          <span class="item__title"><a href="{{ r.href }}">{{ r.text }}</a></span>
+          {{ status_badge(r.status) }}
+        </div>
+        <div class="item__meta">{{ r.summary }} · <code>{{ r.rule_id }}</code></div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No rules yet. Default-minimum disclosure applies.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
+    <div class="card__head">
+      <h2 id="requests-title">Requests</h2>
+      <a href="/requests" class="small">All requests</a>
+    </div>
+    {% if requests %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Request</th>
+            <th scope="col">From</th>
+            <th scope="col" class="num">Questions</th>
+            <th scope="col">Received</th>
+            <th scope="col">Expires</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in requests %}
+          <tr id="{{ q.request_id }}">
+            <td><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
+            <td>{{ q.recipient }}</td>
+            <td class="num">{{ q.question_count }}</td>
+            <td class="nowrap">{{ q.received_at }}</td>
+            <td class="nowrap">{{ q.expires_at }}</td>
+            <td>{{ status_badge(q.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">No requests received.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="sharing" aria-labelledby="sharing-title">
+    <div class="card__head">
+      <h2 id="sharing-title">Sharing history</h2>
+      <span class="item__meta">What was sent does not change. Later corrections mark its evidence as superseded.</span>
+    </div>
+    {% if sharing_history %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Package</th>
+            <th scope="col">Recipient</th>
+            <th scope="col">Sent</th>
+            <th scope="col">Expires</th>
+            <th scope="col" class="num">Items</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in sharing_history %}
+          <tr id="{{ p.package_id }}">
+            <td>
+              <a href="{{ p.href }}"><code>{{ p.package_id }}</code></a>
+              <div class="item__meta">for <code>{{ p.request_id }}</code></div>
+            </td>
+            <td>{{ p.recipient }}</td>
+            <td class="nowrap">{{ p.sent_at }}</td>
+            <td class="nowrap">{{ p.expires_at }}</td>
+            <td class="num">{{ p.item_count }}</td>
+            <td>{{ status_badge(p.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">Nothing has been shared yet.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{#
+  Privacy rules page (holder). Context: preview_render.ctx_rules.
+    rule_form       {action, text, examples: [str]}
+    interpretation  None | {rule_id, text,
+                    policy: {kind: deny|generalise|age|recipient|alert_pref,
+                             fields: [{name, value}], json: str},
+                    plain_lines: [str], warnings: [str], confirm_action, reject_action}
+    active_rules    list of {rule_id, text, kind, summary, version, status, confirmed_at, retire_action}
+    held_rules      list of {rule_id, text, reason, created_at, clarify_action, discard_action}
+  Plus the common base.html variables.
+#}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+{% block content %}
+<h1 class="page-title">Privacy rules</h1>
+<p class="page-lede">A rule written in plain English becomes a typed policy that code applies to every package. Nothing changes until you confirm the interpretation.</p>
+
+<div class="stack">
+  <section id="add-rule" class="card section-anchor" aria-labelledby="add-rule-heading">
+    <div class="card__head">
+      <h2 id="add-rule-heading">Add a rule in plain English</h2>
+    </div>
+    <form class="form" method="post" action="{{ rule_form.action }}">
+      <div class="field">
+        <label for="rule-text">Your rule</label>
+        <textarea id="rule-text" name="text">{{ rule_form.text }}</textarea>
+        <p class="field__hint">Alibi shows its interpretation before anything is applied.</p>
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn btn--primary">Interpret</button>
+      </div>
+    </form>
+    {% if rule_form.examples %}
+    <h3>Examples</h3>
+    <ul>
+      {% for example in rule_form.examples %}
+      <li>{{ example }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {% if interpretation %}
+  <section id="interpretation" class="card section-anchor" aria-labelledby="interpretation-heading">
+    <div class="card__head">
+      <h2 id="interpretation-heading">Alibi's interpretation</h2>
+      <span class="item__meta"><code>{{ interpretation.rule_id }}</code></span>
+    </div>
+    <dl class="kv">
+      <dt>You wrote</dt>
+      <dd>{{ interpretation.text }}</dd>
+    </dl>
+
+    <h3>In plain terms</h3>
+    <ul>
+      {% for line in interpretation.plain_lines %}
+      <li>{{ line }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>Typed policy</h3>
+    <dl class="kv">
+      <dt>Kind</dt>
+      <dd>{{ status_badge(interpretation.policy.kind) }}</dd>
+      {% for field in interpretation.policy.fields %}
+      <dt>{{ field.name }}</dt>
+      <dd><code>{{ field.value }}</code></dd>
+      {% endfor %}
+    </dl>
+    <details class="disclosure">
+      <summary>Policy as JSON</summary>
+      <pre>{{ interpretation.policy.json }}</pre>
+    </details>
+
+    {% if interpretation.warnings %}
+    <div class="banner banner--info" role="note">
+      <p class="banner__title">Before you confirm</p>
+      <ul>
+        {% for warning in interpretation.warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="btn-row">
+      <form class="inline" method="post" action="{{ interpretation.confirm_action }}">
+        <button type="submit" class="btn btn--primary">Confirm this interpretation</button>
+      </form>
+      <form class="inline" method="post" action="{{ interpretation.reject_action }}">
+        <button type="submit" class="btn">Reject</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  <section id="active-rules" class="card section-anchor" aria-labelledby="active-rules-heading">
+    <div class="card__head">
+      <h2 id="active-rules-heading">Active rules</h2>
+    </div>
+    <p class="small muted">Held rules are not applied. When rules conflict, deny wins. Fields a rule cannot classify are withheld until a rule can be evaluated.</p>
+    {% if active_rules %}
+    <ul class="items">
+      {% for rule in active_rules %}
+      <li id="{{ rule.rule_id }}" class="section-anchor">
+        <div class="item__head">
+          <span class="item__title">{{ rule.text }}</span>
+          {{ status_badge(rule.status) }}
+        </div>
+        <p>{{ rule.summary }}</p>
+        <p class="item__meta">
+          {{ status_badge(rule.kind) }}
+          <code>{{ rule.rule_id }}</code> · Policy version {{ rule.version }} · Confirmed {{ rule.confirmed_at }}
+        </p>
+        <form class="inline" method="post" action="{{ rule.retire_action }}">
+          <button type="submit" class="btn btn--small">Retire</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No active rules. Default-minimum disclosure still applies: a package only includes what a question needs.</p>
+    {% endif %}
+  </section>
+
+  <section id="held-rules" class="card section-anchor" aria-labelledby="held-rules-heading">
+    <div class="card__head">
+      <h2 id="held-rules-heading">Held for review</h2>
+    </div>
+    {% if held_rules %}
+    <ul class="items">
+      {% for rule in held_rules %}
+      <li id="{{ rule.rule_id }}" class="section-anchor">
+        <div class="item__head">
+          <span class="item__title">{{ rule.text }}</span>
+          {{ status_badge("held") }}
+        </div>
+        <p>{{ rule.reason }}</p>
+        <p class="item__meta"><code>{{ rule.rule_id }}</code> · Held since {{ rule.created_at }}</p>
+        <div class="btn-row">
+          <form class="inline" method="post" action="{{ rule.clarify_action }}">
+            <button type="submit" class="btn btn--small">Clarify</button>
+          </form>
+          <form class="inline" method="post" action="{{ rule.discard_action }}">
+            <button type="submit" class="btn btn--small">Discard</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No rules are held for review.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{#
+  Alerts page (holder). Context: preview_render.ctx_alerts.
+    alerts           list of {alert_id, kind, severity: info|warning|high, title, explanation,
+                     created_at, status: open|resolved, txn_href,
+                     facts: [{label, value, source_id, source_revision, href}],
+                     suggested_checks: [str]}
+    merchant_lookup  {action, query, result: None | {query, status: verified|unverified,
+                     name: str|None, registry, checked_at, notes}}
+  Plus the common base.html variables.
+#}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+{% block content %}
+<h1 class="page-title">Alerts</h1>
+<p class="page-lede">Things Alibi noticed in your records. Each alert is an observation with the facts behind it, not a judgement about you or a merchant.</p>
+
+<div class="stack">
+  <section id="alerts" class="section-anchor" aria-labelledby="alerts-heading">
+    <h2 id="alerts-heading">Open and resolved alerts</h2>
+    {% if alerts %}
+    <div class="stack">
+      {% for alert in alerts %}
+      <article class="card alert alert--severity-{{ alert.severity }} section-anchor" id="{{ alert.alert_id }}">
+        <div class="card__head">
+          <h3>{{ alert.title }}</h3>
+          {{ status_badge(alert.status) }}
+        </div>
+        <p class="item__meta">
+          {{ status_badge(alert.kind) }}
+          Severity: {{ alert.severity }} · Raised {{ alert.created_at }} · <code>{{ alert.alert_id }}</code>
+        </p>
+        <p>{{ alert.explanation }}</p>
+
+        <h4>Facts behind this alert</h4>
+        {% if alert.facts %}
+        <div class="table-wrap">
+          <table class="table table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Fact</th>
+                <th scope="col">Value</th>
+                <th scope="col">Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for fact in alert.facts %}
+              <tr>
+                <td>{{ fact.label }}</td>
+                <td>{{ fact.value }}</td>
+                <td><a href="{{ fact.href }}"><code>{{ fact.source_id }}</code> r{{ fact.source_revision }}</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="empty">No facts recorded for this alert.</p>
+        {% endif %}
+
+        {% if alert.suggested_checks %}
+        <h4>Suggested checks</h4>
+        <ul>
+          {% for check in alert.suggested_checks %}
+          <li>{{ check }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        <p><a href="{{ alert.txn_href }}">Open the transaction</a></p>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No alerts. Alibi raises one when a merchant message and a bank entry disagree, a credit has no linked record, or a merchant is unknown to the registry.</p>
+    {% endif %}
+  </section>
+
+  <section id="merchant-lookup" class="card section-anchor" aria-labelledby="lookup-heading">
+    <div class="card__head">
+      <h2 id="lookup-heading">Merchant lookup</h2>
+    </div>
+    <form class="form" method="post" action="{{ merchant_lookup.action }}">
+      <div class="field">
+        <label for="lookup-query">Merchant name as it appears on your statement</label>
+        <input type="text" id="lookup-query" name="query" value="{{ merchant_lookup.query }}">
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn btn--primary">Look up</button>
+      </div>
+    </form>
+
+    {% if merchant_lookup.result %}
+    {% set result = merchant_lookup.result %}
+    <h3 id="lookup-result">Result</h3>
+    <dl class="kv">
+      <dt>Query</dt>
+      <dd>{{ result.query }}</dd>
+      <dt>Status</dt>
+      <dd>{{ status_badge(result.status, result.status | capitalize) }}</dd>
+      <dt>Registry name</dt>
+      <dd>{% if result.name is none %}<span class="muted">no match</span>{% else %}{{ result.name }}{% endif %}</dd>
+      <dt>Registry</dt>
+      <dd>{{ result.registry }}</dd>
+      <dt>Checked at</dt>
+      <dd>{{ result.checked_at }}</dd>
+      <dt>Notes</dt>
+      <dd>{{ result.notes }}</dd>
+    </dl>
+    {% else %}
+    <p class="empty">This is a mock registry check. Merchants the registry does not list come back as unverified, which means unknown to the registry, not fraudulent.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

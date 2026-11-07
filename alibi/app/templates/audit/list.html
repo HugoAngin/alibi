@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{#
+  Audit log (holder). Context: preview_render.ctx_audit.
+    filter   {action, query: str, actor: str, actors: [str]}
+    entries  list of {entry_id, at, actor, role, action, request_id: str|None,
+             event_id: str|None, outcome, detail}
+    page     {number: int, size: int, total: int, prev_href: str|None, next_href: str|None}
+  replay_mode and replay are rendered by base.html; this template does not repeat the banner.
+#}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+{% block content %}
+<h1 class="page-title">Audit</h1>
+<p class="page-lede">Every action with its actor, time, request or event ID and outcome. Entries are appended, never edited.</p>
+
+<div class="stack">
+  <section id="filter" class="card section-anchor" aria-labelledby="filter-heading">
+    <div class="card__head">
+      <h2 id="filter-heading">Filter</h2>
+    </div>
+    <form class="form" method="get" action="{{ filter.action }}">
+      <div class="field">
+        <label for="audit-q">Search action, ID or detail</label>
+        <input type="text" id="audit-q" name="q" value="{{ filter.query }}">
+      </div>
+      <div class="field">
+        <label for="audit-actor">Actor</label>
+        <select id="audit-actor" name="actor">
+          <option value=""{% if not filter.actor %} selected{% endif %}>All actors</option>
+          {% for actor_name in filter.actors %}
+          <option value="{{ actor_name }}"{% if actor_name == filter.actor %} selected{% endif %}>{{ actor_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn">Filter</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="entries" class="section-anchor" aria-labelledby="entries-heading">
+    <h2 id="entries-heading">Entries</h2>
+    {% if entries %}
+    <div class="table-wrap">
+      <table class="table table--compact">
+        <thead>
+          <tr>
+            <th scope="col">At (UTC)</th>
+            <th scope="col">Actor</th>
+            <th scope="col">Action</th>
+            <th scope="col">Request / event</th>
+            <th scope="col">Outcome</th>
+            <th scope="col">Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in entries %}
+          <tr id="{{ entry.entry_id }}" class="section-anchor">
+            <td class="nowrap">{{ entry.at }}</td>
+            <td>{{ entry.actor }} <span class="muted small">{{ entry.role }}</span></td>
+            <td><code>{{ entry.action }}</code></td>
+            <td>
+              {% if entry.request_id is none %}—{% else %}<code>{{ entry.request_id }}</code>{% endif %}
+              /
+              {% if entry.event_id is none %}—{% else %}<code>{{ entry.event_id }}</code>{% endif %}
+            </td>
+            <td>{{ status_badge(entry.outcome) }}</td>
+            <td>{{ entry.detail }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">No entries match this filter.</p>
+    {% endif %}
+  </section>
+
+  {% set page_count = ((page.total + page.size - 1) // page.size) if page.size else 1 %}
+  <nav id="pagination" class="cluster cluster--between section-anchor" aria-label="Pagination">
+    <span>Page {{ page.number }} of {{ page_count if page_count > 0 else 1 }} <span class="muted">({{ page.total }} entries, {{ page.size }} per page)</span></span>
+    <span class="btn-row">
+      {% if page.prev_href is not none %}
+      <a class="btn btn--small" href="{{ page.prev_href }}" rel="prev">Previous</a>
+      {% endif %}
+      {% if page.next_href is not none %}
+      <a class="btn btn--small" href="{{ page.next_href }}" rel="next">Next</a>
+      {% endif %}
+    </span>
+  </nav>
+</div>
+{% endblock %}

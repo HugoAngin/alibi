@@ -1,0 +1,133 @@
+{#
+  Analyst inbox for one authenticated recipient (ctx_analyst_inbox).
+
+  Context variables used (plus the base.html set):
+    recipient       {id, name, analyst_name}
+    packages        list of {package_id, request_id, received_at, expires_at,
+                             subject_ref_masked,
+                             authentication: valid | invalid | expired | wrong_audience,
+                             claim_counts: {supported, contradicted, unresolved},
+                             disposition: None | clear | escalate | request_more,
+                             href}
+    requests_sent   list of {request_id, parent_request_id (str or None), sent_at,
+                             status, question_count}
+#}
+{% extends "base.html" %}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">{{ recipient.name }} inbox</h1>
+<p class="page-lede">
+  Recipient <code>{{ recipient.id }}</code> · Analyst {{ recipient.analyst_name }}
+</p>
+<p class="muted small">
+  This inbox shows only packages bound to <code>{{ recipient.id }}</code>.
+  Other recipients' packages are not listed and cannot be fetched by ID.
+</p>
+
+<div class="stack">
+
+  <section class="card section-anchor" id="packages">
+    <div class="card__head">
+      <h2>Packages</h2>
+      <span class="item__meta">{{ packages | length }} received</span>
+    </div>
+    {% if packages %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Package</th>
+            <th scope="col">Request</th>
+            <th scope="col">Received</th>
+            <th scope="col">Expires</th>
+            <th scope="col">Subject</th>
+            <th scope="col">Authentication</th>
+            <th scope="col">Claims</th>
+            <th scope="col">Disposition</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pkg in packages %}
+          <tr id="pkg-{{ pkg.package_id }}">
+            <td><a href="{{ pkg.href }}"><code>{{ pkg.package_id }}</code></a></td>
+            <td><code>{{ pkg.request_id }}</code></td>
+            <td class="nowrap">{{ pkg.received_at }}</td>
+            <td class="nowrap">{{ pkg.expires_at }}</td>
+            <td><code>{{ pkg.subject_ref_masked }}</code></td>
+            <td>{{ status_badge(pkg.authentication) }}</td>
+            <td>
+              <span class="cluster">
+                <span class="nowrap">{{ claim_badge("supported") }} {{ pkg.claim_counts.supported }}</span>
+                <span class="nowrap">{{ claim_badge("contradicted") }} {{ pkg.claim_counts.contradicted }}</span>
+                <span class="nowrap">{{ claim_badge("unresolved") }} {{ pkg.claim_counts.unresolved }}</span>
+              </span>
+            </td>
+            <td>
+              {% if pkg.disposition %}
+                {{ status_badge(pkg.disposition) }}
+              {% else %}
+                <span class="muted">none</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small">
+      Authentication is a property of the package. It says nothing about whether a claim inside it is true.
+      Claim counts come from the package's own claim statuses.
+    </p>
+    {% else %}
+    <p class="empty">No packages have been received for this recipient.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="requests-sent">
+    <div class="card__head">
+      <h2>Requests sent</h2>
+      <span class="item__meta">{{ requests_sent | length }} sent</span>
+    </div>
+    {% if requests_sent %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Request</th>
+            <th scope="col">Parent request</th>
+            <th scope="col">Sent</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Questions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for req in requests_sent %}
+          <tr id="req-{{ req.request_id }}">
+            <td><code>{{ req.request_id }}</code></td>
+            <td>
+              {% if req.parent_request_id %}
+                <code>{{ req.parent_request_id }}</code>
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td class="nowrap">{{ req.sent_at }}</td>
+            <td>{{ status_badge(req.status) }}</td>
+            <td class="num">{{ req.question_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="muted small">
+      A follow-up is a new request with its own ID and a parent reference. The holder approves any new disclosure separately.
+    </p>
+    {% else %}
+    <p class="empty">No requests have been sent from this recipient.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

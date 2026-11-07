@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{#
+  Approved package rendering (holder, print-friendly). Context from preview_render.ctx_export:
+    package  {package_id, request_id, version, audience, recipient, case_id, subject_ref_masked,
+              period{from,to}, issued_at, expires_at, digest,
+              signature{alg,key_id,domain,value},
+              claims[{question_id, question, status, rationale,
+                      evidence_refs[{record_id,revision,trust}],
+                      calculation{expression,result}|None, gap|None}],
+              attachments[{attachment_id, kind, record_id, revision, issuer, trust,
+                           attestation, redacted, summary}]}
+    export   {json_href, json_filename, json_size_bytes, verify_hint,
+              approval{status,recipient,audience,action,digest,policy_version,
+                       valid_from,valid_until,approved_at|None,invalidated_reason|None}}
+#}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">Package {{ package.package_id }}</h1>
+<p class="page-lede">Readable rendering of the approved package for {{ package.recipient }}. This is what the bank receives.</p>
+
+<div class="stack">
+
+<div class="banner banner--info no-print" role="note" id="authoritative">
+  <p class="banner__title">Signed JSON is the authoritative artefact</p>
+  <p>
+    <a href="{{ export.json_href }}" download="{{ export.json_filename }}">Download {{ export.json_filename }}</a>
+    ({{ export.json_size_bytes }} bytes). This page is a readable rendering of that file.
+  </p>
+  <p class="muted small">The PDF is the browser's print of this page. It travels with the signed JSON; the JSON is what a recipient verifies.</p>
+  <p>Verify with <code>{{ export.verify_hint }}</code></p>
+  <div class="btn-row">
+    <button class="btn no-print" type="button" onclick="window.print()">Print or save as PDF</button>
+  </div>
+</div>
+
+{# ---------------------------------------------------------------- Package #}
+<section class="card section-anchor" id="package" aria-labelledby="package-title">
+  <div class="card__head">
+    <h2 id="package-title">Package</h2>
+    <code>{{ package.version }}</code>
+  </div>
+  <dl class="kv">
+    <dt>Package ID</dt>
+    <dd><code>{{ package.package_id }}</code></dd>
+    <dt>Request ID</dt>
+    <dd><code>{{ package.request_id }}</code></dd>
+    <dt>Version</dt>
+    <dd><code>{{ package.version }}</code></dd>
+    <dt>Audience</dt>
+    <dd><code>{{ package.audience }}</code></dd>
+    <dt>Recipient</dt>
+    <dd>{{ package.recipient }}</dd>
+    <dt>Case ID</dt>
+    <dd><code>{{ package.case_id }}</code></dd>
+    <dt>Subject</dt>
+    <dd><code>{{ package.subject_ref_masked }}</code> <span class="muted small">masked</span></dd>
+    <dt>Period</dt>
+    <dd><code>[{{ package.period.from }}, {{ package.period.to }})</code> <span class="muted small">half-open</span></dd>
+    <dt>Issued</dt>
+    <dd>{{ package.issued_at }}</dd>
+    <dt>Expires</dt>
+    <dd>{{ package.expires_at }}</dd>
+    <dt>Body digest</dt>
+    <dd class="digest">{{ package.digest }}</dd>
+    <dt>Signature</dt>
+    <dd>
+      <code>{{ package.signature.alg }}</code>, key <code>{{ package.signature.key_id }}</code>, domain <code>{{ package.signature.domain }}</code>
+      <div class="digest">{{ package.signature.value }}</div>
+    </dd>
+  </dl>
+  <p class="muted small">A valid signature shows the package is intact and came from the Alibi demo key. It does not make any claim true; each source and each claim carries its own status.</p>
+</section>
+
+{# --------------------------------------------------------------- Approval #}
+<section class="card section-anchor" id="approval" aria-labelledby="approval-title">
+  <div class="card__head">
+    <h2 id="approval-title">Approval</h2>
+    {{ status_badge(export.approval.status) }}
+  </div>
+  <dl class="kv">
+    <dt>Status</dt>
+    <dd>{{ status_badge(export.approval.status) }}</dd>
+    <dt>Recipient</dt>
+    <dd>{{ export.approval.recipient }}</dd>
+    <dt>Approved at</dt>
+    <dd>{% if export.approval.approved_at %}{{ export.approval.approved_at }}{% else %}not approved{% endif %}</dd>
+    <dt>Policy version</dt>
+    <dd><code>{{ export.approval.policy_version }}</code></dd>
+    {% if export.approval.invalidated_reason %}
+    <dt>Invalidated</dt>
+    <dd>{{ export.approval.invalidated_reason }}</dd>
+    {% endif %}
+  </dl>
+</section>
+
+{# ----------------------------------------------------- Claims by question #}
+<section class="section-anchor" id="claims" aria-labelledby="claims-title">
+  <h2 id="claims-title">Claims by question</h2>
+  <div class="stack">
+    {% for claim in package.claims %}
+    <article class="card" id="claim-{{ claim.question_id }}">
+      <div class="card__head">
+        <h3><code>{{ claim.question_id }}</code> {{ claim.question }}</h3>
+        {{ claim_badge(claim.status) }}
+      </div>
+      <p>{{ claim.rationale }}</p>
+      <dl class="kv">
+        <dt>Evidence</dt>
+        <dd>
+          {% if claim.evidence_refs %}
+          <ul class="items">
+            {% for ref in claim.evidence_refs %}
+            <li><code>{{ ref.record_id }} r{{ ref.revision }}</code> {{ trust_badge(ref.trust) }}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="muted">no evidence cited</span>
+          {% endif %}
+        </dd>
+        {% if claim.calculation %}
+        <dt>Calculation</dt>
+        <dd><code>{{ claim.calculation.expression }}</code> = {{ money(claim.calculation.result) }} ({{ money_raw(claim.calculation.result) }})</dd>
+        {% endif %}
+        {% if claim.gap %}
+        <dt>Gap</dt>
+        <dd>{{ claim.gap }}</dd>
+        {% endif %}
+      </dl>
+    </article>
+    {% else %}
+    <p class="empty">This package carries no claims.</p>
+    {% endfor %}
+  </div>
+</section>
+
+{# ------------------------------------------------------------ Attachments #}
+<section class="card section-anchor" id="attachments" aria-labelledby="attachments-title">
+  <div class="card__head">
+    <h2 id="attachments-title">Attachments</h2>
+  </div>
+  <div class="table-wrap">
+    <table class="table table--compact">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">Kind</th>
+          <th scope="col">Record</th>
+          <th scope="col">Issuer</th>
+          <th scope="col">Trust</th>
+          <th scope="col">Attestation</th>
+          <th scope="col">Redacted</th>
+          <th scope="col">Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for att in package.attachments %}
+        <tr id="{{ att.attachment_id }}">
+          <td><code>{{ att.attachment_id }}</code></td>
+          <td>{{ att.kind }}</td>
+          <td><code>{{ att.record_id }} r{{ att.revision }}</code></td>
+          <td>{{ att.issuer }}</td>
+          <td>{{ trust_badge(att.trust) }}</td>
+          <td>{{ status_badge(att.attestation) }}</td>
+          <td>{% if att.redacted %}yes{% else %}no{% endif %}</td>
+          <td>{{ att.summary }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="empty">No attachments.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">Attestation names who vouches for the bytes: the issuer's own signature, the package signer for a redacted extract, or none for a self-supplied import.</p>
+</section>
+
+<div class="print-only print-footer">
+  This PDF is the browser's print of this page. It is a readable rendering of package {{ package.package_id }}.
+  The signed JSON (digest {{ package.digest }}) is the authoritative artefact for verification.
+</div>
+
+</div>
+{% endblock %}

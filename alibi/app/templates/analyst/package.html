@@ -1,0 +1,396 @@
+{#
+  Analyst console for one received package (ctx_analyst_package).
+
+  Context variables used (plus the base.html set):
+    recipient             {id, name, analyst_name}
+    package               {package_id, request_id, recipient, subject_ref_masked,
+                           period: {from, to}, issued_at, expires_at, ...}
+    authentication        {status: valid | invalid | expired | wrong_audience | replayed,
+                           received_at, verified_at, package_digest, signer_key_id,
+                           checks: [{name, result, detail}], note}
+    source_trust          [{attachment_id, record_id, revision, issuer, trust,
+                            signature_check, detail}]
+    claim_status          [{question_id, status, summary}]
+    evidence_by_question  [{question_id, question, claim: {status, rationale},
+                            evidence: [{attachment_id, record_id, revision, trust, summary, href}],
+                            calculation: None | {expression, result, computed_by, matches},
+                            gap: None | str}]
+    reconciliation        {title, lines: [{label, kind, sign, amount, source_ids}],
+                           expression, result, compared_to: {label, amount}, difference,
+                           matches, computed_by, computed_at}
+    contradictions        [{claim_id, question_id, description,
+                            sources: [{record_id, revision, trust}]}]
+    gaps                  [{question_id, description, reason_code}]
+    disposition_form      {action, options: [{value, label}], analyst_name,
+                           current: None | {disposition, analyst_name, recorded_at, note}}
+    followup_form         {action, parent_request_id, subject_ref_masked,
+                           period: {from, to}, question_prefill, consent_note}
+#}
+{% extends "base.html" %}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">Package <code>{{ package.package_id }}</code></h1>
+<p class="page-lede">Reviewing as {{ recipient.analyst_name }} for {{ recipient.name }} (<code>{{ recipient.id }}</code>).</p>
+
+<div class="stack">
+
+  <section class="card section-anchor" id="summary">
+    <h2>Summary</h2>
+    <dl class="kv">
+      <dt>Request</dt>
+      <dd><code>{{ package.request_id }}</code></dd>
+      <dt>Recipient</dt>
+      <dd>{{ package.recipient }}</dd>
+      <dt>Received</dt>
+      <dd>{{ authentication.received_at }}</dd>
+      <dt>Period</dt>
+      <dd>{{ package.period.from }} to {{ package.period.to }} <span class="muted small">(from inclusive, to exclusive)</span></dd>
+      <dt>Issued</dt>
+      <dd>{{ package.issued_at }}</dd>
+      <dt>Expires</dt>
+      <dd>{{ package.expires_at }}</dd>
+      <dt>Subject</dt>
+      <dd><code>{{ package.subject_ref_masked }}</code></dd>
+    </dl>
+  </section>
+
+  <section class="section-anchor" id="checks">
+    <h2>Verification</h2>
+    <div class="panel-grid">
+
+      <section class="panel" id="authentication">
+        <h3 class="panel__title">Package authentication</h3>
+        <p>{{ status_badge(authentication.status) }}</p>
+        <dl class="kv">
+          <dt>Received</dt>
+          <dd>{{ authentication.received_at }}</dd>
+          <dt>Verified</dt>
+          <dd>{{ authentication.verified_at }}</dd>
+          <dt>Signer key</dt>
+          <dd><code>{{ authentication.signer_key_id }}</code></dd>
+          <dt>Digest</dt>
+          <dd><span class="digest">{{ authentication.package_digest }}</span></dd>
+        </dl>
+        {% if authentication.checks %}
+        <div class="table-wrap">
+          <table class="table table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Check</th>
+                <th scope="col">Result</th>
+                <th scope="col">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for check in authentication.checks %}
+              <tr>
+                <td>{{ check.name }}</td>
+                <td>{{ status_badge(check.result) }}</td>
+                <td class="small">{{ check.detail }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="empty">No checks recorded.</p>
+        {% endif %}
+        <p class="muted small">{{ authentication.note }}</p>
+      </section>
+
+      <section class="panel" id="source-trust">
+        <h3 class="panel__title">Source trust (per attachment)</h3>
+        {% if source_trust %}
+        <ul class="items">
+          {% for src in source_trust %}
+          <li id="trust-{{ src.attachment_id }}">
+            <div class="item__head">
+              <span class="item__title"><code>{{ src.attachment_id }}</code></span>
+              <span class="item__meta"><code>{{ src.record_id }} r{{ src.revision }}</code></span>
+            </div>
+            <div class="item__meta">{{ src.issuer }}</div>
+            <div class="cluster">
+              {{ trust_badge(src.trust) }}
+              <span class="small muted">Signature:</span> {{ status_badge(src.signature_check) }}
+            </div>
+            <p class="small muted">{{ src.detail }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No attachments in this package.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel" id="claim-status">
+        <h3 class="panel__title">Claim status</h3>
+        {% if claim_status %}
+        <ul class="items">
+          {% for cs in claim_status %}
+          <li id="claim-status-{{ cs.question_id }}">
+            <div class="item__head">
+              <span class="item__title"><code>{{ cs.question_id }}</code></span>
+              {{ claim_badge(cs.status) }}
+            </div>
+            <p class="small">{{ cs.summary }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No claims in this package.</p>
+        {% endif %}
+      </section>
+
+    </div>
+    <p class="muted small">These three are independent. A valid package can carry a self-supplied attachment and an unresolved claim.</p>
+  </section>
+
+  <section class="section-anchor" id="evidence">
+    <h2>Evidence by question</h2>
+    {% if evidence_by_question %}
+    <div class="stack">
+      {% for item in evidence_by_question %}
+      <article class="card" id="evidence-{{ item.question_id }}">
+        <div class="card__head">
+          <h3><code>{{ item.question_id }}</code></h3>
+          {{ claim_badge(item.claim.status) }}
+        </div>
+        <p>{{ item.question }}</p>
+        <p class="small"><span class="muted">Rationale:</span> {{ item.claim.rationale }}</p>
+
+        {% if item.evidence %}
+        <div class="table-wrap">
+          <table class="table table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Attachment</th>
+                <th scope="col">Record</th>
+                <th scope="col">Trust</th>
+                <th scope="col">Summary</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ev in item.evidence %}
+              <tr>
+                <td><a href="{{ ev.href }}"><code>{{ ev.attachment_id }}</code></a></td>
+                <td><code>{{ ev.record_id }} r{{ ev.revision }}</code></td>
+                <td>{{ trust_badge(ev.trust) }}</td>
+                <td class="small">{{ ev.summary }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="empty">No evidence attached.</p>
+        {% endif %}
+
+        {% if item.calculation %}
+        <dl class="kv">
+          <dt>Calculation</dt>
+          <dd>
+            <span class="recon__expression">{{ item.calculation.expression }}</span><br>
+            {{ money(item.calculation.result) }} {{ money_raw(item.calculation.result) }}<br>
+            <span class="small muted">Recomputed by {{ item.calculation.computed_by }}.</span>
+            {% if item.calculation.matches %}
+              {{ status_badge("pass", "matches") }}
+            {% else %}
+              {{ status_badge("fail", "does not match") }}
+            {% endif %}
+          </dd>
+        </dl>
+        {% endif %}
+
+        {% if item.gap %}
+        <p class="small"><span class="muted">Gap:</span> {{ item.gap }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">This package answers no questions.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="reconciliation">
+    <h2>Reconciliation</h2>
+    <p class="muted small">{{ reconciliation.title }}</p>
+    <div class="table-wrap">
+      <table class="recon">
+        <thead>
+          <tr>
+            <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
+            <th scope="col">Line</th>
+            <th scope="col">Sources</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col" class="num">Minor units</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in reconciliation.lines %}
+          <tr>
+            <td class="sign">{{ line.sign }}</td>
+            <td>{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
+            <td>{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+            <td class="num">{{ money(line.amount) }}</td>
+            <td class="num">{{ money_raw(line.amount) }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="recon__total">
+            <td class="sign">=</td>
+            <td>Result</td>
+            <td></td>
+            <td class="num">{{ money(reconciliation.result) }}</td>
+            <td class="num">{{ money_raw(reconciliation.result) }}</td>
+          </tr>
+          <tr class="recon__compare">
+            <td class="sign"></td>
+            <td>Compared to {{ reconciliation.compared_to.label }}</td>
+            <td></td>
+            <td class="num">{{ money(reconciliation.compared_to.amount) }}</td>
+            <td class="num">{{ money_raw(reconciliation.compared_to.amount) }}</td>
+          </tr>
+          <tr class="recon__compare">
+            <td class="sign"></td>
+            <td>Difference
+              {% if reconciliation.matches %}
+                {{ status_badge("pass", "matches") }}
+              {% else %}
+                {{ status_badge("fail", "does not match") }}
+              {% endif %}
+            </td>
+            <td></td>
+            <td class="num">{{ money(reconciliation.difference) }}</td>
+            <td class="num">{{ money_raw(reconciliation.difference) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="recon__expression">{{ reconciliation.expression }}</p>
+    <p class="muted small">Recomputed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}.</p>
+  </section>
+
+  <section class="card section-anchor" id="contradictions">
+    <h2>Contradictions</h2>
+    {% if contradictions %}
+    <ul class="items">
+      {% for c in contradictions %}
+      <li id="contradiction-{{ c.claim_id }}">
+        <div class="item__head">
+          <span class="item__title"><code>{{ c.claim_id }}</code></span>
+          <span class="item__meta">Question <code>{{ c.question_id }}</code></span>
+        </div>
+        <p>{{ c.description }}</p>
+        {% if c.sources %}
+        <div class="cluster">
+          {% for s in c.sources %}
+          <span class="nowrap"><code>{{ s.record_id }} r{{ s.revision }}</code> {{ trust_badge(s.trust) }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No contradictions recorded.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="gaps">
+    <h2>Gaps</h2>
+    {% if gaps %}
+    <ul class="items">
+      {% for g in gaps %}
+      <li id="gap-{{ g.question_id }}">
+        <div class="item__head">
+          <span class="item__title">Question <code>{{ g.question_id }}</code></span>
+          {{ status_badge(g.reason_code) }}
+        </div>
+        <p>{{ g.description }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No gaps recorded.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="disposition">
+    <h2>Disposition</h2>
+    {% if disposition_form.current %}
+    <dl class="kv">
+      <dt>Recorded</dt>
+      <dd>{{ status_badge(disposition_form.current.disposition) }}</dd>
+      <dt>Analyst</dt>
+      <dd>{{ disposition_form.current.analyst_name }}</dd>
+      <dt>Recorded at</dt>
+      <dd>{{ disposition_form.current.recorded_at }}</dd>
+      <dt>Note</dt>
+      <dd>{% if disposition_form.current.note %}{{ disposition_form.current.note }}{% else %}<span class="muted">none</span>{% endif %}</dd>
+    </dl>
+    <hr>
+    {% else %}
+    <p class="muted small">No disposition recorded yet.</p>
+    {% endif %}
+    <form class="form" method="post" action="{{ disposition_form.action }}">
+      <fieldset>
+        <legend>Disposition</legend>
+        {% for opt in disposition_form.options %}
+        <label class="choice">
+          <input type="radio" name="disposition" value="{{ opt.value }}" required>
+          <span>{{ opt.label }}</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      <div class="field">
+        <label for="disposition-analyst-name">Analyst name</label>
+        <input type="text" id="disposition-analyst-name" name="analyst_name" value="{{ disposition_form.analyst_name }}" required>
+      </div>
+      <div class="field">
+        <label for="disposition-note">Note</label>
+        <textarea id="disposition-note" name="note"></textarea>
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn btn--primary">Record disposition</button>
+      </div>
+    </form>
+    <p class="muted small">A disposition is a human record. It does not change the holder&#39;s account automatically.</p>
+  </section>
+
+  <section class="card section-anchor" id="followup">
+    <h2>Follow-up request</h2>
+    <div class="banner banner--info">
+      <p>{{ followup_form.consent_note }}</p>
+    </div>
+    <form class="form" method="post" action="{{ followup_form.action }}">
+      <input type="hidden" name="parent_request_id" value="{{ followup_form.parent_request_id }}">
+      <dl class="kv">
+        <dt>Parent request</dt>
+        <dd><code>{{ followup_form.parent_request_id }}</code></dd>
+        <dt>Subject</dt>
+        <dd><code>{{ followup_form.subject_ref_masked }}</code></dd>
+      </dl>
+      <div class="field">
+        <label for="followup-period-from">Period from (UTC)</label>
+        <input type="text" id="followup-period-from" name="period_from" class="mono" value="{{ followup_form.period.from }}" required>
+        <span class="field__hint">Inclusive. UTC ISO-8601, for example 2026-10-01T00:00:00Z.</span>
+      </div>
+      <div class="field">
+        <label for="followup-period-to">Period to (UTC)</label>
+        <input type="text" id="followup-period-to" name="period_to" class="mono" value="{{ followup_form.period.to }}" required>
+        <span class="field__hint">Exclusive.</span>
+      </div>
+      <div class="field">
+        <label for="followup-question">Question</label>
+        <textarea id="followup-question" name="question" required>{{ followup_form.question_prefill }}</textarea>
+      </div>
+      <div class="btn-row">
+        <button type="submit" class="btn btn--primary">Send follow-up through the bank connection</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

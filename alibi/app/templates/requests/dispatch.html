@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{#
+  Dispatch result (holder). Context from preview_render.ctx_dispatch:
+    dispatch  {outcome: "success"|"refused", package_id, request_id, recipient, attempted_at,
+               receipt{receipt_id, package_digest, received_at, status, signer_key_id, expires_at}|None,
+               refusal{code, reason, checked_at, expected_digest, actual_digest}|None,
+               retry_action|None, review_href, history_href}
+#}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">Dispatch result</h1>
+
+{% if dispatch.outcome == "success" and dispatch.receipt %}
+<div class="result result--success section-anchor" id="delivered">
+  <h2>Delivered to {{ dispatch.recipient }}</h2>
+  <dl class="kv">
+    <dt>Package ID</dt>
+    <dd><code>{{ dispatch.package_id }}</code></dd>
+    <dt>Request ID</dt>
+    <dd><code>{{ dispatch.request_id }}</code></dd>
+    <dt>Attempted at</dt>
+    <dd>{{ dispatch.attempted_at }}</dd>
+  </dl>
+
+  <h3 id="receipt">Receipt</h3>
+  <dl class="kv">
+    <dt>Receipt ID</dt>
+    <dd><code>{{ dispatch.receipt.receipt_id }}</code></dd>
+    <dt>Package digest</dt>
+    <dd class="digest">{{ dispatch.receipt.package_digest }}</dd>
+    <dt>Received at</dt>
+    <dd>{{ dispatch.receipt.received_at }}</dd>
+    <dt>Status</dt>
+    <dd>{{ status_badge(dispatch.receipt.status) }}</dd>
+    <dt>Signer key</dt>
+    <dd><code>{{ dispatch.receipt.signer_key_id }}</code></dd>
+    <dt>Expires</dt>
+    <dd>{{ dispatch.receipt.expires_at }}</dd>
+  </dl>
+  <p class="muted small">The receipt binds this package ID to its digest. The bank's receipt shows the bytes arrived intact; it does not mark any claim true.</p>
+  <div class="btn-row">
+    <a class="btn" href="{{ dispatch.history_href }}">Sharing history</a>
+    <a class="btn btn--ghost" href="{{ dispatch.review_href }}">Back to the review</a>
+  </div>
+</div>
+
+{% else %}
+<div class="result result--refused section-anchor" id="refused">
+  <h2>Dispatch refused</h2>
+  <dl class="kv">
+    <dt>Package ID</dt>
+    <dd><code>{{ dispatch.package_id }}</code></dd>
+    <dt>Request ID</dt>
+    <dd><code>{{ dispatch.request_id }}</code></dd>
+    <dt>Recipient</dt>
+    <dd>{{ dispatch.recipient }}</dd>
+    <dt>Attempted at</dt>
+    <dd>{{ dispatch.attempted_at }}</dd>
+    {% if dispatch.refusal %}
+    <dt>Code</dt>
+    <dd>{{ status_badge(dispatch.refusal.code) }}</dd>
+    <dt>Checked at</dt>
+    <dd>{{ dispatch.refusal.checked_at }}</dd>
+    <dt>Expected digest</dt>
+    <dd class="digest">{{ dispatch.refusal.expected_digest }}</dd>
+    <dt>Actual digest</dt>
+    <dd class="digest">{{ dispatch.refusal.actual_digest }}</dd>
+    {% endif %}
+  </dl>
+
+  {% if dispatch.refusal %}
+  <h3 id="reason">Reason from the backend (verbatim)</h3>
+  <pre class="result__reason">{{ dispatch.refusal.reason }}</pre>
+  {% endif %}
+
+  <p>Nothing was sent. The backend revalidated the approval and the current scope at dispatch, refused, and signed nothing.</p>
+  <div class="btn-row">
+    <a class="btn btn--primary" href="{{ dispatch.review_href }}">Review and approve the revised body</a>
+    {% if dispatch.retry_action %}
+    <form method="post" action="{{ dispatch.retry_action }}" class="inline">
+      <button type="submit" class="btn">Retry dispatch</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="muted small">A retry sends identical bytes by package ID and rechecks authorisation first. It will be refused again until the revised body is approved.</p>
+</div>
+{% endif %}
+{% endblock %}

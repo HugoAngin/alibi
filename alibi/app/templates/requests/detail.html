@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{#
+  Request detail (holder). Context from preview_render.ctx_request_detail:
+    request        {request_id, parent_request_id|None, issuer, audience, subject_ref,
+                    received_at, expires_at, period{from,to}, txn_ids[], questions[{question_id,text}],
+                    status, signature{verified,key_id}, href}
+    investigation  {status, can_run, run_action, started_at, completed_at,
+                    budget{calls_used,calls_cap}, roles[{name,status,calls,note}], failure_reason|None}
+    trace          [{step_id, question_id, question, claim{claim_id,text,status},
+                     sources[{record_id,revision,trust,href}],
+                     lookups[{tool,args_summary,result_summary,at}],
+                     calculation{expression,result,computed_by,matches}|None,
+                     status, status_reason, at}]
+    review         {claims[{claim_id,question_id,question,status,rationale,href}],
+                    included[{item_id,question_id,label,kind,record_id,revision,trust,reason,removable,remove_action|None}],
+                    excluded[{item_id,label,reason,rule_id|None}],
+                    generalised[{item_id,label,original_summary,generalised_as,rule_id}],
+                    gaps[{question_id,description,reason_code}],
+                    counts{included,excluded,generalised,gaps},
+                    approval{status,recipient,audience,action,digest,policy_version,
+                             valid_from,valid_until,approved_at|None,invalidated_reason|None},
+                    preview_href}
+#}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">Request {{ request.request_id }}</h1>
+<p class="page-lede">From {{ request.issuer }}. Everything below the trace is private to you until you approve a package for a named recipient.</p>
+
+<div class="stack">
+
+{# ---------------------------------------------------------------- Request #}
+<section class="card section-anchor" id="rfc" aria-labelledby="rfc-title">
+  <div class="card__head">
+    <h2 id="rfc-title">Request</h2>
+    {{ status_badge(request.status) }}
+  </div>
+  <dl class="kv">
+    <dt>Request ID</dt>
+    <dd><code>{{ request.request_id }}</code></dd>
+    <dt>Parent request</dt>
+    <dd>{% if request.parent_request_id %}<code>{{ request.parent_request_id }}</code>{% else %}none{% endif %}</dd>
+    <dt>Issuer</dt>
+    <dd>{{ request.issuer }}</dd>
+    <dt>Audience</dt>
+    <dd><code>{{ request.audience }}</code></dd>
+    <dt>Subject</dt>
+    <dd><code>{{ request.subject_ref }}</code></dd>
+    <dt>Received</dt>
+    <dd>{{ request.received_at }}</dd>
+    <dt>Expires</dt>
+    <dd>{{ request.expires_at }}</dd>
+    <dt>Period</dt>
+    <dd><code>[{{ request.period.from }}, {{ request.period.to }})</code> <span class="muted small">half-open</span></dd>
+    <dt>Transactions</dt>
+    <dd>
+      {% if request.txn_ids %}
+        {% for txn_id in request.txn_ids %}<code>{{ txn_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      {% else %}
+        none listed; period scope only
+      {% endif %}
+    </dd>
+    <dt>Status</dt>
+    <dd>{{ status_badge(request.status) }}</dd>
+    <dt>Signature</dt>
+    <dd>
+      {% if request.signature.verified %}{{ status_badge("verified") }}{% else %}{{ status_badge("invalid", "not verified") }}{% endif %}
+      key <code>{{ request.signature.key_id }}</code>
+    </dd>
+  </dl>
+
+  <h3 id="rfc-questions">Questions</h3>
+  <ol>
+    {% for q in request.questions %}
+    <li id="{{ q.question_id }}"><code>{{ q.question_id }}</code> {{ q.text }}</li>
+    {% endfor %}
+  </ol>
+</section>
+
+{# ---------------------------------------------------------- Investigation #}
+<section class="card section-anchor" id="investigation" aria-labelledby="investigation-title">
+  <div class="card__head">
+    <h2 id="investigation-title">Investigation</h2>
+    {{ status_badge(investigation.status) }}
+  </div>
+  <dl class="kv">
+    <dt>Started</dt>
+    <dd>{% if investigation.started_at %}{{ investigation.started_at }}{% else %}not started{% endif %}</dd>
+    <dt>Completed</dt>
+    <dd>{% if investigation.completed_at %}{{ investigation.completed_at }}{% else %}not completed{% endif %}</dd>
+    <dt>Budget</dt>
+    <dd>{{ investigation.budget.calls_used }} of {{ investigation.budget.calls_cap }} Gemini calls</dd>
+    {% if investigation.failure_reason %}
+    <dt>Failure</dt>
+    <dd>{{ investigation.failure_reason }}</dd>
+    {% endif %}
+  </dl>
+
+  <h3>Roles</h3>
+  <div class="table-wrap">
+    <table class="table table--compact">
+      <thead>
+        <tr><th scope="col">Role</th><th scope="col">Status</th><th scope="col" class="num">Calls</th><th scope="col">Note</th></tr>
+      </thead>
+      <tbody>
+        {% for role in investigation.roles %}
+        <tr>
+          <td>{{ role.name }}</td>
+          <td>{{ status_badge(role.status) }}</td>
+          <td class="num">{{ role.calls }}</td>
+          <td>{{ role.note }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">No roles have run yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <form method="post" action="{{ investigation.run_action }}" class="btn-row">
+    <button type="submit" class="btn btn--primary"{% if not investigation.can_run %} disabled{% endif %}>Run investigation</button>
+    {% if not investigation.can_run %}<span class="muted small">Not available while the investigation is {{ investigation.status | replace("_", " ") }}.</span>{% endif %}
+  </form>
+  <p class="muted small">Agents propose; code validates every reference, recomputes every total and decides the status. Nothing here transmits anything to a bank or signs anything.</p>
+</section>
+
+{# ------------------------------------------------------------------ Trace #}
+<section class="card section-anchor" id="trace" aria-labelledby="trace-title">
+  <div class="card__head">
+    <h2 id="trace-title">Trace</h2>
+    <span class="muted small">Question <span class="trace__arrow" aria-hidden="true">→</span> claim <span class="trace__arrow" aria-hidden="true">→</span> sources <span class="trace__arrow" aria-hidden="true">→</span> lookups <span class="trace__arrow" aria-hidden="true">→</span> calculation <span class="trace__arrow" aria-hidden="true">→</span> status</span>
+  </div>
+  <ol class="trace">
+    {% for step in trace %}
+    <li id="{{ step.step_id }}">
+      <div class="cluster cluster--between">
+        <span class="item__title">{{ step.question_id }}</span>
+        {{ claim_badge(step.status) }}
+      </div>
+      <ol class="trace__steps">
+        <li>
+          <span class="trace__label">Question</span>
+          <code>{{ step.question_id }}</code> {{ step.question }}
+        </li>
+        <li>
+          <span class="trace__label">Claim</span>
+          <code>{{ step.claim.claim_id }}</code> {{ step.claim.text }} {{ claim_badge(step.claim.status) }}
+        </li>
+        <li>
+          <span class="trace__label">Sources</span>
+          {% if step.sources %}
+          <ul class="items">
+            {% for src in step.sources %}
+            <li><a href="{{ src.href }}"><code>{{ src.record_id }} r{{ src.revision }}</code></a> {{ trust_badge(src.trust) }}</li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="muted">no sources</span>
+          {% endif %}
+        </li>
+        <li>
+          <span class="trace__label">Lookups</span>
+          {% if step.lookups %}
+          <ul class="items">
+            {% for lk in step.lookups %}
+            <li>
+              <code>{{ lk.tool }}</code> <code class="small">{{ lk.args_summary }}</code>
+              <span class="trace__arrow" aria-hidden="true">→</span> {{ lk.result_summary }}
+              <span class="item__meta">at {{ lk.at }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <span class="muted">no scoped lookups</span>
+          {% endif %}
+        </li>
+        <li>
+          <span class="trace__label">Calculation</span>
+          {% if step.calculation %}
+          <code>{{ step.calculation.expression }}</code>
+          <span class="trace__arrow" aria-hidden="true">→</span> {{ money(step.calculation.result) }} ({{ money_raw(step.calculation.result) }})
+          <span class="item__meta">computed by {{ step.calculation.computed_by }};
+            {% if step.calculation.matches %}matches the cited amounts{% else %}does not match the cited amounts{% endif %}</span>
+          {% else %}
+          <span class="muted">no calculation</span>
+          {% endif %}
+        </li>
+        <li>
+          <span class="trace__label">Status</span>
+          {{ claim_badge(step.status) }} {{ step.status_reason }}
+          <span class="item__meta">at {{ step.at }}</span>
+        </li>
+      </ol>
+    </li>
+    {% else %}
+    <li class="empty">No trace yet. Run the investigation to produce one.</li>
+    {% endfor %}
+  </ol>
+</section>
+
+{# ---------------------------------------------------------- Private review #}
+<section class="card card--private section-anchor" id="review" aria-labelledby="review-title">
+  <div class="card__head">
+    <h2 id="review-title">Private review</h2>
+  </div>
+  <p class="muted small">Claim status is decided by code from the evidence. Approving a package does not change a status, and a bank's authentication check never marks a claim true.</p>
+
+  <h3 id="review-claims">Claims</h3>
+  <ul class="items">
+    {% for claim in review.claims %}
+    <li id="review-{{ claim.claim_id }}">
+      <div class="item__head">
+        <span class="item__title"><code>{{ claim.question_id }}</code> {{ claim.question }}</span>
+        {{ claim_badge(claim.status) }}
+      </div>
+      <p class="review-list__reason">{{ claim.rationale }}</p>
+      <a class="small" href="{{ claim.href }}">Open trace</a>
+    </li>
+    {% else %}
+    <li class="empty">No claims yet.</li>
+    {% endfor %}
+  </ul>
+
+  <div class="stats" aria-label="Review counts">
+    <div class="stat"><div class="stat__value">{{ review.counts.included }}</div><div class="stat__label">Included</div></div>
+    <div class="stat"><div class="stat__value">{{ review.counts.excluded }}</div><div class="stat__label">Excluded</div></div>
+    <div class="stat"><div class="stat__value">{{ review.counts.generalised }}</div><div class="stat__label">Generalised</div></div>
+    <div class="stat"><div class="stat__value">{{ review.counts.gaps }}</div><div class="stat__label">Gaps</div></div>
+  </div>
+
+  <h3 id="included">Included</h3>
+  <p class="muted small">These items are in the package body as it stands. Removing one changes the body and invalidates any pending approval.</p>
+  <ul class="review-list">
+    {% for item in review.included %}
+    <li id="{{ item.item_id }}">
+      <div class="item__head">
+        <span class="item__title">{{ item.label }}</span>
+        {{ trust_badge(item.trust) }}
+      </div>
+      <span class="item__meta">{{ item.kind }} · <code>{{ item.record_id }} r{{ item.revision }}</code> · for <code>{{ item.question_id }}</code></span>
+      <span class="review-list__reason">{{ item.reason }}</span>
+      {% if item.removable and item.remove_action %}
+      <form method="post" action="{{ item.remove_action }}" class="inline">
+        <button type="submit" class="btn btn--danger btn--small">Remove</button>
+      </form>
+      {% else %}
+      <span class="muted small">required for the claim</span>
+      {% endif %}
+    </li>
+    {% else %}
+    <li class="empty">Nothing is included.</li>
+    {% endfor %}
+  </ul>
+
+  <h3 id="excluded">Excluded</h3>
+  <p class="muted small">The bank never sees this list. It exists so you can check what was left out and why.</p>
+  <ul class="review-list review-list--excluded">
+    {% for item in review.excluded %}
+    <li id="{{ item.item_id }}">
+      <span class="item__title">{{ item.label }}</span>
+      <span class="review-list__reason">{{ item.reason }}{% if item.rule_id %} Rule <code>{{ item.rule_id }}</code>.{% endif %}</span>
+    </li>
+    {% else %}
+    <li class="empty">Nothing was excluded.</li>
+    {% endfor %}
+  </ul>
+
+  <h3 id="generalised">Generalised</h3>
+  <ul class="review-list">
+    {% for item in review.generalised %}
+    <li id="{{ item.item_id }}">
+      <span class="item__title">{{ item.label }}</span>
+      <span><span class="diff-before">{{ item.original_summary }}</span> <span class="trace__arrow" aria-hidden="true">→</span> <span class="diff-after">{{ item.generalised_as }}</span></span>
+      <span class="review-list__reason">Rule <code>{{ item.rule_id }}</code>.</span>
+    </li>
+    {% else %}
+    <li class="empty">Nothing was generalised.</li>
+    {% endfor %}
+  </ul>
+
+  <h3 id="gaps">Gaps</h3>
+  <ul class="review-list">
+    {% for gap in review.gaps %}
+    <li>
+      <div class="item__head">
+        <span class="item__title"><code>{{ gap.question_id }}</code></span>
+        {{ status_badge(gap.reason_code) }}
+      </div>
+      <span class="review-list__reason">{{ gap.description }}</span>
+    </li>
+    {% else %}
+    <li class="empty">No gaps.</li>
+    {% endfor %}
+  </ul>
+
+  {% set approval = review.approval %}
+  <div class="approval" id="approval">
+    <div class="card__head">
+      <h3>Approval</h3>
+      {{ status_badge(approval.status) }}
+    </div>
+    <p>Approving sends exactly this preview to <strong>{{ approval.recipient }}</strong> (<code>{{ approval.audience }}</code>) and nothing else.</p>
+    <dl class="kv">
+      <dt>Recipient</dt>
+      <dd>{{ approval.recipient }}</dd>
+      <dt>Body digest</dt>
+      <dd class="digest">{{ approval.digest }}</dd>
+      <dt>Policy version</dt>
+      <dd><code>{{ approval.policy_version }}</code></dd>
+      <dt>Validity window</dt>
+      <dd class="approval__window">{{ approval.valid_from }} to {{ approval.valid_until }}</dd>
+      {% if approval.approved_at %}
+      <dt>Approved at</dt>
+      <dd>{{ approval.approved_at }}</dd>
+      {% endif %}
+      {% if approval.invalidated_reason %}
+      <dt>Invalidated</dt>
+      <dd>{{ approval.invalidated_reason }}</dd>
+      {% endif %}
+    </dl>
+    <p><a href="{{ review.preview_href }}">Preview the package as the bank will see it</a></p>
+    <form method="post" action="{{ approval.action }}" class="btn-row">
+      <input type="hidden" name="digest" value="{{ approval.digest }}">
+      <input type="hidden" name="audience" value="{{ approval.audience }}">
+      <input type="hidden" name="policy_version" value="{{ approval.policy_version }}">
+      <button type="submit" class="btn btn--primary">Approve for {{ approval.recipient }}</button>
+    </form>
+    <p class="muted small">An edit, a different recipient, expiry of the window, or a change to a cited source invalidates a pending approval. The backend checks the digest again at dispatch and refuses if the body differs.</p>
+  </div>
+</section>
+
+</div>
+{% endblock %}

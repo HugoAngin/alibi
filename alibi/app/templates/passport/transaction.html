@@ -1,0 +1,265 @@
+{#
+  Transaction detail (ctx_transaction_detail in alibi/app/preview_render.py).
+
+  Context variables used, beyond the base.html set:
+    txn             {txn_id, revision, booked_at, description, amount{minor,currency}, direction,
+                     link_state, linked_count, href, account_label, connection_name, references[],
+                     provenance{connection_id, retrieved_at, source_version}, trust}
+    sources         list of {record_id, revision, kind, issuer, trust, occurred_at, amount{minor,currency},
+                             status, summary, href, signature{present, key_id, verified}, superseded}
+    reconciliation  {title, lines[{label, kind, sign, amount, source_ids[]}], expression, result,
+                     compared_to{label, amount}, difference, matches, computed_by, computed_at}
+    claims          list of {claim_id, question_id, question, status, rationale, href}
+    changes         list of {change_id, received_at, record_id, kind, effect,
+                             older{revision, received_at, href, fields[{name, value}]},
+                             newer{revision, received_at, href, fields[{name, value}]},
+                             diff[{field, before, after}]}
+#}
+{% extends "base.html" %}
+{% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+{% from "partials/money.html" import money, money_raw %}
+
+{% block content %}
+<h1 class="page-title">Transaction <code>{{ txn.txn_id }}</code></h1>
+<p class="page-lede">{{ txn.description }}</p>
+
+<div class="stack">
+
+  <section class="card section-anchor" id="summary" aria-labelledby="summary-title">
+    <div class="card__head">
+      <h2 id="summary-title">Bank record</h2>
+      <span class="cluster">
+        {{ trust_badge(txn.trust) }}
+        {{ link_badge(txn.link_state, txn.linked_count) }}
+      </span>
+    </div>
+    <dl class="kv">
+      <dt>Transaction ID</dt>
+      <dd><code>{{ txn.txn_id }}</code></dd>
+      <dt>Revision</dt>
+      <dd>r{{ txn.revision }}</dd>
+      <dt>Booked</dt>
+      <dd>{{ txn.booked_at }}</dd>
+      <dt>Description</dt>
+      <dd>{{ txn.description }}</dd>
+      <dt>Amount</dt>
+      <dd><span class="item__amount amount--{{ txn.direction }}">{{ money(txn.amount) }}</span> <span class="muted small">stored as {{ money_raw(txn.amount) }}</span></dd>
+      <dt>Direction</dt>
+      <dd>{{ txn.direction }}</dd>
+      <dt>Account</dt>
+      <dd>{{ txn.account_label }}</dd>
+      <dt>Connection</dt>
+      <dd>{{ txn.connection_name }}</dd>
+      <dt>References</dt>
+      <dd>
+        {% if txn.references %}
+        {% for ref in txn.references %}<code>{{ ref }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+        {% else %}
+        <span class="muted">No payment references on this transaction.</span>
+        {% endif %}
+      </dd>
+      <dt>Provenance</dt>
+      <dd>
+        Connection <code>{{ txn.provenance.connection_id }}</code>,
+        retrieved {{ txn.provenance.retrieved_at }},
+        source version <code>{{ txn.provenance.source_version }}</code>
+      </dd>
+    </dl>
+    <p class="small muted">The bank feed observed this transaction. Link state says which source records match it; it does not say whether any claim about it is true.</p>
+  </section>
+
+  <section class="card section-anchor" id="sources" aria-labelledby="sources-title">
+    <div class="card__head">
+      <h2 id="sources-title">Linked sources</h2>
+      <span class="item__meta">{{ sources | length }} record{{ "" if sources | length == 1 else "s" }}</span>
+    </div>
+    {% if sources %}
+    <ul class="items">
+      {% for s in sources %}
+      <li id="{{ s.record_id }}-r{{ s.revision }}">
+        <div class="item__head">
+          <span class="item__title">
+            <a href="{{ s.href }}"><code>{{ s.record_id }}</code> r{{ s.revision }}</a>
+            <span class="muted">· {{ s.kind }}</span>
+            {% if s.superseded %}
+            <span class="badge badge--status badge--superseded">superseded</span>
+            {% endif %}
+          </span>
+          <span class="cluster">
+            {{ trust_badge(s.trust) }}
+            {{ status_badge(s.status) }}
+            <span class="item__amount">{{ money(s.amount) }}</span>
+          </span>
+        </div>
+        <p class="small">{{ s.summary }}</p>
+        <div class="item__meta">
+          Issuer: {{ s.issuer }} ·
+          Occurred {{ s.occurred_at }} ·
+          {{ money_raw(s.amount) }} ·
+          {% if s.signature.present %}
+            Issuer signature key <code>{{ s.signature.key_id }}</code>, {% if s.signature.verified %}verified{% else %}not verified{% endif %}
+          {% else %}
+            no issuer signature
+          {% endif %}
+          {% if s.superseded %}
+            · superseded by a newer revision; shown for history
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No source records are linked to this transaction.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="reconciliation" aria-labelledby="reconciliation-title">
+    <div class="card__head">
+      <h2 id="reconciliation-title">Reconciliation</h2>
+      <span class="item__meta">{{ reconciliation.title }}</span>
+    </div>
+    <div class="table-wrap">
+      <table class="recon">
+        <thead>
+          <tr>
+            <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
+            <th scope="col">Line</th>
+            <th scope="col">Sources</th>
+            <th scope="col" class="num">Amount</th>
+            <th scope="col" class="num">Minor units</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in reconciliation.lines %}
+          <tr>
+            <td class="sign">{{ line.sign }}</td>
+            <td>{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
+            <td>{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+            <td class="num">{{ money(line.amount) }}</td>
+            <td class="num">{{ money_raw(line.amount) }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="recon__total">
+            <td class="sign">=</td>
+            <td>Result</td>
+            <td></td>
+            <td class="num">{{ money(reconciliation.result) }}</td>
+            <td class="num">{{ money_raw(reconciliation.result) }}</td>
+          </tr>
+          <tr class="recon__compare">
+            <td class="sign"></td>
+            <td>Compared to {{ reconciliation.compared_to.label }}</td>
+            <td>{% if reconciliation.matches %}matches{% else %}does not match{% endif %}</td>
+            <td class="num">{{ money(reconciliation.compared_to.amount) }}</td>
+            <td class="num">{{ money_raw(reconciliation.compared_to.amount) }}</td>
+          </tr>
+          <tr class="recon__compare">
+            <td class="sign"></td>
+            <td>Difference</td>
+            <td>{{ status_badge("ok" if reconciliation.matches else "fail", "Matches" if reconciliation.matches else "Does not match") }}</td>
+            <td class="num">{{ money(reconciliation.difference) }}</td>
+            <td class="num">{{ money_raw(reconciliation.difference) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="recon__expression">{{ reconciliation.expression }}</p>
+    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}. The sum is taken from the cited amounts, not typed by hand.</p>
+  </section>
+
+  <section class="card section-anchor" id="claims" aria-labelledby="claims-title">
+    <div class="card__head">
+      <h2 id="claims-title">Claims about this transaction</h2>
+      <span class="item__meta">Claim status is separate from link state and source trust.</span>
+    </div>
+    {% if claims %}
+    <ul class="items">
+      {% for c in claims %}
+      <li id="{{ c.claim_id }}">
+        <div class="item__head">
+          <span class="item__title">{{ c.question }}</span>
+          {{ claim_badge(c.status) }}
+        </div>
+        <p class="small">{{ c.rationale }}</p>
+        <div class="item__meta"><code>{{ c.claim_id }}</code> · question <code>{{ c.question_id }}</code> · <a href="{{ c.href }}">View trace</a></div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No request has asked about this transaction.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="changes" aria-labelledby="changes-title">
+    <div class="card__head">
+      <h2 id="changes-title">What changed</h2>
+      <span class="item__meta">Corrections append a newer revision. The older one is kept.</span>
+    </div>
+    {% if changes %}
+    <ul class="items">
+      {% for ch in changes %}
+      <li id="{{ ch.change_id }}">
+        <div class="item__head">
+          <span class="item__title"><code>{{ ch.record_id }}</code> r{{ ch.older.revision }} to r{{ ch.newer.revision }} <span class="muted">· {{ ch.kind }}</span></span>
+          <span class="item__meta">Received {{ ch.received_at }}</span>
+        </div>
+        <p class="small">{{ ch.effect }}</p>
+        <div class="table-wrap">
+          <table class="table table--compact">
+            <thead>
+              <tr>
+                <th scope="col">Field</th>
+                <th scope="col">Before (r{{ ch.older.revision }})</th>
+                <th scope="col">After (r{{ ch.newer.revision }})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in ch.diff %}
+              <tr>
+                <td><code>{{ d.field }}</code></td>
+                <td><span class="diff-before">{{ d.before }}</span></td>
+                <td><span class="diff-after">{{ d.after }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <details class="disclosure">
+          <summary>View older revision r{{ ch.older.revision }}</summary>
+          <div class="revision-compare">
+            <div class="revision revision--older">
+              <div class="revision__title">Revision r{{ ch.older.revision }} <span class="badge badge--status badge--superseded">superseded</span></div>
+              <dl class="kv">
+                <dt>Received</dt>
+                <dd>{{ ch.older.received_at }}</dd>
+                {% for f in ch.older.fields %}
+                <dt><code>{{ f.name }}</code></dt>
+                <dd>{{ f.value }}</dd>
+                {% endfor %}
+              </dl>
+              <p class="small"><a href="{{ ch.older.href }}">Open revision r{{ ch.older.revision }}</a></p>
+            </div>
+            <div class="revision">
+              <div class="revision__title">Revision r{{ ch.newer.revision }} <span class="muted small">(active)</span></div>
+              <dl class="kv">
+                <dt>Received</dt>
+                <dd>{{ ch.newer.received_at }}</dd>
+                {% for f in ch.newer.fields %}
+                <dt><code>{{ f.name }}</code></dt>
+                <dd>{{ f.value }}</dd>
+                {% endfor %}
+              </dl>
+              <p class="small"><a href="{{ ch.newer.href }}">Open revision r{{ ch.newer.revision }}</a></p>
+            </div>
+          </div>
+        </details>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No source record linked to this transaction has been corrected.</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

@@ -253,21 +253,24 @@ small, .small { font-size: 0.875rem; }
 .badge--status-ok, .badge--status-valid, .badge--status-pass, .badge--status-accepted,
 .badge--status-connected, .badge--status-active, .badge--status-sent, .badge--status-acknowledged,
 .badge--status-approved, .badge--status-complete, .badge--status-delivered, .badge--status-resolved,
-.badge--status-verified, .badge--status-answered, .badge--status-success {
+.badge--status-verified, .badge--status-answered, .badge--status-success, .badge--status-clear,
+.badge--status-completed, .badge--status-settled {
   background: var(--ok-bg); color: var(--ok); border-color: var(--ok);
 }
 .badge--status-warn, .badge--status-held, .badge--status-pending, .badge--status-running,
 .badge--status-syncing, .badge--status-new, .badge--status-draft, .badge--status-investigating,
 .badge--status-awaiting_consent, .badge--status-open, .badge--status-superseded, .badge--status-escalate,
-.badge--status-request_more, .badge--status-unverified, .badge--status-skip, .badge--status-skipped {
+.badge--status-request_more, .badge--status-unverified, .badge--status-skip, .badge--status-skipped,
+.badge--status-warning, .badge--status-released_to_balance, .badge--status-evidence_unavailable {
   background: var(--warn-bg); color: var(--warn); border-color: var(--warn);
 }
 .badge--status-fail, .badge--status-error, .badge--status-refused, .badge--status-invalid,
 .badge--status-expired, .badge--status-wrong_audience, .badge--status-replayed, .badge--status-rejected,
-.badge--status-invalidated, .badge--status-failed, .badge--status-disconnected, .badge--status-high {
+.badge--status-invalidated, .badge--status-failed, .badge--status-disconnected, .badge--status-high,
+.badge--status-approval_digest_mismatch {
   background: var(--bad-bg); color: var(--bad); border-color: var(--bad);
 }
-.badge--status-none, .badge--status-info, .badge--status-not_started, .badge--status-imported {
+.badge--status-none, .badge--status-info, .badge--status-not_started, .badge--status-imported, .badge--status-charged {
   background: var(--bg-muted); color: var(--fg-muted); border-color: var(--line);
 }
 
@@ -391,6 +394,7 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
 /* ---------- alerts ---------- */
 
 .alert { border-left: 4px solid var(--line-strong); }
+.items > li.alert { padding-left: 0.75rem; }
 .alert--severity-info { border-left-color: var(--accent); }
 .alert--severity-warning { border-left-color: var(--warn); }
 .alert--severity-high { border-left-color: var(--bad); }

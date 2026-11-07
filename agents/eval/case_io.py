@@ -52,11 +52,10 @@ def request_context(case: dict, request_id: str):
     if "privacy_policy" in view:
         inputs["privacy_policy"] = view["privacy_policy"]
 
-    def find_evidence(*, payout_reference=None, record_id=None):
-        if bool(payout_reference) == bool(record_id):
-            raise ValueError("give exactly one payout reference or record ID")
+    def find_evidence(*, payout_reference=None, record_id=None, covers_record_id=None, payout_date=None):
         return [event for event in lookup(case, decision_time, payout_reference=payout_reference,
-                                          record_id=record_id)
+                                          record_id=record_id, covers_record_id=covers_record_id,
+                                          payout_date=payout_date)
                 if event["subject_ref"] == subject]
 
     return inputs, find_evidence

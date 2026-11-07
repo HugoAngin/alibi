@@ -2,7 +2,7 @@
 
 - Arnav assigned `eval` the sealed cases and independent gold. He accepted the case format in `fffa496`. The public format is in `CASE_FORMAT.md`.
 - Use Hugo's 40 development cases and Mouaad's probe catalogue for development. The sealed corpus is authored separately and stays outside the tracked tree until freeze.
-- The private bundle has 24 cases in six families, plus 12 adversarial cases. The structural and arithmetic audits passed. Its 47 adversarial steps map to 44 catalogue IDs and cover all 32 core IDs. Candidate execution remains pending.
+- The first private bundle has 24 cases in six families, plus 12 adversarial cases. The structural and arithmetic audits passed. Its 47 adversarial steps map to 44 catalogue IDs and cover all 32 core IDs. Under the 23:43 work order, four distinct reference-discovery families are being authored privately. The official rules calibration and app HTTP probes require the S5 and S2 contracts.
 - The local sharing flow is a reference for public tests. It exercises 17 of the 47 catalogue probes, with 15 refusals and two accepted controls. Arnav's S2 session owns the app's bank service and verifier, and S4 owns the console.
 - The capture scorer counts missing RFCs, checks links and question evidence, and checks nested package fields and literals when gold specifies privacy restrictions. Run `uv run --frozen python -m pytest -q tools agents/data agents/execution agents/eval` for the local checks.
 - The deterministic settlement matcher, reconciliation, period totals and fixed baseline retrieval are exported in `api.py`. Checks against all 40 public ledgers passed.

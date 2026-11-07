@@ -30,10 +30,10 @@ def _evidence_row(ref: dict, bank: dict, merchant: dict, route: str) -> dict:
     return {
         "attachment_id": attachment_id, "record_id": record_id, "revision": ref["revision"],
         "issuer": record.get("issuer_id", record.get("counterparty_name", "Mock bank")),
-        "trust": trust, "form": "redacted_extract", "signature_check": "not_checked",
+        "trust": trust, "attestation": "none", "redacted": False, "signature_check": "not_checked",
         "summary": f"{record.get('kind', 'Bank credit').replace('_', ' ')} · "
                    f"{record['amount_minor']} minor units {record['currency']}",
-        "detail": "Static evidence extract. The live verifier checks the delivered package.",
+        "detail": "Static source preview. The live verifier checks the delivered package.",
         "href": f"{route}/attachments/{attachment_id}",
     }
 

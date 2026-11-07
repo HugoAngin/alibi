@@ -9,6 +9,7 @@ REFERENCE = re.compile(
     r"\b(?:withdrawal|payout|settlement)\s+(?:ref(?:erence)?[\s:#-]+)?"
     r"([A-Z0-9]+(?:[-_][A-Z0-9]+)+)\b", re.IGNORECASE,
 )
+CANONICAL_REFERENCE = re.compile(r"\bPO-\d{4}-\d{2}\b")
 BUCKETS = {"sale": "sales", "refund": "refunds", "fee": "fees"}
 IMPORT_FIELDS = {"record_id", "event_id", "revision", "subject_ref", "occurred_at", "amount_minor", "currency"}
 
@@ -82,12 +83,21 @@ def fixed_candidate_pool(snapshot: dict, lookup) -> tuple[dict, dict, dict]:
             references.add(credit["payment_reference"])
         if claim["txn_id"] == txn_id and claim.get("payout_reference"):
             references.add(claim["payout_reference"])
+        references.update(CANONICAL_REFERENCE.findall(credit.get("description", "")))
         booked = _time(credit["booked_at"])
         for record in active.values():
             if (record["kind"] == "balance_release" and record["amount_minor"] == credit["amount_minor"]
                     and record["currency"] == credit["currency"]
                     and booked - WINDOW <= _time(record["occurred_at"]) <= booked):
                 references.update(REFERENCE.findall(record.get("message", "")))
+
+    if request.get("txn_ids"):
+        visible_documents = [*active.values(), *(entry["record"] for entry in snapshot["imports"])]
+        for row in visible_documents:
+            if row.get("subject_ref") == subject:
+                for key in ("message", "text"):
+                    if isinstance(value := row.get(key), str):
+                        references.update(CANONICAL_REFERENCE.findall(value))
 
     calls = 0
     for reference in sorted(references):
@@ -127,7 +137,10 @@ def match_credit(credit: dict, merchant: dict) -> dict:
     candidates = []
     for (kind, _, identity), group in groups.items():
         reference = identity if kind == "batch" else group[0]["payout_reference"]
-        if credit.get("payment_reference") not in (None, reference):
+        credit_reference = credit.get("payment_reference")
+        if credit_reference not in (None, reference) and not any(
+            row.get("withdrawal_id") == credit_reference for row in group
+        ):
             continue
         if sum(row["amount_minor"] for row in group) != credit["amount_minor"]:
             continue

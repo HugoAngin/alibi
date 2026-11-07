@@ -26,7 +26,8 @@ def test_analyst_preview_is_rederived_from_canonical_evidence_without_gold():
     assert preview["reconciliation"]["expression"] == "240000 - 18000 - 6000 = 216000"
     assert preview["authentication"]["status"] == "preview"
     assert not preview["authentication"]["checks"]
-    assert {item["form"] for item in preview["source_trust"]} == {"redacted_extract"}
+    assert {item["attestation"] for item in preview["source_trust"]} == {"none"}
+    assert not any(item["redacted"] for item in preview["source_trust"])
     assert {item["signature_check"] for item in preview["source_trust"]} == {"not_checked"}
     source, breakdown = preview["evidence_by_question"]
     assert {item["record_id"] for item in source["evidence"]} == {"txn-0001-004", "rec-0001-021"}

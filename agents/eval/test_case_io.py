@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agents.data.api import canonical_case
+from agents.data.api import canonical_case, load_case
 from agents.eval.case_io import read_sealed_inputs, request_context
 
 
@@ -29,6 +29,20 @@ def test_a_late_settlement_lookup_is_hidden():
     case["merchant_lookup"][0]["available_from"] = "2099-01-01T00:00:00Z"
     _, lookup = request_context(case, case["rfcs"][0]["request_id"])
     assert lookup(payout_reference="PO-0001-01") == []
+
+
+@pytest.mark.parametrize("number", [42, 43])
+def test_hidden_reference_lookup_uses_data_contract_and_keeps_subject_scope(number):
+    case = load_case(number)
+    expected = set(case["gold"]["links"][0]["payout_record_ids"])
+    path = case["gold"]["retrieval_path"]
+    _, lookup = request_context(case, case["rfcs"][0]["request_id"])
+    assert expected <= {event["record_id"] for query in path for event in lookup(**query)}
+
+    delivery = next(item for item in case["merchant_lookup"] if item["event"]["record_id"] in expected)
+    delivery["event"]["subject_ref"] = "different-subject"
+    _, scoped_lookup = request_context(case, case["rfcs"][0]["request_id"])
+    assert not expected & {event["record_id"] for query in path for event in scoped_lookup(**query)}
 
 
 def test_sealed_loader_refuses_before_opening_a_file():

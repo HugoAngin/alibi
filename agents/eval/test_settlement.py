@@ -4,7 +4,8 @@ from agents.data.api import load_cases
 from agents.eval.api import fixed_candidate_pool, match_credit, period_totals, reconcile_credit, request_context
 
 
-@pytest.mark.parametrize("case", load_cases(), ids=lambda case: str(case["case_number"]))
+@pytest.mark.parametrize("case", [case for case in load_cases() if case["case_number"] <= 40],
+                         ids=lambda case: str(case["case_number"]))
 def test_public_matching_and_reconciliation(case):
     request = case["rfcs"][0]
     view, lookup = request_context(case, request["request_id"])
@@ -34,3 +35,17 @@ def test_public_matching_and_reconciliation(case):
             expected = gold["answers"][request["request_id"]]["q.sales_refunds_in_period"]
             assert totals["facts"] == expected["facts"]
             assert telemetry["lookups"] == 0
+
+
+@pytest.mark.parametrize("case", load_cases("hidden_reference"), ids=lambda case: str(case["case_number"]))
+def test_hidden_reference_matching_after_scoped_retrieval(case):
+    view, lookup = request_context(case, case["rfcs"][0]["request_id"])
+    bank, sources, _ = fixed_candidate_pool(view, lookup)
+    for query in case["gold"]["retrieval_path"]:
+        for event in lookup(**query):
+            current = sources.get(event["record_id"])
+            if current is None or event["revision"] > current["revision"]:
+                sources[event["record_id"]] = event
+    [expected] = case["gold"]["links"]
+    link = match_credit(bank[expected["txn_id"]], sources)
+    assert {key: link[key] for key in expected} == expected

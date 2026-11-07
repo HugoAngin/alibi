@@ -75,8 +75,9 @@ UtcDatetime = Annotated[
     AfterValidator(_require_utc),
     PlainSerializer(format_utc, return_type=str, when_used="json"),
 ]
-Pence = Annotated[int, Strict()]
-NonNegativePence = Annotated[int, Strict(), Field(ge=0)]
+MAX_SAFE_INT = 2**53 - 1  # I-JSON / RFC 8785 safe integer range: every amount must hash
+Pence = Annotated[int, Strict(), Field(ge=-MAX_SAFE_INT, le=MAX_SAFE_INT)]
+NonNegativePence = Annotated[int, Strict(), Field(ge=0, le=MAX_SAFE_INT)]
 PositiveInt = Annotated[int, Strict(), Field(ge=1)]
 NonNegativeInt = Annotated[int, Strict(), Field(ge=0)]
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
@@ -574,7 +575,8 @@ class _RuleBase(AlibiModel):
 
 
 class DenyRule(_RuleBase):
-    """Never disclose these fields, or whole records of these kinds. Deny wins."""
+    """Never disclose these fields. ``kinds`` scopes the rule; with no ``fields``, whole
+    records of those kinds are excluded. Deny wins over every other rule."""
 
     type: Literal["deny"] = "deny"
     fields: list[FieldPath] = Field(default_factory=list)

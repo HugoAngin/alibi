@@ -2,11 +2,42 @@
   "repo": "eliohd/winthrutheory-eceb0cdd-submission-repo",
   "board_issue": 1,
   "members": [
-    { "role": "lead",      "github": "knull",     "paths": ["agents/lead/"] },
-    { "role": "data",      "github": "HugoAngin",  "paths": ["agents/data/"] },
-    { "role": "research",  "github": "eliohd",      "paths": ["agents/research/"] },
-    { "role": "execution", "github": "sirExile44", "paths": ["agents/execution/"] },
-    { "role": "eval",      "github": "t7acct",     "paths": ["agents/eval/"] }
+    {
+      "role": "lead",
+      "github": "knull",
+      "paths": [
+        "agents/lead/"
+      ]
+    },
+    {
+      "role": "data",
+      "github": "HugoAngin",
+      "paths": [
+        "agents/data/",
+        "alibi/app/static/"
+      ]
+    },
+    {
+      "role": "research",
+      "github": "eliohd",
+      "paths": [
+        "agents/research/",
+        "alibi/app/templates/"
+      ]
+    },
+    {
+      "role": "execution",
+      "github": "sirExile44",
+      "paths": [
+        "agents/execution/"
+      ]
+    },
+    {
+      "role": "eval",
+      "github": "t7acct",
+      "paths": [
+        "agents/eval/"
+      ]
+    }
   ]
 }
-

@@ -29,7 +29,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 22:25Z: data (HugoAngin) picked up fixtures and loaders and asked for the spec. Answered with `docs/SPEC.md` snapshot.
 - 22:3xZ: data pushed 25 dev case ledgers (7396400); execution pushed probes, analyst flow and scoring api (4a3d4c4). Pinned the disposition record in `shared/CONTRACTS.md` at execution's request. 
 - 22:38Z: data posted done (c9472fe): 40 dev cases in `agents/data/out/cases/`, loaders `agents.data.api` (`load_cases`, `known_at`, `lookup`, `without_gold`), 165 tests pass. No action for lead. Still no post from research (eliohd).
-- 22:39Z: eval picked up sealed cases and gold, proposed JSONL per case with gold in a separate evaluator-only file. Pinned Case schema, Questions and matching, and App adapter rows in `shared/CONTRACTS.md`. Waiting on the board.
+- 22:39Z: eval picked up sealed cases and gold, proposed JSONL per case with gold in a separate evaluator-only file. Pinned Case schema, Questions and matching, and App adapter rows in `shared/CONTRACTS.md`.
+- 22:43Z: research posted the deck skeleton (bd33ff6) with three gaps. Answered: added results keys `unsafe_proposals`, `lookups`, `observed_inputs`; made `requires_retrieval` explicit for sealed gold; pinned Gemini IDs `gemini-3.8-flash` and `gemini-4-argon` from s3a's `alibi/llm/config.py` in TASK.md and CONTRACTS.md. If a build session changes the models, lead must update both files. All four agents have now reported. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

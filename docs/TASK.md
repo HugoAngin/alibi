@@ -38,7 +38,7 @@ All teams are scored from the deck. Finalists present for four minutes plus two 
 
 - Work only with labelled synthetic records and simulated services. No real financial records, account details, logins or money movement.
 - Both connection layers are simulated services, not live integrations. Do not claim that the app or the inference provider cannot read data sent for processing.
-- Gemini is the LLM (`google-genai` is in `pyproject.toml`; the key name is `GEMINI_API_KEY` in `.env`). If Gemini is unavailable on stage, play a clearly labelled recorded run.
+- Gemini is the LLM (`google-genai` is in `pyproject.toml`; the key name is `GEMINI_API_KEY` in `.env`). Pinned model IDs: `gemini-3.8-flash` for routine calls and `gemini-4-argon` for the frontier role, as set in `alibi/llm/config.py`. If Gemini is unavailable on stage, play a clearly labelled recorded run.
 - Devfolio's Code of Conduct is the only published rule on AI tools and pre-written code. This repo held only workflow tooling before the task.
 - Do not weaken the baselines to make Alibi win, and never replace a failed agent path with a hard-coded success.
 

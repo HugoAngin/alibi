@@ -1,13 +1,13 @@
 {
   "case_number": 7,
-  "family": "bundled_payment",
-  "variant": "b",
-  "title": "Two payouts bundled into one bank credit",
-  "label": "SYNTHETIC - labelled test data, not a real person or account",
+  "family": "clean",
+  "variant": "e",
+  "title": "One settled payout explains one credit",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
   "subject_ref": "seller-0007",
   "merchant_deliveries": [
     {
-      "received_at": "2026-07-09T13:05:00Z",
+      "received_at": "2026-07-02T11:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-001",
@@ -16,14 +16,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "sale",
-        "occurred_at": "2026-07-09T13:00:00Z",
-        "amount_minor": 14500,
+        "occurred_at": "2026-07-02T11:00:00Z",
+        "amount_minor": 49000,
         "currency": "GBP",
-        "item": "second-hand clothing lot 1"
+        "item": "second-hand clothing lot 1",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-09T13:06:00Z",
+      "received_at": "2026-07-02T11:06:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-002",
@@ -32,15 +33,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "fee",
-        "occurred_at": "2026-07-09T13:01:00Z",
-        "amount_minor": 363,
+        "occurred_at": "2026-07-02T11:01:00Z",
+        "amount_minor": 1225,
         "currency": "GBP",
         "related_record_id": "rec-0007-001",
-        "fee_type": "marketplace_commission"
+        "fee_type": "commission"
       }
     },
     {
-      "received_at": "2026-07-10T19:05:00Z",
+      "received_at": "2026-07-03T17:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-003",
@@ -49,14 +50,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "sale",
-        "occurred_at": "2026-07-10T19:00:00Z",
-        "amount_minor": 25000,
+        "occurred_at": "2026-07-03T17:00:00Z",
+        "amount_minor": 26000,
         "currency": "GBP",
-        "item": "second-hand clothing lot 2"
+        "item": "second-hand clothing lot 2",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-10T19:06:00Z",
+      "received_at": "2026-07-03T17:06:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-004",
@@ -65,15 +67,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "fee",
-        "occurred_at": "2026-07-10T19:01:00Z",
-        "amount_minor": 625,
+        "occurred_at": "2026-07-03T17:01:00Z",
+        "amount_minor": 650,
         "currency": "GBP",
         "related_record_id": "rec-0007-003",
-        "fee_type": "marketplace_commission"
+        "fee_type": "commission"
       }
     },
     {
-      "received_at": "2026-07-12T01:05:00Z",
+      "received_at": "2026-07-04T23:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-005",
@@ -82,14 +84,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "sale",
-        "occurred_at": "2026-07-12T01:00:00Z",
-        "amount_minor": 15500,
+        "occurred_at": "2026-07-04T23:00:00Z",
+        "amount_minor": 32000,
         "currency": "GBP",
-        "item": "second-hand clothing lot 3"
+        "item": "second-hand clothing lot 3",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-12T01:06:00Z",
+      "received_at": "2026-07-04T23:06:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-006",
@@ -98,15 +101,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "fee",
-        "occurred_at": "2026-07-12T01:01:00Z",
-        "amount_minor": 388,
+        "occurred_at": "2026-07-04T23:01:00Z",
+        "amount_minor": 800,
         "currency": "GBP",
         "related_record_id": "rec-0007-005",
-        "fee_type": "marketplace_commission"
+        "fee_type": "commission"
       }
     },
     {
-      "received_at": "2026-07-13T13:05:00Z",
+      "received_at": "2026-07-06T05:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-007",
@@ -115,14 +118,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "sale",
-        "occurred_at": "2026-07-13T13:00:00Z",
-        "amount_minor": 46500,
+        "occurred_at": "2026-07-06T05:00:00Z",
+        "amount_minor": 35500,
         "currency": "GBP",
-        "item": "second-hand clothing lot 1"
+        "item": "second-hand clothing lot 4",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-13T13:06:00Z",
+      "received_at": "2026-07-06T05:06:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-008",
@@ -131,15 +135,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "fee",
-        "occurred_at": "2026-07-13T13:01:00Z",
-        "amount_minor": 1163,
+        "occurred_at": "2026-07-06T05:01:00Z",
+        "amount_minor": 888,
         "currency": "GBP",
         "related_record_id": "rec-0007-007",
-        "fee_type": "marketplace_commission"
+        "fee_type": "commission"
       }
     },
     {
-      "received_at": "2026-07-14T19:05:00Z",
+      "received_at": "2026-07-07T11:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-009",
@@ -148,14 +152,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "sale",
-        "occurred_at": "2026-07-14T19:00:00Z",
-        "amount_minor": 42500,
+        "occurred_at": "2026-07-07T11:00:00Z",
+        "amount_minor": 46500,
         "currency": "GBP",
-        "item": "second-hand clothing lot 2"
+        "item": "second-hand clothing lot 5",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-14T19:06:00Z",
+      "received_at": "2026-07-07T11:06:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-010",
@@ -164,15 +169,15 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "fee",
-        "occurred_at": "2026-07-14T19:01:00Z",
-        "amount_minor": 1063,
+        "occurred_at": "2026-07-07T11:01:00Z",
+        "amount_minor": 1163,
         "currency": "GBP",
         "related_record_id": "rec-0007-009",
-        "fee_type": "marketplace_commission"
+        "fee_type": "commission"
       }
     },
     {
-      "received_at": "2026-07-16T01:05:00Z",
+      "received_at": "2026-07-08T07:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-011",
@@ -180,15 +185,16 @@
         "revision": 1,
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
-        "kind": "sale",
-        "occurred_at": "2026-07-16T01:00:00Z",
-        "amount_minor": 27500,
+        "kind": "refund",
+        "occurred_at": "2026-07-08T07:00:00Z",
+        "amount_minor": 16500,
         "currency": "GBP",
-        "item": "second-hand clothing lot 3"
+        "related_record_id": "rec-0007-009",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-16T01:06:00Z",
+      "received_at": "2026-07-08T17:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-012",
@@ -196,16 +202,16 @@
         "revision": 1,
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
-        "kind": "fee",
-        "occurred_at": "2026-07-16T01:01:00Z",
-        "amount_minor": 688,
+        "kind": "sale",
+        "occurred_at": "2026-07-08T17:00:00Z",
+        "amount_minor": 16500,
         "currency": "GBP",
-        "related_record_id": "rec-0007-011",
-        "fee_type": "marketplace_commission"
+        "item": "second-hand clothing lot 6",
+        "status": "completed"
       }
     },
     {
-      "received_at": "2026-07-18T07:05:00Z",
+      "received_at": "2026-07-08T17:06:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-013",
@@ -213,24 +219,16 @@
         "revision": 1,
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
-        "kind": "payout",
-        "occurred_at": "2026-07-18T07:00:00Z",
-        "amount_minor": 53624,
+        "kind": "fee",
+        "occurred_at": "2026-07-08T17:01:00Z",
+        "amount_minor": 413,
         "currency": "GBP",
-        "destination": "bank",
-        "covers_record_ids": [
-          "rec-0007-001",
-          "rec-0007-003",
-          "rec-0007-005",
-          "rec-0007-002",
-          "rec-0007-004",
-          "rec-0007-006"
-        ],
-        "settlement_batch_id": "batch-0007-01"
+        "related_record_id": "rec-0007-012",
+        "fee_type": "commission"
       }
     },
     {
-      "received_at": "2026-07-18T07:07:00Z",
+      "received_at": "2026-07-11T19:05:00Z",
       "event": {
         "schema_version": "1",
         "event_id": "evt-0007-014",
@@ -239,73 +237,88 @@
         "issuer_id": "mock-marketplace",
         "subject_ref": "seller-0007",
         "kind": "payout",
-        "occurred_at": "2026-07-18T07:02:00Z",
-        "amount_minor": 113586,
+        "occurred_at": "2026-07-10T23:00:00Z",
+        "amount_minor": 183861,
         "currency": "GBP",
         "destination": "bank",
+        "payout_reference": "PO-0007-01",
+        "status": "settled",
+        "settled_at": "2026-07-11T19:00:00Z",
         "covers_record_ids": [
+          "rec-0007-001",
+          "rec-0007-003",
+          "rec-0007-005",
           "rec-0007-007",
           "rec-0007-009",
+          "rec-0007-012",
           "rec-0007-011",
+          "rec-0007-002",
+          "rec-0007-004",
+          "rec-0007-006",
           "rec-0007-008",
           "rec-0007-010",
-          "rec-0007-012"
-        ],
-        "settlement_batch_id": "batch-0007-01"
+          "rec-0007-013"
+        ]
       }
     }
   ],
+  "merchant_lookup": [],
+  "imports": [],
   "bank_deliveries": [
     {
-      "received_at": "2026-07-10T23:00:00Z",
+      "received_at": "2026-07-03T21:00:00Z",
       "row": {
         "txn_id": "txn-0007-001",
         "revision": 1,
         "account_ref": "acct-seller-0007",
-        "booked_at": "2026-07-10T22:00:00Z",
+        "booked_at": "2026-07-03T20:00:00Z",
         "amount_minor": -65000,
         "currency": "GBP",
-        "description": "RENT OCT",
-        "counterparty_name": "Synthetic Lettings Ltd"
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
       }
     },
     {
-      "received_at": "2026-07-13T03:00:00Z",
+      "received_at": "2026-07-06T01:00:00Z",
       "row": {
         "txn_id": "txn-0007-002",
         "revision": 1,
         "account_ref": "acct-seller-0007",
-        "booked_at": "2026-07-13T02:00:00Z",
+        "booked_at": "2026-07-06T00:00:00Z",
         "amount_minor": -1240,
         "currency": "GBP",
-        "description": "CARD GROCERY",
-        "counterparty_name": "Synthetic Grocer"
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
       }
     },
     {
-      "received_at": "2026-07-16T08:00:00Z",
+      "received_at": "2026-07-07T23:00:00Z",
       "row": {
         "txn_id": "txn-0007-003",
         "revision": 1,
         "account_ref": "acct-seller-0007",
-        "booked_at": "2026-07-16T07:00:00Z",
-        "amount_minor": -899,
+        "booked_at": "2026-07-07T22:00:00Z",
+        "amount_minor": -2350,
         "currency": "GBP",
-        "description": "CARD STREAMING",
-        "counterparty_name": "Synthetic Media"
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
       }
     },
     {
-      "received_at": "2026-07-20T08:00:00Z",
+      "received_at": "2026-07-12T21:00:00Z",
       "row": {
         "txn_id": "txn-0007-004",
         "revision": 1,
         "account_ref": "acct-seller-0007",
-        "booked_at": "2026-07-20T07:00:00Z",
-        "amount_minor": 167210,
+        "booked_at": "2026-07-12T20:00:00Z",
+        "amount_minor": 183861,
         "currency": "GBP",
-        "description": "MOCK MARKETPLACE PAYOUT BATCH",
-        "counterparty_name": "Mock Marketplace Payments"
+        "description": "MOCK MARKETPLACE PAYOUT PO-0007-01",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": "PO-0007-01"
       }
     }
   ],
@@ -323,164 +336,238 @@
         "q.source_of_funds",
         "q.breakdown"
       ],
-      "issued_at": "2026-07-24T09:00:00Z",
-      "expires_at": "2026-07-31T09:00:00Z"
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Provide evidence of where the £1,838.61 credited to your account on 2026-07-12 came from."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "Please show how this amount was calculated."
+        }
+      ],
+      "issued_at": "2026-07-16T23:00:00Z",
+      "expires_at": "2026-07-23T23:00:00Z"
     }
   ],
   "holder_claim": {
     "txn_id": "txn-0007-004",
-    "explanation": "marketplace_net_proceeds",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
     "stated_minor": {
-      "sales": 171500,
-      "refunds": 0,
-      "fees": 4290,
-      "net": 167210
+      "sales": 205500,
+      "refunds": 16500,
+      "fees": 5139,
+      "net": 183861
     }
   },
   "gold": {
+    "decision_time": "2026-07-16T23:00:00Z",
     "links": [
       {
         "txn_id": "txn-0007-004",
         "state": "linked",
         "payout_record_ids": [
-          "rec-0007-013",
           "rec-0007-014"
         ]
       }
     ],
-    "active_revisions": {
-      "rec-0007-001": 1,
-      "rec-0007-002": 1,
-      "rec-0007-003": 1,
-      "rec-0007-004": 1,
-      "rec-0007-005": 1,
-      "rec-0007-006": 1,
-      "rec-0007-007": 1,
-      "rec-0007-008": 1,
-      "rec-0007-009": 1,
-      "rec-0007-010": 1,
-      "rec-0007-011": 1,
-      "rec-0007-012": 1,
-      "rec-0007-013": 1,
-      "rec-0007-014": 1
-    },
     "breakdown_minor": {
-      "sales": 171500,
-      "refunds": 0,
-      "fees": 4290,
-      "net": 167210
+      "sales": 205500,
+      "refunds": 16500,
+      "fees": 5139,
+      "net": 183861
     },
     "claim_status": "supported",
+    "answers": {
+      "rfc-0007-01": {
+        "q.source_of_funds": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "payout_references": [
+              "PO-0007-01"
+            ],
+            "settled_at": [
+              "2026-07-11T19:00:00Z"
+            ]
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0007-004",
+              "merchant:rec-0007-014"
+            ]
+          ]
+        },
+        "q.breakdown": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "breakdown_minor": {
+              "sales": 205500,
+              "refunds": 16500,
+              "fees": 5139,
+              "net": 183861
+            }
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0007-004",
+              "merchant:rec-0007-014",
+              "merchant:rec-0007-001",
+              "merchant:rec-0007-003",
+              "merchant:rec-0007-005",
+              "merchant:rec-0007-007",
+              "merchant:rec-0007-009",
+              "merchant:rec-0007-012",
+              "merchant:rec-0007-011",
+              "merchant:rec-0007-002",
+              "merchant:rec-0007-004",
+              "merchant:rec-0007-006",
+              "merchant:rec-0007-008",
+              "merchant:rec-0007-010",
+              "merchant:rec-0007-013"
+            ]
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0007-001",
+      "bank:txn-0007-002",
+      "bank:txn-0007-003"
+    ],
+    "source_trust": {
+      "bank:txn-0007-001": "bank_observed",
+      "bank:txn-0007-002": "bank_observed",
+      "bank:txn-0007-003": "bank_observed",
+      "bank:txn-0007-004": "bank_observed",
+      "merchant:rec-0007-001": "issuer_verified",
+      "merchant:rec-0007-002": "issuer_verified",
+      "merchant:rec-0007-003": "issuer_verified",
+      "merchant:rec-0007-004": "issuer_verified",
+      "merchant:rec-0007-005": "issuer_verified",
+      "merchant:rec-0007-006": "issuer_verified",
+      "merchant:rec-0007-007": "issuer_verified",
+      "merchant:rec-0007-008": "issuer_verified",
+      "merchant:rec-0007-009": "issuer_verified",
+      "merchant:rec-0007-010": "issuer_verified",
+      "merchant:rec-0007-011": "issuer_verified",
+      "merchant:rec-0007-012": "issuer_verified",
+      "merchant:rec-0007-013": "issuer_verified",
+      "merchant:rec-0007-014": "issuer_verified"
+    },
     "ingest": [
       {
         "connector": "merchant",
         "index": 0,
-        "event_id": "evt-0007-001",
+        "id": "evt-0007-001",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 1,
-        "event_id": "evt-0007-002",
+        "id": "evt-0007-002",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 2,
-        "event_id": "evt-0007-003",
+        "id": "evt-0007-003",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 3,
-        "event_id": "evt-0007-004",
+        "id": "evt-0007-004",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 4,
-        "event_id": "evt-0007-005",
+        "id": "evt-0007-005",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 5,
-        "event_id": "evt-0007-006",
+        "id": "evt-0007-006",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 6,
-        "event_id": "evt-0007-007",
+        "id": "evt-0007-007",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 7,
-        "event_id": "evt-0007-008",
+        "id": "evt-0007-008",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 8,
-        "event_id": "evt-0007-009",
+        "id": "evt-0007-009",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 9,
-        "event_id": "evt-0007-010",
+        "id": "evt-0007-010",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 10,
-        "event_id": "evt-0007-011",
+        "id": "evt-0007-011",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 11,
-        "event_id": "evt-0007-012",
+        "id": "evt-0007-012",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 12,
-        "event_id": "evt-0007-013",
+        "id": "evt-0007-013",
         "outcome": "accepted"
       },
       {
         "connector": "merchant",
         "index": 13,
-        "event_id": "evt-0007-014",
+        "id": "evt-0007-014",
         "outcome": "accepted"
       },
       {
         "connector": "bank",
         "index": 0,
-        "txn_id": "txn-0007-001",
+        "id": "txn-0007-001",
         "outcome": "accepted"
       },
       {
         "connector": "bank",
         "index": 1,
-        "txn_id": "txn-0007-002",
+        "id": "txn-0007-002",
         "outcome": "accepted"
       },
       {
         "connector": "bank",
         "index": 2,
-        "txn_id": "txn-0007-003",
+        "id": "txn-0007-003",
         "outcome": "accepted"
       },
       {
         "connector": "bank",
         "index": 3,
-        "txn_id": "txn-0007-004",
+        "id": "txn-0007-004",
         "outcome": "accepted"
       }
     ],
-    "notes": "Neither payout alone equals the credit; the settlement batch does."
+    "notes": "Single settled payout with matching reference, amount and timing."
   }
 }

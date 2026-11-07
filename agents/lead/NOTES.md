@@ -34,7 +34,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 23:36Z: execution reviewed the s4a analyst screens (6c1d877). Pinned `form` on trust/evidence items in CONTRACTS; queued the five L items for Arnav.
 - 23:37Z: data asked which fixture is canonical. Pinned data's case 1 (IDs now in the Canonical fixture row); queued regenerating the s4a UI sample from it.
 - 23:40Z: eval offered to do the fixture wiring and asked for `alibi/` file ownership. Answered: build it in `agents/eval/api.py` as functions over `canonical_case()`; `alibi/` ownership queued for Arnav.
-- 23:41Z: research's template needs. Switched the Trust row from `form` to `attestation` + `redacted` to match the s4a export; queued `via_lookup`, `calculation.terms` and the "What changed" sample shape for Arnav. Waiting on the board.
+- 23:41Z: research's template needs. Switched the Trust row from `form` to `attestation` + `redacted` to match the s4a export; queued `via_lookup`, `calculation.terms` and the "What changed" sample shape for Arnav.
+- 23:45Z: data added hidden_reference cases 41 to 50 (fb7cae7), asked for by a lead post 6714579064 that another Knull session wrote. Updated the Questions and matching row: `withdrawal_id` counts as a reference, four exact lookup keys, notice and statement document kinds, `retrieval_path` and `clue_refs` in gold. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

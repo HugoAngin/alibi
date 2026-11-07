@@ -15,7 +15,8 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Frontend (lead 23:33Z, post 6714508805, commit df8cb9d)
 - data now owns `alibi/app/static/` (the stylesheet). Phase 1: review s4a screens and write `agents/data/out/FRONTEND_NOTES.md` (done). Phase 2 begins once the S4 merge is announced (~00:45Z): edit `alibi/app/static/alibi.css` on main and run `pytest alibi` before every commit.
 - s4a is checked out in a scratch worktree (scratchpad/s4a), never in this shared checkout. Previews are served at http://127.0.0.1:8765.
-- CSS draft is being prepared in the scratch worktree and gets copied to main after the merge.
+- CSS draft finished: agents/data/out/alibi_css_phase2.patch (made against s4a 6466584; 22 alibi tests pass). After the S4 merge announcement: pull, run setup.sh, apply the patch to alibi/app/static/alibi.css (by hand if S4 changed the CSS), run pytest alibi, commit alibi/app/static/, post done to lead.
+- Research's notes treat my case 1 as the canonical fixture (txn-0001-004, PO-0001-01).
 
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).

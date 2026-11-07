@@ -1,0 +1,130 @@
+{
+  "case_number": 22,
+  "family": "missing_proof",
+  "variant": "no_merchant_data",
+  "title": "Credit with no merchant records at all",
+  "label": "SYNTHETIC - labelled test data, not a real person or account",
+  "subject_ref": "seller-0022",
+  "merchant_deliveries": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-08-03T21:00:00Z",
+      "row": {
+        "txn_id": "txn-0022-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0022",
+        "booked_at": "2026-08-03T20:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT OCT",
+        "counterparty_name": "Synthetic Lettings Ltd"
+      }
+    },
+    {
+      "received_at": "2026-08-06T01:00:00Z",
+      "row": {
+        "txn_id": "txn-0022-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0022",
+        "booked_at": "2026-08-06T00:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD GROCERY",
+        "counterparty_name": "Synthetic Grocer"
+      }
+    },
+    {
+      "received_at": "2026-08-09T06:00:00Z",
+      "row": {
+        "txn_id": "txn-0022-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0022",
+        "booked_at": "2026-08-09T05:00:00Z",
+        "amount_minor": -899,
+        "currency": "GBP",
+        "description": "CARD STREAMING",
+        "counterparty_name": "Synthetic Media"
+      }
+    },
+    {
+      "received_at": "2026-08-14T12:00:00Z",
+      "row": {
+        "txn_id": "txn-0022-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0022",
+        "booked_at": "2026-08-14T11:00:00Z",
+        "amount_minor": 62887,
+        "currency": "GBP",
+        "description": "FASTER PAYMENT",
+        "counterparty_name": "Synthetic Sender"
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0022-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0022",
+      "txn_ids": [
+        "txn-0022-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "issued_at": "2026-08-19T11:00:00Z",
+      "expires_at": "2026-08-26T11:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0022-004",
+    "explanation": "marketplace_net_proceeds",
+    "stated_minor": {
+      "sales": 64500,
+      "refunds": 0,
+      "fees": 1613,
+      "net": 62887
+    }
+  },
+  "gold": {
+    "links": [
+      {
+        "txn_id": "txn-0022-004",
+        "state": "unmatched",
+        "payout_record_ids": []
+      }
+    ],
+    "active_revisions": {},
+    "breakdown_minor": null,
+    "claim_status": "unresolved",
+    "ingest": [
+      {
+        "connector": "bank",
+        "index": 0,
+        "txn_id": "txn-0022-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "txn_id": "txn-0022-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "txn_id": "txn-0022-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "txn_id": "txn-0022-004",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "The holder's explanation has no records behind it. Alibi must not invent support."
+  }
+}

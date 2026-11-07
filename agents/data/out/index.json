@@ -1,0 +1,281 @@
+{
+  "label": "SYNTHETIC - labelled test data, not a real person or account",
+  "count": 25,
+  "cases": [
+    {
+      "case_number": 1,
+      "family": "clean",
+      "variant": "canonical_maya",
+      "title": "Maya's £2,160 marketplace credit",
+      "file": "cases/case_0001.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 2,
+      "family": "clean",
+      "variant": "a",
+      "title": "One payout settles one credit",
+      "file": "cases/case_0002.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 3,
+      "family": "clean",
+      "variant": "b",
+      "title": "One payout settles one credit",
+      "file": "cases/case_0003.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 4,
+      "family": "clean",
+      "variant": "c",
+      "title": "One payout settles one credit",
+      "file": "cases/case_0004.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 5,
+      "family": "clean",
+      "variant": "omits_refunds_fees",
+      "title": "One payout settles one credit - holder omits refunds and fees",
+      "file": "cases/case_0005.json",
+      "claim_status": "contradicted",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 6,
+      "family": "bundled_payment",
+      "variant": "a",
+      "title": "Two payouts bundled into one bank credit",
+      "file": "cases/case_0006.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 7,
+      "family": "bundled_payment",
+      "variant": "b",
+      "title": "Two payouts bundled into one bank credit",
+      "file": "cases/case_0007.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 8,
+      "family": "bundled_payment",
+      "variant": "later_same_amount",
+      "title": "Two payouts bundled into one bank credit - later same-amount payout",
+      "file": "cases/case_0008.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 9,
+      "family": "bundled_payment",
+      "variant": "two_candidates",
+      "title": "Two separate payouts each match the one credit",
+      "file": "cases/case_0009.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "ambiguous"
+      ]
+    },
+    {
+      "case_number": 10,
+      "family": "balance_vs_settlement",
+      "variant": "settled",
+      "title": "Balance release, then bank settlement",
+      "file": "cases/case_0010.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 11,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "title": "Funds released to platform balance, never settled to the bank",
+      "file": "cases/case_0011.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 12,
+      "family": "balance_vs_settlement",
+      "variant": "settles_after_credit",
+      "title": "Bank settlement occurs after the credit it seems to explain",
+      "file": "cases/case_0012.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 13,
+      "family": "balance_vs_settlement",
+      "variant": "settled",
+      "title": "Balance release, then bank settlement",
+      "file": "cases/case_0013.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 14,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "title": "Pending refund corrected to its completed amount",
+      "file": "cases/case_0014.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 15,
+      "family": "pending_correction",
+      "variant": "sale_adjusted",
+      "title": "Sale price corrected by a newer revision",
+      "file": "cases/case_0015.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 16,
+      "family": "pending_correction",
+      "variant": "stale_redelivery",
+      "title": "Stale revision redelivered after the correction",
+      "file": "cases/case_0016.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 17,
+      "family": "pending_correction",
+      "variant": "holder_uses_old",
+      "title": "Holder states the pre-correction refund amount",
+      "file": "cases/case_0017.json",
+      "claim_status": "contradicted",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 18,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "title": "Same merchant event delivered twice",
+      "file": "cases/case_0018.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 19,
+      "family": "duplicate_record",
+      "variant": "conflicting_bytes",
+      "title": "Same event_id redelivered with different bytes",
+      "file": "cases/case_0019.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 20,
+      "family": "duplicate_record",
+      "variant": "bank_row_redelivery",
+      "title": "Same bank row delivered twice",
+      "file": "cases/case_0020.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 21,
+      "family": "duplicate_record",
+      "variant": "double_count_trap",
+      "title": "Duplicated sales would overstate the total",
+      "file": "cases/case_0021.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 22,
+      "family": "missing_proof",
+      "variant": "no_merchant_data",
+      "title": "Credit with no merchant records at all",
+      "file": "cases/case_0022.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 23,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "title": "Sales exist but no payout record",
+      "file": "cases/case_0023.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 24,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "title": "Payout amount differs from the credit",
+      "file": "cases/case_0024.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 25,
+      "family": "missing_proof",
+      "variant": "missing_covered_record",
+      "title": "Payout cites a fee record that never arrived",
+      "file": "cases/case_0025.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "linked"
+      ]
+    }
+  ]
+}

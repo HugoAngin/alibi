@@ -1,0 +1,622 @@
+{
+  "case_number": 1,
+  "family": "clean",
+  "variant": "canonical_maya",
+  "title": "Maya's £2,160 marketplace credit",
+  "label": "SYNTHETIC - labelled test data, not a real person or account",
+  "subject_ref": "maya-001",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-10-05T10:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-001",
+        "record_id": "rec-0001-001",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-05T10:00:00Z",
+        "amount_minor": 30000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1"
+      }
+    },
+    {
+      "received_at": "2026-10-05T10:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-002",
+        "record_id": "rec-0001-002",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-05T10:01:00Z",
+        "amount_minor": 750,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-001",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-06T16:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-003",
+        "record_id": "rec-0001-003",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-06T16:00:00Z",
+        "amount_minor": 25000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2"
+      }
+    },
+    {
+      "received_at": "2026-10-06T16:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-004",
+        "record_id": "rec-0001-004",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-06T16:01:00Z",
+        "amount_minor": 625,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-003",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-07T12:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-005",
+        "record_id": "rec-0001-005",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "refund",
+        "occurred_at": "2026-10-07T12:00:00Z",
+        "amount_minor": 10000,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-003",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-10-07T22:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-006",
+        "record_id": "rec-0001-006",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-07T22:00:00Z",
+        "amount_minor": 40000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3"
+      }
+    },
+    {
+      "received_at": "2026-10-07T22:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-007",
+        "record_id": "rec-0001-007",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-07T22:01:00Z",
+        "amount_minor": 1000,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-006",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-09T04:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-008",
+        "record_id": "rec-0001-008",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-09T04:00:00Z",
+        "amount_minor": 35000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 4"
+      }
+    },
+    {
+      "received_at": "2026-10-09T04:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-009",
+        "record_id": "rec-0001-009",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-09T04:01:00Z",
+        "amount_minor": 875,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-008",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-10T10:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-010",
+        "record_id": "rec-0001-010",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-10T10:00:00Z",
+        "amount_minor": 20000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 5"
+      }
+    },
+    {
+      "received_at": "2026-10-10T10:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-011",
+        "record_id": "rec-0001-011",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-10T10:01:00Z",
+        "amount_minor": 500,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-010",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-11T06:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-012",
+        "record_id": "rec-0001-012",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "refund",
+        "occurred_at": "2026-10-11T06:00:00Z",
+        "amount_minor": 8000,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-010",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-10-11T16:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-013",
+        "record_id": "rec-0001-013",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-11T16:00:00Z",
+        "amount_minor": 45000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 6"
+      }
+    },
+    {
+      "received_at": "2026-10-11T16:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-014",
+        "record_id": "rec-0001-014",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-11T16:01:00Z",
+        "amount_minor": 1125,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-013",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-12T22:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-015",
+        "record_id": "rec-0001-015",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-12T22:00:00Z",
+        "amount_minor": 15000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 7"
+      }
+    },
+    {
+      "received_at": "2026-10-12T22:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-016",
+        "record_id": "rec-0001-016",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-12T22:01:00Z",
+        "amount_minor": 375,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-015",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-14T04:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-017",
+        "record_id": "rec-0001-017",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-10-14T04:00:00Z",
+        "amount_minor": 30000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 8"
+      }
+    },
+    {
+      "received_at": "2026-10-14T04:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-018",
+        "record_id": "rec-0001-018",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-10-14T04:01:00Z",
+        "amount_minor": 750,
+        "currency": "GBP",
+        "related_record_id": "rec-0001-017",
+        "fee_type": "marketplace_commission"
+      }
+    },
+    {
+      "received_at": "2026-10-26T08:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0001-019",
+        "record_id": "rec-0001-019",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "payout",
+        "occurred_at": "2026-10-26T08:00:00Z",
+        "amount_minor": 216000,
+        "currency": "GBP",
+        "destination": "bank",
+        "covers_record_ids": [
+          "rec-0001-001",
+          "rec-0001-003",
+          "rec-0001-006",
+          "rec-0001-008",
+          "rec-0001-010",
+          "rec-0001-013",
+          "rec-0001-015",
+          "rec-0001-017",
+          "rec-0001-005",
+          "rec-0001-012",
+          "rec-0001-002",
+          "rec-0001-004",
+          "rec-0001-007",
+          "rec-0001-009",
+          "rec-0001-011",
+          "rec-0001-014",
+          "rec-0001-016",
+          "rec-0001-018"
+        ]
+      }
+    }
+  ],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-10-06T20:00:00Z",
+      "row": {
+        "txn_id": "txn-0001-001",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-10-06T19:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT OCT",
+        "counterparty_name": "Synthetic Lettings Ltd"
+      }
+    },
+    {
+      "received_at": "2026-10-09T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0001-002",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-10-08T23:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD GROCERY",
+        "counterparty_name": "Synthetic Grocer"
+      }
+    },
+    {
+      "received_at": "2026-10-12T05:00:00Z",
+      "row": {
+        "txn_id": "txn-0001-003",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-10-12T04:00:00Z",
+        "amount_minor": -899,
+        "currency": "GBP",
+        "description": "CARD STREAMING",
+        "counterparty_name": "Synthetic Media"
+      }
+    },
+    {
+      "received_at": "2026-10-28T07:30:00Z",
+      "row": {
+        "txn_id": "txn-0001-004",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-10-28T06:30:00Z",
+        "amount_minor": 216000,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT",
+        "counterparty_name": "Mock Marketplace Payments"
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0001-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "maya-001",
+      "txn_ids": [
+        "txn-0001-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "issued_at": "2026-11-02T09:00:00Z",
+      "expires_at": "2026-11-09T09:00:00Z"
+    },
+    {
+      "request_id": "rfc-0001-02",
+      "parent_request_id": null,
+      "audience": "bank_b",
+      "subject_ref": "maya-001",
+      "txn_ids": [],
+      "period": {
+        "from": "2026-10-01T00:00:00Z",
+        "to": "2026-11-01T00:00:00Z"
+      },
+      "question_ids": [
+        "q.income_in_period"
+      ],
+      "issued_at": "2026-11-04T14:00:00Z",
+      "expires_at": "2026-11-11T14:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0001-004",
+    "explanation": "marketplace_net_proceeds",
+    "stated_minor": {
+      "sales": 240000,
+      "refunds": 18000,
+      "fees": 6000,
+      "net": 216000
+    }
+  },
+  "gold": {
+    "links": [
+      {
+        "txn_id": "txn-0001-004",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0001-019"
+        ]
+      }
+    ],
+    "active_revisions": {
+      "rec-0001-001": 1,
+      "rec-0001-002": 1,
+      "rec-0001-003": 1,
+      "rec-0001-004": 1,
+      "rec-0001-005": 1,
+      "rec-0001-006": 1,
+      "rec-0001-007": 1,
+      "rec-0001-008": 1,
+      "rec-0001-009": 1,
+      "rec-0001-010": 1,
+      "rec-0001-011": 1,
+      "rec-0001-012": 1,
+      "rec-0001-013": 1,
+      "rec-0001-014": 1,
+      "rec-0001-015": 1,
+      "rec-0001-016": 1,
+      "rec-0001-017": 1,
+      "rec-0001-018": 1,
+      "rec-0001-019": 1
+    },
+    "breakdown_minor": {
+      "sales": 240000,
+      "refunds": 18000,
+      "fees": 6000,
+      "net": 216000
+    },
+    "claim_status": "supported",
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "event_id": "evt-0001-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "event_id": "evt-0001-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "event_id": "evt-0001-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "event_id": "evt-0001-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "event_id": "evt-0001-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "event_id": "evt-0001-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "event_id": "evt-0001-007",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 7,
+        "event_id": "evt-0001-008",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 8,
+        "event_id": "evt-0001-009",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 9,
+        "event_id": "evt-0001-010",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 10,
+        "event_id": "evt-0001-011",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 11,
+        "event_id": "evt-0001-012",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 12,
+        "event_id": "evt-0001-013",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 13,
+        "event_id": "evt-0001-014",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 14,
+        "event_id": "evt-0001-015",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 15,
+        "event_id": "evt-0001-016",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 16,
+        "event_id": "evt-0001-017",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 17,
+        "event_id": "evt-0001-018",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 18,
+        "event_id": "evt-0001-019",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "txn_id": "txn-0001-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "txn_id": "txn-0001-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "txn_id": "txn-0001-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "txn_id": "txn-0001-004",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "Demo fixture. rfcs[1] is a different question from a second recipient (bank_b), answered from the same persisted passport with a fresh approval."
+  }
+}

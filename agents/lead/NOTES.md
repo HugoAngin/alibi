@@ -30,7 +30,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 22:3xZ: data pushed 25 dev case ledgers (7396400); execution pushed probes, analyst flow and scoring api (4a3d4c4). Pinned the disposition record in `shared/CONTRACTS.md` at execution's request. 
 - 22:38Z: data posted done (c9472fe): 40 dev cases in `agents/data/out/cases/`, loaders `agents.data.api` (`load_cases`, `known_at`, `lookup`, `without_gold`), 165 tests pass. No action for lead. Still no post from research (eliohd).
 - 22:39Z: eval picked up sealed cases and gold, proposed JSONL per case with gold in a separate evaluator-only file. Pinned Case schema, Questions and matching, and App adapter rows in `shared/CONTRACTS.md`.
-- 22:43Z: research posted the deck skeleton (bd33ff6) with three gaps. Answered: added results keys `unsafe_proposals`, `lookups`, `observed_inputs`; made `requires_retrieval` explicit for sealed gold; pinned Gemini IDs `gemini-3.8-flash` and `gemini-4-argon` from s3a's `alibi/llm/config.py` in TASK.md and CONTRACTS.md. If a build session changes the models, lead must update both files. All four agents have now reported. Waiting on the board.
+- 22:43Z: research posted the deck skeleton (bd33ff6) with three gaps. Answered: added results keys `unsafe_proposals`, `lookups`, `observed_inputs`; made `requires_retrieval` explicit for sealed gold; pinned Gemini IDs `gemini-3.8-flash` and `gemini-4-argon` from s3a's `alibi/llm/config.py` in TASK.md and CONTRACTS.md. If a build session changes the models, lead must update both files. All four agents have now reported.
+- 23:36Z: execution reviewed the s4a analyst screens (6c1d877). Pinned `form` on trust/evidence items in CONTRACTS; queued the five L items for Arnav. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav
@@ -39,6 +40,12 @@ Requests that need a change inside `alibi/` are queued here.
 - 2026-11-07 22:25Z, data (HugoAngin) post 6713839852: `alibi/SPEC.md` is not on `main` or any remote branch; it exists only on the local `s3a` and `s4a` worktrees. The 21:40Z broadcast told teammates it was on `s1`, but `s1` is at ffbafb4 and has no `alibi/`. Lead published a verbatim snapshot as `docs/SPEC.md` (lead-owned) so data is unblocked. Please land `alibi/SPEC.md` on `main` from a build session; the snapshot then becomes redundant and lead will delete it.
 - 2026-11-07 22:37Z, execution (sirExile44) post 6713951719: asks which build session owns the console UI vs the verifier code in `alibi/`. Their acceptance checklist is `agents/execution/out/ANALYST_FLOW.md`. From branch names, `s4a` has the static UI templates and `UI.md`; the verifier owner is not visible from here.
 - 2026-11-07 22:39Z, eval (t7acct) post 6713972641: needs the runnable app adapter (case without gold in, one package per RFC out) when it lands in `alibi/`. Pinned the case schema and eval's sealed format in `shared/CONTRACTS.md` meanwhile; the adapter's import path needs linking in CONTRACTS once a build session publishes it.
+- 2026-11-07 23:36Z, execution (sirExile44) post 6714534193, `agents/execution/out/FRONTEND_NOTES.md` items marked L for the s4a analyst screens (routes, variables, sample data in `alibi/`):
+  - Item 3: `ctx_analyst_package` sample `att_03` (the redacted extract) is badged `issuer_verified`. Lead pinned the contract: trust stays at three values and items carry `form: full_record | redacted_extract`. Add `form` to `alibi/UI.md` and fix the sample so the extract is not `issuer_verified`.
+  - Item 4: the disposition route must take `analyst` from the authenticated session and ignore the posted `analyst_name`.
+  - Item 5: the stored disposition field is `reason` per CONTRACTS; map the form's `note` to `reason` or rename both in UI.md and the route.
+  - Item 7: add `timing` to each `evidence_by_question` item: `None | {payout_ref, released_to_balance_at, bank_settled_at, credit_booked_at, settled_before_booking}`.
+  - Item 8: connect `request_more` to the follow-up: one combined POST, or the follow-up route records a `request_more` disposition, and collect `question_ids` on whichever form posts it.
 
 ## Open needs
 (none)

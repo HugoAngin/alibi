@@ -1,6 +1,6 @@
 {
   "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
-  "count": 40,
+  "count": 50,
   "cases": [
     {
       "case_number": 1,
@@ -437,6 +437,116 @@
       "variant": "export_only",
       "title": "Payout proof only as a self-supplied customer export",
       "file": "cases/case_0040.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 41,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "title": "Release names an older withdrawal; the right one only in an order confirmation",
+      "file": "cases/case_0041.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 42,
+      "family": "hidden_reference",
+      "variant": "orders_and_weekday",
+      "title": "No reference: only the orders a batch covered and the weekday it went out",
+      "file": "cases/case_0042.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 43,
+      "family": "hidden_reference",
+      "variant": "date_only",
+      "title": "No reference: only the date the payout was sent",
+      "file": "cases/case_0043.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 44,
+      "family": "hidden_reference",
+      "variant": "alias_statement",
+      "title": "Bank shows a withdrawal ID; a merchant statement maps it to the payout",
+      "file": "cases/case_0044.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 45,
+      "family": "hidden_reference",
+      "variant": "alias_import",
+      "title": "Bank shows a withdrawal ID; Maya's own CSV export maps it to the payout",
+      "file": "cases/case_0045.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 46,
+      "family": "hidden_reference",
+      "variant": "email_layout",
+      "title": "Reference only in an email-style notice, written PO/nnnn/nn",
+      "file": "cases/case_0046.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 47,
+      "family": "hidden_reference",
+      "variant": "csv_layout",
+      "title": "Reference only in a semicolon statement, without the PO prefix",
+      "file": "cases/case_0047.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 48,
+      "family": "hidden_reference",
+      "variant": "two_refs_amount",
+      "title": "Two withdrawals named; only the amount picks the right one",
+      "file": "cases/case_0048.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 49,
+      "family": "hidden_reference",
+      "variant": "two_refs_timing",
+      "title": "Two equal withdrawals named; only settlement timing picks the right one",
+      "file": "cases/case_0049.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 50,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "title": "Release names an older withdrawal; the right one only in an order confirmation",
+      "file": "cases/case_0050.json",
       "claim_status": "supported",
       "link_states": [
         "linked"

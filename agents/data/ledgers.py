@@ -83,13 +83,16 @@ class Case:
         return f"PO-{self.number:04d}-{self._n['po']:02d}"
 
     # merchant ------------------------------------------------------------
-    def event(self, kind: str, amount: int, at: datetime, *, record_id: str | None = None,
+    def event(self, kind: str, amount: int | None, at: datetime, *, record_id: str | None = None,
               revision: int = 1, channel: str = "merchant", received: datetime | None = None,
               **extra) -> dict:
+        """amount None marks a non-monetary document (notice, statement): no amount fields."""
         ev = {"schema_version": SCHEMA_VERSION, "event_id": self.next_id("evt"),
               "record_id": record_id or self.next_id("rec"), "revision": revision,
               "issuer_id": ISSUER, "subject_ref": self.subject, "kind": kind,
-              "occurred_at": iso(at), "amount_minor": amount, "currency": CURRENCY}
+              "occurred_at": iso(at)}
+        if amount is not None:
+            ev.update(amount_minor=amount, currency=CURRENCY)
         ev.update(extra)
         received = received or at + timedelta(minutes=5)
         if channel == "merchant":
@@ -109,14 +112,15 @@ class Case:
         target.append({"received_at": iso(received), key: payload})
 
     def sales(self, amounts: list[int], start: datetime, refunds: dict[int, int] | None = None,
-              gap_hours: int = 30) -> dict:
+              gap_hours: int = 30, order_numbers: list[int] | None = None) -> dict:
         refunds = refunds or {}
         ids = {"sale": [], "refund": [], "fee": []}
         tot = {"sales": 0, "refunds": 0, "fees": 0}
         t = start
         for i, amount in enumerate(amounts):
+            extra = {"order_number": order_numbers[i]} if order_numbers else {}
             sale = self.event("sale", amount, t, item=f"second-hand clothing lot {i + 1}",
-                              status="completed")
+                              status="completed", **extra)
             fee = self.event("fee", fee_for(amount), t + timedelta(minutes=1),
                              related_record_id=sale["record_id"], fee_type="commission")
             ids["sale"].append(sale["record_id"])
@@ -145,8 +149,8 @@ class Case:
         return self.event("payout", amount, at, channel=channel, received=received, **fields)
 
     def balance_release(self, amount: int, at: datetime, covers: list[str],
-                        mentions: str | None = None) -> dict:
-        text = f"Good news! {pounds(amount)} from your recent sales is now available in your seller balance."
+                        mentions: str | None = None, text: str | None = None) -> dict:
+        text = text or f"Good news! {pounds(amount)} from your recent sales is now available in your seller balance."
         if mentions:
             text += f" Withdrawal {mentions} to your linked bank account has been requested."
         return self.event("balance_release", amount, at, destination="platform_balance",
@@ -171,8 +175,9 @@ class Case:
             self.forbidden.append(f"bank:{row['txn_id']}")
         return row
 
-    def credit(self, amount: int, at: datetime, reference: str | None) -> dict:
-        if reference:
+    def credit(self, amount: int, at: datetime, reference: str | None,
+               marketplace: bool = False) -> dict:
+        if reference or marketplace:
             return self.bank_row(amount, at, "MOCK MARKETPLACE PAYOUT", "Mock Marketplace Payments",
                                  reference)
         return self.bank_row(amount, at, "FASTER PAYMENT", "Synthetic Sender")
@@ -210,7 +215,7 @@ class Case:
     def finish(self, *, rfcs: list[dict], credit: dict, stated: dict, payout_ref: str | None,
                link: str, payouts: list[dict], covered: list[str] | None, breakdown: dict | None,
                claim_status: str, source_status: str, gap: str | None, notes: str,
-               extra_answers: dict | None = None) -> dict:
+               extra_answers: dict | None = None, extra_gold: dict | None = None) -> dict:
         txn = f"bank:{credit['txn_id']}"
         po_refs = [f"{'import' if self._is_import(p) else 'merchant'}:{p['record_id']}" for p in payouts]
         cov_refs = [f"merchant:{r}" for r in covered or []]
@@ -251,6 +256,7 @@ class Case:
                                  else TRUST["lookup"] for r in refs},
                 "ingest": sorted(self.ingest, key=lambda i: (["merchant", "import", "bank"].index(i["connector"]), i["index"])),
                 "notes": notes,
+                **(extra_gold or {}),
             },
         }
 
@@ -644,6 +650,132 @@ def self_supplied(number: int, variant: str, rng: random.Random) -> dict:
                           "trust; the analyst decides how much it establishes.")
 
 
+def hidden_reference(number: int, variant: str, rng: random.Random) -> dict:
+    """The payout reference is not a regex away (lead 23:40Z, post 6714579064).
+
+    Same pinned gold rules as every other family; only how the reference is observed changes.
+    Each case has an earlier payout (lookup-only) as a plausible distractor, and the right payout
+    is lookup-only too, so the system must find the right retrieval key.
+    """
+    titles = {
+        "decoy_in_release": "Release names an older withdrawal; the right one only in an order confirmation",
+        "orders_and_weekday": "No reference: only the orders a batch covered and the weekday it went out",
+        "date_only": "No reference: only the date the payout was sent",
+        "alias_statement": "Bank shows a withdrawal ID; a merchant statement maps it to the payout",
+        "alias_import": "Bank shows a withdrawal ID; Maya's own CSV export maps it to the payout",
+        "email_layout": "Reference only in an email-style notice, written PO/nnnn/nn",
+        "csv_layout": "Reference only in a semicolon statement, without the PO prefix",
+        "two_refs_amount": "Two withdrawals named; only the amount picks the right one",
+        "two_refs_timing": "Two equal withdrawals named; only settlement timing picks the right one",
+    }
+    c, start = seller(number, "hidden_reference", variant, titles[variant], rng)
+    order = [1200 + rng.randrange(0, 600, 2)]
+
+    def batch(t0: datetime, amounts: list[int] | None = None, refunds: bool = False) -> dict:
+        amts = amounts or amounts_for(rng, 3, 5)
+        orders = []
+        for _ in amts:
+            order[0] += rng.randint(1, 4)
+            orders.append(order[0])
+        b = c.sales(amts, t0, order_numbers=orders,
+                    refunds=refunds_for(rng, amts, rng.randint(0, 1)) if refunds else None)
+        b["orders"], b["amounts"] = orders, amts
+        return b
+
+    alias = variant in ("alias_statement", "alias_import")
+    w_e, w_m = (f"W-{x}" for x in rng.sample(range(1000, 10000), 2))
+    # Earlier batch, its payout (lookup-only) and the bank credit it produced.
+    e = batch(start)
+    pe = c.payout(e["totals"]["net"], e["end"] + timedelta(days=1), e["covers"], channel="lookup",
+                  withdrawal_id=w_e)
+    e_booked = ts_(pe["settled_at"]) + timedelta(hours=6)
+    c.credit(e["totals"]["net"], e_booked, w_e if alias else None, marketplace=True)
+    # Main batch: the credit the RFC asks about.
+    m = batch(e_booked + timedelta(days=3), e["amounts"] if variant == "two_refs_timing" else None,
+              refunds=variant != "two_refs_timing")
+    net = m["totals"]["net"]
+    if variant != "two_refs_timing":
+        assert net != e["totals"]["net"]
+    released = m["end"] + timedelta(days=1)
+    init = released + timedelta(hours=2)
+    pm = c.payout(net, init, m["covers"], channel="lookup", withdrawal_id=w_m)
+    booked = ts_(pm["settled_at"]) + timedelta(hours=rng.randint(4, 30))
+    available = f"{pounds(net)} from your recent sales is now available in your seller balance."
+    path = [{"payout_reference": pm["payout_reference"]}]
+    clue_at = released + timedelta(hours=3)
+    if variant == "decoy_in_release":
+        c.balance_release(net, released, m["covers"],
+                          text=available + f" Your previous withdrawal {pe['payout_reference']} has completed.")
+        clue = c.event("notice", None, m["end"], notice_type="order_confirmation",
+                       text=f"Order #{m['orders'][-1]} was delivered and confirmed by the buyer. "
+                            f"Earnings from this order are included in withdrawal {pm['payout_reference']}.")
+    elif variant == "orders_and_weekday":
+        clue = c.balance_release(net, init + timedelta(hours=1), m["covers"],
+                                 text=f"{pounds(net)} is on its way. The batch covering orders "
+                                      f"#{m['orders'][0]} and #{m['orders'][-1]} went out on "
+                                      f"{init.strftime('%A')}; funds usually arrive within 1-2 working days.")
+        path = [{"covers_record_id": m["ids"]["sale"][0]}]
+    elif variant == "date_only":
+        clue = c.balance_release(net, init + timedelta(hours=1), m["covers"],
+                                 text=f"Your payout was sent on {init.strftime('%A')} "
+                                      f"{init.day} {init.strftime('%B')}. Funds usually arrive "
+                                      "within 1-2 working days.")
+        path = [{"payout_date": init.strftime("%Y-%m-%d")}]
+    elif alias:
+        c.balance_release(net, released, m["covers"], text=available)
+        rows = [(w_e, pe), (w_m, pm)]
+        csv = "withdrawal_id,payout_id,requested_at,amount\n" + "".join(
+            f"{w},{p['payout_reference']},{p['occurred_at'][:10]},{pounds(p['amount_minor'])}\n"
+            for w, p in rows)
+        if variant == "alias_statement":
+            clue = c.event("statement", None, booked + timedelta(hours=1),
+                           statement_type="withdrawals_export", text=csv)
+        else:
+            clue = c.event("statement", None, booked + timedelta(hours=2), channel="import",
+                           import_source="seller dashboard CSV export", text=csv)
+    elif variant == "email_layout":
+        c.balance_release(net, released, m["covers"], text=available)
+        n, k = pm["payout_reference"].split("-")[1:]
+        clue = c.event("notice", None, clue_at, notice_type="email",
+                       text="From: payouts@mock-marketplace.example\n"
+                            "Subject: Your money is on its way\n\n"
+                            f"Hi,\nWe have sent {pounds(net)} to your bank account ending 00.\n"
+                            f"Our ref: PO/{n}/{k}\nThanks for selling with us.")
+    elif variant == "csv_layout":
+        c.balance_release(net, released, m["covers"], text=available)
+
+        def euro(minor: int) -> str:
+            return f"{minor // 100:,}".replace(",", ".") + f",{minor % 100:02d}"
+        lines = ["Payout No.;Date;Net amount (GBP)"] + [
+            f"{p['payout_reference'][3:].replace('-', '/')};"
+            f"{ts_(p['occurred_at']).strftime('%d.%m.%Y')};{euro(p['amount_minor'])}" for p in (pe, pm)]
+        clue = c.event("statement", None, clue_at, statement_type="payout_summary",
+                       text="\n".join(lines) + "\n")
+    else:
+        first, second = rng.sample([pe, pm], 2)
+        clue = c.balance_release(net, released, m["covers"],
+                                 text=available + f" Withdrawals {first['payout_reference']} and "
+                                      f"{second['payout_reference']} have been requested.")
+        path = [{"payout_reference": first["payout_reference"]},
+                {"payout_reference": second["payout_reference"]}]
+    cr = c.credit(net, booked, w_m if alias else None, marketplace=True)
+    clue_ref = f"{'import' if variant == 'alias_import' else 'merchant'}:{clue['record_id']}"
+    tot = m["totals"]
+    return c.finish(
+        rfcs=[c.rfc(cr, booked + timedelta(days=5))], credit=cr, stated=stated(tot),
+        payout_ref=None, link="linked", payouts=[pm], covered=m["covers"], breakdown=tot,
+        claim_status="supported", source_status="supported", gap=None,
+        extra_gold={"retrieval_path": path, "clue_refs": [clue_ref]},
+        notes=f"{titles[variant]}. The deciding payout is lookup-only; gold.retrieval_path gives "
+              "api.lookup() keys that fetch it, and gold.clue_refs the pushed or imported document "
+              "that points there. An earlier payout is a plausible distractor that fails the amount, "
+              "timing or reference rule.")
+
+
+def ts_(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
 PLAN = [
     (demo, ["settled_control", "settlement_pending"]),
     (clean, ["a", "b", "c", "d", "e", "omits_refunds_fees"]),
@@ -657,6 +789,10 @@ PLAN = [
     (missing_proof, ["no_merchant_data", "no_payout", "amount_mismatch", "missing_covered_record",
                      "late_record", "no_payout", "amount_mismatch"]),
     (self_supplied, ["export_only", "export_only"]),
+    # Cases 41-50. Appended last so cases 1-40 keep their random streams and bytes.
+    (hidden_reference, ["decoy_in_release", "orders_and_weekday", "date_only", "alias_statement",
+                        "alias_import", "email_layout", "csv_layout", "two_refs_amount",
+                        "two_refs_timing", "decoy_in_release"]),
 ]
 
 

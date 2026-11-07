@@ -9,6 +9,7 @@ agents/data/README.md "Gold rules", so a slip in the generator shows up here.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 
 import pytest
@@ -77,7 +78,8 @@ def candidates(credit: dict, active: dict) -> list[list[dict]]:
         last = max(ts(p["settled_at"]) for p in group)
         if (sum(p["amount_minor"] for p in group) == credit["amount_minor"]
                 and last <= booked <= last + timedelta(days=ledgers.SETTLEMENT_WINDOW_DAYS)
-                and credit["payment_reference"] in (None, ref)):
+                and (credit["payment_reference"] is None or credit["payment_reference"] == ref
+                     or credit["payment_reference"] in {p.get("withdrawal_id") for p in group})):
             out.append(group)
     return out
 
@@ -177,8 +179,12 @@ def test_contract_shapes(case):
         for k in ("schema_version", "event_id", "record_id", "revision", "issuer_id",
                   "subject_ref", "kind", "occurred_at"):
             assert k in ev
-        assert isinstance(ev["amount_minor"], int) and ev["amount_minor"] > 0
-        assert ev["currency"] == "GBP" and ev["occurred_at"].endswith("Z")
+        if ev["kind"] in ("notice", "statement"):
+            assert "amount_minor" not in ev and ev["text"]
+        else:
+            assert isinstance(ev["amount_minor"], int) and ev["amount_minor"] > 0
+            assert ev["currency"] == "GBP"
+        assert ev["occurred_at"].endswith("Z")
         assert ts(received) >= ts(ev["occurred_at"])
         if ev["kind"] == "payout" and ev["status"] == "settled":
             assert ts(ev["settled_at"]) >= ts(ev["occurred_at"])
@@ -231,7 +237,7 @@ def test_committed_json_matches_generator():
 
 
 def test_coverage():
-    assert len(CASES) == 40
+    assert len(CASES) == 50
     assert {c["family"] for c in CASES} == set(api.FAMILIES)
     assert {c["gold"]["claim_status"] for c in CASES} == {"supported", "contradicted", "unresolved"}
     assert {l["state"] for c in CASES for l in c["gold"]["links"]} == {"linked", "unmatched", "ambiguous"}
@@ -244,3 +250,74 @@ def test_api_guards():
         api.load_case(1000)
     with pytest.raises(ValueError):
         api.load_cases("nope")
+
+
+# --------------------------------------------------------------------------
+# hidden_reference family (cases 41-50)
+# --------------------------------------------------------------------------
+
+HIDDEN = [c for c in CASES if c["family"] == "hidden_reference"]
+PO_REF = re.compile(r"PO-\d{4}-\d{2}")
+
+
+def naive_regex_probe(case: dict) -> str:
+    """Not the team's baseline: the simplest retrieval that solved all 40 original cases.
+    Pull every canonical PO reference out of pushed or imported text and bank descriptions,
+    look each one up, then apply the pinned candidate rule. Returns the predicted link state."""
+    at = case["rfcs"][0]["issued_at"]
+    view = api.known_at(case, at)
+    texts = [json.dumps(d["event"]) for d in view["merchant_deliveries"]]
+    texts += [json.dumps(d["record"]) for d in view["imports"]]
+    texts += [d["row"]["description"] for d in view["bank_deliveries"]]
+    refs = sorted({r for t in texts for r in PO_REF.findall(t)})
+    view["merchant_lookup"] = [{"available_from": at, "event": ev} for r in refs
+                               for ev in api.lookup(case, at, payout_reference=r)]
+    _, active, bank = replay(view)
+    cands = candidates(bank[case["holder_claim"]["txn_id"]], active)
+    return {0: "unmatched", 1: "linked"}.get(len(cands), "ambiguous")
+
+
+def test_original_forty_unchanged_and_regex_solvable():
+    """Lead's finding: regex retrieval gets every original case's link right."""
+    original = [c for c in CASES if c["case_number"] <= 40]
+    assert len(original) == 40
+    assert all(naive_regex_probe(c) == c["gold"]["links"][0]["state"] for c in original)
+
+
+def test_hidden_reference_is_harder_than_regex():
+    right = [naive_regex_probe(c) == c["gold"]["links"][0]["state"] for c in HIDDEN]
+    assert len(HIDDEN) >= 8
+    assert 0 < sum(right) < len(HIDDEN), f"regex probe got {sum(right)}/{len(HIDDEN)}"
+
+
+@pytest.mark.parametrize("case", HIDDEN, ids=lambda c: f"case{c['case_number']}")
+def test_hidden_reference_retrieval_path(case):
+    gold = case["gold"]
+    at = gold["decision_time"]
+    [link] = gold["links"]
+    assert link["state"] == "linked" and gold["requires_retrieval"] == link["payout_record_ids"]
+    # The deciding payout is not visible without retrieval ...
+    pushed = api.known_at(case, at)
+    assert all(d["event"]["record_id"] not in link["payout_record_ids"] for d in pushed["merchant_deliveries"])
+    # ... the documented path retrieves it ...
+    found = {ev["record_id"] for step in gold["retrieval_path"] for ev in api.lookup(case, at, **step)}
+    assert set(link["payout_record_ids"]) <= found
+    # ... and the clue that points there was observable at decision time.
+    visible = {f"merchant:{d['event']['record_id']}" for d in pushed["merchant_deliveries"]}
+    visible |= {f"import:{d['record']['record_id']}" for d in pushed["imports"]}
+    assert set(gold["clue_refs"]) <= visible
+    # The canonical reference never appears verbatim where the path does not need it.
+    ref = next(ev for ev in api.lookup(case, at, record_id=link["payout_record_ids"][0]))["payout_reference"]
+    if case["variant"] in ("orders_and_weekday", "date_only", "email_layout", "csv_layout"):
+        blob = json.dumps(pushed)
+        assert ref not in blob
+
+
+def test_lookup_keys():
+    case = HIDDEN[0]
+    at = case["gold"]["decision_time"]
+    with pytest.raises(ValueError):
+        api.lookup(case, at)
+    with pytest.raises(ValueError):
+        api.lookup(case, at, payout_reference="x", record_id="y")
+    assert api.lookup(case, at, payout_reference="PO-9999-99") == []

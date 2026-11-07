@@ -18,6 +18,11 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - CSS draft finished: agents/data/out/alibi_css_phase2.patch (made against s4a 6466584; 22 alibi tests pass). After the S4 merge announcement: pull, run setup.sh, apply the patch to alibi/app/static/alibi.css (by hand if S4 changed the CSS), run pytest alibi, commit alibi/app/static/, post done to lead.
 - Research's notes treat my case 1 as the canonical fixture (txn-0001-004, PO-0001-01).
 
+## hidden_reference family (lead 23:40Z, post 6714579064)
+- Added cases 41-50 (10 cases; cases 1-40 byte-identical). Five patterns: decoy in release / reference only in order confirmation; no reference (orders + weekday, date only); withdrawal-ID alias mapped by a merchant statement or Maya's CSV import; unfamiliar layouts (email PO/nnnn/nn, semicolon CSV without the PO prefix); two references told apart by amount or timing.
+- api.lookup gained covers_record_id and payout_date keys. The gold candidate rule also accepts withdrawal_id as the credit's reference. Gold gains retrieval_path and clue_refs for this family.
+- naive_regex_probe in the tests: 40/40 on the originals, 6/10 on hidden_reference.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

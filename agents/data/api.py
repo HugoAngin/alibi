@@ -27,7 +27,7 @@ from tools.lockbox import visible
 
 OUT = Path(__file__).resolve().parent / "out"
 FAMILIES = ("demo", "clean", "bundled_payment", "balance_vs_settlement", "pending_correction",
-            "duplicate_record", "missing_proof", "self_supplied_import")
+            "duplicate_record", "missing_proof", "self_supplied_import", "hidden_reference")
 CANONICAL_CASE = 1            # Maya, supported control
 CONTRADICTION_CASE = 2        # Maya, payout still pending at booking
 
@@ -85,19 +85,38 @@ def known_at(case: dict, at: str, include_lookup: bool = False) -> dict:
 
 
 def lookup(case: dict, at: str, *, payout_reference: str | None = None,
-           record_id: str | None = None) -> list[dict]:
-    """Simulated merchant follow-up retrieval: events matching a payout reference or record ID,
-    from pushed deliveries and lookup-only records, available by `at`. Empty list if none."""
-    if not (payout_reference or record_id):
-        raise ValueError("give a payout_reference or a record_id")
+           record_id: str | None = None, covers_record_id: str | None = None,
+           payout_date: str | None = None) -> list[dict]:
+    """Simulated merchant follow-up retrieval over pushed deliveries and lookup-only records
+    available by `at`. Exactly one key per call; empty list if nothing matches.
+
+    payout_reference  exact canonical reference, e.g. "PO-0041-02" (no fuzzy matching)
+    record_id         one record by ID
+    covers_record_id  payouts whose covers_record_ids include this sale, refund or fee record
+    payout_date       payouts initiated or settled on this UTC date, "YYYY-MM-DD"
+    """
+    keys = [k for k in (payout_reference, record_id, covers_record_id, payout_date) if k]
+    if len(keys) != 1:
+        raise ValueError("give exactly one of payout_reference, record_id, covers_record_id, payout_date")
     pool = [d["event"] for d in case["merchant_deliveries"] if d["received_at"] <= at]
     pool += [d["event"] for d in case["merchant_lookup"] if d["available_from"] <= at]
+
+    def match(ev: dict) -> bool:
+        if payout_reference:
+            return ev.get("payout_reference") == payout_reference
+        if record_id:
+            return ev["record_id"] == record_id
+        if ev["kind"] != "payout":
+            return False
+        if covers_record_id:
+            return covers_record_id in ev.get("covers_record_ids", [])
+        return payout_date in (ev["occurred_at"][:10], (ev.get("settled_at") or "")[:10])
+
     hits, seen = [], set()
     for ev in pool:
         if ev["event_id"] in seen:
             continue
-        if (payout_reference and ev.get("payout_reference") == payout_reference) or \
-                (record_id and ev["record_id"] == record_id):
+        if match(ev):
             hits.append(copy.deepcopy(ev))
             seen.add(ev["event_id"])
     return hits

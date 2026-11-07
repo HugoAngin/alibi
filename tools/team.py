@@ -60,13 +60,13 @@ def current_login() -> str:
     """Return the login set by setup.sh, falling back to the signed-in gh user."""
     configured = subprocess.run(
         ["git", "config", "--get", "team.login"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
     ).stdout.strip()
     if configured:
         return configured
     return subprocess.run(
         ["gh", "api", "user", "--jq", ".login"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
     ).stdout.strip()
 
 

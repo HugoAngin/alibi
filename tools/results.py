@@ -39,7 +39,7 @@ def die(message: str) -> None:
 
 
 def git(*args: str, cwd: Path = roster.ROOT, check: bool = True) -> str:
-    done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if check and done.returncode:
         die(f"git {' '.join(args)} failed: {done.stderr.strip()}")
     return done.stdout.strip() if done.returncode == 0 else ""
@@ -140,7 +140,7 @@ def child_env(open_lockbox: bool) -> dict:
 def run(command: str, cwd: Path, open_lockbox: bool, timeout: float | None) -> str:
     """Run command through the shell, showing its stderr live, and return its stdout."""
     done = subprocess.run(command, shell=True, cwd=cwd, env=child_env(open_lockbox),
-                          stdout=subprocess.PIPE, text=True, timeout=timeout)
+                          stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     if done.returncode:
         raise RuntimeError(f"exited with code {done.returncode}. Last output: "
                            f"{done.stdout.strip()[-300:]}")

@@ -30,7 +30,7 @@ SECRETS = [
 
 
 def git(*args: str) -> str:
-    done = subprocess.run(["git", *args], cwd=roster.ROOT, capture_output=True, text=True)
+    done = subprocess.run(["git", *args], cwd=roster.ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode:
         print(f"git {' '.join(args)} failed: {done.stderr.strip()}", file=sys.stderr)
         raise SystemExit(2)
@@ -100,7 +100,7 @@ def staged_sizes() -> dict[str, int]:
     output = git("diff", "--cached", "--name-only", "--no-renames", "--diff-filter=ACM", "-z")
     for path in (p for p in output.split("\0") if p):
         done = subprocess.run(["git", "cat-file", "-s", f":{path}"], cwd=roster.ROOT,
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
         if done.returncode == 0:
             sizes[path] = int(done.stdout)
     return sizes

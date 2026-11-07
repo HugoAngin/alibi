@@ -98,7 +98,7 @@ def fetch_comments(team: dict, since: str | None = None) -> list[dict]:
         url += f"&since={since}"
     jq = ".[] | {id, author: .user.login, created_at, body, url: .html_url}"
     done = subprocess.run(["gh", "api", "--paginate", "--jq", jq, url],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode:
         raise RuntimeError(done.stderr.strip() or "gh api failed")
     decoder = json.JSONDecoder()
@@ -158,7 +158,7 @@ def one_line(comment: dict) -> str:
 
 
 def git(*args: str) -> str:
-    done = subprocess.run(["git", *args], cwd=roster.ROOT, capture_output=True, text=True)
+    done = subprocess.run(["git", *args], cwd=roster.ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode:
         die(f"git {' '.join(args)} failed: {done.stderr.strip()}")
     return done.stdout.strip()
@@ -204,7 +204,7 @@ def cmd_post(args: argparse.Namespace, team: dict, me: str) -> None:
     body = f"{header}\n\n{message}\n\n`{git('rev-parse', '--short', 'HEAD')}`"
     done = subprocess.run(["gh", "api", "--method", "POST", board_path(team),
                            "-f", f"body={body}", "--jq", ".html_url"],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     if done.returncode:
         die(done.stderr.strip())
     print(done.stdout.strip())

@@ -99,4 +99,16 @@ Order follows FRONTEND.md's value-to-judges list.
 
 ## Phase 2 log (edits to `alibi/app/static/alibi.css`)
 
-(nothing yet; waiting for the S4 merge announcement)
+The draft is ready as `agents/data/out/alibi_css_phase2.patch`, made against s4a at 6466584. It is CSS-only and touches no templates. On s4a, `pytest alibi` gives 22 passed with it applied. I checked it at 800 px (dark) and at 390 px (light).
+
+What it changes:
+- Approval head bug fixed: `.card--private > .card__head::after`.
+- Heading spacing inside cards, the approval box and result blocks.
+- Trace: numbered steps, solid rail, source chips, boxed calculation, and a status step marked as the end of the chain.
+- Review: included, excluded and generalised lists get solid, dashed and dotted rules plus the text marks "sent", "not sent" and "sent in less detail". Excluded items are muted rather than faded.
+- Analyst panels: authentication solid, source trust dashed, claim status double, each with a one-line role caption.
+- Revisions: HISTORICAL (muted) and ACTIVE (solid) labels.
+- Refusal: a REFUSED mark and a red title; successful dispatch gets a DELIVERED mark.
+- Phone tables: rows stack below 600 px, but only for tables whose cells carry `data-label`. Nothing changes until research adds the attribute.
+
+Apply it after the S4 merge with `git apply agents/data/out/alibi_css_phase2.patch`, or by hand if S4 touched the CSS, then run `pytest alibi` and commit `alibi/app/static/`.

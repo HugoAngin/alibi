@@ -1,0 +1,114 @@
+diff --git a/alibi/app/static/alibi.css b/alibi/app/static/alibi.css
+index 4940c7a..3469ccd 100644
+--- a/alibi/app/static/alibi.css
++++ b/alibi/app/static/alibi.css
+@@ -170,7 +170,7 @@ small, .small { font-size: 0.875rem; }
+ .card__head h2, .card__head h3 { margin: 0; }
+ .card--muted { background: var(--bg-muted); }
+ .card--private { border-left: 4px solid var(--line-strong); }
+-.card--private .card__head::after {
++.card--private > .card__head::after {
+   content: "Private to you";
+   font-size: 0.75rem;
+   color: var(--fg-muted);
+@@ -417,6 +417,100 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
+ .result--refused { border-color: var(--bad); }
+ .result__reason { font-family: var(--mono); font-size: 0.9rem; white-space: pre-wrap; background: var(--bg-muted); border: 1px solid var(--line); padding: 0.75rem; border-radius: var(--radius); }
+ 
++/* ---------- phase 2 (data): legibility for the judged screens ---------- */
++/* Selectors use ids and :nth-child until the templates carry modifier classes
++   (trace__step--*, review-group--*, td[data-label]); both forms are styled. */
++
++/* Headings inside a card need air above them when they follow content. */
++.card > * + h3, .approval > * + h3, .result > * + h3 { margin-top: 1.5rem; }
++.card > dl + h3 { margin-top: 1.25rem; }
++.approval form { margin-top: 0.75rem; }
++.approval .kv + p, .approval .kv + a, .approval dl + p { margin-top: 0.75rem; }
++
++/* Trace: a numbered chain that ends in a status. */
++.trace__steps { counter-reset: tstep; border-left-color: var(--fg-muted); }
++.trace__steps > li { counter-increment: tstep; padding-bottom: 0.75rem; }
++.trace__steps > li::before { background: var(--fg-muted); border-color: var(--fg-muted); }
++.trace__label { font-weight: 700; color: var(--fg); margin-bottom: 0.15rem; }
++.trace__label::before { content: counter(tstep) "  "; font-family: var(--mono); color: var(--fg-muted); }
++/* Sources: compact chips; the record link is the most prominent thing in the step. */
++.trace__steps .items { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem; }
++.trace__steps .items > li { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.2rem 0.5rem; background: var(--bg-muted); }
++.trace__steps .items > li:last-child { border-bottom: 1px solid var(--line); }
++.trace__steps .items a { font-weight: 600; text-underline-offset: 2px; }
++/* Lookups (4th step) are tool calls: one per row, full width. */
++.trace__steps > li:nth-child(4) .items, .trace__step--lookups .items { display: block; }
++.trace__steps > li:nth-child(4) .items > li + li, .trace__step--lookups .items > li + li { margin-top: 0.4rem; }
++/* Calculation (5th step): boxed arithmetic. */
++.trace__steps > li:nth-child(5) > code, .trace__step--calculation > code {
++  display: inline-block; padding: 0.15rem 0.4rem; border: 1px solid var(--line-strong);
++  border-radius: 4px; background: var(--bg-muted); font-weight: 600;
++}
++/* Status (last step): where the chain ends. */
++.trace__steps > li:last-child, .trace__step--status {
++  border-top: 1px solid var(--line); margin-top: 0.25rem; padding-top: 0.6rem;
++}
++.trace__steps > li:last-child::before, .trace__step--status::before {
++  width: 14px; height: 14px; left: -8px; border-radius: 2px; background: var(--fg); border-color: var(--fg);
++}
++.trace__steps > li:last-child .badge, .trace__step--status .badge { font-size: 0.85rem; }
++
++/* Private review: three groups that read as three different things. */
++#included + p + ul, #excluded + p + ul, #generalised + ul, .review-group > ul {
++  border-left: 4px solid var(--line-strong); padding-left: 0.75rem;
++}
++#excluded + p + ul, .review-group--excluded > ul { border-left-style: dashed; }
++#generalised + ul, .review-group--generalised > ul { border-left-style: dotted; }
++#included::after, .review-group--included > h3::after { content: " · sent"; }
++#excluded::after, .review-group--excluded > h3::after { content: " · not sent"; }
++#generalised::after, .review-group--generalised > h3::after { content: " · sent in less detail"; }
++#included::after, #excluded::after, #generalised::after, .review-group > h3::after {
++  font-weight: 400; font-size: 0.85rem; color: var(--fg-muted);
++}
++.review-list--excluded > li { opacity: 1; color: var(--fg-muted); }
++.approval { margin-top: 1.5rem; }
++@media (max-width: 599px) { .approval .btn--primary { width: 100%; } }
++
++/* Analyst: authentication, source trust and claim status are different questions. */
++#authentication { border: 2px solid var(--fg); }
++#source-trust { border-style: dashed; border-width: 2px; }
++#claim-status { border: 3px double var(--line-strong); }
++#authentication > .panel__title::after,
++#source-trust > .panel__title::after,
++#claim-status > .panel__title::after {
++  display: block; text-transform: none; letter-spacing: 0; font-size: 0.8rem; margin-top: 0.15rem;
++}
++#authentication > .panel__title::after { content: "Who signed it and that it is unaltered. Not whether claims are true."; }
++#source-trust > .panel__title::after { content: "How far each attached source can be trusted."; }
++#claim-status > .panel__title::after { content: "What the evidence supports, question by question."; }
++#source-trust .items > li + li { border-top: 1px dashed var(--line); }
++
++/* Transaction: the older revision is history, the newer one is active. */
++.revision--older { background: var(--bg-muted); color: var(--fg-muted); border-width: 2px; }
++.revision--older .revision__title::before { content: "HISTORICAL  "; font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; }
++.revision:not(.revision--older) { border: 2px solid var(--fg); }
++.revision:not(.revision--older) .revision__title::before { content: "ACTIVE  "; font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; }
++.recon__total td { font-size: 1.05rem; }
++
++/* Refusal: a block with the backend's words, not a toast. */
++.result--refused { border-left-width: 8px; }
++.result--refused > h2 { color: var(--bad); }
++.result--refused > h2::before { content: "REFUSED  "; font-family: var(--mono); font-size: 0.85rem; letter-spacing: 0.08em; }
++.result--success > h2::before { content: "DELIVERED  "; font-family: var(--mono); font-size: 0.85rem; letter-spacing: 0.08em; color: var(--ok); }
++
++/* Phone tables: stack rows once cells carry data-label (template hook). */
++@media (max-width: 599px) {
++  .table:has(td[data-label]) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
++  .table:has(td[data-label]), .table:has(td[data-label]) tbody,
++  .table:has(td[data-label]) tr, .table:has(td[data-label]) td { display: block; width: 100%; }
++  .table:has(td[data-label]) tr { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
++  .table:has(td[data-label]) td { border: 0; padding: 0.1rem 0; text-align: left; }
++  .table:has(td[data-label]) td[data-label]::before {
++    content: attr(data-label); display: block; font-size: 0.72rem; text-transform: uppercase;
++    letter-spacing: 0.05em; color: var(--fg-muted);
++  }
++}
++
+ /* ---------- print ---------- */
+ 
+ .print-only { display: none; }

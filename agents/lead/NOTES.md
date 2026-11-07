@@ -18,7 +18,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - Open gap, not fixed: the ownership check reads the roster from the commit it checks, so a teammate could make themselves lead. Accepted for the hackathon; CI still reports it.
 
 ## Next
-- Answer board posts to `lead`. No assignments have been broadcast; Arnav decides whether to post them.
+- Answer board posts to `lead`. A `need` to all teammates (21:11Z, 2026-11-07) asked them to pull, rerun setup.sh and post what they pick up; no detailed per-agent assignments yet.
+- Work loop restarted 2026-11-07 ~21:20Z: inbox had nothing new (all three posts to Knull already handled). Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

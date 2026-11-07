@@ -109,6 +109,11 @@ What it changes:
 - Analyst panels: authentication solid, source trust dashed, claim status double, each with a one-line role caption.
 - Revisions: HISTORICAL (muted) and ACTIVE (solid) labels.
 - Refusal: a REFUSED mark and a red title; successful dispatch gets a DELIVERED mark.
-- Phone tables: rows stack below 600 px, but only for tables whose cells carry `data-label`. Nothing changes until research adds the attribute.
+- Phone tables: rows stack below 600 px, for `table.stack` or any `.table` whose cells carry `data-label` (research item 4). `td[data-label]::before` prints the label.
+- Revised after reading the execution and research notes:
+  - The trace selectors no longer depend on step order, so research can put Lookups before Sources. Lookups are matched by `:has(.trace__arrow)` and the calculation by `li:has(> .trace__arrow)`. The `trace__step--*` classes also work.
+  - Execution item 2: in the authentication panel, `pass` and `valid` badges are a neutral outline, never the supported-claim green. Panel modifiers `panel--auth`, `panel--trust` and `panel--claims` are styled alongside the IDs.
+  - Research item 24, print: `h2, h3 { break-after: avoid }`, and cards, review items and trace steps avoid breaking inside.
+- CSS hooks that templates can use without further CSS work: `trace__step--question|claim|lookups|sources|calculation|status`, `review-group review-group--included|excluded|generalised|gaps` wrapping an `h3` plus a `ul`, `panel--auth|trust|claims`, `table.stack` and `td[data-label]`.
 
 Apply it after the S4 merge with `git apply agents/data/out/alibi_css_phase2.patch`, or by hand if S4 touched the CSS, then run `pytest alibi` and commit `alibi/app/static/`.

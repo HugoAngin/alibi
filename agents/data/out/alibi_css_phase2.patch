@@ -1,5 +1,5 @@
 diff --git a/alibi/app/static/alibi.css b/alibi/app/static/alibi.css
-index 4940c7a..3469ccd 100644
+index 4940c7a..5316059 100644
 --- a/alibi/app/static/alibi.css
 +++ b/alibi/app/static/alibi.css
 @@ -170,7 +170,7 @@ small, .small { font-size: 0.875rem; }
@@ -11,7 +11,7 @@ index 4940c7a..3469ccd 100644
    content: "Private to you";
    font-size: 0.75rem;
    color: var(--fg-muted);
-@@ -417,6 +417,100 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
+@@ -417,6 +417,111 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
  .result--refused { border-color: var(--bad); }
  .result__reason { font-family: var(--mono); font-size: 0.9rem; white-space: pre-wrap; background: var(--bg-muted); border: 1px solid var(--line); padding: 0.75rem; border-radius: var(--radius); }
  
@@ -36,11 +36,12 @@ index 4940c7a..3469ccd 100644
 +.trace__steps .items > li { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.2rem 0.5rem; background: var(--bg-muted); }
 +.trace__steps .items > li:last-child { border-bottom: 1px solid var(--line); }
 +.trace__steps .items a { font-weight: 600; text-underline-offset: 2px; }
-+/* Lookups (4th step) are tool calls: one per row, full width. */
-+.trace__steps > li:nth-child(4) .items, .trace__step--lookups .items { display: block; }
-+.trace__steps > li:nth-child(4) .items > li + li, .trace__step--lookups .items > li + li { margin-top: 0.4rem; }
-+/* Calculation (5th step): boxed arithmetic. */
-+.trace__steps > li:nth-child(5) > code, .trace__step--calculation > code {
++/* Lookups are tool calls (their rows carry an arrow): one per row, full width.
++   Detected by content, not position, so the template may reorder the steps. */
++.trace__steps .items:has(.trace__arrow), .trace__step--lookups .items { display: block; }
++.trace__steps .items:has(.trace__arrow) > li + li, .trace__step--lookups .items > li + li { margin-top: 0.4rem; }
++/* Calculation: the step whose own line carries an arrow. Boxed arithmetic. */
++.trace__steps > li:has(> .trace__arrow) > code, .trace__step--calculation > code {
 +  display: inline-block; padding: 0.15rem 0.4rem; border: 1px solid var(--line-strong);
 +  border-radius: 4px; background: var(--bg-muted); font-weight: 600;
 +}
@@ -70,9 +71,18 @@ index 4940c7a..3469ccd 100644
 +@media (max-width: 599px) { .approval .btn--primary { width: 100%; } }
 +
 +/* Analyst: authentication, source trust and claim status are different questions. */
-+#authentication { border: 2px solid var(--fg); }
-+#source-trust { border-style: dashed; border-width: 2px; }
-+#claim-status { border: 3px double var(--line-strong); }
++#authentication, .panel--auth { border: 2px solid var(--fg); }
++#source-trust, .panel--trust { border-style: dashed; border-width: 2px; }
++#claim-status, .panel--claims { border: 3px double var(--line-strong); }
++/* Authentication results are integrity checks, not claim support: neutral outline,
++   never the green of a supported claim. */
++#authentication .badge--status, .panel--auth .badge--status {
++  background: transparent; color: var(--fg); border: 1px solid var(--fg); font-weight: 600;
++}
++#authentication .badge--status-fail, #authentication .badge--status-invalid,
++.panel--auth .badge--status-fail, .panel--auth .badge--status-invalid {
++  color: var(--bad); border: 2px solid var(--bad);
++}
 +#authentication > .panel__title::after,
 +#source-trust > .panel__title::after,
 +#claim-status > .panel__title::after {
@@ -96,14 +106,15 @@ index 4940c7a..3469ccd 100644
 +.result--refused > h2::before { content: "REFUSED  "; font-family: var(--mono); font-size: 0.85rem; letter-spacing: 0.08em; }
 +.result--success > h2::before { content: "DELIVERED  "; font-family: var(--mono); font-size: 0.85rem; letter-spacing: 0.08em; color: var(--ok); }
 +
-+/* Phone tables: stack rows once cells carry data-label (template hook). */
++/* Phone tables: stack rows once cells carry data-label (template hook), or table.stack. */
 +@media (max-width: 599px) {
-+  .table:has(td[data-label]) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
++  table.stack thead, .table:has(td[data-label]) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
++  table.stack, table.stack tbody, table.stack tr, table.stack td,
 +  .table:has(td[data-label]), .table:has(td[data-label]) tbody,
 +  .table:has(td[data-label]) tr, .table:has(td[data-label]) td { display: block; width: 100%; }
-+  .table:has(td[data-label]) tr { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
-+  .table:has(td[data-label]) td { border: 0; padding: 0.1rem 0; text-align: left; }
-+  .table:has(td[data-label]) td[data-label]::before {
++  table.stack tr, .table:has(td[data-label]) tr { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
++  table.stack td, .table:has(td[data-label]) td { border: 0; padding: 0.1rem 0; text-align: left; }
++  table.stack td[data-label]::before, .table:has(td[data-label]) td[data-label]::before {
 +    content: attr(data-label); display: block; font-size: 0.72rem; text-transform: uppercase;
 +    letter-spacing: 0.05em; color: var(--fg-muted);
 +  }
@@ -112,3 +123,11 @@ index 4940c7a..3469ccd 100644
  /* ---------- print ---------- */
  
  .print-only { display: none; }
+@@ -435,5 +540,7 @@ details.disclosure[open] > summary { margin-bottom: 0.5rem; }
+   a { color: #000; text-decoration: none; }
+   a[href]::after { content: ""; }
+   pre { white-space: pre-wrap; border: 1px solid #000; }
++  h2, h3 { break-after: avoid; }
++  .card, article, .review-list > li, .trace__steps > li { break-inside: avoid; }
+   .print-footer { margin-top: 1rem; border-top: 1px solid #000; padding-top: 0.5rem; font-size: 9pt; }
+ }

@@ -16,7 +16,9 @@ LOCAL_SETTINGS = ROOT / ".claude" / "settings.local.json"
 ALLOW = ["Bash(python3 tools/board.py *)", "Bash(python tools/board.py *)",
          "Bash(py -3 tools/board.py *)", "Bash(git add agents/*)", "Bash(git commit -m *)",
          "Bash(git pull --rebase origin main)", "Bash(git push origin main)",
-         "Bash(git fetch *)", "Bash(uv sync --frozen)"]
+         "Bash(git fetch *)", "Bash(uv sync --frozen)",
+         "Bash(python3 tools/results.py report*)", "Bash(python tools/results.py report*)",
+         "Bash(py -3 tools/results.py report*)"]
 # What RULES.md forbids, plus reading the secrets file into a transcript.
 DENY = ["Bash(git push --force*)", "Bash(git push -f*)", "Bash(git push * --force*)",
         "Bash(git push * -f)", "Bash(git push * -f *)", "Bash(git push * +*)",

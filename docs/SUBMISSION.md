@@ -52,13 +52,13 @@ At T-1h, replace `README.md` with this template and fill it in. Keep the team se
 
 | Metric | Ours | Baseline | Test period | Reproduce with |
 | --- | --- | --- | --- | --- |
-| <Sharpe> | | | <out-of-sample dates> | `uv run --frozen python -m ...` |
+| <Sharpe> | | | <lockbox dates> | `uv run --frozen python -m ...` |
 | <Max drawdown> | | | | |
 | <Turnover> | | | | |
 
+- The headline numbers come from a final period nobody looked at while building, scored once at the end. Variants tried before picking this one: <N>.
 - Costs assumed: <fees, spread, slippage, position limits>.
-- Data split by time. Variants tried before picking this one: <N>.
-- Seeds are fixed. `eval` reran every number above from a clean clone.
+- Seeds are fixed. Every number was rerun from a clean checkout before it went in. The full list is in `agents/*/out/results.jsonl`.
 
 ## Risks and limitations
 
@@ -92,7 +92,7 @@ uv run --frozen python -m <the end-to-end entry point>
 
 Ready to paste once the roles are final. Fill in the numbers at the end.
 
-Each of the five of us ran one Claude Code agent with one job: `lead` planned and integrated, `data` built point-in-time datasets, `research` developed the model, `execution` simulated fills and costs, and `eval` tried to break every result before we reported it. Each agent could write only inside its own folder, so no two agents ever edited the same file. A commit hook and a CI check enforced that.
+Each of the five of us ran one Claude Code agent with one job: `lead` planned and integrated, `data` built point-in-time datasets, `research` developed the model, `execution` simulated fills and costs, and `eval` tried to break every result before we reported it, rerunning each one in a clean checkout. Each agent could write only inside its own folder, so no two agents ever edited the same file. A commit hook and a CI check enforced that.
 
 The agents coordinated through one pinned GitHub issue. When an agent finished something a teammate needed, it pushed, then posted a `done` that tagged that teammate's agent, which was polling the issue and woke up to carry on. Requests and blockers worked the same way, which left the humans free to talk to the sponsors and check results.
 
@@ -126,7 +126,7 @@ git log --format=%s | cut -d: -f1 | sort | uniq -c
 
 ## Pre-submit checks, T-30m
 
-- [ ] `eval` has rerun every number in the README from a clean clone.
+- [ ] `python3 tools/results.py report` shows every number in the README as `pass`, and the lockbox scored once. If it was scored more than once, the README says why.
 - [ ] Scan the whole history for keys before the repo goes public. If anything prints, revoke that key with its provider first. Deleting it from the code does not remove it from history.
 
   ```bash

@@ -17,7 +17,9 @@ uv run --frozen python -m agents.<role>.<module>
 uv run --frozen python -m pytest agents/<role>
 ```
 
-This uses the team's locked packages on every machine, so `eval` gets the same numbers you did, and it installs packages `lead` has added since your last run. Never `pip install` anything. Import a teammate's work as `from agents.<role>.api import ...`.
+This uses the team's locked packages on every machine, so `eval` gets the same numbers you did, and it installs packages `lead` has added since your last run. Never `pip install` anything. Import a teammate's work as `from agents.<role>.api import ...`, and shared tools as `from tools.lockbox import visible`.
+
+Code that produces a result may rely only on committed files and `data/`, because `eval` reruns it in a clean checkout.
 
 ## Ownership
 
@@ -99,7 +101,10 @@ Judges will distrust a good number they cannot reproduce, so:
 - Split by time, not at random, and report out-of-sample results. Say how many variants you tried.
 - Include fees, spread, slippage and position limits, and state the assumptions.
 - Report risk with return: drawdown, Sharpe, turnover, and a simple baseline to beat.
-- Every number you report comes with the command that reproduces it, with fixed seeds. `eval` reruns it before it goes in the submission.
+- Record every number you report with `python3 tools/results.py add --split validation --variants <n> --command "<command>"`. It runs the command and stores what it prints, so no number is typed by hand. The command uses fixed seeds and prints its metrics as one JSON object on its last line, such as `{"sharpe": 1.42}`. Commit `agents/<role>/out/results.jsonl` and post `done` to `eval`.
+- `eval` reruns records with `python3 tools/results.py verify`. Only numbers it marks as passing go in the submission.
+- The lockbox is the last slice of time, set in `shared/splits.json`. It exists to score the final choice once, honestly. Data's loaders pass every frame through `tools.lockbox.visible`, which hides it. Only `eval` opens it, once, with `results.py add --split lockbox`. Never set `LOCKBOX_OPEN` yourself, and never read the lockbox rows another way.
+- `eval` runs `tools.lookahead.assert_no_lookahead` on each strategy before verifying its numbers.
 - Never place real-money orders. Use only the simulator or sandbox the organisers provide.
 - Do not break the event's rules. If `docs/TASK.md` and this file disagree, `docs/TASK.md` wins, and tell `lead`.
 

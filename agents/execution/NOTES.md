@@ -12,6 +12,8 @@ Security probe list and analyst disposition flow as a checklist in `agents/execu
 - `api.py`: `load_probes`, `core_probes`, `probe_ids`, `summarise(outcomes)` → `probes_blocked` / `probes_attempted` + controls.
 - Tests: `uv run --frozen python -m pytest agents/execution`.
 
+- 22:38Z lead pinned the disposition record in `shared/CONTRACTS.md` (f67902c). Console-UI vs verifier ownership in `alibi/` is queued for Arnav.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing outcomes count as failed.
 

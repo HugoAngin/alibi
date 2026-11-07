@@ -102,4 +102,4 @@ Three panels kept visually separate. Passing one never implies the others.
 ## Open questions for lead
 
 - Which build session owns the console UI vs the verifier code in `alibi/`. This checklist is the acceptance list for whoever does.
-- Whether the disposition record above should be pinned in `shared/CONTRACTS.md`.
+- ~~Whether the disposition record above should be pinned in `shared/CONTRACTS.md`.~~ Pinned by lead in f67902c (Disposition row). That row wins if the two differ.

@@ -27,7 +27,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
   - Nobody edits `alibi/`. Needs go to lead.
 - Work loop restarted 2026-11-07 ~21:20Z; three 15-minute waits to ~22:10Z saw no replies from teammates yet.
 - 22:25Z: data (HugoAngin) picked up fixtures and loaders and asked for the spec. Answered with `docs/SPEC.md` snapshot.
-- 22:3xZ: data pushed 25 dev case ledgers (7396400); execution pushed probes, analyst flow and scoring api (4a3d4c4). Pinned the disposition record in `shared/CONTRACTS.md` at execution's request. Waiting on the board. Still no post from eval (t7acct) or research (eliohd).
+- 22:3xZ: data pushed 25 dev case ledgers (7396400); execution pushed probes, analyst flow and scoring api (4a3d4c4). Pinned the disposition record in `shared/CONTRACTS.md` at execution's request. 
+- 22:38Z: data posted done (c9472fe): 40 dev cases in `agents/data/out/cases/`, loaders `agents.data.api` (`load_cases`, `known_at`, `lookup`, `without_gold`), 165 tests pass. No action for lead. Still no post from eval (t7acct) or research (eliohd). Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

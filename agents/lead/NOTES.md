@@ -18,8 +18,14 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - Open gap, not fixed: the ownership check reads the roster from the commit it checks, so a teammate could make themselves lead. Accepted for the hackathon; CI still reports it.
 
 ## Next
-- Answer board posts to `lead`. A `need` to all teammates (21:11Z, 2026-11-07) asked them to pull, rerun setup.sh and post what they pick up; no detailed per-agent assignments yet.
-- Work loop restarted 2026-11-07 ~21:20Z: inbox had nothing new (all three posts to Knull already handled). Waiting on the board.
+- Answer board posts to `lead`. A `need` to all teammates (21:11Z, 2026-11-07) asked them to pull, rerun setup.sh and post what they pick up.
+- Assignments broadcast from the Knull account at 21:40Z 2026-11-07 (post 6713363970, another Knull session, not this agent), commit 0320ca7:
+  - eval: author sealed cases and gold from SPEC's Evaluation section; keep them out of the repo until freeze; post the case input format wanted by 23:00.
+  - data: draft development case ledgers (clean, bundled payment, balance-release vs settlement, pending correction, duplicate record, missing proof) as JSON in `agents/data/out`.
+  - execution: security probe list and analyst disposition flow as a checklist in `agents/execution/out`.
+  - research (Elio): deck skeleton mapped to the five rubric rows in `agents/research/out`.
+  - Nobody edits `alibi/`. Needs go to lead.
+- Work loop restarted 2026-11-07 ~21:20Z; three 15-minute waits to ~22:10Z saw no replies from teammates yet. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

@@ -35,6 +35,19 @@ What to do when something breaks. Humans run these commands, or tell their agent
 | `uv.lock` or `pyproject.toml` shows as changed | Someone ran uv without `--frozen`, or ran pip. Run `git checkout -- uv.lock pyproject.toml`. Only `lead` changes them, with `uv add`. |
 | Numbers differ between two machines | Both must use `uv run --frozen` and fixed seeds. Compare the commands in the results records, not the numbers. |
 
+## Results and the lockbox
+
+| Symptom | Do this |
+| --- | --- |
+| `add`: `commit these first` | The record must point at the code that ran. Commit the files it lists, or move generated files to `data/`, then run `add` again. |
+| `add`: `must print its metrics as one JSON object` | End the command's output with one line such as `print(json.dumps({"sharpe": s}))`. Logs before it are fine. |
+| `verify`: `is not here or on origin` | The author has not pushed that commit. Ask them to push. |
+| `verify`: `error`, but the command works for its author | It depends on something that is not committed and not in `data/`, such as a file in a gitignored folder. The author commits it or moves it to `data/`. |
+| `verify`: `fail`, with two different numbers | A missing seed, or the data in `data/` changed since the record was made. Fix the seed, or rebuild the data, then record it again. |
+| `PermissionError` mentioning the lockbox | Your code asked for times inside the lockbox. Use the rows `visible()` returns, and leave the lockbox to `eval`. |
+| `lockbox: no lockbox set` | `lead` has not written `shared/splits.json`. Ask for it before anyone studies the data. |
+| `assert_no_lookahead` fails | The message names each time t where the decision changed when the future was cut off or scrambled. Look for full-sample statistics, `shift(-1)`, and joins on later timestamps. |
+
 ## People and limits
 
 | Symptom | Do this |

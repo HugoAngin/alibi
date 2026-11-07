@@ -6,13 +6,24 @@
 - [ ] Everyone accepts the repo invite, clones, and runs `./tools/setup.sh`. On Windows, use Git Bash.
 - [ ] Everyone confirms their role in `team.json`.
 - [ ] Check the event rules on pre-written code and AI tools. This repo should hold only workflow tooling until the task is announced.
+- [ ] Everyone picks their agent's model, so no plan runs out overnight. Opus uses limits much faster than Sonnet.
+
+| Role | Start the agent with | Why |
+| --- | --- | --- |
+| `lead` | `claude --model opus` | planning, contracts, integration |
+| `data` | `claude --model sonnet` | loaders and schemas |
+| `research` | `claude --model opus` | ideas, plus the heavy runs |
+| `execution` | `claude --model sonnet` | simulator and cost mechanics |
+| `eval` | `claude --model opus` | finding what is wrong |
+
+Add the usual prompt after the model, for example `claude --model sonnet "Read the rules, find your role, and start the work loop."`. For a big job, put the `ultracode` keyword in that one prompt rather than turning ultracode on for the whole session. It runs a workflow of many agents and uses limits fast. Workflow agents write files but never post to the board or commit; the main session does that.
 
 ## First 30 minutes
 
 1. Elio gives the task to `lead`, which fills in `docs/TASK.md`.
 2. Spend 10 minutes together agreeing the approach. This is the most valuable human decision of the event.
 3. If the five roles do not fit the task, rename them now, before agents start. Update `team.json`, then `git mv` the folders, and commit with `TEAM_OVERRIDE=1` and `[team-override]` in the message. Only lead's account can use these. Everyone then runs `./tools/setup.sh` again.
-4. `lead` writes the contracts in `shared/`, covering the data, the interface and the results format that [`shared/README.md`](../shared/README.md) lists.
+4. `lead` writes the contracts in `shared/`, covering the data, the split, the interface and the results format that [`shared/README.md`](../shared/README.md) lists. Set the lockbox in `shared/splits.json` before anyone studies the data. Once someone has looked at a period, it cannot be the lockbox.
 5. `lead` adds the packages the approach needs in one go with `uv add`, so agents do not queue a `need` for each one.
 6. `lead` posts each agent's assignment with `done --to all`. Each agent copies its assignment into its `NOTES.md`.
 7. Each human starts their agent, then `lead` runs the smoke test in the README. Nobody leaves an agent unattended until their role has answered it.
@@ -32,6 +43,6 @@
 Work back from the confirmed deadline. If it is 13:00 on Sunday, T-3h is 10:00.
 
 - **T-3h:** Stop adding features. Only fix and verify from here on.
-- **T-2h:** `eval` reruns every reported number from a clean clone.
-- **T-1h:** Write the README and the Devfolio entry from [`SUBMISSION.md`](SUBMISSION.md), finish the demo, then rehearse it.
+- **T-2h:** `eval` runs `python3 tools/results.py verify --all`, which reruns every record in a clean checkout, then scores the chosen strategy on the lockbox once with `results.py add --split lockbox`.
+- **T-1h:** Write the README and the Devfolio entry from [`SUBMISSION.md`](SUBMISSION.md), with the results table from `python3 tools/results.py report --markdown`. Finish the demo, then rehearse it.
 - **T-30m:** Submit. Run the pre-submit checks in [`SUBMISSION.md`](SUBMISSION.md), set the repo visibility the organisers require, and open the submission as an outsider would.

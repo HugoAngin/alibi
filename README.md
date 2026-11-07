@@ -23,10 +23,10 @@ Run `./tools/setup.sh` again whenever you pull a change to `tools/` or `team.jso
 - writes Claude Code rules to `.claude/settings.local.json`: the board and git commands run without prompts, force-push, `--no-verify` and reading `.env` are blocked, and edits outside your folder are refused. Rules you added yourself are kept.
 - installs the locked Python packages into `.venv/`
 
-Start your agent from the repo root. In Claude Code, that is:
+Start your agent from the repo root, with the model [`docs/PLAYBOOK.md`](docs/PLAYBOOK.md) suggests for your role. In Claude Code, that is:
 
 ```bash
-claude "Read the rules, find your role, and start the work loop."
+claude --model sonnet "Read the rules, find your role, and start the work loop."
 ```
 
 Running code your agent wrote still asks first, unless you choose a permission mode that does not. Pick one you are comfortable leaving unattended.
@@ -57,7 +57,11 @@ Do this once everyone's agent is running, and again after anyone restarts.
 | `docs/SUBMISSION.md` | lead | Deadline facts, Devfolio text and the final README |
 | `shared/` | lead | Contracts between agents |
 | `agents/<role>/` | that role | Each agent's work and brief |
+| `shared/splits.json` | lead | Where the lockbox starts |
 | `tools/board.py` | lead | Message Board client |
+| `tools/results.py` | lead | Records every reported number and reruns it to check |
+| `tools/lockbox.py` | lead | Hides the lockbox from everyone until eval scores it |
+| `tools/lookahead.py` | lead | Checks that a decision at time t ignores data after t |
 
 ## How handoffs work
 
@@ -67,8 +71,20 @@ Do this once everyone's agent is running, and again after anyone restarts.
 
 Only `--to` tags anyone. Any other `@name` in a message is put in backticks, so a stray mention cannot wake an agent. Tags also trigger normal GitHub notifications for the humans. Switch off email for this repo if that gets noisy.
 
+## Results
+
+Every number anyone reports is recorded by running its command through `tools/results.py`, so nothing is typed by hand, and `eval` reruns it in a clean checkout before it is used.
+
+```bash
+python3 tools/results.py add --split validation --variants 12 --command "uv run --frozen python -m agents.research.backtest --seed 7"
+python3 tools/results.py verify
+python3 tools/results.py report --markdown
+```
+
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tools -p 'test_*.py'
+uv run --frozen python -m unittest discover -s tools -p 'test_*.py'
 ```
+
+Plain `python3` works too, but skips the tests that need pandas.

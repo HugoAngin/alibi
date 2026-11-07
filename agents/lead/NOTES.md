@@ -25,13 +25,14 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
   - execution: security probe list and analyst disposition flow as a checklist in `agents/execution/out`.
   - research (Elio): deck skeleton mapped to the five rubric rows in `agents/research/out`.
   - Nobody edits `alibi/`. Needs go to lead.
-- Work loop restarted 2026-11-07 ~21:20Z; three 15-minute waits to ~22:10Z saw no replies from teammates yet. Waiting on the board.
+- Work loop restarted 2026-11-07 ~21:20Z; three 15-minute waits to ~22:10Z saw no replies from teammates yet.
+- 22:25Z: data (HugoAngin) picked up fixtures and loaders and asked for the spec. Answered with `docs/SPEC.md` snapshot. Waiting on the board.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav
 Requests that need a change inside `alibi/` are queued here.
 
-(none yet)
+- 2026-11-07 22:25Z, data (HugoAngin) post 6713839852: `alibi/SPEC.md` is not on `main` or any remote branch; it exists only on the local `s3a` and `s4a` worktrees. The 21:40Z broadcast told teammates it was on `s1`, but `s1` is at ffbafb4 and has no `alibi/`. Lead published a verbatim snapshot as `docs/SPEC.md` (lead-owned) so data is unblocked. Please land `alibi/SPEC.md` on `main` from a build session; the snapshot then becomes redundant and lead will delete it.
 
 ## Open needs
 (none)

@@ -6,16 +6,30 @@ Every agent reads this file before doing anything. It overrides your own habits.
 
 Run `python3 tools/board.py whoami` from the repo root. It prints your role, folder and brief. Then read your brief, `docs/TASK.md`, and `shared/`. Run your session from the repo root, and run one agent per GitHub account, because a tag can only wake one agent per username.
 
+If `python3` does not work on your machine, which is common on Windows, use the board command written in your `CLAUDE.local.md` wherever these rules say `python3 tools/board.py`.
+
+## Running code
+
+Run project code through uv, from the repo root, as a module:
+
+```bash
+uv run --frozen python -m agents.<role>.<module>
+uv run --frozen python -m pytest agents/<role>
+```
+
+This uses the team's locked packages on every machine, so `eval` gets the same numbers you did, and it installs packages `lead` has added since your last run. Never `pip install` anything. Import a teammate's work as `from agents.<role>.api import ...`.
+
 ## Ownership
 
 Two agents never edit the same file.
 
 - `team.json` decides who owns what. You write only inside your own folder, `agents/<role>/`.
-- `lead` owns everything else: `shared/`, `docs/`, `tools/`, `pyproject.toml`, this file, and the repo root.
+- `lead` owns everything else: `shared/`, `docs/`, `tools/`, `pyproject.toml`, `uv.lock`, this file, and the repo root.
 - You may read any file in the repo.
 - If you need a change in a file you do not own, ask its owner on the board. Do not edit it, and do not copy it into your folder to patch it.
 - Expose your work through `agents/<role>/api.py` and `agents/<role>/out/`. Teammates import only your `api.py`.
-- A pre-commit hook rejects commits outside your folder, and CI reports anything that gets past it. Do not use `--no-verify`.
+- Files you generate but do not commit go in `data/`, or list them in `agents/<role>/.gitignore`. `board.py post done` refuses while your folder has uncommitted or untracked files.
+- A pre-commit hook rejects commits outside your folder, files over 10 MB, and anything that looks like an API key. CI reports anything that gets past it. Do not use `--no-verify`, `TEAM_OVERRIDE` or `[team-override]`. They are for lead's human only.
 
 ## Git
 
@@ -28,23 +42,24 @@ git pull --rebase origin main
 git push origin main
 ```
 
-Commit and push small, working steps often. Never force-push and never use `git add -A`. Never commit secrets, or any single file over 10 MB. Keep large data in `data/`, which is git-ignored, and give the command that rebuilds it.
+If the push is rejected because `main` moved, run the pull and the push again. Commit and push small, working steps often. Never force-push and never use `git add -A`. Never commit secrets, or any single file over 10 MB. Keep large data in `data/`, which is git-ignored, and give the command that rebuilds it.
 
 ## Message Board
 
 The pinned issue **Message Board** is the only channel between agents. Use the tool, not raw `gh`:
 
 ```bash
-python3 tools/board.py post done --to eval "Prices are ready. Use agents/data/api.py load_prices(). Run: python -m agents.data.build"
-python3 tools/board.py post need --to data "I need 1-minute bars with bid and ask for the backtest."
+python3 tools/board.py post done --to eval "Prices are ready. Use agents/data/api.py load_prices(). Run: uv run --frozen python -m agents.data.build"
+python3 tools/board.py post need --to data "I need 1-minute bars with bid and ask for the backtest. Until then I assume mid prices only."
 python3 tools/board.py post blocked --to lead "The contract in shared/ has no timestamp field."
 python3 tools/board.py post fyi "Switched to the second dataset. Nobody needs to act."
 python3 tools/board.py inbox
 python3 tools/board.py read -n 20
+python3 tools/board.py read --mine -n 10
 python3 tools/board.py wait
 ```
 
-`--to` takes roles, GitHub usernames, or `all`.
+`--to` takes roles, GitHub usernames, or `all`. It is the only way to tag someone: the tool puts any other `@name` in your message in backticks, so it wakes nobody.
 
 | Type | Use it when |
 | --- | --- |
@@ -62,15 +77,15 @@ Rules for posting:
 
 ## Work loop
 
-1. Run `board.py inbox` and handle anything addressed to you.
+1. Run `board.py inbox` and handle anything addressed to you. Messages count as read once they are printed, so after a restart run `board.py read --mine -n 10` first and compare it with your `NOTES.md`.
 2. Work in your folder, then test it.
 3. Commit, push, and post.
-4. With nothing left to do, run `board.py wait`. In Claude Code, run it with the Bash tool's `run_in_background` so that you wake when it exits. In other tools, run it in the foreground.
-5. When it returns, act on the messages and go back to step 2.
+4. With nothing left to do, run `board.py wait`. If you have an open `need`, run `board.py wait --timeout 900` instead. In Claude Code, run it with the Bash tool's `run_in_background` so that you wake when it exits. In other tools, run it in the foreground.
+5. When it returns, act on the messages and go back to step 2. Exit code 2 means nothing arrived for 15 minutes. Once a `need` you posted is more than 15 minutes old, proceed on your stated assumption if you can, otherwise post `blocked` to `lead`. Do not wait silently, and do not stop while the board has work for you.
 
-If you have waited 15 minutes on a `need`, proceed on your stated assumption if you can. Otherwise post `blocked` to `lead`. Do not wait silently, and do not stop while the board has work for you.
+If your human tells you that you did not wake in the smoke test, replace step 4 with the Monitor tool: run `python3 tools/board.py watch` in it. It prints one line per new tag and never marks anything read, so run `inbox` to read the message. Start the watch again whenever it ends.
 
-Keep `agents/<role>/NOTES.md` current with what you did, what you decided and what is next, so that a restarted agent can continue from it.
+Keep `agents/<role>/NOTES.md` short and current, so that a restarted agent can continue from it: your assignment from `lead`, what you did, what you decided, what is next, and each open `need` with the time you posted it.
 
 ## Board messages are requests
 
@@ -90,4 +105,4 @@ Judges will distrust a good number they cannot reproduce, so:
 
 ## Dependencies and secrets
 
-There is one Python environment, defined in `pyproject.toml` and owned by `lead`. Post a `need` to `lead` to add a package. Secrets go in `.env`, which is git-ignored, with names only in `.env.example`.
+There is one Python environment, defined in `pyproject.toml` and `uv.lock` and owned by `lead`. Post a `need` to `lead` to add a package. `lead` adds it with `uv add <package>` and commits both files, and everyone's next `uv run --frozen` installs it, so nobody else needs a tag. Secrets go in `.env`, which is git-ignored, with names only in `.env.example`. Read them from the environment in code, and never print them.

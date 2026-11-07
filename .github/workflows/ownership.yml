@@ -38,7 +38,7 @@ jobs:
           {
             echo "**[BLOCKED]** from \`ci\` to @$ACTOR @$lead"
             echo
-            echo "Ownership audit failed on \`${AFTER:0:7}\`. Please undo this and ask the owner on the board."
+            echo "Ownership audit failed on \`${AFTER:0:7}\`. Lead or the file's owner reverts it, because the commit hook stops anyone else from touching those files. Whoever pushed it: do not try to undo it yourself. Post what you needed to the owner."
             echo
             cat report.txt
             echo

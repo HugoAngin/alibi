@@ -1,2 +1,11 @@
 #!/usr/bin/env bash
-exec python3 "$(git rev-parse --show-toplevel)/tools/check_ownership.py" --staged
+# Blocks commits that touch files you do not own, add files over 10 MB, or contain API keys.
+# Tries python3, then python, then py -3, because Windows often has only the last two.
+root="$(git rev-parse --show-toplevel)"
+for py in "python3" "python" "py -3"; do
+  if $py -c 'import sys; sys.exit(sys.version_info < (3, 8))' >/dev/null 2>&1; then
+    exec $py "$root/tools/check_ownership.py" --staged
+  fi
+done
+echo "pre-commit: no working Python 3 found. Install Python 3.11+ and commit again." >&2
+exit 1

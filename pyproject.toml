@@ -6,3 +6,7 @@ dependencies = ["numpy", "pandas", "scipy", "matplotlib", "pytest"]
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+# Lets tests in one agent's folder import another agent's api.py, as agents.<role>.api.
+pythonpath = ["."]

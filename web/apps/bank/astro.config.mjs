@@ -20,6 +20,13 @@ export default defineConfig({
     schema: {
       // Read at runtime from the Worker's vars (`secret` access avoids inlining).
       ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Bank A's credential for the backend, forwarded as a bearer token from the server only.
+      BANK_A_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // The bank service directly (e.g. http://127.0.0.1:8102); unset means ALIBI_API_ORIGIN + /bank.
+      BANK_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Analyst sign-in: the demo passcode and the key that signs the session cookie.
+      ANALYST_PASSCODE: envField.string({ context: 'server', access: 'secret', optional: true }),
+      BANK_SESSION_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
 });

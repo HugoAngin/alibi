@@ -93,6 +93,7 @@ interface ActionOptions {
   headers?: Record<string, string>;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  encoding?: 'form';
 }
 
 /** True for a same-backend path such as `/requests/x/approve`; rejects URLs and `//host`. */
@@ -111,8 +112,13 @@ export async function forwardAction(opts: ActionOptions): Promise<ActionResult> 
   try {
     response = await fetchImpl(new URL(opts.path, opts.origin), {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...opts.headers },
-      body: JSON.stringify(opts.body),
+      headers: {
+        Accept: 'application/json',
+        'Content-Type':
+          opts.encoding === 'form' ? 'application/x-www-form-urlencoded' : 'application/json',
+        ...opts.headers,
+      },
+      body: opts.encoding === 'form' ? new URLSearchParams(opts.body) : JSON.stringify(opts.body),
       signal: AbortSignal.timeout(opts.timeoutMs ?? 8000),
     });
   } catch {

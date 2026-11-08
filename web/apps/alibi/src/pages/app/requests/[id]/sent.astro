@@ -1,7 +1,6 @@
 ---
 /**
- * `/app/requests/<id>/sent/`: what happened when Maya approved, which also
- * sends. Either the bank's receipt, or the backend's refusal in its own words
+ * `/app/requests/<id>/sent/`: the outcome after Maya sends her approved package. Either the bank's receipt, or the backend's refusal in its own words
  * (the demo's live-refusal moment), or "nothing was sent" when the backend
  * could not be reached. Shown once, from the action's result; revisiting the
  * page goes back to the request.
@@ -126,7 +125,7 @@ const short = (digest: string) => (digest.length > 22 ? `${digest.slice(0, 22)}â
 
     {flash.kind === 'unavailable' && (
       <section class="result" aria-labelledby="result-title">
-        <h1 id="result-title">Nothing was sent</h1>
+        <h1 id="result-title">Delivery status unavailable</h1>
         <p class="lede">{flash.message}</p>
         <p class="actions">
           <a class="btn btn--primary" href={back}>

@@ -34,6 +34,11 @@ const pageTitle = title ? `${title} · ${bank.name} ${bank.unit}` : `${bank.name
       <a class="console-name" href="/">
         {bank.name} · {bank.unit}
       </a>
+      <nav aria-label="Console">
+        <a href="/">Cases</a>
+        <a href="/inbox/">Alibi inbox</a>
+        <a href="/sign-in/">Sign in</a>
+      </nav>
       <span>Signed in as {analyst.name}</span>
     </header>
     <main id="main" class="console-main">
@@ -66,6 +71,11 @@ const pageTitle = title ? `${title} · ${bank.name} ${bank.unit}` : `${bank.name
   .console-name {
     font-weight: 700;
     text-decoration: none;
+  }
+
+  .console-header nav {
+    display: flex;
+    gap: var(--space-sm);
   }
 
   .console-main {

@@ -90,6 +90,26 @@ class MissingApiKey(LLMError):
     """GEMINI_API_KEY is neither in the environment nor in the repo-root .env."""
 
 
+def clip_trace(data: Any, json_schema: dict) -> Any:
+    """Cut each top-level ``trace`` step to the schema's own ``maxLength`` before validation.
+
+    Output shaping only: the trace is free-text narration of what was checked (only the
+    Challenger has one), and no status, reference or amount is read from it. A step the model
+    wrote past the limit is cut at the limit instead of failing the whole response. The limit
+    comes from the schema and is never raised; nothing outside ``trace`` is touched.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("trace"), list):
+        return data
+    spec = (json_schema.get("properties") or {}).get("trace") if isinstance(json_schema, dict) else None
+    items = spec.get("items") if isinstance(spec, dict) else None
+    limit = items.get("maxLength") if isinstance(items, dict) else None
+    if not isinstance(limit, int) or limit < 1:
+        return data
+    data["trace"] = [step[:limit] if isinstance(step, str) and len(step) > limit else step
+                     for step in data["trace"]]
+    return data
+
+
 # --------------------------------------------------------------------------- budgets
 
 
@@ -458,6 +478,7 @@ class GeminiClient:
         except ValueError as exc:  # parse_constant refused NaN or Infinity
             self._log(model, key, usage, cached=False, outcome="schema_invalid", attempts=attempts)
             raise SchemaValidationError([f"$: response is not JSON ({exc})"], usage) from None
+        data = clip_trace(data, json_schema)
         problems = validate(data, json_schema)
         if problems:
             self._log(model, key, usage, cached=False, outcome="schema_invalid", attempts=attempts)

@@ -228,3 +228,45 @@ def test_log_has_required_fields_and_no_prompt_text(tmp_path, monkeypatch):
     assert set(entry) >= {"time", "model", "prompt_sha256", "usage", "cached", "outcome"}
     assert entry["model"] == FLASH and entry["cached"] is False and entry["outcome"] == "ok"
     assert entry["usage"]["total_tokens"] == 12
+
+
+# ----------------------------------------------------------------------- trace clip (output shaping)
+
+TRACE_SCHEMA = {
+    "type": "object",
+    "properties": {"ok": {"type": "boolean"},
+                   "trace": {"type": "array", "items": {"type": "string", "maxLength": 200}}},
+    "required": ["ok", "trace"],
+}
+
+
+def test_an_overlong_trace_step_is_cut_to_the_schema_limit_not_failed(tmp_path):
+    long_step = "checked rec-0001-021@1 " + "x" * 400
+    transport = ScriptedTransport(json.dumps({"ok": True, "trace": ["short step", long_step]}))
+    client = make_client(tmp_path, transport)
+    result = client.generate(FLASH, SYSTEM, USER, TRACE_SCHEMA)
+    assert result.data["ok"] is True
+    assert result.data["trace"][0] == "short step"
+    assert result.data["trace"][1] == long_step[:200]
+
+
+def test_the_trace_clip_touches_nothing_outside_trace(tmp_path):
+    schema = {"type": "object",
+              "properties": {"note": {"type": "string", "maxLength": 5},
+                             "trace": {"type": "array", "items": {"type": "string", "maxLength": 200}}},
+              "required": ["note", "trace"]}
+    transport = ScriptedTransport(json.dumps({"note": "far too long", "trace": []}))
+    client = make_client(tmp_path, transport)
+    with pytest.raises(SchemaValidationError):
+        client.generate(FLASH, SYSTEM, USER, schema)
+
+
+def test_the_challenger_schema_keeps_its_200_character_trace_limit():
+    from pathlib import Path
+
+    import alibi.agents as agents_pkg
+
+    path = Path(agents_pkg.__file__).parent / "prompts" / "challenger.json"
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    schema = schema.get("schema", schema)
+    assert schema["properties"]["trace"]["items"]["maxLength"] == 200

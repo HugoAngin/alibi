@@ -1,14 +1,13 @@
 {
   "repo": "eliohd/winthrutheory-eceb0cdd-submission-repo",
   "board_issue": 1,
+  "open_paths": [],
   "members": [
     {
       "role": "lead",
       "github": "knull",
       "paths": [
-        "agents/lead/",
-        "web/apps/alibi/src/components/app/",
-        "web/apps/alibi/src/pages/app/"
+        "agents/lead/"
       ]
     },
     {
@@ -24,7 +23,8 @@
       "github": "eliohd",
       "paths": [
         "agents/research/",
-        "alibi/app/templates/"
+        "alibi/app/templates/",
+        "web/apps/alibi/"
       ]
     },
     {

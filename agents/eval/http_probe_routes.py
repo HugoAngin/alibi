@@ -459,9 +459,77 @@ def sp24(session: ProbeSession) -> str:
 
 # --- Ingest ----------------------------------------------------------------
 
+# Native readback. S4 (``alibi/app/main.py``) has no active-record route, only
+# ``GET /sources/{record_id}/{revision}`` (holder, JSON). With ``active_record`` set to
+# that template, the configured ``known_active_record_id`` at
+# ``known_active_record_revision`` must read back as itself and unsuperseded (positive
+# control); the target is then read at the probed revision, and its ``revisions``
+# history decides which revision is active. Fields, trust and history are flattened so
+# the handlers below compare the stored state. S4 has no passport webhook or import
+# route yet, so ``merchant_events`` and ``import_ingest`` stay unset there (NOT_RUN).
+
 def _ingest(session: ProbeSession, actor: str, body) -> "object":
     return session.http("POST", SVC_MERCHANT, _route(session, R_MERCHANT_EVENTS), actor=actor,
                         json=body)
+
+
+def _revision_of(body) -> int:
+    """The revision a submitted event or import names (``{"event": {...}}`` or flat), else 1."""
+    inner = body.get("event", body) if isinstance(body, dict) else None
+    value = inner.get("revision") if isinstance(inner, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 1
+
+
+def _source(session: ProbeSession, record_id: str, revision) -> dict | None:
+    """One S4 source revision, flattened; None on a clean not-found."""
+    resp = session.http("GET", SVC_APP, _route(session, R_ACTIVE_RECORD, record_id=record_id,
+                                               revision=revision), actor="holder", headers=JSON_HEADERS)
+    if resp.status_code in NOT_FOUND:
+        return None
+    session.require_success(resp)
+    payload = ProbeSession.payload(resp)
+    record, fields, history = payload.get("record"), payload.get("fields"), payload.get("revisions")
+    if (not isinstance(record, dict) or not isinstance(fields, dict) or not isinstance(history, list)
+            or not history or not all(isinstance(r, int) and not isinstance(r, bool) for r in history)
+            or record.get("record_id") != record_id or type(record.get("revision")) is not int
+            or str(record["revision"]) != str(revision) or record["revision"] not in history
+            or not isinstance(record.get("superseded"), bool)):
+        raise ProbeUnavailable("source readback did not return the requested record revision")
+    return {**fields, "revision": record["revision"], "trust": record.get("trust"), "connector": record.get("connector"),
+            "superseded": record["superseded"], "revisions": sorted(history)}
+
+
+def _active(session: ProbeSession, record_id: str, revision: int = 1):
+    """``(found, state)`` for a record's active revision via the configured read route.
+
+    Generic routes keep ``_read_active`` (keyed by record id). A ``{revision}`` template
+    is the S4 source read described above. Anything but a clean read or a clean
+    not-found after a passing control raises ProbeUnavailable.
+    """
+    if "revision" not in _placeholders(session, R_ACTIVE_RECORD):
+        read = _read_active(session, record_id)
+        if _is_success(read):
+            return True, _identity(session, read)
+        if read.status_code in NOT_FOUND:
+            return False, None
+        raise ProbeUnavailable("active-state read inconclusive")
+    known = session.require("known_active_record_id")
+    control = _source(session, known, session.require("known_active_record_revision"))
+    if control is None or control["superseded"]:
+        raise ProbeUnavailable("active-state control record did not read back as active")
+    first = _source(session, record_id, revision)
+    if first is None:
+        return False, None
+    latest = first["revisions"][-1]
+    state = first if latest == revision else _source(session, record_id, latest)
+    if state is None or state["superseded"]:
+        raise ProbeUnavailable("latest source revision did not read back as active")
+    drop = set(session.fixtures.get("volatile_read_fields", ()))
+    return True, {k: v for k, v in state.items() if k not in drop}
+
+
+def _field(state, name: str):
+    return state.get(name) if isinstance(state, dict) else None
 
 
 def sp33(session: ProbeSession) -> str:
@@ -469,17 +537,17 @@ def sp33(session: ProbeSession) -> str:
 
     Decided by the active-state read first, then the HTTP refusal code. Fixtures:
     ``event_bad_signature`` (event body), ``event_bad_signature_record_id`` (a
-    record id not already active), ``known_active_record_id``. Routes:
-    ``merchant_events``, ``active_record`` (both unpublished).
+    record id not already active), ``known_active_record_id`` (and
+    ``known_active_record_revision`` for the S4 read). Routes: ``merchant_events``,
+    ``active_record`` (both unpublished).
     """
+    _route(session, R_MERCHANT_EVENTS)  # name the missing intake route before fixtures
     body = session.require("event_bad_signature")
     record_id = session.require("event_bad_signature_record_id")
     resp = _ingest(session, "attacker", body)
-    read = _read_active(session, record_id)
-    if _is_success(read):
+    found, _ = _active(session, record_id, _revision_of(body))
+    if found:
         return NOT_BLOCKED  # the forged record became active
-    if read.status_code not in NOT_FOUND:
-        raise ProbeUnavailable("active-state read inconclusive after ingest attempt")
     # Record absent: a coded signature refusal passes; a 2xx accept is a regression.
     return ProbeSession.denial(
         resp, _codes(session, "sp33", ("signature_invalid", "bad_signature", "signature_missing")))
@@ -492,29 +560,31 @@ def sp34(session: ProbeSession) -> str:
     event_id, different bytes), ``event_record_id``, ``known_active_record_id``.
     Routes: ``merchant_events``, ``active_record``.
     """
+    _route(session, R_MERCHANT_EVENTS)
     record_id = session.require("event_record_id")
     original = session.require("event_original")
     conflicting = session.require("event_same_id_conflicting")
+    revision = _revision_of(original)
 
     session.require_success(_ingest(session, "merchant", original))
-    before = _read_active(session, record_id)
-    if not _is_success(before):
+    found, baseline = _active(session, record_id, revision)
+    if not found:
         raise ProbeUnavailable("original event is not active; cannot test reuse")
-    baseline = _identity(session, before)
 
     retry = _ingest(session, "merchant", original)
     session.require_success(retry)
-    after_retry = _read_active(session, record_id)
-    session.require_success(after_retry)
-    if _identity(session, after_retry) != baseline:
+    found, after_retry = _active(session, record_id, revision)
+    if not found:
+        raise ProbeUnavailable("active-state unreadable after identical retry")
+    if after_retry != baseline:
         return NOT_BLOCKED
 
     resp = _ingest(session, "merchant", conflicting)
     reuse = ProbeSession.denial(resp, _codes(session, "sp34", ("event_id_reused",)))
-    after = _read_active(session, record_id)
-    if not _is_success(after):
+    found, after = _active(session, record_id, revision)
+    if not found:
         raise ProbeUnavailable("active-state unreadable after reuse attempt")
-    changed = _identity(session, after) != baseline
+    changed = after != baseline
 
     if reuse == NOT_BLOCKED or changed:
         return NOT_BLOCKED  # conflicting bytes accepted or overwrote the active record
@@ -532,6 +602,7 @@ def sp35(session: ProbeSession) -> str:
     optional ``revision_field`` (default "revision"), ``known_active_record_id``.
     Routes: ``merchant_events``, ``active_record``.
     """
+    _route(session, R_MERCHANT_EVENTS)
     record_id = session.require("event_record_id_rev")
     newer = session.require("event_revision_new")
     stale = session.require("event_revision_stale")
@@ -539,15 +610,17 @@ def sp35(session: ProbeSession) -> str:
     field = session.fixtures.get("revision_field", "revision")
 
     _ingest(session, "merchant", newer)  # precondition: the newer revision is active
-    before = _read_active(session, record_id)
-    if not _is_success(before) or ProbeSession.payload(before).get(field) != expected:
+    found, before = _active(session, record_id, _revision_of(newer))
+    if not found or _field(before, field) != expected:
         raise ProbeUnavailable("newer revision is not active; cannot test staleness")
 
     _ingest(session, "merchant", stale)
-    after = _read_active(session, record_id)
-    if not _is_success(after):
+    found, after = _active(session, record_id, _revision_of(newer))
+    if not found:  # the newer revision vanished: read the history through the stale one
+        found, after = _active(session, record_id, _revision_of(stale))
+    if not found:
         raise ProbeUnavailable("active-state unreadable after stale attempt")
-    active_revision = ProbeSession.payload(after).get(field)
+    active_revision = _field(after, field)
     if active_revision == expected:
         return BLOCKED        # stale stored as history at most; active stays newer
     if active_revision is None:
@@ -563,16 +636,17 @@ def sp36(session: ProbeSession) -> str:
     optional ``trust_field`` (default "trust"), ``known_active_record_id``. Routes:
     ``import_ingest`` (unpublished), ``active_record``.
     """
+    _route(session, R_IMPORT)
     body = session.require("import_claims_issuer_verified")
     record_id = session.require("import_record_id")
     field = session.fixtures.get("trust_field", "trust")
 
     resp = session.http("POST", SVC_APP, _route(session, R_IMPORT), actor="holder", json=body)
     session.require_success(resp)  # imports are accepted; this is a sanitisation probe
-    read = _read_active(session, record_id)
-    if not _is_success(read):
+    found, read = _active(session, record_id, _revision_of(body))
+    if not found:
         raise ProbeUnavailable("imported record is not readable")
-    trust = ProbeSession.payload(read).get(field)
+    trust = _field(read, field)
     if trust == "self_supplied":
         return BLOCKED
     if trust in ("issuer_verified", "bank_observed"):
@@ -587,14 +661,13 @@ def sp37(session: ProbeSession) -> str:
     (not already active), ``known_active_record_id``. Routes: ``merchant_events``,
     ``active_record``.
     """
+    _route(session, R_MERCHANT_EVENTS)
     body = session.require("event_foreign_subject")
     record_id = session.require("event_foreign_subject_record_id")
     resp = _ingest(session, "attacker", body)
-    read = _read_active(session, record_id)
-    if _is_success(read):
+    found, _ = _active(session, record_id, _revision_of(body))
+    if found:
         return NOT_BLOCKED
-    if read.status_code not in NOT_FOUND:
-        raise ProbeUnavailable("active-state read inconclusive after ingest attempt")
     return ProbeSession.denial(resp, _codes(session, "sp37", ("subject_out_of_scope",)))
 
 
@@ -607,6 +680,114 @@ def _same_scope(txn_ids, period, parent_txn_ids, parent_period) -> bool:
     return norm(txn_ids) == norm(parent_txn_ids) and period == parent_period
 
 
+R_FOLLOWUP_RUN = ("followup_run", None)
+R_FOLLOWUP_APPROVE = ("followup_approve", None)
+R_FOLLOWUP_DISPATCH = ("followup_dispatch", None)
+APPROVAL_FIELDS = ("digest", "audience", "policy_version")
+
+
+def _forbidden_markers(session: ProbeSession) -> list[str]:
+    forbidden = session.require("followup_forbidden_markers")
+    if not isinstance(forbidden, list) or not forbidden or not all(
+        isinstance(marker, str) and marker for marker in forbidden
+    ):
+        raise ProbeUnavailable("followup_forbidden_markers must contain nonempty strings")
+    return forbidden
+
+
+def _scope_of(row) -> tuple[list, object]:
+    """``(txn_ids, period)`` of a request row; S4 omits empty txn_ids and a null period."""
+    if not isinstance(row, dict):
+        raise ProbeUnavailable("request readback is not an object")
+    txn_ids = row.get("txn_ids") or []
+    if not isinstance(txn_ids, list):
+        raise ProbeUnavailable("request readback has malformed txn_ids")
+    return txn_ids, row.get("period")
+
+
+def _issued(session: ProbeSession, target: str, request_id) -> tuple[list, object]:
+    """Stored scope of one request in the recipient's issued-requests readback (S4 JSON)."""
+    resp = session.http("GET", SVC_BANK, _route(session, R_FOLLOWUP, recipient=target),
+                        actor="bank_a", headers=JSON_HEADERS)
+    session.require_success(resp)
+    rows = ProbeSession.payload(resp).get("requests")
+    match = [r for r in rows if isinstance(r, dict) and r.get("request_id") == request_id] \
+        if isinstance(rows, list) else []
+    if len(match) != 1:
+        raise ProbeUnavailable("issued-request readback did not list the request exactly once")
+    return _scope_of(match[0])
+
+
+def _holder_post(session: ProbeSession, spec, request_id: str, data=None) -> dict:
+    resp = session.http("POST", SVC_APP, _route(session, spec, request_id=request_id), actor="holder",
+                        data=data, headers=JSON_HEADERS)
+    session.require_success(resp)
+    return ProbeSession.payload(resp)
+
+
+def _sp39_delivered(session: ProbeSession, target: str, request_id: str, parent, forbidden) -> str:
+    """Native S4 disclosure check for a created follow-up (``followup_dispatch`` set).
+
+    The passport's stored copy must keep the parent's scope. The scripted holder then
+    runs, approves exactly the current draft and dispatches it. Bank A's stored inbox
+    must hold one verified package for the follow-up (the dispatched id), and its
+    package view must show the parent's scope, the follow-up's questions and no
+    forbidden marker. The in-scope evidence marker is optional here: a rules-only
+    follow-up attaches nothing, so the view's verified scope and claims stand in.
+    """
+    detail = _route(session, R_REQUEST_DETAIL, request_id=request_id)
+    stored = session.http("GET", SVC_APP, detail, actor="holder", headers=JSON_HEADERS)
+    session.require_success(stored)
+    request = ProbeSession.payload(stored).get("request")
+    if not _same_scope(*_scope_of(request), *parent):
+        return NOT_BLOCKED  # the passport stored a wider (or different) scope
+    questions = request.get("questions")
+    asked = {q.get("question_id") for q in questions if isinstance(q, dict)} \
+        if isinstance(questions, list) else set()
+    if not asked or None in asked:
+        raise ProbeUnavailable("holder readback did not list the follow-up questions")
+
+    _holder_post(session, R_FOLLOWUP_RUN, request_id)
+    review = session.http("GET", SVC_APP, detail, actor="holder", headers=JSON_HEADERS)
+    session.require_success(review)
+    approval = (ProbeSession.payload(review).get("review") or {}).get("approval")
+    if not isinstance(approval, dict) or not all(isinstance(approval.get(k), str) and approval[k]
+                                                 for k in APPROVAL_FIELDS):
+        raise ProbeUnavailable("holder review did not expose the current draft's approval binding")
+    _holder_post(session, R_FOLLOWUP_APPROVE, request_id, {k: approval[k] for k in APPROVAL_FIELDS})
+    package_id = _holder_post(session, R_FOLLOWUP_DISPATCH, request_id).get("package_id")
+    if not isinstance(package_id, str) or not package_id:
+        raise ProbeUnavailable("dispatch did not name the delivered package")
+
+    inbox = session.http("GET", SVC_BANK, _route(session, R_BANK_INBOX, recipient=target),
+                         actor="bank_a", headers=JSON_HEADERS)
+    session.require_success(inbox)
+    entries = ProbeSession.payload(inbox).get("packages")
+    entries = [p for p in entries if isinstance(p, dict) and p.get("request_id") == request_id] \
+        if isinstance(entries, list) else []
+    if [(p.get("package_id"), p.get("authentication")) for p in entries] != [(package_id, "valid")]:
+        raise ProbeUnavailable("bank inbox did not hold exactly the verified dispatched package")
+    view = session.http("GET", SVC_BANK, _route(session, R_BANK_PACKAGE, recipient=target,
+                                                package_id=package_id),
+                        actor="bank_a", headers=JSON_HEADERS)
+    session.require_success(view)
+    if any(marker in view.text for marker in forbidden):
+        return NOT_BLOCKED
+    shown = ProbeSession.payload(view)
+    package, auth = shown.get("package"), shown.get("authentication")
+    claims, sources = shown.get("claim_status"), shown.get("source_trust")
+    allowed = session.fixtures.get("followup_allowed_marker")
+    if (not isinstance(package, dict) or package.get("request_id") != request_id
+            or package.get("package_id") != package_id or not isinstance(auth, dict)
+            or auth.get("status") != "valid" or not isinstance(sources, list)
+            or not isinstance(claims, list)
+            or {c.get("question_id") for c in claims if isinstance(c, dict)} != asked
+            or (allowed is not None and (not isinstance(allowed, str) or not allowed
+                                         or allowed not in view.text))):
+        raise ProbeUnavailable("verified follow-up package view was not observable")
+    return BLOCKED if _same_scope(*_scope_of(package), *parent) else NOT_BLOCKED
+
+
 def sp39(session: ProbeSession) -> str:
     """SP-39 RFC question text asking for 'all accounts': the response stays in scope.
 
@@ -617,14 +798,34 @@ def sp39(session: ProbeSession) -> str:
     of out-of-scope or policy-denied values), ``followup_allowed_marker`` (known
     in-scope evidence). Routes: ``followup_requests``
     (published), ``followup_package`` (optional, keyed by the new request_id).
+
+    Native S4 (``alibi/app/main.py`` with its in-process bank): set ``followup_run``,
+    ``followup_approve`` and ``followup_dispatch`` (``/requests/{request_id}/run`` and
+    so on) and point ``bank`` at the app. The body then needs ``parent_request_id``,
+    whose stored scope in ``followup_requests`` must equal the parent fixtures before
+    the attack (positive control); after it, the bank's and the passport's stored
+    copies, the dispatched package and its verified view decide (``_sp39_delivered``).
+    Every write is real, so the native path runs only against loopback services.
     """
     target = _recipient(session, "bank_a")
     body = session.require("rfc_followup_wide_text")
     parent_txn_ids = session.require("parent_txn_ids")
     parent_period = session.fixtures.get("parent_period")
+    native = "followup_dispatch" in session.routes
+    if native:
+        if not (_loopback(session, SVC_APP) and _loopback(session, SVC_BANK)):
+            raise ProbeUnavailable("native SP-39 approves and dispatches; it needs a loopback stack")
+        for spec in (R_FOLLOWUP_RUN, R_FOLLOWUP_APPROVE, R_FOLLOWUP_DISPATCH, R_REQUEST_DETAIL):
+            _route(session, spec, request_id="preflight")  # fail before any write
+        _route(session, R_BANK_INBOX, recipient=target)
+        _route(session, R_BANK_PACKAGE, recipient=target, package_id="preflight")
+        forbidden = _forbidden_markers(session)
+        parent_id = body.get("parent_request_id") if isinstance(body, dict) else None
+        if not _same_scope(*_issued(session, target, parent_id), parent_txn_ids, parent_period):
+            raise ProbeUnavailable("parent request's stored scope differs from the parent fixtures")
 
     path = _route(session, R_FOLLOWUP, recipient=target)
-    resp = session.http("POST", SVC_BANK, path, actor="bank_a", data=body)
+    resp = session.http("POST", SVC_BANK, path, actor="bank_a", data=body, headers=JSON_HEADERS)
     if not _is_success(resp):
         # A coded scope rejection also enforces the boundary structurally.
         refused = ProbeSession.denial(
@@ -641,13 +842,13 @@ def sp39(session: ProbeSession) -> str:
     request_id = payload.get("request_id")
     if not isinstance(request_id, str) or not request_id:
         raise ProbeUnavailable("follow-up intake did not return the new request ID")
+    if native:
+        if not _same_scope(*_issued(session, target, request_id), parent_txn_ids, parent_period):
+            return NOT_BLOCKED  # the bank stored a different scope than it answered
+        return _sp39_delivered(session, target, request_id, (parent_txn_ids, parent_period), forbidden)
     package_path = session.route("followup_package", request_id=request_id)
-    forbidden = session.require("followup_forbidden_markers")
+    forbidden = _forbidden_markers(session)
     allowed = session.require("followup_allowed_marker")
-    if not isinstance(forbidden, list) or not forbidden or not all(
-        isinstance(marker, str) and marker for marker in forbidden
-    ):
-        raise ProbeUnavailable("followup_forbidden_markers must contain nonempty strings")
     package = session.http("GET", SVC_BANK, package_path, actor="bank_a")
     session.require_success(package)
     if any(marker in package.text for marker in forbidden):

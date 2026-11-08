@@ -1,84 +1,145 @@
 ---
-/** Maya's seller account, where "Connect to my Alibi" lives. */
-import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
-import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
-
+/** Maya's account: profile, connected services ("Connect to my Alibi") and her sales. */
 import ShopLayout from '@/layouts/ShopLayout.astro';
-import ConnectionStatus from '@/components/ConnectionStatus.astro';
+import AlibiConnection from '@/components/AlibiConnection.astro';
+import SellerNav from '@/components/SellerNav.astro';
 import { formatGBP, sales, seller, shop } from '@/data/shop';
-
-const returnTo = new URL('/account/settings/', Astro.site).toString();
 ---
 
 <ShopLayout title="Account settings">
-  <h1>Seller account</h1>
+  <h1>Account</h1>
+  <SellerNav current="settings" />
 
-  <section class="panel" aria-labelledby="profile-title">
-    <h2 id="profile-title">Profile</h2>
-    <p>
-      {seller.name} · seller ID <code>{seller.subjectRef}</code>
-    </p>
-  </section>
+  <div class="cols">
+    <section aria-labelledby="profile-title" class="panel">
+      <h2 id="profile-title">Profile</h2>
+      <div class="profile">
+        <span class="avatar" aria-hidden="true">
+          {seller.name.charAt(0)}
+        </span>
+        <span>
+          <strong>{seller.name}</strong>
+          <br />
+          <span class="muted">
+            @{seller.name.toLowerCase()} · seller ID <code>{seller.subjectRef}</code>
+          </span>
+        </span>
+      </div>
+    </section>
 
-  <section class="panel" aria-labelledby="sales-title">
+    <section aria-labelledby="connected-title" class="panel">
+      <h2 id="connected-title">Connected services</h2>
+      <AlibiConnection
+        context="account"
+        returnPath="/account/settings/"
+        heading="Alibi"
+        pitch={`Keep a verified copy of your ${shop.name} sales, refunds, fees and payouts in your Alibi passport, so you can explain payments to your bank.`}
+        connected={`Your ${shop.name} sales, refunds, fees and payouts now go to your Alibi passport.`}
+        viewLink
+      />
+    </section>
+  </div>
+
+  <section aria-labelledby="sales-title" class="panel">
     <h2 id="sales-title">Your sales</h2>
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Sold</th>
-          <th scope="col">Order</th>
-          <th scope="col">Item</th>
-          <th scope="col" class="num">
-            Price
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {sales.map((s) => (
+    <div class="table-wrap">
+      <table>
+        <thead>
           <tr>
-            <td>{s.soldOn}</td>
-            <td>
-              <code>{s.reference}</code>
-            </td>
-            <td>{s.title}</td>
-            <td class="num">{formatGBP(s.priceMinor)}</td>
+            <th scope="col">Sold</th>
+            <th scope="col">Order</th>
+            <th scope="col">Item</th>
+            <th scope="col" class="num">
+              Price
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </section>
-
-  <section class="panel" aria-labelledby="connected-title">
-    <h2 id="connected-title">Connected services</h2>
-    <p>
-      Keep a verified copy of your {shop.name} sales, refunds, fees and payouts in your Alibi
-      passport, so you can explain payments to your bank.
-    </p>
-    <ConnectionStatus />
-    <ConnectAlibiButton
-      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
-      merchantId={shop.merchantId}
-      returnTo={returnTo}
-      context="account"
-    />
+        </thead>
+        <tbody>
+          {sales.map((s) => (
+            <tr>
+              <td>{s.soldOn}</td>
+              <td>
+                <code>{s.reference}</code>
+              </td>
+              <td>{s.title}</td>
+              <td class="num">{formatGBP(s.priceMinor)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   </section>
 </ShopLayout>
 
 <style>
+  h1 {
+    font-size: var(--t-lg);
+    letter-spacing: -0.02em;
+  }
+
+  .cols {
+    display: grid;
+    gap: 0 var(--space-md);
+  }
+
+  @media (min-width: 820px) {
+    .cols {
+      grid-template-columns: 1fr 1.4fr;
+    }
+  }
+
   .panel {
-    margin-block: var(--space-md);
+    margin-bottom: var(--space-md);
     padding: var(--space-md);
-    background: var(--c-surface);
     border: 1px solid var(--c-line);
     border-radius: var(--radius-md);
-    max-width: var(--measure);
   }
 
   h2 {
     font-size: var(--t-md);
   }
 
+  .profile {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    line-height: 1.4;
+  }
+
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background: var(--c-soft);
+    font-weight: 700;
+    font-size: var(--t-md);
+  }
+
+  .muted {
+    color: var(--c-ink-faint);
+    font-size: var(--t-sm);
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  th {
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
+    font-weight: 500;
+  }
+
+  td:first-child,
+  td code,
+  .num {
+    white-space: nowrap;
+  }
+
   .num {
     text-align: right;
+    font-variant-numeric: tabular-nums;
   }
 </style>

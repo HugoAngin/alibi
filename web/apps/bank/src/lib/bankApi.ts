@@ -148,6 +148,8 @@ export const BANK_ROUTES = {
   package: (t: BankTarget, id: string) => `${t.prefix}/packages/${encodeURIComponent(id)}`,
   disposition: (t: BankTarget, id: string) =>
     `${t.prefix}/packages/${encodeURIComponent(id)}/disposition`,
+  /** Issue a request for context; the body names one of this bank's case requests by ID. */
+  rfc: (t: BankTarget) => `${t.prefix}/rfc`,
 };
 
 // ------------------------------------------------------------------ conversion

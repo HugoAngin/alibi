@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from posixpath import normpath
+from urllib.parse import unquote
 
 import httpx
 from starlette.applications import Starlette
@@ -68,14 +70,20 @@ def pick(path: str, upstreams: list[Upstream]) -> tuple[Upstream, str]:
 
 
 def is_blocked(path: str) -> bool:
-    """Match internal route prefixes after decoding the forwarded URL."""
-    parts = tuple(part for part in path.split("/") if part)
-    return "admin" in parts or bool(parts and parts[0] in BLOCKED_ROOTS)
+    """Refuse internal paths even if a further decode exposes a reserved segment."""
+    for _ in range(6):
+        decoded = unquote(path)
+        if decoded == path:
+            parts = path.casefold().split("/")
+            root = normpath(path).lstrip("/").partition("/")[0].casefold()
+            return "admin" in parts or root in BLOCKED_ROOTS
+        path = decoded
+    return True
 
 
 def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient | None = None) -> Starlette:
     ups = upstreams or upstreams_from_env()
-    http = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0))
+    http = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0), trust_env=False)
 
     async def healthz(_: Request) -> Response:
         status = {}

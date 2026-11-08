@@ -10,7 +10,7 @@
 The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/out/index.json` and loaded through `agents/data/api.py`. Case 1 is the canonical demo fixture used in the app, the tests, the slides and the recorded demo: Maya, £2,400 sales − £180 refunds − £60 fees = £2,160 credit (`240000 − 18000 − 6000 = 216000` pence).
 
 **Provenance.**
-- The 12 receipt images in `out/receipts/` are drawn by `agents/data/receipts.py` with Pillow. Each is stamped SYNTHETIC on the image, and its true fields are in `receipts.json`.
+- The 12 receipt images in `out/receipts/` are drawn by `agents/data/receipts.py` with Pillow. Each is stamped SYNTHETIC on the image, and its true fields are in `receipts.json`. `agents/data/vision_check.py` scores a Gemini vision read against those fields: on three hard layouts (app screenshot, handwritten on lined paper, letter photographed at an angle) it got 20 of 21 fields, with one issuer name wrong (eval record `73e742c7d7`).
 - Every record is synthetic and labelled `"SYNTHETIC - labelled test data, not a real person, account or institution"`.
 - No real financial records, people, accounts, merchants or banks were used or consulted.
 - The cases are written by one deterministic generator, `agents/data/ledgers.py` (Python standard library only), with seed `20261107`.
@@ -18,9 +18,11 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 
   ```bash
   uv run --frozen python -m agents.data.ledgers           # rewrites out/ byte for byte
-  uv run --frozen python -m pytest agents/data            # 389 checks; one asserts out/ equals a fresh build
+  uv run --frozen python -m pytest agents/data            # 394 checks; one asserts out/ equals a fresh build
   ```
 - Names such as "Mock Marketplace Payments", "Synthetic Lettings Ltd" and `mock-marketplace` are invented.
+
+**Marketplace view.** `agents/data/out/merchant_view/case_0001.json` is case 1 as the mock marketplace's own site shows it (8 orders with refs and titles, 2 refunds, fees, payout `PO-0001-01`, the release notification). A test checks that it agrees with case 1.
 
 **Throughput set.** 200 more generated cases (numbers 101–300, seed 20261208) in `agents/data/out/throughput/` measure adapter speed and cost only. They are excluded from every count and score here.
 
@@ -55,10 +57,8 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 | 32–38 | missing_proof | No merchant records, no payout, amount mismatch, a cited fee record missing, a payout arriving after the request. |
 | 39–40 | self_supplied_import | The only payout proof is the holder's own export, kept at lower trust whatever it claims. |
 | 41–50 | hidden_reference | The deciding payout's reference is not a regex away. It may appear only in an order confirmation, be absent (orders and weekday, or date only), use a withdrawal-ID alias mapped by a statement or an import, sit in an unfamiliar layout (email, semicolon CSV), or be one of two references told apart by amount or timing. |
-
 | 51–60 | injection | Exact copies of cases 1 and 2, each with one adversarial string from the controls owner's catalogue planted in a message, receipt, request question, lookup result or bank description. Gold is unchanged; the expected refusal is recorded. |
 | 61–70 | alert | Timelines that raise proactive alerts before any request: unexplained credit, unusual inflow or outflow, amount or settlement discrepancy, a payout settled but not received, an unverified merchant, and a quiet control with none. Gold lists the alerts. A mock merchant registry ships alongside. |
-
 | 71–80 | second_platform | A second simulated platform with its own schema, wording and settlement vocabulary: weekly statements instead of payouts, `paid`/`scheduled` instead of settled/pending, and its own reference format. It covers paid, scheduled-at-booking, net mismatch, omitted charges, a corrected order and a redelivered statement. In two cases Maya uses both platforms in one month, and a second bank's period question must combine them. |
 
 Every case also carries distractors that must never be disclosed: rent, grocery and pharmacy debits, and in some cases the holder's own health-category purchase.
@@ -72,5 +72,6 @@ Outcomes across the 80 cases: 54 supported, 12 contradicted, 14 unresolved; 58 l
 - `fb7cae7`: cases 41–50 added; cases 1–40 byte-identical.
 - `c339e2a`: a pending payout in cases 2 and 20 is retrievable only from its `status_as_of` time. One field changed per case; gold unchanged.
 - `a8105fa`: cases 51–60 (injection) added.
-- Cases 61–70 (alert) and the mock merchant registry added. Cases 1–60 are unchanged.
-- Cases 71–80 (second platform) and 12 synthetic receipt images (`out/receipts/`, true fields in `receipts.json`) added. Cases 1–70 are unchanged.
+- `11abc05`: cases 61–70 (alert) and the mock merchant registry added. Cases 1–60 are unchanged.
+- `da8289f`, `3d2ff7d`: 12 synthetic receipt images (`out/receipts/`, true fields in `receipts.json`) and cases 71–80 (second platform) added. Cases 1–70 are unchanged.
+- `eb773d8`: the 200-case throughput set added (not scored).

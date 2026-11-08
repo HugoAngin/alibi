@@ -1,56 +1,16 @@
 ---
-/** The case queue. */
+/** The case queue. Cases open in a slide-over panel (src/components/CaseQueue.astro). */
+import CaseQueue from '@/components/CaseQueue.astro';
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
-import { cases, formatGBP } from '@/data/cases';
+import { loadQueue } from '@/lib/queue';
+
+export const prerender = false;
+
+const loaded = await loadQueue(Astro.cookies);
+if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
-<ConsoleLayout title="Case queue">
-  <h1>Case queue</h1>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Case</th>
-          <th scope="col">Customer</th>
-          <th scope="col">Reason</th>
-          <th scope="col">Amount</th>
-          <th scope="col">Status</th>
-          <th scope="col">Opened</th>
-        </tr>
-      </thead>
-      <tbody>
-        {cases.map((c) => (
-          <tr>
-            <td>
-              <a href={`/cases/${c.id}/`}>{c.id}</a>
-            </td>
-            <td>{c.customer}</td>
-            <td>{c.reason}</td>
-            <td class="num">{formatGBP(c.txn.amountMinor)}</td>
-            <td>{c.status.replace('_', ' ')}</td>
-            <td>
-              <code>{c.openedAt}</code>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
+<ConsoleLayout title="Cases" section="cases" wide>
+  <CaseQueue queue={loaded.queue} />
 </ConsoleLayout>
-
-<style>
-  h1 {
-    font-size: var(--t-lg);
-  }
-
-  .table-wrap {
-    overflow-x: auto;
-    background: var(--c-surface);
-    border: 1px solid var(--c-line);
-  }
-
-  .num {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-</style>

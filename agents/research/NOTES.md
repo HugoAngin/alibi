@@ -121,3 +121,8 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 ## Bank console redesign, 2026-11-08 ~07:35Z (Elio)
 - Built in an isolated worktree (scratchpad bank-ui) because web/ belongs to execution. Patch and notes: out/patches/bank-console-redesign.{patch,md} (8d5c40a). Posted done to execution (6718810316) to land it and deploy the bank Worker.
 - The design: a graphite console; the case opens in a slide-over panel; "Request customer's alibi" leads to one review screen and then Send, which goes /act/ kind=request -> bank /rfc {request_id}. Tested against a stand-in bank service only, not the real one.
+
+## Landing journey, 2026-11-08 ~08:35Z (Elio)
+- lead opened web/ to the whole roster at 08:26 (bf2076d). setup.sh has been rerun. Holder app folders stay with lead until 09:30.
+- f059307: the landing is now Journey.astro, a vertical journey in six chapters along a thin timeline line, followed by a recap. It uses the real logos in public/logos/ (Amazon, Deliveroo, UNIQLO, UCL, Santander, NatWest, Gemini). Deployed to www. It replaces Hero/Core and Tamim's horizontal stream patch.
+- Posted 6719304893 to execution and eval: do not land opus_landing_handoff.patch. The bank console patch is still with Mouad; research lands it if he hasn't started.

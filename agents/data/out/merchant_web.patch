@@ -1,0 +1,3444 @@
+diff --git a/web/README.md b/web/README.md
+index de2866b..1295599 100644
+--- a/web/README.md
++++ b/web/README.md
+@@ -24,12 +24,12 @@ pnpm verify         # format, lint, type check, tests, build: run before every c
+ 
+ To see the app on a desktop, press **View on a phone** on the landing page. It opens http://localhost:4321/phone/, which runs `/app/` inside a 390 × 844 phone frame. `/app/` on its own always shows the app, and `/?view=app` makes `/` show it too (remembered in a cookie; `?view=site` switches back).
+ 
+-Try the connect flow: open http://localhost:4322/account/settings/, press "Connect to my Alibi", then Connect or Not now on Alibi's consent page. The merchant shows the outcome.
++Try the connect flow: open http://localhost:4322/checkout/ (or `/account/settings/`) and press "Connect to my Alibi". Alibi's consent page opens in a small window: sign in to Alibi (Clerk), then Connect or Cancel. The window closes and the shop shows "Connected to Alibi as <first name>" without leaving checkout; with popups blocked it is a normal redirect instead. The connection is saved on the Alibi account and listed, with Disconnect, at http://localhost:4321/app/settings/. The Alibi site needs `CLERK_SECRET_KEY` in its environment to run locally (web/docs/hosting.md).
+ 
+ ## How the pieces fit
+ 
+ - **One URL, two experiences.** `apps/alibi/src/pages/index.astro` is rendered per request by the Cloudflare Worker. `src/lib/view.ts` picks `site` or `app` from `?view=`, the `alibi_view` cookie, the `Sec-CH-UA-Mobile` client hint, then the user agent (phones only; tablets get the responsive landing page). The response carries `Vary` so caches keep the two apart. Every other page is prerendered to static assets.
+-- **"Connect to my Alibi"** (`packages/ui/src/ConnectAlibiButton.astro`) is a plain link to Alibi's `/connect` page with `merchant`, `context` and `return_to`. Alibi shows the holder what the merchant will share and sends them back with `?alibi=connected` or `?alibi=declined`. `return_to` must be absolute http(s); anything else is dropped. An unknown merchant is shown as unverified.
++- **"Connect to my Alibi"** (`packages/ui/src/ConnectAlibiButton.astro`) is a link to Alibi's `/connect` page with `merchant`, `context` and `return_to`. Alibi signs the holder in, shows what the merchant will share and what it will see (first name only), records the connection on their Clerk user, and sends them back with `?alibi=connected&alibi_name=…` or `?alibi=declined`. With `display="popup"` the page opens in a small window and reports the same outcome by `postMessage` to `return_to`'s origin (`ConnectMessage` in `links.ts`). `return_to` must be absolute http(s); anything else is dropped. An unknown merchant is shown as unverified.
+ - **"Request customer's Alibi"** (`packages/ui/src/RequestAlibiButton.astro`) opens the bank's own request screen, where the analyst picks the question IDs from `shared/CONTRACTS.md`. Sending is not wired yet; it will go through the mock bank service.
+ - **URL contracts** live in `packages/ui/src/links.ts` and are unit tested. Maya's demo data in `apps/alibi/src/data/demo.ts` is tested against the team's canonical fixture, `agents/data/out/cases/case_0001.json`.
+ 
+diff --git a/web/apps/merchant/src/components/AlibiConnection.astro b/web/apps/merchant/src/components/AlibiConnection.astro
+new file mode 100644
+index 0000000..56fce07
+--- /dev/null
++++ b/web/apps/merchant/src/components/AlibiConnection.astro
+@@ -0,0 +1,263 @@
++---
++/**
++ * The shop's Alibi block: "Connect to my Alibi" when not connected, and a
++ * connected state with the holder's first name once Alibi says yes.
++ *
++ * The button opens Alibi's consent screen in a popup (sign in, approve), and
++ * the outcome arrives as an `alibi:connect` event without leaving the page. If
++ * popups are blocked it is a normal redirect, and the outcome arrives on the
++ * return URL (`?alibi=connected&alibi_name=…`) instead. Either way the shop
++ * remembers it in a cookie (lib/alibi.ts), so every page renders the state.
++ */
++import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
++import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
++import Logomark from '@alibi/ui/Logomark.astro';
++import type { ConnectContext } from '@alibi/ui/links';
++
++import { shop } from '@/data/shop';
++import { ALIBI_COOKIE, parseAlibiLink } from '@/lib/alibi';
++
++interface Props {
++  context: ConnectContext;
++  /** Path on this shop to come back to after a redirect. */
++  returnPath: string;
++  heading: string;
++  /** Shown while not connected. */
++  pitch: string;
++  /** Shown once connected. */
++  connected: string;
++  /** Add a "View in Alibi" link to the connected state. */
++  viewLink?: boolean;
++}
++
++const { context, returnPath, heading, pitch, connected, viewLink = false } = Astro.props;
++const link = parseAlibiLink(Astro.cookies.get(ALIBI_COOKIE)?.value);
++const returnTo = new URL(returnPath, Astro.site).toString();
++---
++
++<div class="alibi-box" data-alibi-box data-state={link ? 'connected' : 'disconnected'}>
++  <div class="off">
++    <div class="row">
++      <span class="tile" aria-hidden="true">
++        <Logomark height="0.95rem" decorative />
++      </span>
++      <div>
++        <p class="title">{heading}</p>
++        <p class="body">{pitch}</p>
++      </div>
++    </div>
++    <ConnectAlibiButton
++      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
++      merchantId={shop.merchantId}
++      returnTo={returnTo}
++      context={context}
++      display="popup"
++    />
++    <p class="note" data-alibi-declined hidden role="status">
++      Not connected. You can connect any time.
++    </p>
++  </div>
++
++  <div class="on" role="status">
++    <div class="row">
++      <span class="tile ok" aria-hidden="true">
++        <svg
++          viewBox="0 0 24 24"
++          width="18"
++          height="18"
++          fill="none"
++          stroke="currentColor"
++          stroke-width="2.6"
++          stroke-linecap="round"
++          stroke-linejoin="round"
++        >
++          <path d="M5 12.5l4.5 4.5L19 7.5" />
++        </svg>
++      </span>
++      <div>
++        <p class="title">
++          Connected to <Logomark height="0.95em" />
++          <span data-alibi-name>{link?.name ? `as ${link.name}` : ''}</span>
++        </p>
++        <p class="body">{connected}</p>
++        <p class="links">
++          {viewLink && <a href={new URL('/app/', PUBLIC_ALIBI_ORIGIN).toString()}>View in Alibi</a>}
++          <button type="button" class="disconnect" data-alibi-disconnect>
++            Disconnect
++          </button>
++        </p>
++      </div>
++    </div>
++  </div>
++</div>
++
++<script>
++  import { ALIBI_COOKIE, serializeAlibiLink, type AlibiLink } from '@/lib/alibi';
++  import type { ConnectMessage } from '@alibi/ui/links';
++
++  const boxes = document.querySelectorAll<HTMLElement>('[data-alibi-box]');
++
++  function show(link: AlibiLink | null) {
++    for (const box of boxes) {
++      box.dataset.state = link ? 'connected' : 'disconnected';
++      const name = box.querySelector<HTMLElement>('[data-alibi-name]');
++      if (name) name.textContent = link?.name ? `as ${link.name}` : '';
++      const declined = box.querySelector<HTMLElement>('[data-alibi-declined]');
++      if (declined) declined.hidden = true;
++    }
++  }
++
++  function remember(link: AlibiLink | null) {
++    const value = link ? serializeAlibiLink(link) : '';
++    const age = link ? 60 * 60 * 24 * 365 : 0;
++    document.cookie = `${ALIBI_COOKIE}=${value}; path=/; max-age=${age}; samesite=lax`;
++  }
++
++  function connected(name: string | undefined) {
++    const link = { name: name ?? '', connectedAt: new Date().toISOString() };
++    remember(link);
++    show(link);
++    for (const box of boxes) {
++      box.dataset.justConnected = '';
++      window.setTimeout(() => delete box.dataset.justConnected, 1600);
++    }
++  }
++
++  function declined() {
++    for (const box of boxes) {
++      const note = box.querySelector<HTMLElement>('[data-alibi-declined]');
++      if (note && box.dataset.state === 'disconnected') note.hidden = false;
++    }
++  }
++
++  // Popup: the outcome arrives as an event from ConnectAlibiButton.
++  document.addEventListener('alibi:connect', (event) => {
++    const detail = (event as CustomEvent<ConnectMessage>).detail;
++    if (detail.outcome === 'connected') connected(detail.name);
++    else declined();
++  });
++
++  // Redirect: the outcome arrives on the URL. Read it once, then tidy the URL.
++  const url = new URL(window.location.href);
++  const outcome = url.searchParams.get('alibi');
++  if (outcome) {
++    if (outcome === 'connected') connected(url.searchParams.get('alibi_name') ?? undefined);
++    if (outcome === 'declined') declined();
++    url.searchParams.delete('alibi');
++    url.searchParams.delete('alibi_name');
++    history.replaceState(null, '', url);
++  }
++
++  for (const button of document.querySelectorAll('[data-alibi-disconnect]')) {
++    button.addEventListener('click', () => {
++      remember(null);
++      show(null);
++    });
++  }
++</script>
++
++<style>
++  .alibi-box {
++    padding: var(--space-sm);
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++    background: #fff;
++    transition:
++      border-color 0.3s ease,
++      box-shadow 0.3s ease;
++  }
++
++  .alibi-box[data-state='connected'] .off,
++  .alibi-box[data-state='disconnected'] .on {
++    display: none;
++  }
++
++  .alibi-box[data-just-connected] {
++    border-color: var(--c-ok);
++    box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-ok) 14%, transparent);
++  }
++
++  .row {
++    display: flex;
++    align-items: flex-start;
++    gap: var(--space-xs);
++  }
++
++  .off .row {
++    margin-bottom: var(--space-xs);
++  }
++
++  /* Line the button up with the text, so the shop's own Pay stays the main action. */
++  .off {
++    --indent: calc(2.5rem + var(--space-xs));
++  }
++
++  .off > :global(.alibi-connect),
++  .note {
++    margin-left: var(--indent);
++  }
++
++  @media (max-width: 480px) {
++    .off > :global(.alibi-connect) {
++      display: flex;
++      margin-left: 0;
++    }
++  }
++
++  .tile {
++    display: grid;
++    place-items: center;
++    flex: none;
++    width: 2.5rem;
++    height: 2.5rem;
++    border-radius: 10px;
++    background: var(--c-alibi);
++    color: var(--c-alibi-ink);
++  }
++
++  .tile.ok {
++    background: color-mix(in srgb, var(--c-ok) 12%, white);
++    color: var(--c-ok);
++  }
++
++  .title {
++    margin: 0;
++    font-weight: 650;
++  }
++
++  .body {
++    margin: 0.15rem 0 0;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++
++  .note {
++    margin: var(--space-2xs) 0 0;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++
++  .links {
++    display: flex;
++    gap: var(--space-sm);
++    margin: var(--space-2xs) 0 0;
++    font-size: var(--t-sm);
++  }
++
++  .links a {
++    color: var(--c-ink);
++    font-weight: 550;
++  }
++
++  .disconnect {
++    padding: 0;
++    border: 0;
++    background: none;
++    font: inherit;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++    text-decoration: underline;
++    text-underline-offset: 3px;
++    cursor: pointer;
++  }
++</style>
+diff --git a/web/apps/merchant/src/components/ConnectionStatus.astro b/web/apps/merchant/src/components/ConnectionStatus.astro
+deleted file mode 100644
+index 99ad947..0000000
+--- a/web/apps/merchant/src/components/ConnectionStatus.astro
++++ /dev/null
+@@ -1,36 +0,0 @@
+----
+-/**
+- * Shows the outcome Alibi sent the customer back with (`?alibi=connected` or
+- * `?alibi=declined`). The page is static, so this reads the query string in
+- * the browser; a real merchant would read its own stored connection instead.
+- */
+----
+-
+-<p class="connection-status" data-connection-status hidden></p>
+-
+-<script>
+-  const el = document.querySelector<HTMLElement>('[data-connection-status]');
+-  const outcome = new URLSearchParams(window.location.search).get('alibi');
+-  const messages: Record<string, string> = {
+-    connected: 'Connected. Your sales, refunds, fees and payouts will appear in your Alibi.',
+-    declined: 'Not connected. You can connect any time.',
+-  };
+-  if (el && outcome && messages[outcome]) {
+-    el.textContent = messages[outcome];
+-    el.dataset.outcome = outcome;
+-    el.hidden = false;
+-  }
+-</script>
+-
+-<style>
+-  .connection-status {
+-    padding: var(--space-xs) var(--space-sm);
+-    border-radius: var(--radius-sm);
+-    border: 1px solid var(--c-line);
+-    background: var(--c-surface);
+-  }
+-
+-  .connection-status[data-outcome='connected'] {
+-    border-color: var(--c-ok);
+-  }
+-</style>
+diff --git a/web/apps/merchant/src/components/ProductArt.astro b/web/apps/merchant/src/components/ProductArt.astro
+new file mode 100644
+index 0000000..5d90dc0
+--- /dev/null
++++ b/web/apps/merchant/src/components/ProductArt.astro
+@@ -0,0 +1,106 @@
++---
++/**
++ * The picture on a product tile: a simple line drawing of the garment on a
++ * soft background. Everything in the shop is synthetic, so there are no photos.
++ */
++import type { ArtKind } from '@/data/shop';
++
++interface Props {
++  kind: ArtKind;
++  tone?: string;
++  /** Rounded thumbnail for basket rows. */
++  small?: boolean;
++}
++
++const { kind, tone = '#ecebe8', small = false } = Astro.props;
++
++const paths: Record<ArtKind, string[]> = {
++  shirt: [
++    'M45 26 L60 34 L75 26 L94 36 L104 58 L90 64 L86 56 L86 98 L34 98 L34 56 L30 64 L16 58 L26 36 Z',
++    'M45 26 L52 40 L60 34 L68 40 L75 26',
++    'M60 40 V98',
++  ],
++  jumper: [
++    'M46 26 Q60 36 74 26 L96 36 L106 80 L94 83 L86 54 L86 98 L34 98 L34 54 L26 83 L14 80 L24 36 Z',
++    'M34 91 H86',
++    'M46 26 Q60 42 74 26',
++  ],
++  jacket: [
++    'M44 24 L60 30 L76 24 L96 34 L104 76 L92 78 L86 52 L86 88 L34 88 L34 52 L28 78 L16 76 L24 34 Z',
++    'M44 24 L54 50 L60 30 L66 50 L76 24',
++    'M60 50 V88',
++    'M40 70 H52 M68 70 H80',
++  ],
++  coat: [
++    'M44 18 L60 26 L76 18 L96 28 L104 82 L92 84 L86 50 L90 106 L30 106 L34 50 L28 84 L16 82 L24 28 Z',
++    'M44 18 L52 52 L60 26 L68 52 L76 18',
++    'M33 64 H87',
++    'M60 52 V106',
++  ],
++  trousers: ['M38 18 H82 L88 104 H66 L60 46 L54 104 H32 Z', 'M38 27 H82', 'M60 27 V46'],
++  skirt: ['M42 24 H78 L94 98 H26 Z', 'M42 33 H78', 'M60 70 V98'],
++  dress: [
++    'M48 16 L52 28 Q60 34 68 28 L72 16 L78 22 L70 46 L92 104 H28 L50 46 L42 22 Z',
++    'M50 46 H70',
++  ],
++  tote: ['M28 48 H92 L87 102 H33 Z', 'M44 48 V38 Q44 24 60 24 Q76 24 76 38 V48'],
++  shoes: [
++    'M14 80 Q15 64 33 61 L56 58 Q71 58 82 66 L101 72 Q110 76 108 86 H17 Q12 86 14 80 Z',
++    'M16 86 H108 V91 H16 Z',
++    'M48 60 Q57 71 68 61',
++  ],
++  boots: ['M38 16 H66 V66 L94 77 Q104 81 102 94 H38 Z', 'M38 94 H102 V101 H38 Z', 'M38 28 H66'],
++  scarf: [
++    'M60 16 L104 60 L60 104 L16 60 Z',
++    'M60 30 L90 60 L60 90 L30 60 Z',
++    'M60 50 L70 60 L60 70 L50 60 Z',
++  ],
++};
++---
++
++<span class:list={['art', { small }]} style={`--tone:${tone}`} aria-hidden="true">
++  <svg
++    viewBox="0 0 120 120"
++    fill="none"
++    stroke="currentColor"
++    stroke-width="2.2"
++    stroke-linejoin="round"
++    stroke-linecap="round"
++  >
++    {paths[kind].map((d, i) => (
++      <path
++        d={d}
++        fill={i === 0 ? 'currentColor' : 'none'}
++        fill-opacity={i === 0 ? 0.07 : undefined}
++      />
++    ))}
++  </svg>
++</span>
++
++<style>
++  .art {
++    display: grid;
++    place-items: center;
++    aspect-ratio: 4 / 5;
++    width: 100%;
++    background: var(--tone);
++    color: rgb(20 20 20 / 0.5);
++    border-radius: var(--radius-md);
++    overflow: hidden;
++  }
++
++  .art svg {
++    width: 58%;
++    height: auto;
++    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
++  }
++
++  .art.small {
++    aspect-ratio: 1;
++    border-radius: var(--radius-sm);
++  }
++
++  .art.small svg {
++    width: 72%;
++  }
++</style>
+diff --git a/web/apps/merchant/src/components/ProductCard.astro b/web/apps/merchant/src/components/ProductCard.astro
+new file mode 100644
+index 0000000..3dd1745
+--- /dev/null
++++ b/web/apps/merchant/src/components/ProductCard.astro
+@@ -0,0 +1,82 @@
++---
++/** A product in the grid: picture, title, size and price. */
++import ProductArt from '@/components/ProductArt.astro';
++import { formatGBP, type ArtKind } from '@/data/shop';
++
++interface Props {
++  href?: string;
++  title: string;
++  priceMinor: number;
++  meta: string;
++  art: ArtKind;
++  tone?: string;
++  /** Shown over the picture, e.g. "Sold". */
++  badge?: string;
++}
++
++const { href, title, priceMinor, meta, art, tone, badge } = Astro.props;
++const Tag = href ? 'a' : 'div';
++---
++
++<Tag class:list={['card', { sold: Boolean(badge) }]} href={href}>
++  <span class="pic">
++    <ProductArt kind={art} tone={tone} />
++    {badge && <span class="badge">{badge}</span>}
++  </span>
++  <span class="price">{formatGBP(priceMinor)}</span>
++  <span class="title">{title}</span>
++  <span class="meta">{meta}</span>
++</Tag>
++
++<style>
++  .card {
++    display: grid;
++    gap: 0.1rem;
++    color: inherit;
++    text-decoration: none;
++  }
++
++  .pic {
++    position: relative;
++    display: block;
++    margin-bottom: var(--space-2xs);
++  }
++
++  a.card:hover :global(svg) {
++    transform: scale(1.04);
++  }
++
++  a.card:hover .title {
++    text-decoration: underline;
++    text-underline-offset: 3px;
++  }
++
++  .badge {
++    position: absolute;
++    left: var(--space-2xs);
++    top: var(--space-2xs);
++    padding: 0.15rem 0.55rem;
++    border-radius: var(--radius-pill);
++    background: rgb(255 255 255 / 0.92);
++    font-size: var(--t-xs);
++    font-weight: 600;
++  }
++
++  .price {
++    font-weight: 650;
++    font-variant-numeric: tabular-nums;
++  }
++
++  .title {
++    font-size: var(--t-sm);
++  }
++
++  .meta {
++    font-size: var(--t-xs);
++    color: var(--c-ink-faint);
++  }
++
++  .sold .price {
++    color: var(--c-ink-soft);
++  }
++</style>
+diff --git a/web/apps/merchant/src/data/shop.ts b/web/apps/merchant/src/data/shop.ts
+index f27d332..d047271 100644
+--- a/web/apps/merchant/src/data/shop.ts
++++ b/web/apps/merchant/src/data/shop.ts
+@@ -10,9 +10,23 @@
+ export const shop = {
+   merchantId: 'mock-marketplace',
+   name: 'Mock Marketplace',
+-  tagline: 'Second-hand clothes, sold by people like you.',
++  tagline: 'Pre-loved clothes, sold by people like you.',
+ } as const;
+ 
++/** What a product tile draws (components/ProductArt.astro). No photos: everything is synthetic. */
++export type ArtKind =
++  | 'shirt'
++  | 'jumper'
++  | 'jacket'
++  | 'coat'
++  | 'trousers'
++  | 'skirt'
++  | 'dress'
++  | 'tote'
++  | 'shoes'
++  | 'boots'
++  | 'scarf';
++
+ /** The signed-in seller on the account pages. */
+ export const seller = { name: 'Maya', subjectRef: 'maya-001' } as const;
+ 
+@@ -24,6 +38,7 @@ export interface Sale {
+   priceMinor: number;
+   sellerFeeMinor: number;
+   soldOn: string;
++  art: ArtKind;
+ }
+ 
+ export const sales: Sale[] = [
+@@ -34,6 +49,7 @@ export const sales: Sale[] = [
+     priceMinor: 30000,
+     sellerFeeMinor: 750,
+     soldOn: '2026-10-05',
++    art: 'jacket',
+   },
+   {
+     reference: 'MM-48017',
+@@ -42,6 +58,7 @@ export const sales: Sale[] = [
+     priceMinor: 25000,
+     sellerFeeMinor: 625,
+     soldOn: '2026-10-06',
++    art: 'coat',
+   },
+   {
+     reference: 'MM-48042',
+@@ -50,6 +67,7 @@ export const sales: Sale[] = [
+     priceMinor: 40000,
+     sellerFeeMinor: 1000,
+     soldOn: '2026-10-07',
++    art: 'boots',
+   },
+   {
+     reference: 'MM-48107',
+@@ -58,18 +76,164 @@ export const sales: Sale[] = [
+     priceMinor: 45000,
+     sellerFeeMinor: 1125,
+     soldOn: '2026-10-11',
++    art: 'dress',
++  },
++];
++
++export type Category = 'tops' | 'bottoms' | 'outerwear' | 'shoes' | 'accessories';
++
++export const categories: { id: Category; label: string }[] = [
++  { id: 'tops', label: 'Tops' },
++  { id: 'bottoms', label: 'Bottoms' },
++  { id: 'outerwear', label: 'Outerwear' },
++  { id: 'shoes', label: 'Shoes' },
++  { id: 'accessories', label: 'Accessories' },
++];
++
++/**
++ * Items for sale from other sellers. SYNTHETIC and not part of case 1: the
++ * checkout shows an example buyer (not Maya) buying these, labelled as such.
++ * Second-hand items are one-offs, so a basket holds each at most once.
++ */
++export interface Listing {
++  id: string;
++  title: string;
++  category: Category;
++  size: string;
++  condition: 'Like new' | 'Very good' | 'Good';
++  priceMinor: number;
++  seller: string;
++  description: string;
++  art: ArtKind;
++  /** Tile background behind the drawing. */
++  tone: string;
++}
++
++export const listings: Listing[] = [
++  {
++    id: 'linen-shirt',
++    title: 'Linen shirt, white',
++    category: 'tops',
++    size: 'M',
++    condition: 'Very good',
++    priceMinor: 3500,
++    seller: 'juniper.lane',
++    description: 'Relaxed fit, mother-of-pearl buttons. Washed and pressed, no marks.',
++    art: 'shirt',
++    tone: '#ece8e1',
++  },
++  {
++    id: 'canvas-tote',
++    title: 'Canvas tote bag',
++    category: 'accessories',
++    size: 'One size',
++    condition: 'Like new',
++    priceMinor: 2000,
++    seller: 'oskar.vintage',
++    description: 'Heavy cotton canvas with an inside pocket. Used twice.',
++    art: 'tote',
++    tone: '#e4e9e2',
++  },
++  {
++    id: 'merino-jumper',
++    title: 'Merino crew jumper, navy',
++    category: 'tops',
++    size: 'L',
++    condition: 'Very good',
++    priceMinor: 4200,
++    seller: 'thrift.tess',
++    description: 'Fine-knit merino. No bobbling, cuffs and hem still hold their shape.',
++    art: 'jumper',
++    tone: '#e1e5ee',
++  },
++  {
++    id: 'trench-coat',
++    title: 'Trench coat, stone',
++    category: 'outerwear',
++    size: '12',
++    condition: 'Like new',
++    priceMinor: 8500,
++    seller: 'juniper.lane',
++    description: 'Double-breasted with a belt and storm flap. Dry cleaned.',
++    art: 'coat',
++    tone: '#eee8dc',
++  },
++  {
++    id: 'cord-trousers',
++    title: 'Corduroy trousers, rust',
++    category: 'bottoms',
++    size: 'W30 L32',
++    condition: 'Good',
++    priceMinor: 2800,
++    seller: 'oskar.vintage',
++    description: 'Wide-wale cord, straight leg. Light wear at the hems.',
++    art: 'trousers',
++    tone: '#f0e3d8',
++  },
++  {
++    id: 'leather-loafers',
++    title: 'Leather loafers, brown',
++    category: 'shoes',
++    size: 'UK 7',
++    condition: 'Good',
++    priceMinor: 4800,
++    seller: 'thrift.tess',
++    description: 'Penny loafers, resoled this year. Polished, some creasing on the toe.',
++    art: 'shoes',
++    tone: '#e9e1db',
++  },
++  {
++    id: 'silk-scarf',
++    title: 'Silk scarf, floral print',
++    category: 'accessories',
++    size: 'One size',
++    condition: 'Like new',
++    priceMinor: 1800,
++    seller: 'juniper.lane',
++    description: 'Hand-rolled edges, 90 cm square. Never worn.',
++    art: 'scarf',
++    tone: '#f2e4e6',
++  },
++  {
++    id: 'denim-skirt',
++    title: 'Denim midi skirt',
++    category: 'bottoms',
++    size: '10',
++    condition: 'Very good',
++    priceMinor: 2600,
++    seller: 'thrift.tess',
++    description: 'Mid-wash, A-line with a front split. Fits true to size.',
++    art: 'skirt',
++    tone: '#dfe6ec',
+   },
+ ];
+ 
++export function findListing(id: string): Listing | undefined {
++  return listings.find((l) => l.id === id);
++}
++
+ /**
+- * The checkout page shows a different person: an example buyer with an
+- * example basket. Not part of case 1, and labelled as an example on screen.
++ * The basket a first-time visitor starts with, so the checkout demo works from
++ * a cold start. Once the visitor changes the basket, theirs is used instead.
+  */
+-export const exampleBasket = [
+-  { title: 'Linen shirt (example item)', priceMinor: 3500 },
+-  { title: 'Canvas tote (example item)', priceMinor: 2000 },
++export const defaultBasket = ['linen-shirt', 'canvas-tote'];
++
++/** The example buyer prefilled at checkout. Not Maya, and labelled as an example. */
++export const exampleBuyer = {
++  email: 'alex.example@example.com',
++  name: 'Alex Morgan',
++  line1: '14 Example Road',
++  city: 'Leeds',
++  postcode: 'LS1 4AB',
++} as const;
++
++export const deliveryOptions = [
++  { id: 'standard', label: 'Standard', detail: '3–5 working days', priceMinor: 299 },
++  { id: 'express', label: 'Express', detail: 'Next working day', priceMinor: 499 },
+ ] as const;
+ 
++export type DeliveryId = (typeof deliveryOptions)[number]['id'];
++
+ const gbp = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
+ 
+ export function formatGBP(minor: number): string {
+diff --git a/web/apps/merchant/src/layouts/ShopLayout.astro b/web/apps/merchant/src/layouts/ShopLayout.astro
+index 8e2078b..384ab6a 100644
+--- a/web/apps/merchant/src/layouts/ShopLayout.astro
++++ b/web/apps/merchant/src/layouts/ShopLayout.astro
+@@ -1,26 +1,26 @@
+ ---
+ /**
+- * Shell for the simulated marketplace. It overrides a few shared tokens so the
++ * Shell for the simulated marketplace. It overrides the shared tokens so the
+  * shop looks like someone else's product; the Alibi button keeps Alibi's
+- * colours, as an embedded third-party button would.
++ * colours, as an embedded third-party button would. `checkout` swaps the full
++ * header for the pared-down one shops use once you are paying.
+  */
+ import '@alibi/ui/base.css';
++import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
+ 
+-import { shop } from '@/data/shop';
++import { categories, shop } from '@/data/shop';
++import { BASKET_COOKIE, parseBasket } from '@/lib/basket';
+ 
+ interface Props {
+   title?: string;
++  checkout?: boolean;
+ }
+ 
+-const { title } = Astro.props;
+-const pageTitle = title ? `${title} · ${shop.name}` : shop.name;
+-const nav = [
+-  { href: '/', label: 'Shop' },
+-  { href: '/checkout/', label: 'Basket' },
+-  { href: '/seller/', label: 'Seller hub' },
+-  { href: '/account/settings/', label: 'Account' },
+-];
+-import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
++const { title, checkout = false } = Astro.props;
++const pageTitle = title ? `${title} · ${shop.name}` : `${shop.name} · ${shop.tagline}`;
++const basketCount = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value).length;
++const q = Astro.url.pathname === '/' ? (Astro.url.searchParams.get('q') ?? '') : '';
++const category = Astro.url.pathname === '/' ? Astro.url.searchParams.get('c') : null;
+ ---
+ 
+ <!doctype html>
+@@ -37,60 +37,433 @@ import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
+       Skip to content
+     </a>
+     <p class="simulated">Simulated marketplace for the Alibi demo. Synthetic data only.</p>
+-    <header class="shop-header">
+-      <a class="shop-name" href="/">
+-        {shop.name}
+-      </a>
+-      <nav aria-label="Shop">
+-        {nav.map((n) => (
+-          <a href={n.href}>{n.label}</a>
+-        ))}
+-      </nav>
++
++    <header class:list={['top', { checkout }]}>
++      <div class="bar">
++        <a class="brand" href="/" aria-label={`${shop.name} home`}>
++          <span class="brand-mark" aria-hidden="true">
++            m
++          </span>
++          <span class="brand-name">mock marketplace</span>
++        </a>
++
++        {checkout ? (
++          <span class="secure">
++            <svg
++              viewBox="0 0 24 24"
++              width="16"
++              height="16"
++              fill="none"
++              stroke="currentColor"
++              stroke-width="2"
++              stroke-linecap="round"
++              aria-hidden="true"
++            >
++              <rect x="5" y="11" width="14" height="10" rx="2" />
++              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
++            </svg>
++            Secure checkout
++          </span>
++        ) : (
++          <>
++            <form class="search" action="/" role="search">
++              <label class="visually-hidden" for="q">
++                Search
++              </label>
++              <svg
++                viewBox="0 0 24 24"
++                width="18"
++                height="18"
++                fill="none"
++                stroke="currentColor"
++                stroke-width="2"
++                stroke-linecap="round"
++                aria-hidden="true"
++              >
++                <circle cx="11" cy="11" r="7" />
++                <path d="M20 20l-4-4" />
++              </svg>
++              <input id="q" name="q" type="search" placeholder="Search for items" value={q} />
++            </form>
++            <nav class="actions" aria-label="Account">
++              <a class="sell" href="/seller/">
++                Sell
++              </a>
++              <a class="icon" href="/account/settings/" aria-label="Account">
++                <svg
++                  viewBox="0 0 24 24"
++                  width="22"
++                  height="22"
++                  fill="none"
++                  stroke="currentColor"
++                  stroke-width="1.8"
++                  stroke-linecap="round"
++                  aria-hidden="true"
++                >
++                  <circle cx="12" cy="8" r="4" />
++                  <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
++                </svg>
++              </a>
++              <a class="icon" href="/basket/" aria-label={`Basket, ${basketCount} items`}>
++                <svg
++                  viewBox="0 0 24 24"
++                  width="22"
++                  height="22"
++                  fill="none"
++                  stroke="currentColor"
++                  stroke-width="1.8"
++                  stroke-linecap="round"
++                  stroke-linejoin="round"
++                  aria-hidden="true"
++                >
++                  <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8Z" />
++                  <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
++                </svg>
++                {basketCount > 0 && <span class="count">{basketCount}</span>}
++              </a>
++            </nav>
++          </>
++        )}
++      </div>
++
++      {!checkout && (
++        <nav class="cats" aria-label="Categories">
++          <a
++            href="/"
++            aria-current={Astro.url.pathname === '/' && !category && !q ? 'page' : undefined}
++          >
++            All
++          </a>
++          {categories.map((c) => (
++            <a href={`/?c=${c.id}`} aria-current={category === c.id ? 'page' : undefined}>
++              {c.label}
++            </a>
++          ))}
++        </nav>
++      )}
+     </header>
++
+     <main id="main" class="shop-main">
+       <slot />
+     </main>
++
++    <footer class="foot">
++      <div>
++        <span class="brand-name">mock marketplace</span>
++        <p>{shop.tagline}</p>
++      </div>
++      <nav aria-label="Footer">
++        <a href="/">Shop</a>
++        <a href="/seller/">Sell</a>
++        <a href="/account/settings/">Account</a>
++      </nav>
++      <p class="fine">A simulated shop for the Alibi demo. No real orders or payments.</p>
++    </footer>
+   </body>
+ </html>
+ 
+ <style is:global>
+   :root {
+-    --c-bg: #fbf8f4;
++    --c-bg: #ffffff;
++    --c-surface: #ffffff;
++    --c-soft: #f6f5f3;
++    --c-line: #e9e8e5;
++    --c-ink: #141414;
++    --c-ink-soft: #55554f;
++    --c-ink-faint: #6f6f6a;
+     --c-shop: #b5462f;
++    --radius-md: 10px;
++    --page-max: 76rem;
++  }
++
++  .simulated {
++    background: var(--c-soft);
++    color: var(--c-ink-faint);
++  }
++
++  .visually-hidden {
++    position: absolute;
++    width: 1px;
++    height: 1px;
++    overflow: hidden;
++    clip: rect(0 0 0 0);
++    white-space: nowrap;
++  }
++
++  /* Buttons the shop pages share. */
++  .btn {
++    display: inline-flex;
++    align-items: center;
++    justify-content: center;
++    gap: 0.5em;
++    min-height: 48px;
++    padding: 0 var(--space-md);
++    border: 1px solid var(--c-ink);
++    border-radius: var(--radius-pill);
++    background: var(--c-ink);
++    color: #fff;
++    font: 600 var(--t-base) / 1 var(--font-sans);
++    text-decoration: none;
++    cursor: pointer;
++    transition: background 0.15s ease;
++  }
++
++  .btn:hover {
++    background: #333;
++  }
++
++  .btn.ghost {
++    background: #fff;
++    color: var(--c-ink);
++    border-color: var(--c-line);
++  }
++
++  .btn.ghost:hover {
++    border-color: var(--c-ink);
++  }
++
++  .btn.wide {
++    width: 100%;
++  }
++
++  .btn[disabled] {
++    opacity: 0.4;
++    cursor: not-allowed;
+   }
+ </style>
+ 
+ <style>
+-  .shop-header,
+-  .shop-main {
++  .top {
++    position: sticky;
++    top: 0;
++    z-index: 10;
++    background: rgb(255 255 255 / 0.94);
++    backdrop-filter: saturate(1.4) blur(10px);
++    border-bottom: 1px solid var(--c-line);
++  }
++
++  .bar,
++  .cats,
++  .shop-main,
++  .foot {
+     max-width: var(--page-max);
+     margin-inline: auto;
+     padding-inline: var(--gutter);
+   }
+ 
+-  .shop-header {
++  .bar {
+     display: flex;
+     align-items: center;
+-    justify-content: space-between;
+-    flex-wrap: wrap;
+     gap: var(--space-sm);
+-    padding-block: var(--space-sm);
+-    border-bottom: 1px solid var(--c-line);
++    min-height: 64px;
++  }
++
++  .brand {
++    display: inline-flex;
++    align-items: center;
++    gap: 0.5rem;
++    color: var(--c-ink);
++    text-decoration: none;
++    flex: none;
+   }
+ 
+-  .shop-name {
+-    font-size: var(--t-md);
++  .brand-mark {
++    display: grid;
++    place-items: center;
++    width: 2rem;
++    height: 2rem;
++    border-radius: 9px;
++    background: var(--c-ink);
++    color: #fff;
+     font-weight: 800;
+-    color: var(--c-shop);
++    font-size: 1.15rem;
++    line-height: 1;
++    padding-bottom: 0.15rem;
++  }
++
++  .brand-name {
++    font-weight: 750;
++    letter-spacing: -0.03em;
++    font-size: 1.1rem;
++  }
++
++  .search {
++    position: relative;
++    flex: 1;
++    max-width: 36rem;
++    margin-inline: auto;
++    color: var(--c-ink-faint);
++  }
++
++  .search svg {
++    position: absolute;
++    left: 0.9rem;
++    top: 50%;
++    translate: 0 -50%;
++  }
++
++  .search input {
++    width: 100%;
++    height: 42px;
++    padding: 0 1rem 0 2.6rem;
++    border: 1px solid transparent;
++    border-radius: var(--radius-pill);
++    background: var(--c-soft);
++    font: inherit;
++    color: var(--c-ink);
++  }
++
++  .search input:focus {
++    outline: none;
++    border-color: var(--c-ink);
++    background: #fff;
++  }
++
++  .actions {
++    display: flex;
++    align-items: center;
++    gap: var(--space-3xs);
++    flex: none;
++  }
++
++  .actions a {
+     text-decoration: none;
++    color: var(--c-ink);
+   }
+ 
+-  nav {
++  .sell {
++    padding: 0.5rem 0.9rem;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-pill);
++    font-weight: 600;
++    font-size: var(--t-sm);
++    margin-right: var(--space-3xs);
++  }
++
++  .sell:hover {
++    border-color: var(--c-ink);
++  }
++
++  .icon {
++    position: relative;
++    display: grid;
++    place-items: center;
++    width: 42px;
++    height: 42px;
++    border-radius: 50%;
++  }
++
++  .icon:hover {
++    background: var(--c-soft);
++  }
++
++  .count {
++    position: absolute;
++    top: 3px;
++    right: 1px;
++    min-width: 1.15rem;
++    height: 1.15rem;
++    padding-inline: 0.25rem;
++    border-radius: var(--radius-pill);
++    background: var(--c-shop);
++    color: #fff;
++    font-size: 0.7rem;
++    font-weight: 700;
++    line-height: 1.15rem;
++    text-align: center;
++  }
++
++  .secure {
++    margin-left: auto;
++    display: inline-flex;
++    align-items: center;
++    gap: 0.4rem;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++
++  .cats {
+     display: flex;
+-    gap: var(--space-sm);
++    gap: var(--space-md);
++    overflow-x: auto;
++    scrollbar-width: none;
++    font-size: var(--t-sm);
++  }
++
++  .cats a {
++    padding: 0.6rem 0;
++    color: var(--c-ink-soft);
++    text-decoration: none;
++    white-space: nowrap;
++    border-bottom: 2px solid transparent;
++  }
++
++  .cats a:hover {
++    color: var(--c-ink);
++  }
++
++  .cats a[aria-current='page'] {
++    color: var(--c-ink);
++    font-weight: 600;
++    border-bottom-color: var(--c-ink);
+   }
+ 
+   .shop-main {
+     padding-block: var(--space-lg) var(--space-2xl);
+   }
++
++  .foot {
++    display: flex;
++    flex-wrap: wrap;
++    justify-content: space-between;
++    gap: var(--space-sm) var(--space-lg);
++    padding-block: var(--space-lg);
++    border-top: 1px solid var(--c-line);
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++
++  .foot p {
++    margin: 0.25rem 0 0;
++  }
++
++  .foot nav {
++    display: flex;
++    gap: var(--space-md);
++  }
++
++  .foot nav a {
++    text-decoration: none;
++  }
++
++  .foot nav a:hover {
++    text-decoration: underline;
++  }
++
++  .foot .fine {
++    flex-basis: 100%;
++    font-size: var(--t-xs);
++    color: var(--c-ink-faint);
++  }
++
++  @media (max-width: 640px) {
++    .bar {
++      flex-wrap: wrap;
++      padding-block: var(--space-2xs);
++    }
++
++    .top:not(.checkout) .actions {
++      margin-left: auto;
++    }
++
++    .search {
++      order: 3;
++      flex-basis: 100%;
++      max-width: none;
++    }
++
++    .sell {
++      display: none;
++    }
++  }
+ </style>
+diff --git a/web/apps/merchant/src/lib/alibi.ts b/web/apps/merchant/src/lib/alibi.ts
+new file mode 100644
+index 0000000..eae5071
+--- /dev/null
++++ b/web/apps/merchant/src/lib/alibi.ts
+@@ -0,0 +1,30 @@
++/**
++ * The shop's own memory of an Alibi connection. Alibi tells the shop only the
++ * outcome and the holder's first name (packages/ui/src/links.ts); the shop
++ * keeps that in a cookie so every page can show the connected state. A real
++ * merchant would store it against the customer's account.
++ */
++export const ALIBI_COOKIE = 'mm_alibi';
++
++export interface AlibiLink {
++  name: string;
++  connectedAt: string;
++}
++
++export function parseAlibiLink(value: string | undefined): AlibiLink | null {
++  if (!value) return null;
++  try {
++    const v = JSON.parse(decodeURIComponent(value)) as Partial<AlibiLink>;
++    if (typeof v.connectedAt !== 'string') return null;
++    return {
++      name: typeof v.name === 'string' ? v.name.slice(0, 40) : '',
++      connectedAt: v.connectedAt,
++    };
++  } catch {
++    return null;
++  }
++}
++
++export function serializeAlibiLink(link: AlibiLink): string {
++  return encodeURIComponent(JSON.stringify(link));
++}
+diff --git a/web/apps/merchant/src/lib/basket.ts b/web/apps/merchant/src/lib/basket.ts
+new file mode 100644
+index 0000000..2dfa538
+--- /dev/null
++++ b/web/apps/merchant/src/lib/basket.ts
+@@ -0,0 +1,99 @@
++/**
++ * The basket and order totals. The basket lives in a cookie (ids joined by
++ * `.`) so every page can render it on the server. Pure functions, unit tested
++ * in tests/basket.test.ts.
++ */
++import {
++  defaultBasket,
++  deliveryOptions,
++  findListing,
++  type DeliveryId,
++  type Listing,
++} from '../data/shop';
++
++export const BASKET_COOKIE = 'mm_basket';
++export const ORDER_COOKIE = 'mm_last_order';
++
++const MAX_ITEMS = 20;
++
++/**
++ * Reads the cookie. Absent means a first visit (the default basket). An
++ * emptied basket is stored as `-`, because browsers drop empty cookie values.
++ */
++export function parseBasket(value: string | undefined): string[] {
++  if (value === undefined) return [...defaultBasket];
++  const ids = value.split('.').filter((id) => findListing(id));
++  return [...new Set(ids)].slice(0, MAX_ITEMS);
++}
++
++export function serializeBasket(ids: string[]): string {
++  return [...new Set(ids)].slice(0, MAX_ITEMS).join('.') || '-';
++}
++
++export function addToBasket(ids: string[], id: string): string[] {
++  return findListing(id) && !ids.includes(id) ? [...ids, id] : ids;
++}
++
++export function removeFromBasket(ids: string[], id: string): string[] {
++  return ids.filter((x) => x !== id);
++}
++
++/** Buyer protection, as resale marketplaces charge it: 5% of the items plus 70p. */
++export function buyerProtectionMinor(subtotalMinor: number): number {
++  return subtotalMinor === 0 ? 0 : Math.round(subtotalMinor * 0.05) + 70;
++}
++
++export interface Priced {
++  items: Listing[];
++  subtotalMinor: number;
++  protectionMinor: number;
++  deliveryMinor: number;
++  totalMinor: number;
++}
++
++/** Prices a basket. Leave `delivery` out before the buyer has chosen one. */
++export function priceBasket(ids: string[], delivery?: DeliveryId): Priced {
++  const items = ids.map(findListing).filter((l): l is Listing => Boolean(l));
++  const subtotalMinor = items.reduce((s, l) => s + l.priceMinor, 0);
++  const protectionMinor = buyerProtectionMinor(subtotalMinor);
++  const option = deliveryOptions.find((d) => d.id === delivery);
++  const deliveryMinor = items.length && option ? option.priceMinor : 0;
++  return {
++    items,
++    subtotalMinor,
++    protectionMinor,
++    deliveryMinor,
++    totalMinor: subtotalMinor + protectionMinor + deliveryMinor,
++  };
++}
++
++/** The order the confirmation page shows, kept in a cookie after "Pay". */
++export interface PlacedOrder {
++  ref: string;
++  ids: string[];
++  delivery: DeliveryId;
++  name: string;
++  email: string;
++  totalMinor: number;
++  placedAt: string;
++}
++
++export function parseOrder(value: string | undefined): PlacedOrder | null {
++  if (!value) return null;
++  try {
++    const o = JSON.parse(value) as Partial<PlacedOrder>;
++    if (typeof o.ref !== 'string' || !Array.isArray(o.ids) || typeof o.totalMinor !== 'number')
++      return null;
++    return {
++      ref: o.ref,
++      ids: o.ids.filter((id): id is string => typeof id === 'string'),
++      delivery: o.delivery === 'express' ? 'express' : 'standard',
++      name: typeof o.name === 'string' ? o.name : '',
++      email: typeof o.email === 'string' ? o.email : '',
++      totalMinor: o.totalMinor,
++      placedAt: typeof o.placedAt === 'string' ? o.placedAt : '',
++    };
++  } catch {
++    return null;
++  }
++}
+diff --git a/web/apps/merchant/src/pages/account/settings/index.astro b/web/apps/merchant/src/pages/account/settings/index.astro
+index ec27ee9..5cc2dcc 100644
+--- a/web/apps/merchant/src/pages/account/settings/index.astro
++++ b/web/apps/merchant/src/pages/account/settings/index.astro
+@@ -1,84 +1,145 @@
+ ---
+-/** Maya's seller account, where "Connect to my Alibi" lives. */
+-import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
+-import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
+-
++/** Maya's account: profile, connected services ("Connect to my Alibi") and her sales. */
+ import ShopLayout from '@/layouts/ShopLayout.astro';
+-import ConnectionStatus from '@/components/ConnectionStatus.astro';
++import AlibiConnection from '@/components/AlibiConnection.astro';
++import SellerNav from '@/components/SellerNav.astro';
+ import { formatGBP, sales, seller, shop } from '@/data/shop';
+-
+-const returnTo = new URL('/account/settings/', Astro.site).toString();
+ ---
+ 
+ <ShopLayout title="Account settings">
+-  <h1>Seller account</h1>
++  <h1>Account</h1>
++  <SellerNav current="settings" />
+ 
+-  <section class="panel" aria-labelledby="profile-title">
+-    <h2 id="profile-title">Profile</h2>
+-    <p>
+-      {seller.name} · seller ID <code>{seller.subjectRef}</code>
+-    </p>
+-  </section>
++  <div class="cols">
++    <section aria-labelledby="profile-title" class="panel">
++      <h2 id="profile-title">Profile</h2>
++      <div class="profile">
++        <span class="avatar" aria-hidden="true">
++          {seller.name.charAt(0)}
++        </span>
++        <span>
++          <strong>{seller.name}</strong>
++          <br />
++          <span class="muted">
++            @{seller.name.toLowerCase()} · seller ID <code>{seller.subjectRef}</code>
++          </span>
++        </span>
++      </div>
++    </section>
++
++    <section aria-labelledby="connected-title" class="panel">
++      <h2 id="connected-title">Connected services</h2>
++      <AlibiConnection
++        context="account"
++        returnPath="/account/settings/"
++        heading="Alibi"
++        pitch={`Keep a verified copy of your ${shop.name} sales, refunds, fees and payouts in your Alibi passport, so you can explain payments to your bank.`}
++        connected={`Your ${shop.name} sales, refunds, fees and payouts now go to your Alibi passport.`}
++        viewLink
++      />
++    </section>
++  </div>
+ 
+-  <section class="panel" aria-labelledby="sales-title">
++  <section aria-labelledby="sales-title" class="panel">
+     <h2 id="sales-title">Your sales</h2>
+-    <table>
+-      <thead>
+-        <tr>
+-          <th scope="col">Sold</th>
+-          <th scope="col">Order</th>
+-          <th scope="col">Item</th>
+-          <th scope="col" class="num">
+-            Price
+-          </th>
+-        </tr>
+-      </thead>
+-      <tbody>
+-        {sales.map((s) => (
++    <div class="table-wrap">
++      <table>
++        <thead>
+           <tr>
+-            <td>{s.soldOn}</td>
+-            <td>
+-              <code>{s.reference}</code>
+-            </td>
+-            <td>{s.title}</td>
+-            <td class="num">{formatGBP(s.priceMinor)}</td>
++            <th scope="col">Sold</th>
++            <th scope="col">Order</th>
++            <th scope="col">Item</th>
++            <th scope="col" class="num">
++              Price
++            </th>
+           </tr>
+-        ))}
+-      </tbody>
+-    </table>
+-  </section>
+-
+-  <section class="panel" aria-labelledby="connected-title">
+-    <h2 id="connected-title">Connected services</h2>
+-    <p>
+-      Keep a verified copy of your {shop.name} sales, refunds, fees and payouts in your Alibi
+-      passport, so you can explain payments to your bank.
+-    </p>
+-    <ConnectionStatus />
+-    <ConnectAlibiButton
+-      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
+-      merchantId={shop.merchantId}
+-      returnTo={returnTo}
+-      context="account"
+-    />
++        </thead>
++        <tbody>
++          {sales.map((s) => (
++            <tr>
++              <td>{s.soldOn}</td>
++              <td>
++                <code>{s.reference}</code>
++              </td>
++              <td>{s.title}</td>
++              <td class="num">{formatGBP(s.priceMinor)}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
+   </section>
+ </ShopLayout>
+ 
+ <style>
++  h1 {
++    font-size: var(--t-lg);
++    letter-spacing: -0.02em;
++  }
++
++  .cols {
++    display: grid;
++    gap: 0 var(--space-md);
++  }
++
++  @media (min-width: 820px) {
++    .cols {
++      grid-template-columns: 1fr 1.4fr;
++    }
++  }
++
+   .panel {
+-    margin-block: var(--space-md);
++    margin-bottom: var(--space-md);
+     padding: var(--space-md);
+-    background: var(--c-surface);
+     border: 1px solid var(--c-line);
+     border-radius: var(--radius-md);
+-    max-width: var(--measure);
+   }
+ 
+   h2 {
+     font-size: var(--t-md);
+   }
+ 
++  .profile {
++    display: flex;
++    align-items: center;
++    gap: var(--space-xs);
++    line-height: 1.4;
++  }
++
++  .avatar {
++    display: grid;
++    place-items: center;
++    width: 3rem;
++    height: 3rem;
++    border-radius: 50%;
++    background: var(--c-soft);
++    font-weight: 700;
++    font-size: var(--t-md);
++  }
++
++  .muted {
++    color: var(--c-ink-faint);
++    font-size: var(--t-sm);
++  }
++
++  .table-wrap {
++    overflow-x: auto;
++  }
++
++  th {
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++    font-weight: 500;
++  }
++
++  td:first-child,
++  td code,
++  .num {
++    white-space: nowrap;
++  }
++
+   .num {
+     text-align: right;
++    font-variant-numeric: tabular-nums;
+   }
+ </style>
+diff --git a/web/apps/merchant/src/pages/basket/index.astro b/web/apps/merchant/src/pages/basket/index.astro
+new file mode 100644
+index 0000000..2e98983
+--- /dev/null
++++ b/web/apps/merchant/src/pages/basket/index.astro
+@@ -0,0 +1,232 @@
++---
++/**
++ * The basket. GET shows it; POST changes it (`action` add, buy or remove, and
++ * the listing `id`) and redirects, so it works without JavaScript.
++ */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import ProductArt from '@/components/ProductArt.astro';
++import { formatGBP } from '@/data/shop';
++import {
++  BASKET_COOKIE,
++  addToBasket,
++  parseBasket,
++  priceBasket,
++  removeFromBasket,
++  serializeBasket,
++} from '@/lib/basket';
++
++const cookieOptions = { path: '/', sameSite: 'lax', maxAge: 60 * 60 * 24 * 30 } as const;
++let ids = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value);
++
++if (Astro.request.method === 'POST') {
++  const form = await Astro.request.formData();
++  const action = String(form.get('action') ?? '');
++  const id = String(form.get('id') ?? '');
++  ids = action === 'remove' ? removeFromBasket(ids, id) : addToBasket(ids, id);
++  Astro.cookies.set(BASKET_COOKIE, serializeBasket(ids), cookieOptions);
++  return Astro.redirect(action === 'buy' ? '/checkout/' : '/basket/', 303);
++}
++
++const priced = priceBasket(ids);
++---
++
++<ShopLayout title="Basket">
++  <h1>Basket</h1>
++
++  {priced.items.length === 0 ? (
++    <div class="empty">
++      <p>Your basket is empty.</p>
++      <a class="btn" href="/">
++        Start shopping
++      </a>
++    </div>
++  ) : (
++    <div class="layout">
++      <ul class="lines">
++        {priced.items.map((l) => (
++          <li>
++            <a class="thumb" href={`/item/${l.id}/`}>
++              <ProductArt kind={l.art} tone={l.tone} small />
++            </a>
++            <span class="what">
++              <a href={`/item/${l.id}/`}>{l.title}</a>
++              <span class="muted">
++                {l.size} · {l.condition} · @{l.seller}
++              </span>
++            </span>
++            <span class="price">{formatGBP(l.priceMinor)}</span>
++            <form method="post" class="remove">
++              <input type="hidden" name="id" value={l.id} />
++              <button name="action" value="remove" aria-label={`Remove ${l.title}`}>
++                Remove
++              </button>
++            </form>
++          </li>
++        ))}
++      </ul>
++
++      <aside class="summary" aria-labelledby="summary-title">
++        <h2 id="summary-title">Summary</h2>
++        <dl>
++          <div>
++            <dt>Items ({priced.items.length})</dt>
++            <dd>{formatGBP(priced.subtotalMinor)}</dd>
++          </div>
++          <div>
++            <dt>Buyer protection</dt>
++            <dd>{formatGBP(priced.protectionMinor)}</dd>
++          </div>
++          <div>
++            <dt>Delivery</dt>
++            <dd class="muted">At checkout</dd>
++          </div>
++          <div class="total">
++            <dt>Total</dt>
++            <dd>{formatGBP(priced.totalMinor)}</dd>
++          </div>
++        </dl>
++        <a class="btn wide" href="/checkout/">
++          Checkout
++        </a>
++        <a class="keep" href="/">
++          Continue shopping
++        </a>
++      </aside>
++    </div>
++  )}
++</ShopLayout>
++
++<style>
++  h1 {
++    font-size: var(--t-lg);
++    letter-spacing: -0.02em;
++    margin-bottom: var(--space-md);
++  }
++
++  .empty {
++    padding: var(--space-xl) 0;
++    color: var(--c-ink-soft);
++  }
++
++  .layout {
++    display: grid;
++    gap: var(--space-lg);
++  }
++
++  @media (min-width: 860px) {
++    .layout {
++      grid-template-columns: minmax(0, 1fr) 22rem;
++      align-items: start;
++    }
++  }
++
++  .lines {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++    border-top: 1px solid var(--c-line);
++  }
++
++  .lines li {
++    display: grid;
++    grid-template-columns: 5rem minmax(0, 1fr) auto;
++    grid-template-rows: auto auto;
++    gap: 0.25rem var(--space-sm);
++    padding: var(--space-sm) 0;
++    border-bottom: 1px solid var(--c-line);
++  }
++
++  .thumb {
++    grid-row: 1 / span 2;
++  }
++
++  .what {
++    display: grid;
++    line-height: 1.35;
++  }
++
++  .what a {
++    text-decoration: none;
++    font-weight: 550;
++  }
++
++  .what a:hover {
++    text-decoration: underline;
++  }
++
++  .muted {
++    color: var(--c-ink-faint);
++    font-size: var(--t-sm);
++  }
++
++  .price {
++    font-weight: 600;
++    font-variant-numeric: tabular-nums;
++  }
++
++  .remove {
++    grid-column: 2;
++    align-self: end;
++  }
++
++  .remove button {
++    padding: 0;
++    border: 0;
++    background: none;
++    font: inherit;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++    text-decoration: underline;
++    text-underline-offset: 3px;
++    cursor: pointer;
++  }
++
++  .summary {
++    padding: var(--space-md);
++    background: var(--c-soft);
++    border-radius: var(--radius-md);
++  }
++
++  @media (min-width: 860px) {
++    .summary {
++      position: sticky;
++      top: 140px;
++    }
++  }
++
++  .summary h2 {
++    font-size: var(--t-md);
++  }
++
++  dl {
++    margin: 0 0 var(--space-md);
++  }
++
++  dl > div {
++    display: flex;
++    justify-content: space-between;
++    padding: 0.3rem 0;
++    font-size: var(--t-sm);
++  }
++
++  dd {
++    margin: 0;
++    font-variant-numeric: tabular-nums;
++  }
++
++  dl > .total {
++    margin-top: var(--space-2xs);
++    padding-top: var(--space-xs);
++    border-top: 1px solid var(--c-line);
++    font-size: var(--t-base);
++    font-weight: 700;
++  }
++
++  .keep {
++    display: block;
++    margin-top: var(--space-sm);
++    text-align: center;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++</style>
+diff --git a/web/apps/merchant/src/pages/checkout/complete/index.astro b/web/apps/merchant/src/pages/checkout/complete/index.astro
+new file mode 100644
+index 0000000..ac222cc
+--- /dev/null
++++ b/web/apps/merchant/src/pages/checkout/complete/index.astro
+@@ -0,0 +1,188 @@
++---
++/**
++ * Order confirmation. Shows the demo order placed at checkout and where its
++ * receipt goes: into the buyer's Alibi if they connected, otherwise a last
++ * chance to connect.
++ */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import AlibiConnection from '@/components/AlibiConnection.astro';
++import ProductArt from '@/components/ProductArt.astro';
++import { deliveryOptions, findListing, formatGBP, type Listing } from '@/data/shop';
++import { ORDER_COOKIE, parseOrder } from '@/lib/basket';
++
++const order = parseOrder(Astro.cookies.get(ORDER_COOKIE)?.value);
++if (!order) return Astro.redirect('/', 303);
++
++const items = order.ids.map(findListing).filter((l): l is Listing => Boolean(l));
++const delivery = deliveryOptions.find((d) => d.id === order.delivery)!;
++const first = order.name.split(' ')[0] || 'there';
++const placed = new Date(order.placedAt).toLocaleString('en-GB', {
++  day: 'numeric',
++  month: 'long',
++  hour: '2-digit',
++  minute: '2-digit',
++});
++---
++
++<ShopLayout title="Order confirmed" checkout>
++  <div class="wrap">
++    <span class="tick" aria-hidden="true">
++      <svg
++        viewBox="0 0 24 24"
++        width="26"
++        height="26"
++        fill="none"
++        stroke="currentColor"
++        stroke-width="2.4"
++        stroke-linecap="round"
++        stroke-linejoin="round"
++      >
++        <path d="M5 12.5l4.5 4.5L19 7.5" />
++      </svg>
++    </span>
++    <h1>Thanks, {first}. Your order is confirmed.</h1>
++    <p class="sub">
++      Order <strong>{order.ref}</strong> · {placed}. A confirmation is on its way to {order.email}.
++    </p>
++
++    <AlibiConnection
++      context="checkout"
++      returnPath="/checkout/complete/"
++      heading="Keep this receipt in your Alibi"
++      pitch="Connect now and this receipt, and future orders, go straight into your Alibi passport."
++      connected="Receipt for this order sent to your Alibi passport."
++      viewLink
++    />
++
++    <section class="receipt" aria-labelledby="receipt-title">
++      <h2 id="receipt-title">Receipt</h2>
++      <ul>
++        {items.map((l) => (
++          <li>
++            <span class="thumb">
++              <ProductArt kind={l.art} tone={l.tone} small />
++            </span>
++            <span class="what">
++              {l.title}
++              <span class="muted">Sold by @{l.seller}</span>
++            </span>
++            <span class="num">{formatGBP(l.priceMinor)}</span>
++          </li>
++        ))}
++      </ul>
++      <dl>
++        <div>
++          <dt>
++            {delivery.label} delivery · {delivery.detail}
++          </dt>
++          <dd>{formatGBP(delivery.priceMinor)}</dd>
++        </div>
++        <div class="total">
++          <dt>Paid (simulated)</dt>
++          <dd>{formatGBP(order.totalMinor)}</dd>
++        </div>
++      </dl>
++    </section>
++
++    <a class="btn ghost" href="/">
++      Continue shopping
++    </a>
++  </div>
++</ShopLayout>
++
++<style>
++  .wrap {
++    max-width: 34rem;
++    margin-inline: auto;
++    text-align: center;
++  }
++
++  .tick {
++    display: inline-grid;
++    place-items: center;
++    width: 3.5rem;
++    height: 3.5rem;
++    border-radius: 50%;
++    background: color-mix(in srgb, var(--c-ok) 12%, white);
++    color: var(--c-ok);
++    margin-bottom: var(--space-sm);
++  }
++
++  h1 {
++    font-size: var(--t-lg);
++    letter-spacing: -0.02em;
++  }
++
++  .sub {
++    color: var(--c-ink-soft);
++    margin-bottom: var(--space-lg);
++  }
++
++  .wrap :global(.alibi-box) {
++    text-align: left;
++  }
++
++  .receipt {
++    margin: var(--space-lg) 0;
++    padding: var(--space-md);
++    background: var(--c-soft);
++    border-radius: var(--radius-md);
++    text-align: left;
++  }
++
++  .receipt h2 {
++    font-size: var(--t-md);
++  }
++
++  ul {
++    list-style: none;
++    margin: 0 0 var(--space-sm);
++    padding: 0;
++  }
++
++  li {
++    display: grid;
++    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
++    gap: var(--space-xs);
++    align-items: center;
++    padding-block: var(--space-2xs);
++    font-size: var(--t-sm);
++  }
++
++  .what {
++    display: grid;
++    line-height: 1.3;
++  }
++
++  .muted {
++    color: var(--c-ink-faint);
++  }
++
++  .num,
++  dd {
++    font-variant-numeric: tabular-nums;
++  }
++
++  dl {
++    margin: 0;
++    padding-top: var(--space-xs);
++    border-top: 1px solid var(--c-line);
++  }
++
++  dl > div {
++    display: flex;
++    justify-content: space-between;
++    gap: var(--space-sm);
++    padding: 0.3rem 0;
++    font-size: var(--t-sm);
++  }
++
++  dd {
++    margin: 0;
++  }
++
++  dl > .total {
++    font-weight: 700;
++    font-size: var(--t-base);
++  }
++</style>
+diff --git a/web/apps/merchant/src/pages/checkout/index.astro b/web/apps/merchant/src/pages/checkout/index.astro
+index 7ebf621..60b348c 100644
+--- a/web/apps/merchant/src/pages/checkout/index.astro
++++ b/web/apps/merchant/src/pages/checkout/index.astro
+@@ -1,88 +1,469 @@
+ ---
+ /**
+- * Checkout, the second place a merchant can offer "Connect to my Alibi". This
+- * page shows an example buyer, not Maya, so the basket is labelled as an example.
++ * Checkout, the main place this shop offers "Connect to my Alibi". The buyer
++ * is an example person (not Maya), prefilled and labelled as such. Paying is
++ * simulated: POST places the order in a cookie, empties the basket and goes
++ * to the confirmation page. No payment is taken.
+  */
+-import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
+-import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
+-
+ import ShopLayout from '@/layouts/ShopLayout.astro';
+-import ConnectionStatus from '@/components/ConnectionStatus.astro';
+-import { exampleBasket, formatGBP, shop } from '@/data/shop';
++import AlibiConnection from '@/components/AlibiConnection.astro';
++import ProductArt from '@/components/ProductArt.astro';
++import { deliveryOptions, exampleBuyer, formatGBP, shop, type DeliveryId } from '@/data/shop';
++import {
++  BASKET_COOKIE,
++  ORDER_COOKIE,
++  parseBasket,
++  priceBasket,
++  serializeBasket,
++  type PlacedOrder,
++} from '@/lib/basket';
++
++const ids = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value);
++if (ids.length === 0) return Astro.redirect('/basket/', 303);
++
++let values: Record<string, string> = { ...exampleBuyer, delivery: 'standard' };
++let errors: Record<string, string> = {};
++
++if (Astro.request.method === 'POST') {
++  const form = await Astro.request.formData();
++  values = Object.fromEntries(
++    ['email', 'name', 'line1', 'city', 'postcode', 'delivery'].map((k) => [
++      k,
++      String(form.get(k) ?? '').trim(),
++    ]),
++  );
++  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email ?? ''))
++    errors.email = 'Enter an email address.';
++  if (!values.name) errors.name = 'Enter your full name.';
++  if (!values.line1) errors.line1 = 'Enter the first line of your address.';
++  if (!values.city) errors.city = 'Enter a town or city.';
++  if (!values.postcode) errors.postcode = 'Enter a postcode.';
++
++  if (Object.keys(errors).length === 0) {
++    const delivery: DeliveryId = values.delivery === 'express' ? 'express' : 'standard';
++    const order: PlacedOrder = {
++      ref: `MM-${50000 + Math.floor(Math.random() * 10000)}`,
++      ids,
++      delivery,
++      name: values.name!,
++      email: values.email!,
++      totalMinor: priceBasket(ids, delivery).totalMinor,
++      placedAt: new Date().toISOString(),
++    };
++    const opts = { path: '/', sameSite: 'lax', maxAge: 60 * 60 * 24 * 30 } as const;
++    Astro.cookies.set(ORDER_COOKIE, JSON.stringify(order), opts);
++    Astro.cookies.set(BASKET_COOKIE, serializeBasket([]), opts);
++    return Astro.redirect('/checkout/complete/', 303);
++  }
++}
+ 
+-const basket = exampleBasket;
+-const total = basket.reduce((sum, l) => sum + l.priceMinor, 0);
+-const returnTo = new URL('/checkout/', Astro.site).toString();
++const delivery: DeliveryId = values.delivery === 'express' ? 'express' : 'standard';
++const priced = priceBasket(ids, delivery);
++const prices = Object.fromEntries(
++  deliveryOptions.map((d) => [d.id, priceBasket(ids, d.id).totalMinor]),
++);
+ ---
+ 
+-<ShopLayout title="Checkout">
+-  <h1>Checkout</h1>
+-
+-  <section class="panel" aria-labelledby="basket-title">
+-    <h2 id="basket-title">Your basket</h2>
+-    <p class="example">Example buyer and basket, not part of Maya’s case.</p>
+-    <table>
+-      <tbody>
+-        {basket.map((l) => (
+-          <tr>
+-            <td>{l.title}</td>
+-            <td class="num">{formatGBP(l.priceMinor)}</td>
+-          </tr>
++<ShopLayout title="Checkout" checkout>
++  <div class="layout">
++    <form method="post" class="steps" novalidate>
++      <h1>Checkout</h1>
++      <p class="example">Example buyer, prefilled for the demo. Not part of Maya’s case.</p>
++
++      <section aria-labelledby="contact-title">
++        <h2 id="contact-title">Contact</h2>
++        <div class="field">
++          <label for="email">Email</label>
++          <input
++            id="email"
++            name="email"
++            type="email"
++            autocomplete="off"
++            value={values.email}
++            aria-invalid={errors.email ? 'true' : undefined}
++          />
++          {errors.email && <p class="err">{errors.email}</p>}
++        </div>
++      </section>
++
++      <section aria-labelledby="delivery-title">
++        <h2 id="delivery-title">Delivery</h2>
++        <div class="field">
++          <label for="name">Full name</label>
++          <input
++            id="name"
++            name="name"
++            autocomplete="off"
++            value={values.name}
++            aria-invalid={errors.name ? 'true' : undefined}
++          />
++          {errors.name && <p class="err">{errors.name}</p>}
++        </div>
++        <div class="field">
++          <label for="line1">Address</label>
++          <input
++            id="line1"
++            name="line1"
++            autocomplete="off"
++            value={values.line1}
++            aria-invalid={errors.line1 ? 'true' : undefined}
++          />
++          {errors.line1 && <p class="err">{errors.line1}</p>}
++        </div>
++        <div class="pair">
++          <div class="field">
++            <label for="city">Town or city</label>
++            <input
++              id="city"
++              name="city"
++              autocomplete="off"
++              value={values.city}
++              aria-invalid={errors.city ? 'true' : undefined}
++            />
++            {errors.city && <p class="err">{errors.city}</p>}
++          </div>
++          <div class="field">
++            <label for="postcode">Postcode</label>
++            <input
++              id="postcode"
++              name="postcode"
++              autocomplete="off"
++              value={values.postcode}
++              aria-invalid={errors.postcode ? 'true' : undefined}
++            />
++            {errors.postcode && <p class="err">{errors.postcode}</p>}
++          </div>
++        </div>
++
++        <fieldset class="options">
++          <legend class="visually-hidden">Delivery speed</legend>
++          {deliveryOptions.map((d) => (
++            <label class="option">
++              <input
++                type="radio"
++                name="delivery"
++                value={d.id}
++                checked={d.id === delivery}
++                data-total={formatGBP(prices[d.id]!)}
++                data-price={formatGBP(d.priceMinor)}
++              />
++              <span>
++                <strong>{d.label}</strong>
++                <span class="muted">{d.detail}</span>
++              </span>
++              <span class="opt-price">{formatGBP(d.priceMinor)}</span>
++            </label>
++          ))}
++        </fieldset>
++      </section>
++
++      <section aria-labelledby="payment-title">
++        <h2 id="payment-title">Payment</h2>
++        <label class="option">
++          <input type="radio" name="payment" value="card" checked />
++          <span>
++            <strong>Card ending 4242</strong>
++            <span class="muted">Example card. No payment is taken.</span>
++          </span>
++          <span class="card-mark" aria-hidden="true">
++            VISA
++          </span>
++        </label>
++      </section>
++
++      <section aria-labelledby="proof-title">
++        <h2 id="proof-title">Proof of purchase</h2>
++        <AlibiConnection
++          context="checkout"
++          returnPath="/checkout/"
++          heading="Save this receipt to your Alibi"
++          pitch={`Keep a verified copy of this order in your Alibi passport, so you can explain the payment if your bank ever asks. ${shop.name} never sees your passport.`}
++          connected="This order and its receipt will be added to your Alibi passport when you pay."
++        />
++      </section>
++
++      <button class="btn wide pay">
++        Pay <span data-pay-total>{formatGBP(priced.totalMinor)}</span>
++      </button>
++      <p class="fine">Simulated checkout. Pressing pay places a demo order; no money moves.</p>
++    </form>
++
++    <aside class="summary" aria-labelledby="summary-title">
++      <h2 id="summary-title">Order summary</h2>
++      <ul class="lines">
++        {priced.items.map((l) => (
++          <li>
++            <span class="thumb">
++              <ProductArt kind={l.art} tone={l.tone} small />
++            </span>
++            <span class="what">
++              {l.title}
++              <span class="muted">
++                {l.size} · @{l.seller}
++              </span>
++            </span>
++            <span class="num">{formatGBP(l.priceMinor)}</span>
++          </li>
+         ))}
+-        <tr class="total">
+-          <th scope="row">Total</th>
+-          <td class="num">{formatGBP(total)}</td>
+-        </tr>
+-      </tbody>
+-    </table>
+-    <button type="button" disabled>
+-      Pay (simulated, not wired)
+-    </button>
+-  </section>
+-
+-  <section class="panel" aria-labelledby="alibi-title">
+-    <h2 id="alibi-title">Keep this purchase in your passport</h2>
+-    <p>Connect {shop.name} so this order and its receipt are ready if anyone asks.</p>
+-    <ConnectionStatus />
+-    <ConnectAlibiButton
+-      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
+-      merchantId={shop.merchantId}
+-      returnTo={returnTo}
+-      context="checkout"
+-    />
+-  </section>
++      </ul>
++      <dl>
++        <div>
++          <dt>Items</dt>
++          <dd>{formatGBP(priced.subtotalMinor)}</dd>
++        </div>
++        <div>
++          <dt>Buyer protection</dt>
++          <dd>{formatGBP(priced.protectionMinor)}</dd>
++        </div>
++        <div>
++          <dt>Delivery</dt>
++          <dd data-delivery-price>{formatGBP(priced.deliveryMinor)}</dd>
++        </div>
++        <div class="total">
++          <dt>Total</dt>
++          <dd data-summary-total>{formatGBP(priced.totalMinor)}</dd>
++        </div>
++      </dl>
++      <a class="edit" href="/basket/">
++        Edit basket
++      </a>
++    </aside>
++  </div>
+ </ShopLayout>
+ 
++<script>
++  // Keep the totals in step with the chosen delivery speed.
++  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="delivery"]')) {
++    radio.addEventListener('change', () => {
++      const set = (sel: string, text: string | undefined) => {
++        const el = document.querySelector(sel);
++        if (el && text) el.textContent = text;
++      };
++      set('[data-pay-total]', radio.dataset.total);
++      set('[data-summary-total]', radio.dataset.total);
++      set('[data-delivery-price]', radio.dataset.price);
++    });
++  }
++</script>
++
+ <style>
+-  .panel {
+-    margin-block: var(--space-md);
+-    padding: var(--space-md);
+-    background: var(--c-surface);
+-    border: 1px solid var(--c-line);
+-    border-radius: var(--radius-md);
+-    max-width: var(--measure);
++  .layout {
++    display: grid;
++    gap: var(--space-xl);
++  }
++
++  @media (min-width: 900px) {
++    .layout {
++      grid-template-columns: minmax(0, 1fr) 24rem;
++      align-items: start;
++    }
++  }
++
++  .steps {
++    max-width: 36rem;
++  }
++
++  h1 {
++    font-size: var(--t-lg);
++    letter-spacing: -0.02em;
++    margin-bottom: var(--space-3xs);
++  }
++
++  .example {
++    font-size: var(--t-sm);
++    color: var(--c-ink-faint);
++  }
++
++  section {
++    margin-top: var(--space-lg);
+   }
+ 
+   h2 {
+     font-size: var(--t-md);
++    margin-bottom: var(--space-xs);
+   }
+ 
+-  .num {
+-    text-align: right;
++  .field {
++    display: grid;
++    gap: 0.3rem;
++    margin-bottom: var(--space-xs);
+   }
+ 
+-  .example {
++  label {
++    font-size: var(--t-sm);
++    font-weight: 550;
++  }
++
++  input:not([type='radio']) {
++    height: 46px;
++    padding: 0 0.85rem;
++    border: 1px solid var(--c-line);
++    border-radius: 8px;
++    font: inherit;
++    color: var(--c-ink);
++    background: #fff;
++  }
++
++  input:not([type='radio']):focus {
++    outline: none;
++    border-color: var(--c-ink);
++    box-shadow: 0 0 0 3px rgb(20 20 20 / 0.08);
++  }
++
++  input[aria-invalid='true'] {
++    border-color: var(--c-bad);
++  }
++
++  .err {
++    margin: 0;
++    font-size: var(--t-sm);
++    color: var(--c-bad);
++  }
++
++  .pair {
++    display: grid;
++    gap: 0 var(--space-xs);
++    grid-template-columns: 1fr 1fr;
++  }
++
++  .options {
++    margin: var(--space-xs) 0 0;
++    padding: 0;
++    border: 0;
++    display: grid;
++    gap: var(--space-2xs);
++  }
++
++  .option {
++    display: flex;
++    align-items: center;
++    gap: var(--space-xs);
++    padding: var(--space-xs) var(--space-sm);
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++    font-weight: 400;
++    cursor: pointer;
++  }
++
++  .option:has(input:checked) {
++    border-color: var(--c-ink);
++    box-shadow: inset 0 0 0 1px var(--c-ink);
++  }
++
++  .option input {
++    accent-color: var(--c-ink);
++    width: 1.1rem;
++    height: 1.1rem;
++    margin: 0;
++  }
++
++  .option > span:first-of-type {
++    display: grid;
++    line-height: 1.35;
++  }
++
++  .opt-price {
++    margin-left: auto;
++    font-variant-numeric: tabular-nums;
++  }
++
++  .card-mark {
++    margin-left: auto;
++    padding: 0.15rem 0.45rem;
++    border: 1px solid var(--c-line);
++    border-radius: 4px;
++    font-size: 0.7rem;
++    font-weight: 800;
++    font-style: italic;
++    letter-spacing: 0.04em;
++    color: #1a1f71;
++  }
++
++  .muted {
++    color: var(--c-ink-faint);
+     font-size: var(--t-sm);
++  }
++
++  .pay {
++    margin-top: var(--space-lg);
++    min-height: 54px;
++    font-size: var(--t-md);
++  }
++
++  .fine {
++    margin-top: var(--space-2xs);
++    font-size: var(--t-xs);
+     color: var(--c-ink-faint);
++    text-align: center;
+   }
+ 
+-  .total td {
++  .summary {
++    padding: var(--space-md);
++    background: var(--c-soft);
++    border-radius: var(--radius-md);
++  }
++
++  @media (min-width: 900px) {
++    .summary {
++      position: sticky;
++      top: 96px;
++    }
++  }
++
++  .lines {
++    list-style: none;
++    margin: 0 0 var(--space-sm);
++    padding: 0;
++  }
++
++  .lines li {
++    display: grid;
++    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
++    gap: var(--space-xs);
++    align-items: center;
++    padding-block: var(--space-2xs);
++    font-size: var(--t-sm);
++  }
++
++  .what {
++    display: grid;
++    line-height: 1.3;
++  }
++
++  .num,
++  dd {
++    font-variant-numeric: tabular-nums;
++  }
++
++  dl {
++    margin: 0;
++    padding-top: var(--space-xs);
++    border-top: 1px solid var(--c-line);
++  }
++
++  dl > div {
++    display: flex;
++    justify-content: space-between;
++    padding: 0.3rem 0;
++    font-size: var(--t-sm);
++  }
++
++  dd {
++    margin: 0;
++  }
++
++  dl > .total {
++    margin-top: var(--space-2xs);
++    padding-top: var(--space-xs);
++    border-top: 1px solid var(--c-line);
++    font-size: var(--t-md);
+     font-weight: 700;
+   }
+ 
+-  button {
++  .edit {
++    display: inline-block;
+     margin-top: var(--space-sm);
+-    min-height: 44px;
+-    padding-inline: var(--space-md);
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
+   }
+ </style>
+diff --git a/web/apps/merchant/src/pages/index.astro b/web/apps/merchant/src/pages/index.astro
+index e98f499..90f9e4a 100644
+--- a/web/apps/merchant/src/pages/index.astro
++++ b/web/apps/merchant/src/pages/index.astro
+@@ -1,31 +1,151 @@
+ ---
+-/** Shop front: Maya's lots, all sold in October (case 1's order confirmations). */
++/**
++ * Shop front: items for sale (synthetic listings), filtered by category or a
++ * search, and a row of recently sold items, which are Maya's case 1 sales.
++ */
+ import ShopLayout from '@/layouts/ShopLayout.astro';
+-import { formatGBP, sales, seller, shop } from '@/data/shop';
++import ProductCard from '@/components/ProductCard.astro';
++import { categories, listings, sales, seller, shop } from '@/data/shop';
++
++const q = (Astro.url.searchParams.get('q') ?? '').trim();
++const c = Astro.url.searchParams.get('c');
++const category = categories.find((x) => x.id === c);
++
++const needle = q.toLowerCase();
++const shown = listings.filter(
++  (l) =>
++    (!category || l.category === category.id) &&
++    (!needle || `${l.title} ${l.category} ${l.seller}`.toLowerCase().includes(needle)),
++);
++const heading = q ? `Results for “${q}”` : category ? category.label : 'New in';
++const filtered = Boolean(q || category);
+ ---
+ 
+-<ShopLayout>
+-  <h1>{shop.tagline}</h1>
+-  <p class="lede">{seller.name}’s shop</p>
+-  <ul class="grid">
+-    {sales.map((s) => (
+-      <li>
+-        <div class="photo" aria-hidden="true" />
+-        <h2>{s.title}</h2>
+-        <p>
+-          {formatGBP(s.priceMinor)} · <span class="sold">Sold {s.soldOn}</span>
+-        </p>
+-      </li>
+-    ))}
+-  </ul>
++<ShopLayout title={category?.label ?? (q ? `Search: ${q}` : undefined)}>
++  {!filtered && (
++    <section class="hero">
++      <h1>{shop.tagline}</h1>
++      <p>
++        Every order is covered by buyer protection. Pay at checkout, collect your receipt, done.
++      </p>
++      <a class="promo" href="/account/settings/">
++        <span class="new">New</span> Keep every receipt in your Alibi
++        <span aria-hidden="true">→</span>
++      </a>
++    </section>
++  )}
++
++  <section aria-labelledby="grid-title">
++    <div class="head">
++      <h2 id="grid-title">{heading}</h2>
++      <span class="count">
++        {shown.length} {shown.length === 1 ? 'item' : 'items'}
++      </span>
++    </div>
++    {shown.length ? (
++      <ul class="grid">
++        {shown.map((l) => (
++          <li>
++            <ProductCard
++              href={`/item/${l.id}/`}
++              title={l.title}
++              priceMinor={l.priceMinor}
++              meta={`${l.size} · ${l.condition}`}
++              art={l.art}
++              tone={l.tone}
++            />
++          </li>
++        ))}
++      </ul>
++    ) : (
++      <p class="empty">
++        Nothing matches yet. <a href="/">See everything</a>
++      </p>
++    )}
++  </section>
++
++  {!filtered && (
++    <section aria-labelledby="sold-title" class="sold">
++      <div class="head">
++        <h2 id="sold-title">Recently sold by @{seller.name.toLowerCase()}</h2>
++        <a href="/seller/">Seller hub</a>
++      </div>
++      <ul class="grid">
++        {sales.map((s) => (
++          <li>
++            <ProductCard
++              title={s.title}
++              priceMinor={s.priceMinor}
++              meta={`Sold ${new Date(s.soldOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`}
++              art={s.art}
++              badge="Sold"
++            />
++          </li>
++        ))}
++      </ul>
++    </section>
++  )}
+ </ShopLayout>
+ 
+ <style>
+-  h1 {
+-    font-size: var(--t-lg);
++  .hero {
++    padding: var(--space-lg) 0 var(--space-xl);
++    max-width: 40rem;
++  }
++
++  .hero h1 {
++    font-size: var(--t-xl);
++    font-weight: 750;
++    letter-spacing: -0.035em;
++    line-height: 1.05;
++    margin-bottom: var(--space-sm);
++  }
++
++  .hero p {
++    color: var(--c-ink-soft);
++    font-size: var(--t-md);
++  }
++
++  .promo {
++    display: inline-flex;
++    align-items: center;
++    gap: 0.5rem;
++    padding: 0.35rem 0.9rem 0.35rem 0.35rem;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-pill);
++    font-size: var(--t-sm);
++    text-decoration: none;
++  }
++
++  .promo:hover {
++    border-color: var(--c-ink);
++  }
++
++  .new {
++    padding: 0.1rem 0.55rem;
++    border-radius: var(--radius-pill);
++    background: var(--c-ink);
++    color: #fff;
++    font-size: var(--t-xs);
++    font-weight: 600;
++  }
++
++  .head {
++    display: flex;
++    align-items: baseline;
++    justify-content: space-between;
++    gap: var(--space-sm);
++    margin-bottom: var(--space-sm);
+   }
+ 
+-  .lede {
++  .head h2 {
++    font-size: var(--t-md);
++    margin: 0;
++  }
++
++  .head .count,
++  .head a {
++    font-size: var(--t-sm);
+     color: var(--c-ink-soft);
+   }
+ 
+@@ -34,30 +154,22 @@ import { formatGBP, sales, seller, shop } from '@/data/shop';
+     margin: 0;
+     padding: 0;
+     display: grid;
+-    gap: var(--space-sm);
+-    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+-  }
+-
+-  li {
+-    background: var(--c-surface);
+-    border: 1px solid var(--c-line);
+-    border-radius: var(--radius-md);
+-    padding: var(--space-sm);
++    gap: var(--space-lg) var(--space-sm);
++    grid-template-columns: repeat(2, minmax(0, 1fr));
+   }
+ 
+-  .photo {
+-    aspect-ratio: 4 / 3;
+-    background: var(--c-line);
+-    border-radius: var(--radius-sm);
+-    margin-bottom: var(--space-xs);
++  @media (min-width: 720px) {
++    .grid {
++      grid-template-columns: repeat(4, minmax(0, 1fr));
++    }
+   }
+ 
+-  h2 {
+-    font-size: var(--t-base);
++  .sold {
++    margin-top: var(--space-2xl);
+   }
+ 
+-  .sold {
+-    color: var(--c-ink-faint);
+-    font-size: var(--t-sm);
++  .empty {
++    padding: var(--space-xl) 0;
++    color: var(--c-ink-soft);
+   }
+ </style>
+diff --git a/web/apps/merchant/src/pages/item/[id].astro b/web/apps/merchant/src/pages/item/[id].astro
+new file mode 100644
+index 0000000..ad6405b
+--- /dev/null
++++ b/web/apps/merchant/src/pages/item/[id].astro
+@@ -0,0 +1,241 @@
++---
++/** One listing: picture, price, size and condition, seller, and add to basket. */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import ProductArt from '@/components/ProductArt.astro';
++import ProductCard from '@/components/ProductCard.astro';
++import { categories, findListing, formatGBP, listings } from '@/data/shop';
++import { BASKET_COOKIE, buyerProtectionMinor, parseBasket } from '@/lib/basket';
++
++const item = findListing(Astro.params.id ?? '');
++if (!item) return Astro.rewrite('/404');
++
++const inBasket = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value).includes(item.id);
++const category = categories.find((c) => c.id === item.category)!;
++const more = listings.filter((l) => l.id !== item.id && l.seller === item.seller).slice(0, 4);
++---
++
++<ShopLayout title={item.title}>
++  <nav class="crumbs" aria-label="Breadcrumb">
++    <a href="/">Shop</a> <span aria-hidden="true">/</span>
++    <a href={`/?c=${category.id}`}>{category.label}</a>
++  </nav>
++
++  <div class="product">
++    <div class="gallery">
++      <ProductArt kind={item.art} tone={item.tone} />
++    </div>
++
++    <div class="info">
++      <h1>{item.title}</h1>
++      <p class="price">{formatGBP(item.priceMinor)}</p>
++      <p class="incl">
++        {formatGBP(item.priceMinor + buyerProtectionMinor(item.priceMinor))} incl. buyer protection
++      </p>
++
++      <dl class="facts">
++        <div>
++          <dt>Size</dt>
++          <dd>{item.size}</dd>
++        </div>
++        <div>
++          <dt>Condition</dt>
++          <dd>{item.condition}</dd>
++        </div>
++      </dl>
++
++      <form method="post" action="/basket/" class="buy">
++        <input type="hidden" name="id" value={item.id} />
++        <button class="btn wide" name="action" value="buy">
++          Buy now
++        </button>
++        {inBasket ? (
++          <a class="btn ghost wide" href="/basket/">
++            In your basket · View basket
++          </a>
++        ) : (
++          <button class="btn ghost wide" name="action" value="add">
++            Add to basket
++          </button>
++        )}
++      </form>
++
++      <p class="desc">{item.description}</p>
++
++      <div class="seller">
++        <span class="avatar" aria-hidden="true">
++          {item.seller.charAt(0).toUpperCase()}
++        </span>
++        <span>
++          <strong>@{item.seller}</strong>
++          <br />
++          <span class="muted">Usually ships within 2 days</span>
++        </span>
++      </div>
++
++      <ul class="perks">
++        <li>Buyer protection on every order: refund if it doesn’t arrive or isn’t as described.</li>
++        <li>Delivery from £2.99. Express available at checkout.</li>
++      </ul>
++    </div>
++  </div>
++
++  {more.length > 0 && (
++    <section class="more" aria-labelledby="more-title">
++      <h2 id="more-title">More from @{item.seller}</h2>
++      <ul class="grid">
++        {more.map((l) => (
++          <li>
++            <ProductCard
++              href={`/item/${l.id}/`}
++              title={l.title}
++              priceMinor={l.priceMinor}
++              meta={`${l.size} · ${l.condition}`}
++              art={l.art}
++              tone={l.tone}
++            />
++          </li>
++        ))}
++      </ul>
++    </section>
++  )}
++</ShopLayout>
++
++<style>
++  .crumbs {
++    font-size: var(--t-sm);
++    color: var(--c-ink-faint);
++    margin-bottom: var(--space-sm);
++  }
++
++  .crumbs a {
++    color: inherit;
++    text-decoration: none;
++  }
++
++  .crumbs a:hover {
++    color: var(--c-ink);
++  }
++
++  .product {
++    display: grid;
++    gap: var(--space-lg);
++  }
++
++  @media (min-width: 820px) {
++    .product {
++      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
++      gap: var(--space-xl);
++      align-items: start;
++    }
++
++    .info {
++      position: sticky;
++      top: 140px;
++    }
++  }
++
++  h1 {
++    font-size: var(--t-lg);
++    font-weight: 650;
++    letter-spacing: -0.02em;
++    margin-bottom: var(--space-2xs);
++  }
++
++  .price {
++    font-size: var(--t-lg);
++    font-weight: 700;
++    margin: 0;
++  }
++
++  .incl {
++    font-size: var(--t-sm);
++    color: var(--c-ink-faint);
++  }
++
++  .facts {
++    display: flex;
++    gap: var(--space-lg);
++    margin: 0 0 var(--space-md);
++    padding: var(--space-sm) 0;
++    border-block: 1px solid var(--c-line);
++  }
++
++  .facts dt {
++    font-size: var(--t-xs);
++    color: var(--c-ink-faint);
++  }
++
++  .facts dd {
++    margin: 0;
++    font-weight: 600;
++  }
++
++  .buy {
++    display: grid;
++    gap: var(--space-2xs);
++    margin-bottom: var(--space-md);
++  }
++
++  .desc {
++    color: var(--c-ink-soft);
++  }
++
++  .seller {
++    display: flex;
++    align-items: center;
++    gap: var(--space-xs);
++    padding: var(--space-sm);
++    background: var(--c-soft);
++    border-radius: var(--radius-md);
++    font-size: var(--t-sm);
++    line-height: 1.35;
++  }
++
++  .avatar {
++    display: grid;
++    place-items: center;
++    width: 2.5rem;
++    height: 2.5rem;
++    border-radius: 50%;
++    background: #fff;
++    font-weight: 700;
++  }
++
++  .muted {
++    color: var(--c-ink-faint);
++  }
++
++  .perks {
++    margin: var(--space-md) 0 0;
++    padding-left: 1.1rem;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++
++  .perks li + li {
++    margin-top: var(--space-3xs);
++  }
++
++  .more {
++    margin-top: var(--space-2xl);
++  }
++
++  .more h2 {
++    font-size: var(--t-md);
++  }
++
++  .grid {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++    display: grid;
++    gap: var(--space-lg) var(--space-sm);
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
++
++  @media (min-width: 720px) {
++    .grid {
++      grid-template-columns: repeat(4, minmax(0, 1fr));
++    }
++  }
++</style>
+diff --git a/web/apps/merchant/tests/basket.test.ts b/web/apps/merchant/tests/basket.test.ts
+new file mode 100644
+index 0000000..3694f5e
+--- /dev/null
++++ b/web/apps/merchant/tests/basket.test.ts
+@@ -0,0 +1,85 @@
++import { describe, expect, it } from 'vitest';
++
++import { defaultBasket, listings } from '../src/data/shop';
++import { parseAlibiLink, serializeAlibiLink } from '../src/lib/alibi';
++import {
++  addToBasket,
++  buyerProtectionMinor,
++  parseBasket,
++  parseOrder,
++  priceBasket,
++  removeFromBasket,
++  serializeBasket,
++} from '../src/lib/basket';
++
++describe('basket cookie', () => {
++  it('starts a first visit on the default basket, and keeps an emptied one empty', () => {
++    expect(parseBasket(undefined)).toEqual(defaultBasket);
++    expect(parseBasket('')).toEqual([]);
++    expect(parseBasket(serializeBasket([]))).toEqual([]);
++  });
++
++  it('drops unknown and repeated ids', () => {
++    expect(parseBasket('linen-shirt.nope.linen-shirt.silk-scarf')).toEqual([
++      'linen-shirt',
++      'silk-scarf',
++    ]);
++  });
++
++  it('adds each one-off item once and removes it', () => {
++    let ids = addToBasket([], 'trench-coat');
++    ids = addToBasket(ids, 'trench-coat');
++    ids = addToBasket(ids, 'not-a-listing');
++    expect(ids).toEqual(['trench-coat']);
++    expect(parseBasket(serializeBasket(ids))).toEqual(ids);
++    expect(removeFromBasket(ids, 'trench-coat')).toEqual([]);
++  });
++});
++
++describe('pricing', () => {
++  it('charges 5% plus 70p buyer protection, nothing on an empty basket', () => {
++    expect(buyerProtectionMinor(5500)).toBe(345);
++    expect(buyerProtectionMinor(0)).toBe(0);
++  });
++
++  it('adds items, protection and the chosen delivery', () => {
++    const p = priceBasket(['linen-shirt', 'canvas-tote'], 'express');
++    expect(p.subtotalMinor).toBe(5500);
++    expect(p.deliveryMinor).toBe(499);
++    expect(p.totalMinor).toBe(5500 + 345 + 499);
++    expect(priceBasket(['linen-shirt']).deliveryMinor).toBe(0);
++    expect(priceBasket([], 'standard').totalMinor).toBe(0);
++  });
++
++  it('has unique listing ids', () => {
++    expect(new Set(listings.map((l) => l.id)).size).toBe(listings.length);
++  });
++});
++
++describe('placed order cookie', () => {
++  it('round-trips and rejects junk', () => {
++    const order = {
++      ref: 'MM-51234',
++      ids: ['linen-shirt'],
++      delivery: 'standard' as const,
++      name: 'Alex Morgan',
++      email: 'alex.example@example.com',
++      totalMinor: 4012,
++      placedAt: '2026-11-08T10:00:00.000Z',
++    };
++    expect(parseOrder(JSON.stringify(order))).toEqual(order);
++    expect(parseOrder('{oops')).toBeNull();
++    expect(parseOrder(JSON.stringify({ ref: 1 }))).toBeNull();
++    expect(parseOrder(undefined)).toBeNull();
++  });
++});
++
++describe('Alibi connection cookie', () => {
++  it('round-trips the first name and rejects junk', () => {
++    const link = { name: 'Maya', connectedAt: '2026-11-08T10:00:00.000Z' };
++    expect(parseAlibiLink(serializeAlibiLink(link))).toEqual(link);
++    expect(parseAlibiLink('%7Boops')).toBeNull();
++    expect(parseAlibiLink(encodeURIComponent('{"name":"x"}'))).toBeNull();
++    expect(parseAlibiLink(undefined)).toBeNull();
++  });
++});
+diff --git a/web/packages/ui/src/ConnectAlibiButton.astro b/web/packages/ui/src/ConnectAlibiButton.astro
+index 9674ec8..53c17da 100644
+--- a/web/packages/ui/src/ConnectAlibiButton.astro
++++ b/web/packages/ui/src/ConnectAlibiButton.astro
+@@ -2,11 +2,18 @@
+ /**
+  * "Connect to my Alibi". The button a merchant places in a customer's account
+  * settings, or at checkout, to link their records to the customer's Alibi
+- * passport. It is a plain link to Alibi's consent page: the merchant never
+- * sees the passport, and nothing connects until the holder approves there.
++ * passport. It is a link to Alibi's consent page: the merchant never sees the
++ * passport, and nothing connects until the holder signs in and approves there.
++ *
++ * With `display="popup"` the consent page opens in a small window over the
++ * merchant's page (like a wallet button), so a checkout is not lost. The
++ * outcome comes back by `postMessage` and is re-dispatched on `document` as an
++ * `alibi:connect` CustomEvent whose `detail` is a ConnectMessage (links.ts).
++ * If the browser blocks the window, the link is followed as a normal redirect
++ * and the outcome comes back on the return URL instead.
+  */
+ import Logomark from './Logomark.astro';
+-import { connectUrl, type ConnectContext } from './links';
++import { connectUrl, type ConnectContext, type ConnectDisplay } from './links';
+ 
+ interface Props {
+   alibiOrigin: string;
+@@ -14,31 +21,120 @@ interface Props {
+   /** Absolute URL to come back to after the holder decides. */
+   returnTo: string;
+   context: ConnectContext;
++  display?: ConnectDisplay;
++  /** Stretch to the width of its container. */
++  block?: boolean;
+ }
+ 
+-const href = connectUrl(Astro.props);
++const { display = 'page', block = false, ...request } = Astro.props;
++const href = connectUrl({ ...request, display: 'page' });
++const popupHref = display === 'popup' ? connectUrl({ ...request, display: 'popup' }) : undefined;
++const origin = new URL(request.alibiOrigin).origin;
+ ---
+ 
+-<a class="alibi-connect" href={href}>
+-  <span>Connect to my</span>
++<a
++  class:list={['alibi-connect', { block }]}
++  href={href}
++  data-alibi-connect
++  data-popup-href={popupHref}
++  data-alibi-origin={origin}
++>
++  <span class="label">Connect to my</span>
+   <Logomark height="1.15em" />
++  <span class="waiting" aria-hidden="true">
++    Continue in the Alibi window…
++  </span>
+ </a>
+ 
++<script>
++  import { isConnectMessage } from './links';
++
++  const buttons = document.querySelectorAll<HTMLAnchorElement>('[data-alibi-connect]');
++  const origins = new Set<string>();
++
++  for (const button of buttons) {
++    const origin = button.dataset.alibiOrigin;
++    if (origin) origins.add(origin);
++    const popupHref = button.dataset.popupHref;
++    if (!popupHref) continue;
++
++    button.addEventListener('click', (event) => {
++      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
++      const w = 440;
++      const h = 720;
++      const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
++      const top = Math.round(window.screenY + (window.outerHeight - h) / 2.5);
++      const popup = window.open(
++        popupHref,
++        'alibi-connect',
++        `popup=yes,width=${w},height=${h},left=${left},top=${top}`,
++      );
++      // Blocked: fall through to the normal redirect.
++      if (!popup) return;
++      event.preventDefault();
++      popup.focus();
++      button.dataset.waiting = '';
++      const timer = window.setInterval(() => {
++        if (!popup.closed) return;
++        window.clearInterval(timer);
++        delete button.dataset.waiting;
++      }, 400);
++    });
++  }
++
++  window.addEventListener('message', (event) => {
++    if (!origins.has(event.origin) || !isConnectMessage(event.data)) return;
++    for (const b of buttons) delete b.dataset.waiting;
++    document.dispatchEvent(new CustomEvent('alibi:connect', { detail: event.data }));
++  });
++</script>
++
+ <style>
+   .alibi-connect {
+     display: inline-flex;
+     align-items: center;
++    justify-content: center;
+     gap: 0.4em;
+-    min-height: 44px;
+-    padding: var(--space-2xs) var(--space-sm);
++    min-height: 48px;
++    padding: var(--space-2xs) var(--space-md);
+     border-radius: var(--radius-pill);
+     background: var(--c-alibi);
+     color: var(--c-alibi-ink);
+     font: 600 var(--t-base) / 1 var(--font-sans);
+     text-decoration: none;
++    transition:
++      filter 0.15s ease,
++      transform 0.15s ease;
++  }
++
++  .alibi-connect.block {
++    display: flex;
++    width: 100%;
+   }
+ 
+   .alibi-connect:hover {
+-    filter: brightness(1.15);
++    filter: brightness(1.25);
++  }
++
++  .alibi-connect:active {
++    transform: scale(0.99);
++  }
++
++  .waiting {
++    display: none;
++  }
++
++  .alibi-connect[data-waiting] {
++    pointer-events: none;
++    opacity: 0.75;
++  }
++
++  /* :global so it also reaches the Logomark's svg, which carries another scope. */
++  .alibi-connect[data-waiting] > :global(:not(.waiting)) {
++    display: none;
++  }
++
++  .alibi-connect[data-waiting] .waiting {
++    display: inline;
+   }
+ </style>
+diff --git a/web/packages/ui/src/links.ts b/web/packages/ui/src/links.ts
+index 8e0e0c9..6ae0277 100644
+--- a/web/packages/ui/src/links.ts
++++ b/web/packages/ui/src/links.ts
+@@ -7,6 +7,15 @@
+ /** Where a merchant shows the connect button. Alibi words the consent screen by it. */
+ export type ConnectContext = 'account' | 'checkout';
+ 
++/**
++ * How the consent screen is shown. `page` is a full-page redirect that comes
++ * back to `returnTo`; `popup` is a small window over the merchant's page that
++ * reports the outcome with `postMessage` and closes, so checkout is not lost.
++ */
++export type ConnectDisplay = 'page' | 'popup';
++
++export type ConnectOutcome = 'connected' | 'declined';
++
+ export interface ConnectRequest {
+   /** Origin of the Alibi site, e.g. `https://alibi.example` or `http://localhost:4321`. */
+   alibiOrigin: string;
+@@ -15,18 +24,26 @@ export interface ConnectRequest {
+   /** Absolute URL Alibi sends the holder back to after they approve or decline. */
+   returnTo: string;
+   context: ConnectContext;
++  display?: ConnectDisplay;
+ }
+ 
+ /**
+  * The link behind "Connect to my Alibi". Alibi's `/connect` page reads these
+- * parameters, shows the holder what the merchant will share, and returns them
+- * to `returnTo` with `alibi=connected` or `alibi=declined`.
++ * parameters, signs the holder in, shows what the merchant will share, and
++ * returns them to `returnTo` with `alibi=connected` or `alibi=declined`.
+  */
+-export function connectUrl({ alibiOrigin, merchantId, returnTo, context }: ConnectRequest): string {
++export function connectUrl({
++  alibiOrigin,
++  merchantId,
++  returnTo,
++  context,
++  display = 'page',
++}: ConnectRequest): string {
+   const url = new URL('/connect', alibiOrigin);
+   url.searchParams.set('merchant', merchantId);
+   url.searchParams.set('context', context);
+   url.searchParams.set('return_to', returnTo);
++  if (display === 'popup') url.searchParams.set('display', 'popup');
+   return url.toString();
+ }
+ 
+@@ -35,6 +52,7 @@ export interface ParsedConnect {
+   merchantId: string | null;
+   context: ConnectContext;
+   returnTo: string | null;
++  display: ConnectDisplay;
+ }
+ 
+ /**
+@@ -48,16 +66,44 @@ export function parseConnect(params: URLSearchParams): ParsedConnect {
+     merchantId: params.get('merchant') || null,
+     context,
+     returnTo: safeReturnUrl(params.get('return_to')),
++    display: params.get('display') === 'popup' ? 'popup' : 'page',
+   };
+ }
+ 
+-/** Builds the link that sends the holder back to the merchant with an outcome. */
+-export function returnUrl(returnTo: string, outcome: 'connected' | 'declined'): string {
++/**
++ * Builds the link that sends the holder back to the merchant with an outcome.
++ * `name` is the holder's first name, the one thing the consent screen says
++ * the merchant will learn; it is only sent with `connected`.
++ */
++export function returnUrl(returnTo: string, outcome: ConnectOutcome, name?: string): string {
+   const url = new URL(returnTo);
+   url.searchParams.set('alibi', outcome);
++  if (outcome === 'connected' && name) url.searchParams.set('alibi_name', name);
+   return url.toString();
+ }
+ 
++/** The message a `popup` consent screen posts to the merchant window that opened it. */
++export interface ConnectMessage {
++  source: 'alibi';
++  type: 'connect';
++  merchantId: string;
++  outcome: ConnectOutcome;
++  name?: string;
++}
++
++/** True for a well-formed {@link ConnectMessage}. The receiver must also check `event.origin`. */
++export function isConnectMessage(value: unknown): value is ConnectMessage {
++  if (typeof value !== 'object' || value === null) return false;
++  const m = value as Record<string, unknown>;
++  return (
++    m.source === 'alibi' &&
++    m.type === 'connect' &&
++    typeof m.merchantId === 'string' &&
++    (m.outcome === 'connected' || m.outcome === 'declined') &&
++    (m.name === undefined || typeof m.name === 'string')
++  );
++}
++
+ function safeReturnUrl(value: string | null): string | null {
+   if (!value) return null;
+   try {
+diff --git a/web/packages/ui/tests/links.test.ts b/web/packages/ui/tests/links.test.ts
+index 605543f..a38f80d 100644
+--- a/web/packages/ui/tests/links.test.ts
++++ b/web/packages/ui/tests/links.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ 
+-import { connectUrl, parseConnect, returnUrl } from '../src/links';
++import { connectUrl, isConnectMessage, parseConnect, returnUrl } from '../src/links';
+ 
+ describe('connectUrl', () => {
+   it('points at Alibi /connect with the merchant, context and return URL', () => {
+@@ -29,8 +29,21 @@ describe('connectUrl', () => {
+       merchantId: 'mock-marketplace',
+       context: 'checkout',
+       returnTo: 'https://shop.example/checkout/?order=42',
++      display: 'page',
+     });
+   });
++
++  it('asks for the popup display only when told to', () => {
++    const base = {
++      alibiOrigin: 'https://alibi.example',
++      merchantId: 'mock-marketplace',
++      returnTo: 'https://shop.example/checkout/',
++      context: 'checkout' as const,
++    };
++    expect(new URL(connectUrl(base)).searchParams.has('display')).toBe(false);
++    const popup = new URL(connectUrl({ ...base, display: 'popup' }));
++    expect(parseConnect(popup.searchParams).display).toBe('popup');
++  });
+ });
+ 
+ describe('parseConnect', () => {
+@@ -53,3 +66,25 @@ describe('returnUrl', () => {
+     expect(url.searchParams.get('alibi')).toBe('declined');
+   });
+ });
++
++describe('returnUrl with a name', () => {
++  it('sends the first name with connected only', () => {
++    const yes = new URL(returnUrl('https://shop.example/checkout/', 'connected', 'Maya'));
++    expect(yes.searchParams.get('alibi_name')).toBe('Maya');
++    const no = new URL(returnUrl('https://shop.example/checkout/', 'declined', 'Maya'));
++    expect(no.searchParams.has('alibi_name')).toBe(false);
++  });
++});
++
++describe('isConnectMessage', () => {
++  it('accepts the popup message and rejects anything else', () => {
++    const ok = { source: 'alibi', type: 'connect', merchantId: 'm', outcome: 'connected' };
++    expect(isConnectMessage(ok)).toBe(true);
++    expect(isConnectMessage({ ...ok, name: 'Maya' })).toBe(true);
++    expect(isConnectMessage({ ...ok, outcome: 'maybe' })).toBe(false);
++    expect(isConnectMessage({ ...ok, source: 'other' })).toBe(false);
++    expect(isConnectMessage({ ...ok, name: 42 })).toBe(false);
++    expect(isConnectMessage('connected')).toBe(false);
++    expect(isConnectMessage(null)).toBe(false);
++  });
++});

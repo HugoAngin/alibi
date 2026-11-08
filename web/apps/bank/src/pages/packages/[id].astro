@@ -41,7 +41,7 @@ if (loaded.source === 'missing') Astro.response.status = 404;
 const returnTo = `/packages/${encodeURIComponent(id)}/`;
 ---
 
-<ConsoleLayout title={`Package ${id}`}>
+<ConsoleLayout title={`Package ${id}`} section="inbox">
   <p>
     <a href="/inbox/">← Alibi inbox</a>
   </p>

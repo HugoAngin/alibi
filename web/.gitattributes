@@ -1,0 +1,3 @@
+# Keep LF in the repository on every OS (Windows checkouts with core.autocrlf=true
+# otherwise fail pnpm format:check). Prettier also accepts either ending (endOfLine: auto).
+* text=auto eol=lf

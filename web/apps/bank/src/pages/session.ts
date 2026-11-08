@@ -30,5 +30,5 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
     sameSite: 'strict',
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
-  return redirect('/inbox/', 303);
+  return redirect('/', 303);
 };

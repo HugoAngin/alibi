@@ -726,10 +726,10 @@ pres.addSection({ title: 'Close' });
     s,
     { x: 5.1, y: 1.95, w: 4.4, h: 2.3 },
     'Trust boundaries',
-    'The app holds the encryption key. Evidence is stored as ciphertext; the key must sit outside the data folder (SP-47 fails in the default layout, which keeps it beside the database). Gemini can read the synthetic data sent to it.\nNot a W3C Verifiable Credential.\nUntested or replayed features: {{PH-45}}',
+    'The app holds the encryption key. The passport store keeps evidence as ciphertext, with the key outside the data folder (SP-47). Limit: the demo state files (case_N.state.json, the mock bank’s state.json) hold delivered packages in plaintext. Gemini can read the synthetic data sent to it.\nNot a W3C Verifiable Credential.\nUntested or replayed: {{PH-45}}',
     { size: 13 },
   );
-  s.addNotes('Source: SPEC Prototype boundaries. PH-45 from lead’s integration status; eval adds sample-size caveats.');
+  s.addNotes('Source: SPEC Prototype boundaries; At rest row of shared/CONTRACTS.md (SP-47 covers the passport store only; plaintext demo state per eval cd71c90). PH-45 from lead’s integration status; eval adds sample-size caveats.');
 }
 
 // 18. Close

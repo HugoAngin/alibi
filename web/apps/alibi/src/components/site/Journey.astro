@@ -1,0 +1,1663 @@
+---
+/**
+ * The landing's main feature: a vertical journey through how Alibi works, told with Maya's money.
+ * Six chapters run down the page along a thin timeline line, so by the end a visitor has seen
+ * every core feature: merchants connect and send signed receipts; banks join over a separate,
+ * encrypted, read-only line; the engine (reasoning with Gemini) works over Maya's whole financial
+ * history; a bank asks; Maya decides what leaves; the bank receives signed proof.
+ *
+ * Merchant traffic and bank traffic look different on purpose: merchants send paper receipts
+ * down a dashed line, banks send sealed, encrypted packets down a double rail.
+ *
+ * Motion: each chapter plays once as it enters view, and its flows keep moving only while it is on
+ * screen. Without JavaScript, or with reduced motion, every chapter shows its finished state.
+ */
+import { Show } from '@clerk/astro/components';
+
+const merchants = [
+  {
+    name: 'Amazon',
+    logo: '/logos/amazon.png',
+    sends: 'Seller payouts',
+    receipt: 'Payout PO-0001-01',
+    amount: '£2,160.00',
+  },
+  {
+    name: 'Deliveroo',
+    logo: '/logos/deliveroo.png',
+    sends: 'Rider earnings',
+    receipt: 'Week 43 earnings',
+    amount: '£186.40',
+  },
+  {
+    name: 'UNIQLO',
+    logo: '/logos/uniqlo.png',
+    sends: 'Purchases and refunds',
+    receipt: 'Order 7781-204',
+    amount: '£39.90',
+  },
+  {
+    name: 'UCL',
+    logo: '/logos/ucl.png',
+    sends: 'Tuition and refunds',
+    receipt: 'Tuition refund',
+    amount: '£3,450.00',
+  },
+];
+
+const banks = [
+  {
+    name: 'Santander',
+    logo: '/logos/santander.png',
+    account: 'Current account ••4417',
+    rows: [
+      { what: 'UCL tuition refund', when: '14 Oct', amount: '+£3,450.00', flag: false },
+      { what: 'To NatWest ••0921', when: '15 Oct', amount: '−£3,450.00', flag: true },
+      { what: 'UNIQLO', when: '19 Oct', amount: '−£39.90', flag: false },
+    ],
+  },
+  {
+    name: 'NatWest',
+    logo: '/logos/natwest.png',
+    account: 'Current account ••0921',
+    rows: [
+      { what: 'From Santander ••4417', when: '15 Oct', amount: '+£3,450.00', flag: true },
+      { what: 'Deliveroo earnings', when: '25 Oct', amount: '+£186.40', flag: false },
+      { what: 'Amazon payout PO-0001-01', when: '28 Oct', amount: '+£2,160.00', flag: false },
+    ],
+  },
+];
+
+const years = [
+  { year: '2022', n: 96, note: 'Santander account opened' },
+  { year: '2023', n: 214, note: 'Enrolled at UCL' },
+  { year: '2024', n: 388, note: 'Started riding for Deliveroo' },
+  { year: '2025', n: 431, note: 'Started selling on Amazon' },
+  { year: '2026', n: 155, note: 'Opened NatWest' },
+];
+const maxN = Math.max(...years.map((y) => y.n));
+
+const reasoning = [
+  {
+    who: 'Matcher',
+    text: 'NatWest +£2,160.00 on 28 Oct is Amazon payout PO-0001-01',
+    ref: 'txn-0001-004',
+  },
+  {
+    who: 'Matcher',
+    text: 'The payout is 8 sales £2,400.00, less refunds £180.00 and fees £60.00',
+    ref: 'rec-0001-021',
+  },
+  { who: 'Code', text: '240000 − 18000 − 6000 = 216000', ref: 'checked', ok: true },
+  {
+    who: 'Detective',
+    text: '£3,450.00 moved Santander → NatWest within a day. Layering?',
+    ref: 'flag',
+    warn: true,
+  },
+  {
+    who: 'Challenger',
+    text: 'Both accounts are Maya’s. The money was a UCL tuition refund on 14 Oct',
+    ref: 'cleared',
+    ok: true,
+  },
+  {
+    who: 'Context',
+    text: 'Fits 14 months of Amazon and Deliveroo income. Nothing new about it',
+    ref: '1,284 records',
+  },
+];
+
+const shared = [
+  { label: 'Amazon payout', ref: 'PO-0001-01' },
+  { label: 'NatWest credit', ref: 'txn-0001-004' },
+  { label: 'The match, checked in code', ref: '216000' },
+];
+const kept = ['Santander account', 'UCL tuition', 'Deliveroo earnings', 'UNIQLO purchases'];
+
+const chapters = [
+  {
+    id: 'merchants',
+    title: 'Connect where you’re paid',
+    rail: 'Merchants send signed receipts',
+  },
+  { id: 'banks', title: 'Link your banks', rail: 'Encrypted, read-only bank feeds' },
+  { id: 'engine', title: 'The engine knows your story', rail: 'Gemini reasons over your history' },
+  { id: 'ask', title: 'A bank asks', rail: 'One button on the bank’s side' },
+  { id: 'decide', title: 'You decide', rail: 'Nothing leaves without you' },
+  { id: 'proof', title: 'Proof, delivered', rail: 'Signed and verifiable' },
+];
+---
+
+<section class="journey" id="core" data-journey aria-labelledby="journey-title">
+  <header class="j-hero s-wrap s-enter">
+    <h1 id="journey-title">Your financial passport</h1>
+    <p class="j-lede">
+      Alibi gathers the proof behind every payment you receive, from the places that pay you and the
+      banks that hold it, so when a bank asks, you answer in minutes.
+    </p>
+    <p class="j-actions">
+      <Show when="signed-out">
+        <a class="s-btn s-btn--primary" href="/sign-up/">
+          Join
+        </a>
+      </Show>
+      <Show when="signed-in">
+        <a class="s-btn s-btn--primary" href="/app/">
+          Open your passport
+        </a>
+      </Show>
+      <a class="s-btn s-btn--ghost" href="/simulate/">
+        Simulate a case
+      </a>
+    </p>
+    <p class="j-cue" aria-hidden="true">
+      <span></span> Scroll through how it works
+    </p>
+  </header>
+
+  <div class="j-body s-wrap">
+    <div class="chapters">
+      {/* ------------------------------------------------------------ 01 merchants */}
+      <article class="ch" id="ch-merchants" data-ch="0">
+        <div class="ch-text">
+          <p class="ch-n">01</p>
+          <h2>Connect where you’re paid</h2>
+          <p>
+            One tap on Amazon, Deliveroo, UNIQLO or UCL links them to your Alibi. From then on, each
+            one sends a signed receipt for every payout, refund and fee, the moment it happens.
+          </p>
+        </div>
+        <div class="ch-visual">
+          <div class="merchants">
+            {merchants.map((m, i) => (
+              <div class="merchant" style={`--i:${i}`}>
+                <img src={m.logo} alt={m.name} loading="lazy" decoding="async" />
+                <p class="m-sends">{m.sends}</p>
+                <span class="m-connect">
+                  <span class="m-off">Connect to my alibi</span>
+                  <span class="m-on">
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M3.5 8.5l3 3 6-7" />
+                    </svg>
+                    Connected
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div class="flow flow--receipts" aria-hidden="true">
+            <span class="flow-line"></span>
+            {merchants.map((m, i) => (
+              <span class="receipt" style={`--i:${i}`}>
+                <b>{m.name}</b> {m.receipt} · {m.amount}
+                <em>signed</em>
+              </span>
+            ))}
+          </div>
+        </div>
+      </article>
+
+      {/* ---------------------------------------------------------------- 02 banks */}
+      <article class="ch" id="ch-banks" data-ch="1">
+        <div class="ch-text">
+          <p class="ch-n">02</p>
+          <h2>Link your banks</h2>
+          <p>
+            Santander and NatWest connect on a different kind of line: encrypted, read-only bank
+            feeds. Alibi sees every transaction as it lands, across all your accounts at once, and
+            can never move a penny.
+          </p>
+        </div>
+        <div class="ch-visual">
+          <div class="banks">
+            {banks.map((b, bi) => (
+              <div class="bank" style={`--i:${bi}`}>
+                <div class="bank-head">
+                  <img src={b.logo} alt={b.name} loading="lazy" decoding="async" />
+                  <span class="secure">
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" />
+                      <path d="M5.5 7V5a2.5 2.5 0 015 0v2" />
+                    </svg>
+                    Read-only
+                  </span>
+                </div>
+                <p class="bank-acct">{b.account}</p>
+                <ul class="txns">
+                  {b.rows.map((r, ri) => (
+                    <li class:list={{ flag: r.flag }} style={`--i:${bi * 3 + ri}`}>
+                      <span class="t-what">{r.what}</span>
+                      <span class="t-when">{r.when}</span>
+                      <span class="t-amt">{r.amount}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <svg class="mule" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M10 50 C 60 0, 140 0, 190 50" />
+            </svg>
+            <span class="mule-label">£3,450.00 between banks in a day</span>
+          </div>
+          <div class="flow flow--secure" aria-hidden="true">
+            <span class="rail-a"></span>
+            <span class="rail-b"></span>
+            {['a9f3·e21c', '7c04·91be', 'f2d8·03aa', '5b1e·c47d'].map((h, i) => (
+              <span class="packet" style={`--i:${i}`}>
+                <svg viewBox="0 0 16 16">
+                  <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" />
+                  <path d="M5.5 7V5a2.5 2.5 0 015 0v2" />
+                </svg>
+                {h}
+              </span>
+            ))}
+            <span class="flow-tag">Open Banking · end-to-end encrypted</span>
+          </div>
+        </div>
+      </article>
+
+      {/* --------------------------------------------------------------- 03 engine */}
+      <article class="ch ch--wide" id="ch-engine" data-ch="2">
+        <div class="ch-text">
+          <p class="ch-n">03</p>
+          <h2>The engine knows your story</h2>
+          <p>
+            Receipts and bank feeds meet in the Alibi engine. Reasoning with Gemini, it reads them
+            against everything it has learned about you since your first account: who pays you, how
+            often, and why. Every figure it states is checked in code.
+          </p>
+        </div>
+        <div class="ch-visual">
+          <div class="engine">
+            <div class="engine-head">
+              <p class="wordmark">
+                <span class="wm-alibi">alibi</span>
+                <span class="wm-engine">engine</span>
+              </p>
+              <p class="gemini">
+                <span>Reasoning with</span>
+                <img src="/logos/gemini-white.svg" alt="Gemini" width="72" height="16" />
+              </p>
+            </div>
+
+            <div class="engine-grid">
+              <section class="life" aria-label="Maya’s financial history">
+                <h3>Lifetime context</h3>
+                <ol class="years">
+                  {years.map((y, i) => (
+                    <li style={`--i:${i}; --w:${Math.round((y.n / maxN) * 100)}%`}>
+                      <span class="y">{y.year}</span>
+                      <span class="bar">
+                        <span></span>
+                      </span>
+                      <span class="y-n">{y.n}</span>
+                      <span class="y-note">{y.note}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p class="life-total">
+                  <b>1,284</b> records · 6 sources · 4 years
+                </p>
+              </section>
+
+              <section class="think" aria-label="What the engine is working out">
+                <h3>
+                  Working on <code>£2,160.00</code> and <code>£3,450.00</code>
+                </h3>
+                <ol class="lines">
+                  {reasoning.map((r, i) => (
+                    <li
+                      class:list={{ ok: r.ok, warn: r.warn, code: r.who === 'Code' }}
+                      style={`--i:${i}`}
+                    >
+                      <span class="who">{r.who}</span>
+                      <span class="what">{r.text}</span>
+                      <span class="ref">{r.ref}</span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+
+              <section class="found" aria-label="Findings">
+                <h3>Findings</h3>
+                <div class="finding" style="--i:0">
+                  <p class="f-amt">£2,160.00</p>
+                  <p class="f-what">Amazon seller payout</p>
+                  <p class="f-ok">Explained</p>
+                </div>
+                <div class="finding" style="--i:1">
+                  <p class="f-amt">£3,450.00</p>
+                  <p class="f-what">UCL refund, own accounts</p>
+                  <p class="f-ok">Cleared</p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      {/* ------------------------------------------------------------------ 04 ask */}
+      <article class="ch" id="ch-ask" data-ch="3">
+        <div class="ch-text">
+          <p class="ch-n">04</p>
+          <h2>A bank asks</h2>
+          <p>
+            NatWest’s fraud team sees a £2,160.00 credit it can’t explain. Instead of freezing the
+            account and phoning you, they press one button. The question reaches your Alibi, which
+            already has the answer.
+          </p>
+        </div>
+        <div class="ch-visual">
+          <div class="desk">
+            <div class="desk-head">
+              <img src="/logos/natwest.png" alt="NatWest" loading="lazy" decoding="async" />
+              <span>Fraud operations</span>
+            </div>
+            <p class="desk-case">
+              <code>FC-0147</code> £2,160.00 credit under review
+            </p>
+            <span class="desk-btn">
+              Request customer’s <b>alibi</b>
+            </span>
+          </div>
+          <div class="flow flow--up" aria-hidden="true">
+            <span class="flow-line"></span>
+            <span class="question">“Where did the £2,160.00 come from? Show how it adds up.”</span>
+          </div>
+          <p class="curate">
+            <span class="curate-n">3</span> of 1,284 records answer this question
+          </p>
+        </div>
+      </article>
+
+      {/* --------------------------------------------------------------- 05 decide */}
+      <article class="ch" id="ch-decide" data-ch="4">
+        <div class="ch-text">
+          <p class="ch-n">05</p>
+          <h2>You decide</h2>
+          <p>
+            Alibi shows you exactly what it would send and who would see it. The rest of your
+            financial life stays with you. Nothing leaves until you approve it.
+          </p>
+        </div>
+        <div class="ch-visual">
+          <div class="review">
+            <p class="r-title">Share with NatWest</p>
+            <p class="r-sub">Only NatWest can open this</p>
+            <ul class="r-list">
+              {shared.map((s, i) => (
+                <li class="r-yes" style={`--i:${i}`}>
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M3.5 8.5l3 3 6-7" />
+                  </svg>
+                  {s.label}
+                  <code>{s.ref}</code>
+                </li>
+              ))}
+              {kept.map((k, i) => (
+                <li class="r-no" style={`--i:${i + 3}`}>
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
+                  </svg>
+                  {k}
+                  <span>stays private</span>
+                </li>
+              ))}
+            </ul>
+            <span class="approve">
+              <span class="a-off">Approve and send</span>
+              <span class="a-on">Approved</span>
+            </span>
+          </div>
+        </div>
+      </article>
+
+      {/* ---------------------------------------------------------------- 06 proof */}
+      <article class="ch" id="ch-proof" data-ch="5">
+        <div class="ch-text">
+          <p class="ch-n">06</p>
+          <h2>Proof, delivered</h2>
+          <p>
+            NatWest receives a signed context package. It can check the signature, see that it was
+            issued for NatWest alone, and trace every figure to its source. The case closes the same
+            day.
+          </p>
+        </div>
+        <div class="ch-visual">
+          <div class="flow flow--down" aria-hidden="true">
+            <span class="flow-line"></span>
+            <span class="package">
+              <span class="pk-seal">alibi</span>
+              Context package · 3 records
+            </span>
+          </div>
+          <div class="desk desk--done">
+            <div class="desk-head">
+              <img src="/logos/natwest.png" alt="NatWest" loading="lazy" decoding="async" />
+              <span>Fraud operations</span>
+            </div>
+            <ul class="checks">
+              {[
+                'Signature valid',
+                'Issued for NatWest only',
+                'Every figure traced to a source',
+              ].map((c, i) => (
+                <li style={`--i:${i}`}>
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="M3.5 8.5l3 3 6-7" />
+                  </svg>
+                  {c}
+                </li>
+              ))}
+            </ul>
+            <p class="desk-case">
+              <code>FC-0147</code> <span class="closed">Cleared · account unrestricted</span>
+            </p>
+          </div>
+        </div>
+      </article>
+
+      {/* --------------------------------------------------------------- recap */}
+      <section class="recap" aria-labelledby="recap-title">
+        <h2 id="recap-title">What your Alibi does</h2>
+        <ol>
+          {chapters.map((c, i) => (
+            <li style={`--i:${i}`}>
+              <span class="rc-n">{String(i + 1).padStart(2, '0')}</span>
+              <span class="rc-t">{c.title}</span>
+              <span class="rc-d">{c.rail}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* ------------------------------------------------------------------- hero */
+  .j-hero {
+    padding-block: 152px 72px;
+    max-width: 56rem;
+  }
+
+  h1 {
+    font: 500 clamp(3rem, 1.6rem + 6vw, 6.5rem) / 0.98 var(--s-font-display);
+    letter-spacing: -0.035em;
+    margin: 0 0 24px;
+  }
+
+  .j-lede {
+    font-size: var(--s-t-lede);
+    line-height: 1.5;
+    color: var(--s-ink-soft);
+    max-width: 38rem;
+    margin: 0 0 32px;
+  }
+
+  .j-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 0 0 56px;
+  }
+
+  .j-cue {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    color: var(--s-ink-faint);
+    font: 500 0.8125rem/1 var(--s-font-mono);
+  }
+
+  .j-cue span {
+    width: 1px;
+    height: 32px;
+    background: linear-gradient(var(--s-ink-faint), transparent);
+  }
+
+  /* ------------------------------------------------------------------- body */
+  /* The timeline is a thin line down the left edge: it costs 48px, not a column. */
+  .j-body {
+    --g: clamp(16px, 4vw, 40px);
+    position: relative;
+    max-width: 80rem;
+    padding-left: calc(var(--g) + 48px);
+    padding-bottom: 64px;
+  }
+
+  .j-body::before,
+  .j-body::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(var(--g) + 6px);
+    width: 2px;
+    border-radius: 2px;
+  }
+
+  .j-body::before {
+    bottom: 0;
+    background: var(--s-line);
+  }
+
+  .j-body::after {
+    height: calc(var(--p, 1) * 100%);
+    background: var(--s-accent);
+  }
+
+  .ch-n {
+    position: relative;
+  }
+
+  .ch-n::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -48px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgb(31 27 22 / 0.18);
+    background: var(--s-paper);
+    transition:
+      background-color 300ms var(--s-ease),
+      border-color 300ms var(--s-ease);
+  }
+
+  .ch.is-on .ch-n::before,
+  .journey:not(.is-armed) .ch-n::before {
+    border-color: var(--s-accent);
+    background: var(--s-accent);
+    box-shadow: 0 0 0 4px var(--s-paper);
+  }
+
+  /* --------------------------------------------------------------- chapters */
+  .chapters {
+    display: grid;
+    gap: 0;
+  }
+
+  .ch {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    gap: 64px;
+    align-items: center;
+    min-height: 88vh;
+    padding-block: 56px;
+  }
+
+  .ch--wide {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .ch--wide .ch-text {
+    max-width: 40rem;
+  }
+
+  .ch-n {
+    font: 500 0.8125rem/1 var(--s-font-mono);
+    color: var(--s-accent);
+    margin: 0 0 16px;
+  }
+
+  .ch h2 {
+    font: 500 var(--s-t-h2) / 1.05 var(--s-font-display);
+    letter-spacing: -0.025em;
+    margin: 0 0 16px;
+  }
+
+  .ch-text p:last-child {
+    color: var(--s-ink-soft);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .ch-visual {
+    position: relative;
+    display: grid;
+    gap: 0;
+  }
+
+  /* Reveal: a chapter plays once when it enters view (only once JS has armed the page). */
+  .journey.is-armed .ch [style*='--i'] {
+    transition:
+      opacity 500ms var(--s-ease),
+      transform 500ms var(--s-ease);
+    transition-delay: calc(var(--i) * 90ms + 120ms);
+  }
+
+  .journey.is-armed .ch:not(.is-on) [style*='--i'] {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  /* ---------------------------------------------------------- flows (shared) */
+  .flow {
+    position: relative;
+    height: 168px;
+    margin-block: 8px;
+    display: grid;
+    justify-items: center;
+    overflow: hidden;
+    mask-image: linear-gradient(transparent, #000 22%, #000 78%, transparent);
+  }
+
+  .flow-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    border-left: 2px dashed rgb(31 27 22 / 0.2);
+  }
+
+  @keyframes fall {
+    from {
+      transform: translate(-50%, -48px);
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    to {
+      transform: translate(-50%, 168px);
+      opacity: 0;
+    }
+  }
+
+  @keyframes rise {
+    from {
+      transform: translate(-50%, 168px);
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    to {
+      transform: translate(-50%, -48px);
+      opacity: 0;
+    }
+  }
+
+  .flow > .receipt,
+  .flow > .packet,
+  .flow > .question,
+  .flow > .package {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    white-space: nowrap;
+    animation: fall 4.8s linear infinite;
+    animation-delay: calc(var(--i, 0) * -1.2s);
+    animation-play-state: paused;
+  }
+
+  .ch.is-live .flow > * {
+    animation-play-state: running;
+  }
+
+  /* Merchants: paper receipts on a dashed line. */
+  .receipt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--s-line);
+    border-radius: 6px;
+    background: var(--s-card);
+    box-shadow: var(--s-shadow);
+    font-size: 0.75rem;
+  }
+
+  .receipt b {
+    font-weight: 600;
+  }
+
+  .receipt em {
+    font: 500 0.6875rem/1 var(--s-font-mono);
+    font-style: normal;
+    color: var(--s-accent);
+    padding: 2px 5px;
+    border: 1px solid rgb(43 69 196 / 0.35);
+    border-radius: 4px;
+  }
+
+  /* Banks: sealed packets on a double rail. */
+  .rail-a,
+  .rail-b {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--s-accent);
+    opacity: 0.55;
+  }
+
+  .rail-a {
+    left: calc(50% - 22px);
+  }
+
+  .rail-b {
+    left: calc(50% + 20px);
+  }
+
+  .packet {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    background: #16213f;
+    color: #c9d3ff;
+    font: 500 0.6875rem/1 var(--s-font-mono);
+    box-shadow: 0 0 0 3px var(--s-paper);
+  }
+
+  .packet svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  .flow--secure > .packet {
+    animation-duration: 3.2s;
+    animation-delay: calc(var(--i, 0) * -0.8s);
+  }
+
+  .flow-tag {
+    position: absolute;
+    top: 50%;
+    left: calc(50% + 76px);
+    transform: translateY(-50%);
+    font: 500 0.6875rem/1.3 var(--s-font-mono);
+    color: var(--s-accent);
+    white-space: nowrap;
+  }
+
+  /* --------------------------------------------------------- 01 merchants */
+  .merchants {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .merchant {
+    display: grid;
+    gap: 10px;
+    padding: 20px;
+    border: 1px solid var(--s-line);
+    border-radius: 16px;
+    background: var(--s-card);
+  }
+
+  .merchant img {
+    height: 28px;
+    width: auto;
+    max-width: 120px;
+    object-fit: contain;
+    object-position: left center;
+  }
+
+  .m-sends {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--s-ink-soft);
+  }
+
+  .m-connect {
+    position: relative;
+    display: inline-grid;
+    justify-self: start;
+    height: 32px;
+    padding: 0 12px;
+    align-items: center;
+    border-radius: 999px;
+    background: var(--s-ink);
+    color: var(--s-paper);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background-color 300ms var(--s-ease);
+  }
+
+  .m-off,
+  .m-on {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 300ms var(--s-ease);
+  }
+
+  .m-on svg,
+  .r-list svg,
+  .checks svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .m-on {
+    opacity: 0;
+  }
+
+  .ch.is-on .merchant .m-connect {
+    background: #e3f1e8;
+    color: var(--s-ok);
+    transition-delay: calc(var(--i) * 260ms + 600ms);
+  }
+
+  .ch.is-on .merchant .m-off {
+    opacity: 0;
+    transition-delay: calc(var(--i) * 260ms + 600ms);
+  }
+
+  .ch.is-on .merchant .m-on {
+    opacity: 1;
+    transition-delay: calc(var(--i) * 260ms + 600ms);
+  }
+
+  /* ------------------------------------------------------------- 02 banks */
+  .banks {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding-top: 56px;
+  }
+
+  .bank {
+    padding: 20px;
+    border: 1px solid rgb(43 69 196 / 0.22);
+    border-radius: 16px;
+    background: #fbfcff;
+    box-shadow: inset 0 0 0 4px rgb(43 69 196 / 0.04);
+  }
+
+  .bank-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .bank-head img {
+    height: 22px;
+    width: auto;
+  }
+
+  .secure {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--s-accent-soft);
+    color: var(--s-accent);
+    font: 500 0.6875rem/1 var(--s-font-mono);
+  }
+
+  .secure svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  .bank-acct {
+    margin: 8px 0 12px;
+    font: 400 0.75rem/1 var(--s-font-mono);
+    color: var(--s-ink-faint);
+  }
+
+  .txns {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .txns li {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+  }
+
+  .t-when {
+    grid-row: 2;
+    font: 400 0.6875rem/1.4 var(--s-font-mono);
+    color: var(--s-ink-faint);
+  }
+
+  .t-amt {
+    grid-row: 1 / 3;
+    grid-column: 2;
+    align-self: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+
+  .txns li.flag {
+    background: #fdf0ef;
+  }
+
+  .ch.is-on .txns li.flag {
+    animation: flagged 2.4s var(--s-ease) 1.4s 2;
+  }
+
+  @keyframes flagged {
+    50% {
+      background: #f8d9d6;
+    }
+  }
+
+  .mule {
+    position: absolute;
+    top: 8px;
+    left: 25%;
+    width: 50%;
+    height: 52px;
+    overflow: visible;
+    fill: none;
+    stroke: var(--s-bad);
+    stroke-width: 2;
+    stroke-dasharray: 6 6;
+    opacity: 0;
+    transition: opacity 400ms var(--s-ease) 1.2s;
+  }
+
+  .mule-label {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -4px);
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #fdf0ef;
+    color: var(--s-bad);
+    font: 500 0.6875rem/1.3 var(--s-font-mono);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 400ms var(--s-ease) 1.4s;
+  }
+
+  .ch.is-on .mule,
+  .ch.is-on .mule-label,
+  .journey:not(.is-armed) .mule,
+  .journey:not(.is-armed) .mule-label {
+    opacity: 1;
+  }
+
+  .ch.is-live .mule path {
+    animation: dash 1.2s linear infinite;
+  }
+
+  @keyframes dash {
+    to {
+      stroke-dashoffset: -12;
+    }
+  }
+
+  /* ------------------------------------------------------------ 03 engine */
+  .engine {
+    border-radius: 24px;
+    background: #17140f;
+    color: #efe9de;
+    padding: 28px;
+    box-shadow: 0 24px 64px rgb(31 27 22 / 0.18);
+  }
+
+  .engine-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgb(239 233 222 / 0.1);
+  }
+
+  .wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    line-height: 1;
+  }
+
+  .wm-alibi {
+    font: 600 1.75rem/1 var(--s-font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .wm-engine {
+    font: 400 1.75rem/1 var(--s-font-display);
+    letter-spacing: -0.02em;
+    color: #aaa398;
+  }
+
+  .gemini {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgb(239 233 222 / 0.06);
+    border: 1px solid rgb(239 233 222 / 0.1);
+    font-size: 0.75rem;
+    color: #aaa398;
+  }
+
+  .gemini img {
+    height: 16px;
+    width: auto;
+  }
+
+  .engine-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) minmax(0, 12rem);
+    gap: 24px;
+  }
+
+  .engine h3 {
+    font: 500 0.75rem/1.3 var(--s-font-mono);
+    color: #8a847a;
+    margin: 0 0 14px;
+  }
+
+  .engine h3 code {
+    color: #efe9de;
+  }
+
+  .years {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+
+  .years li {
+    display: grid;
+    grid-template-columns: 36px 1fr 32px;
+    gap: 2px 8px;
+    align-items: center;
+    font-size: 0.75rem;
+  }
+
+  .y {
+    font-family: var(--s-font-mono);
+    color: #aaa398;
+  }
+
+  .bar {
+    height: 6px;
+    border-radius: 3px;
+    background: rgb(239 233 222 / 0.08);
+    overflow: hidden;
+  }
+
+  .bar span {
+    display: block;
+    height: 100%;
+    width: var(--w);
+    border-radius: 3px;
+    background: linear-gradient(90deg, #6f8cff, #2b45c4);
+    transform-origin: left;
+    transition: transform 700ms var(--s-ease);
+    transition-delay: calc(var(--i) * 120ms + 300ms);
+  }
+
+  .journey.is-armed .ch:not(.is-on) .bar span {
+    transform: scaleX(0);
+  }
+
+  .y-n {
+    font: 500 0.75rem/1 var(--s-font-mono);
+    text-align: right;
+  }
+
+  .y-note {
+    grid-column: 2 / 4;
+    color: #8a847a;
+    font-size: 0.6875rem;
+  }
+
+  .life-total {
+    margin: 0;
+    padding-top: 12px;
+    border-top: 1px solid rgb(239 233 222 / 0.1);
+    font-size: 0.8125rem;
+    color: #aaa398;
+  }
+
+  .life-total b {
+    color: #efe9de;
+    font-weight: 600;
+  }
+
+  .lines {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .lines li {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgb(239 233 222 / 0.04);
+    border: 1px solid rgb(239 233 222 / 0.06);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  .journey.is-armed .lines li {
+    transition-delay: calc(var(--i) * 420ms + 300ms) !important;
+  }
+
+  .who {
+    font: 500 0.6875rem/1.4 var(--s-font-mono);
+    color: #9fb0ff;
+  }
+
+  .lines li.code .what {
+    font-family: var(--s-font-mono);
+  }
+
+  .ref {
+    font: 400 0.6875rem/1.4 var(--s-font-mono);
+    color: #8a847a;
+    white-space: nowrap;
+  }
+
+  .lines li.ok .ref {
+    color: #6fd39b;
+  }
+
+  .lines li.warn {
+    border-color: rgb(240 120 110 / 0.35);
+  }
+
+  .lines li.warn .ref {
+    color: #f0857a;
+  }
+
+  .found {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+  }
+
+  .finding {
+    padding: 14px;
+    border-radius: 12px;
+    background: rgb(111 211 155 / 0.08);
+    border: 1px solid rgb(111 211 155 / 0.22);
+  }
+
+  .journey.is-armed .finding {
+    transition-delay: calc(var(--i) * 300ms + 2400ms) !important;
+  }
+
+  .finding p {
+    margin: 0;
+  }
+
+  .f-amt {
+    font: 600 1.25rem/1.1 var(--s-font-display);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .f-what {
+    font-size: 0.75rem;
+    color: #aaa398;
+    margin: 4px 0 8px !important;
+  }
+
+  .f-ok {
+    font: 500 0.6875rem/1 var(--s-font-mono);
+    color: #6fd39b;
+  }
+
+  /* --------------------------------------------------------------- 04 ask */
+  .desk {
+    padding: 20px;
+    border: 1px solid var(--s-line);
+    border-radius: 16px;
+    background: var(--s-card);
+    box-shadow: var(--s-shadow);
+  }
+
+  .desk-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    font: 500 0.75rem/1 var(--s-font-mono);
+    color: var(--s-ink-faint);
+  }
+
+  .desk-head img {
+    height: 20px;
+    width: auto;
+  }
+
+  .desk-case {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px;
+    font-size: 0.9375rem;
+  }
+
+  .desk-case code {
+    white-space: nowrap;
+    font-size: 0.75rem;
+    color: var(--s-accent);
+    padding: 2px 6px;
+    border: 1px solid rgb(43 69 196 / 0.35);
+    border-radius: 4px;
+  }
+
+  .desk-btn {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    padding: 14px;
+    border-radius: 10px;
+    background: var(--s-ink);
+    color: var(--s-paper);
+    font-weight: 500;
+    transition: transform 160ms var(--s-ease);
+  }
+
+  .desk-btn b {
+    font-weight: 600;
+  }
+
+  .ch.is-on .desk-btn {
+    animation: press 600ms var(--s-ease) 700ms 1;
+  }
+
+  @keyframes press {
+    40% {
+      transform: scale(0.97);
+      background: #3a342c;
+    }
+  }
+
+  .flow--up > .question {
+    animation-name: rise;
+    animation-duration: 5s;
+    width: max-content;
+    max-width: min(88%, 24rem);
+    white-space: normal;
+    text-align: center;
+    line-height: 1.35;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--s-accent);
+    color: #fff;
+    font-size: 0.8125rem;
+  }
+
+  .curate {
+    margin: 0;
+    text-align: center;
+    color: var(--s-ink-soft);
+    font-size: 0.9375rem;
+  }
+
+  .curate-n {
+    font: 600 1.5rem/1 var(--s-font-display);
+    color: var(--s-ink);
+  }
+
+  /* ------------------------------------------------------------ 05 decide */
+  .review {
+    max-width: 24rem;
+    justify-self: center;
+    width: 100%;
+    padding: 24px;
+    border-radius: 28px;
+    border: 1px solid var(--s-line);
+    background: var(--s-card);
+    box-shadow: 0 24px 56px rgb(31 27 22 / 0.12);
+  }
+
+  .r-title {
+    margin: 0;
+    font: 600 1.125rem/1.2 var(--s-font-display);
+  }
+
+  .r-sub {
+    margin: 4px 0 16px;
+    font-size: 0.8125rem;
+    color: var(--s-ink-faint);
+  }
+
+  .r-list {
+    list-style: none;
+    margin: 0 0 20px;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .r-list li {
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--s-line);
+    font-size: 0.875rem;
+  }
+
+  .r-yes svg {
+    color: var(--s-ok);
+  }
+
+  .r-yes code {
+    font-size: 0.6875rem;
+    color: var(--s-accent);
+  }
+
+  .r-no {
+    color: var(--s-ink-faint);
+  }
+
+  .r-no span {
+    font-size: 0.75rem;
+  }
+
+  .approve {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--s-ink);
+    color: var(--s-paper);
+    font-weight: 500;
+    transition: background-color 400ms var(--s-ease) 2.2s;
+  }
+
+  .a-off,
+  .a-on {
+    grid-area: 1 / 1;
+    transition: opacity 300ms var(--s-ease) 2.2s;
+  }
+
+  .a-on {
+    opacity: 0;
+  }
+
+  .ch.is-on .approve,
+  .journey:not(.is-armed) .approve {
+    background: var(--s-ok);
+  }
+
+  .ch.is-on .a-off,
+  .journey:not(.is-armed) .a-off {
+    opacity: 0;
+  }
+
+  .ch.is-on .a-on,
+  .journey:not(.is-armed) .a-on {
+    opacity: 1;
+  }
+
+  /* ------------------------------------------------------------- 06 proof */
+  .package {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px 8px 8px;
+    border-radius: 10px;
+    background: var(--s-ink);
+    color: var(--s-paper);
+    font-size: 0.8125rem;
+  }
+
+  .pk-seal {
+    padding: 3px 6px;
+    border-radius: 6px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font: 600 0.75rem/1 var(--s-font-display);
+  }
+
+  .flow--down > .package {
+    animation-duration: 3.6s;
+  }
+
+  .checks {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .checks li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9375rem;
+  }
+
+  .checks svg {
+    color: var(--s-ok);
+  }
+
+  .desk--done .desk-case {
+    margin: 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--s-line);
+  }
+
+  .closed {
+    color: var(--s-ok);
+    font-weight: 500;
+  }
+
+  /* ---------------------------------------------------------------- recap */
+  .recap {
+    padding: 72px 0 24px;
+    border-top: 1px solid var(--s-line);
+  }
+
+  .recap h2 {
+    font: 500 var(--s-t-h2) / 1.05 var(--s-font-display);
+    letter-spacing: -0.025em;
+    margin: 0 0 32px;
+  }
+
+  .recap ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .recap li {
+    display: grid;
+    gap: 6px;
+    padding: 20px;
+    border: 1px solid var(--s-line);
+    border-radius: 16px;
+    background: var(--s-card);
+  }
+
+  .rc-n {
+    font: 500 0.75rem/1 var(--s-font-mono);
+    color: var(--s-accent);
+  }
+
+  .rc-t {
+    font: 500 1.0625rem/1.3 var(--s-font-display);
+  }
+
+  .rc-d {
+    font-size: 0.875rem;
+    color: var(--s-ink-soft);
+  }
+
+  /* ---------------------------------------------------------------- small */
+  @media (max-width: 1200px) {
+    .ch {
+      grid-template-columns: 1fr;
+      gap: 28px;
+      min-height: 0;
+    }
+    .ch-text {
+      max-width: 36rem;
+    }
+  }
+
+  @media (max-width: 1100px) {
+    .engine-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .think {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .j-hero {
+      padding-block: 120px 48px;
+    }
+    .j-body {
+      padding-left: calc(var(--g) + 32px);
+    }
+    .ch-n::before {
+      left: -32px;
+    }
+    .ch {
+      grid-template-columns: 1fr;
+      gap: 28px;
+      min-height: 0;
+      padding-block: 56px;
+    }
+    .recap ol {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .banks,
+    .engine-grid {
+      grid-template-columns: 1fr;
+    }
+    .mule,
+    .mule-label {
+      display: none;
+    }
+    .banks {
+      padding-top: 0;
+    }
+    .engine {
+      padding: 20px;
+    }
+    .lines li {
+      grid-template-columns: 1fr auto;
+    }
+    .lines .what {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .flow-tag {
+      display: none;
+    }
+    .receipt {
+      font-size: 0.6875rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flow > * {
+      animation: none !important;
+      opacity: 1;
+      transform: translate(-50%, 60px);
+    }
+    .flow > *:not(:first-of-type):not(.flow-line):not(.rail-a):not(.rail-b):not(.flow-tag) {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  /*
+   * Chapters play once when they come into view (is-on) and keep their flows moving only while
+   * visible (is-live). The timeline line fills as the reader goes down the journey.
+   */
+  const journey = document.querySelector<HTMLElement>('[data-journey]');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (journey && !reduced) {
+    journey.classList.add('is-armed');
+    const chapters = [...journey.querySelectorAll<HTMLElement>('[data-ch]')];
+    const body = journey.querySelector<HTMLElement>('.j-body');
+
+    const play = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) e.target.classList.add('is-on');
+        }
+      },
+      { threshold: 0.3 },
+    );
+    const live = new IntersectionObserver((entries) => {
+      for (const e of entries) e.target.classList.toggle('is-live', e.isIntersecting);
+    });
+    for (const c of chapters) {
+      play.observe(c);
+      live.observe(c);
+    }
+
+    const update = () => {
+      if (!body) return;
+      const r = body.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (window.innerHeight * 0.5 - r.top) / r.height));
+      body.style.setProperty('--p', p.toFixed(3));
+    };
+    window.addEventListener('alibi:scroll', update);
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+  } else if (journey) {
+    journey.querySelectorAll('[data-ch]').forEach((c) => c.classList.add('is-on'));
+  }
+</script>

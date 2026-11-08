@@ -1,0 +1,188 @@
+---
+/**
+ * Order confirmation. Shows the demo order placed at checkout and where its
+ * receipt goes: into the buyer's Alibi if they connected, otherwise a last
+ * chance to connect.
+ */
+import ShopLayout from '@/layouts/ShopLayout.astro';
+import AlibiConnection from '@/components/AlibiConnection.astro';
+import ProductArt from '@/components/ProductArt.astro';
+import { deliveryOptions, findListing, formatGBP, type Listing } from '@/data/shop';
+import { ORDER_COOKIE, parseOrder } from '@/lib/basket';
+
+const order = parseOrder(Astro.cookies.get(ORDER_COOKIE)?.value);
+if (!order) return Astro.redirect('/', 303);
+
+const items = order.ids.map(findListing).filter((l): l is Listing => Boolean(l));
+const delivery = deliveryOptions.find((d) => d.id === order.delivery)!;
+const first = order.name.split(' ')[0] || 'there';
+const placed = new Date(order.placedAt).toLocaleString('en-GB', {
+  day: 'numeric',
+  month: 'long',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+---
+
+<ShopLayout title="Order confirmed" checkout>
+  <div class="wrap">
+    <span class="tick" aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        width="26"
+        height="26"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+    </span>
+    <h1>Thanks, {first}. Your order is confirmed.</h1>
+    <p class="sub">
+      Order <strong>{order.ref}</strong> · {placed}. A confirmation is on its way to {order.email}.
+    </p>
+
+    <AlibiConnection
+      context="checkout"
+      returnPath="/checkout/complete/"
+      heading="Keep this receipt in your Alibi"
+      pitch="Connect now and this receipt, and future orders, go straight into your Alibi passport."
+      connected="Receipt for this order sent to your Alibi passport."
+      viewLink
+    />
+
+    <section class="receipt" aria-labelledby="receipt-title">
+      <h2 id="receipt-title">Receipt</h2>
+      <ul>
+        {items.map((l) => (
+          <li>
+            <span class="thumb">
+              <ProductArt kind={l.art} tone={l.tone} small />
+            </span>
+            <span class="what">
+              {l.title}
+              <span class="muted">Sold by @{l.seller}</span>
+            </span>
+            <span class="num">{formatGBP(l.priceMinor)}</span>
+          </li>
+        ))}
+      </ul>
+      <dl>
+        <div>
+          <dt>
+            {delivery.label} delivery · {delivery.detail}
+          </dt>
+          <dd>{formatGBP(delivery.priceMinor)}</dd>
+        </div>
+        <div class="total">
+          <dt>Paid (simulated)</dt>
+          <dd>{formatGBP(order.totalMinor)}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <a class="btn ghost" href="/">
+      Continue shopping
+    </a>
+  </div>
+</ShopLayout>
+
+<style>
+  .wrap {
+    max-width: 34rem;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .tick {
+    display: inline-grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--c-ok) 12%, white);
+    color: var(--c-ok);
+    margin-bottom: var(--space-sm);
+  }
+
+  h1 {
+    font-size: var(--t-lg);
+    letter-spacing: -0.02em;
+  }
+
+  .sub {
+    color: var(--c-ink-soft);
+    margin-bottom: var(--space-lg);
+  }
+
+  .wrap :global(.alibi-box) {
+    text-align: left;
+  }
+
+  .receipt {
+    margin: var(--space-lg) 0;
+    padding: var(--space-md);
+    background: var(--c-soft);
+    border-radius: var(--radius-md);
+    text-align: left;
+  }
+
+  .receipt h2 {
+    font-size: var(--t-md);
+  }
+
+  ul {
+    list-style: none;
+    margin: 0 0 var(--space-sm);
+    padding: 0;
+  }
+
+  li {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+    gap: var(--space-xs);
+    align-items: center;
+    padding-block: var(--space-2xs);
+    font-size: var(--t-sm);
+  }
+
+  .what {
+    display: grid;
+    line-height: 1.3;
+  }
+
+  .muted {
+    color: var(--c-ink-faint);
+  }
+
+  .num,
+  dd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  dl {
+    margin: 0;
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--c-line);
+  }
+
+  dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: 0.3rem 0;
+    font-size: var(--t-sm);
+  }
+
+  dd {
+    margin: 0;
+  }
+
+  dl > .total {
+    font-weight: 700;
+    font-size: var(--t-base);
+  }
+</style>

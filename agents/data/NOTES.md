@@ -15,7 +15,7 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Frontend (lead 23:33Z, post 6714508805, commit df8cb9d)
 - data now owns `alibi/app/static/` (the stylesheet). Phase 1: review s4a screens and write `agents/data/out/FRONTEND_NOTES.md` (done). Phase 2 begins once the S4 merge is announced (~00:45Z): edit `alibi/app/static/alibi.css` on main and run `pytest alibi` before every commit.
 - s4a is checked out in a scratch worktree (scratchpad/s4a), never in this shared checkout. Previews are served at http://127.0.0.1:8765.
-- CSS draft finished: agents/data/out/alibi_css_phase2.patch (made against s4a 6466584; 22 alibi tests pass). After the S4 merge announcement: pull, run setup.sh, apply the patch to alibi/app/static/alibi.css (by hand if S4 changed the CSS), run pytest alibi, commit alibi/app/static/, post done to lead.
+- CSS draft (alibi_css_phase2.patch) was applied to alibi/app/static/alibi.css after the S4 merge; the patch file was deleted at 08:5xZ per lead post 6719455424.
 - Research's notes treat my case 1 as the canonical fixture (txn-0001-004, PO-0001-01).
 
 ## hidden_reference family (lead 23:40Z, post 6714579064)
@@ -70,6 +70,18 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Lead batch (06:49Z, post 6718410490)
 - (1) GEMINI_SHOWCASE.md is done, with an evidence link for each row. vision_check.py scores 3 receipts (rcpt-06, 09, 10) against receipts.json. Eval ran it live (record 73e742c7d7): 20/21 fields; rcpt-09 got the issuer wrong. The showcase cites that record. Hugo later added GEMINI_API_KEY to .env and approved 3 calls; they were NOT spent, because eval's record already covers it. Ask Hugo before making any call. The "measured on sealed cases" section waits on eval's results.jsonl.
 - (2) QA pass 2 once S5 lands: the Astro web/ apps and Jinja, both inboxes. (3) Finalise demo_script from RUNBOOK, do two timed dry runs, then record a replay video under 4 min outside the repo and link it from the README. The video needs Hugo to screen-record (macOS, not Xbox Game Bar). (4) Regenerate the figures from the real numbers. (5) Finalise data_card.
+
+## web/ opened (lead 08:26Z, post 6719250999, bf2076d)
+- Anyone may push to web/ after running pnpm verify. Data can't yet: the laptop has Node 20.12 and no pnpm, and installing them needs Hugo's approval. The holder app folders web/apps/alibi/src/{components,pages}/app/ stay with lead until 09:30.
+- 08:3xZ incident: `git pull --rebase` autostashed another session's uncommitted web/ edits. settings.astro conflicted against lead's redirect; the original is in stash@{0} c07f1f6. The restore command was blocked, so I reported it to the parent session and asked who restores it. **Always use `git pull --rebase --no-autostash`** while others share this checkout.
+
+## Web unified (lead 08:49Z, post 6719455424, bbb14db)
+- research (Elio) owns web/apps/alibi/; execution (Mouaad) owns the rest of web/; lead keeps alibi/. Data edits nothing in web/. Demo front end = phone holder app + Mouaad's bank console on the S5 backend; Jinja is the fallback. So QA pass 2 walks those two first.
+- Deleted out/alibi_css_phase2.patch as asked. agents/data/web_merchant/ and hero_prototype/ are reference drops only now.
+- The uncommitted web/ edits in this shared checkout are not data's; left for their owner. While they exist the checkout can't rebase-pull, so data pushes from a scratch worktree on origin/main.
+
+## S5 not on main (lead 09:49Z, post 6720008019)
+- Lead's 09:21Z "S5 on main" post was premature. QA pass 2 is on hold until lead posts a pushed SHA and tag. Meanwhile: data_card.md finalised (394 tests, tables fixed, commit SHAs, vision and merchant-view lines). QA worktree: scratchpad/qa2.
 
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).

@@ -9,12 +9,14 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Iterable
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT =Path(__file__).resolve().parent.parent
 LOCAL_SETTINGS = ROOT / ".claude" / "settings.local.json"
 # Commands every agent runs all day. Allowing them stops agents stalling on prompts.
 ALLOW = ["Bash(python3 tools/board.py *)", "Bash(python tools/board.py *)",
-         "Bash(py -3 tools/board.py *)", "Bash(git add agents/*)", "Bash(git commit -m *)",
+         "Bash(py -3 tools/board.py *)", "Bash(git add agents/*)", "Bash(git add web/*)",
+         "Bash(git commit -m *)",
          "Bash(git pull --rebase origin main)", "Bash(git push origin main)",
          "Bash(git fetch *)", "Bash(uv sync --frozen)",
          "Bash(python3 tools/results.py report*)", "Bash(python tools/results.py report*)",
@@ -56,6 +58,15 @@ def owner_of(team: dict, path: str) -> dict:
     return next(m for m in team["members"] if m["role"] == "lead")
 
 
+def is_open(team: dict, path: str) -> bool:
+    """True if anyone on the roster may change path: it is under an open folder and
+    no member holds a more specific folder around it."""
+    opened = max((len(p) for p in team.get("open_paths", []) if path.startswith(p)), default=-1)
+    held = max((len(p) for m in team["members"] for p in m["paths"] if path.startswith(p)),
+               default=-1)
+    return opened > held
+
+
 def current_login() -> str:
     """Return the login set by setup.sh, falling back to the signed-in gh user."""
     configured = subprocess.run(
@@ -79,16 +90,23 @@ def edit_denies(team: dict, role: str) -> list[str]:
     return rules
 
 
-def is_generated(rule: str) -> bool:
+def is_generated(rule: str, open_paths: Iterable[str] = ()) -> bool:
     lead_rules = {f"Edit({path})" for path in LEAD_PATHS}
-    return rule.startswith("Edit(/agents/") or rule in lead_rules or rule in ALLOW + DENY
+    return (rule.startswith("Edit(/agents/") or rule in lead_rules or rule in ALLOW + DENY
+            or any(rule.startswith(f"Edit(/{prefix}") for prefix in open_paths))
 
 
-def with_rules(settings: dict, allow: list[str], deny: list[str]) -> dict:
-    """Swap in this script's rules and keep everything the person added themselves."""
+def with_rules(settings: dict, allow: list[str], deny: list[str],
+               open_paths: Iterable[str] = ()) -> dict:
+    """Swap in this script's rules and keep everything the person added themselves.
+
+    Rules under an open folder count as generated, so a deny left from when a member
+    owned that folder does not outlive the change."""
     permissions = settings.setdefault("permissions", {})
+    open_paths = list(open_paths)
     for key, rules in (("allow", allow), ("deny", deny)):
-        kept = [rule for rule in permissions.get(key, []) if not is_generated(rule)]
+        kept = [rule for rule in permissions.get(key, [])
+                if not is_generated(rule, open_paths)]
         permissions[key] = kept + rules
     return settings
 
@@ -100,7 +118,8 @@ def write_local_settings(team: dict, role: str, path: Path = LOCAL_SETTINGS) -> 
         settings = {}
     except json.JSONDecodeError:
         raise SystemExit(f"{path} is not valid JSON. Fix it, then run setup again.")
-    settings = with_rules(settings, ALLOW, DENY + edit_denies(team, role))
+    settings = with_rules(settings, ALLOW, DENY + edit_denies(team, role),
+                          team.get("open_paths", []))
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps(settings, indent=2) + "\n")
 

@@ -27,7 +27,27 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
   --results data/alibi/probes.jsonl
 ```
 
-Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. For SP-47, set `storage_layout` to `configured` or `default` only after confirming the matching layout for the target. The runner labels that result as an isolated local core probe. It cannot inspect a remote host’s raw store.
+Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. SP-47 covers the passport store, as specified in `shared/CONTRACTS.md`. Set `storage_layout` to `configured` or `default` only after confirming the target passport's layout. The report and deck table name the plaintext S4/S2 delivery state files separately.
+
+SP-46 can scan local captures when inspection routes are unavailable. Set
+the top-level `sp46_native` config with
+`opt_in: "scan three captures of a disposable public synthetic run"`, an
+owner-only `scratch_dir` named `alibi-sp46-*` directly under the OS temp
+directory, and exactly three named `captures` for `audit`, `logs` and
+`traces`. Supply a distinct current benign marker per capture in
+`canaries`, plus `secret_patterns` and `raw_payload_patterns` from that
+synthetic run. Use capture filenames such as `audit.json`, `logs.log` and
+`traces.json`. Keep the config outside that capture directory. The
+result reports corpus labels and a verdict. The scanner retains no capture text.
+
+For the app and bank check, use public Case 1 with a disposable master key and
+signing keys outside the data directories. Run, approve and dispatch Bank A's
+request, then verify the receipt against the package in the bank view. Inspect
+the scratch S4 `case_1.state.json` entry
+`["bank:bank_a:packages"][package_id]["raw"]` and the S2 `state.json` entry for
+that package under `recipients.bank_a.inbox`. A plaintext signed envelope whose
+canonical digest matches its accepted receipt proves exposure even when the
+passport database is encrypted. Record the finding without retaining the package.
 
 For native bank checks SP-25 to SP-32, issue a real Bank A request and approve and dispatch a public case package that includes a full issuer-signed record. Put its ID in `fixtures.native_verifier_package_id` to select the native handlers. Supply the matching throwaway package and record signing key paths as `fixtures.native_verifier_package_pem` and `fixtures.native_verifier_record_pem`, outside Git. Configure `bank_a` and `bank_b` tokens and a disposable loopback `bank` origin. A second bank service can be selected with `fixtures.native_verifier_service` if it handles both recipient identities. The default routes are `/deliver`, `/inbox` and `/packages/{package_id}`; override them as `native_verifier_deliver`, `native_verifier_inbox` and `native_verifier_package` if the runbook uses a prefix. These checks write signed synthetic variants and rejected receipts. Run them on an isolated probe inbox, away from demo and sealed case state.
 
@@ -76,6 +96,20 @@ window while its RFC remains open, supplied as `expired_request`. SP-09 derives
 the conflicting retry from the stored signed envelope and sends it to the
 disposable bank's `/deliver` route unless overridden by an explicit fixture.
 
+For a fresh S4 rehearsal stack, the optional `ingest_probe_profile` module
+derives the SP-39 follow-up and checks the active-source readback control for
+SP-33 through SP-37. It checks the app is serving the selected public case.
+
+```bash
+uv run --frozen python -m agents.eval.ingest_probe_profile --config "$ALIBI_BASE_PROBES" \
+  --out "$ALIBI_INGEST_PROBES"
+```
+
+SP-39 dispatches a real package through the S4 app's in-process bank and
+checks the retained transaction scope and bank-visible response. SP-33
+through SP-37 also need the app owner's webhook and import submission routes
+and the corresponding attack bodies. Readback alone does not give them an outcome.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash
@@ -83,7 +117,7 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
   --candidate-evidence --results "$ALIBI_FROZEN_PROBES"
 ```
 
-Keep the adjacent `<results filename>.receipt.json` with that capture. It records the probe checkout commit and a digest of the outcomes. Candidate capture and the lockbox runner each require a definite outcome for a demo refusal probe and for the demo control. A failed check counts as an observation and stays visible in the scores. Review full coverage and any failed controls before opening the lockbox. The evaluator confirms the service revision separately from the receipt.
+Keep the adjacent `<results filename>.receipt.json` with that capture. It records the probe checkout commit and a digest of the outcomes. Candidate capture accepts only loopback service origins, including per-probe overrides. Candidate capture and the lockbox runner each require a definite outcome for a demo refusal probe and for the demo control. A failed check counts as an observation and stays visible in the scores. If coverage is inconclusive, the command still prints the probe table and skips writing candidate evidence. Review full coverage and any failed controls before opening the lockbox. The evaluator confirms the service revision separately from the receipt.
 
 `score_capture` takes normalized records extracted from actual application output. Include `case_number`, `request_id`, `audience`, `answers` keyed by question and `disclosed_refs` for every reference in the delivered body. Each answer has `status`, `facts`, `gap` and `evidence_refs`. The scorer counts a case as complete only when every request passes, so a missing second-bank response stays in the denominator. The probe file is a JSON object keyed by probe ID, or the `observed` report printed by `uv run --frozen python -m pytest -q -s agents/eval/test_sharing_flow.py` for the local reference. Use separate probe captures for each system. The final output line contains numeric metrics, with unexercised probes listed separately above it.
 

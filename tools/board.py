@@ -164,9 +164,9 @@ def git(*args: str) -> str:
     return done.stdout.strip()
 
 
-def require_published(member: dict) -> None:
+def require_published(member: dict, team: dict) -> None:
     """A teammate cannot use work that has not reached the remote."""
-    for prefix in member["paths"]:
+    for prefix in [*member["paths"], *team.get("open_paths", [])]:
         if git("status", "--porcelain", "--", prefix):
             die(f"uncommitted changes in {prefix}. Commit and push before posting done.")
     git("fetch", "-q", "origin")
@@ -193,7 +193,7 @@ def cmd_post(args: argparse.Namespace, team: dict, me: str) -> None:
     if kind != "fyi" and not args.to:
         die(f"{kind} posts need --to")
     if kind == "done":
-        require_published(member)
+        require_published(member, team)
     tags = resolve_targets(team, args.to or "", me)
     if kind != "fyi" and not tags:
         die("--to resolved to nobody")

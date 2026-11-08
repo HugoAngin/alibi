@@ -1,0 +1,106 @@
+---
+/**
+ * The picture on a product tile: a simple line drawing of the garment on a
+ * soft background. Everything in the shop is synthetic, so there are no photos.
+ */
+import type { ArtKind } from '@/data/shop';
+
+interface Props {
+  kind: ArtKind;
+  tone?: string;
+  /** Rounded thumbnail for basket rows. */
+  small?: boolean;
+}
+
+const { kind, tone = '#ecebe8', small = false } = Astro.props;
+
+const paths: Record<ArtKind, string[]> = {
+  shirt: [
+    'M45 26 L60 34 L75 26 L94 36 L104 58 L90 64 L86 56 L86 98 L34 98 L34 56 L30 64 L16 58 L26 36 Z',
+    'M45 26 L52 40 L60 34 L68 40 L75 26',
+    'M60 40 V98',
+  ],
+  jumper: [
+    'M46 26 Q60 36 74 26 L96 36 L106 80 L94 83 L86 54 L86 98 L34 98 L34 54 L26 83 L14 80 L24 36 Z',
+    'M34 91 H86',
+    'M46 26 Q60 42 74 26',
+  ],
+  jacket: [
+    'M44 24 L60 30 L76 24 L96 34 L104 76 L92 78 L86 52 L86 88 L34 88 L34 52 L28 78 L16 76 L24 34 Z',
+    'M44 24 L54 50 L60 30 L66 50 L76 24',
+    'M60 50 V88',
+    'M40 70 H52 M68 70 H80',
+  ],
+  coat: [
+    'M44 18 L60 26 L76 18 L96 28 L104 82 L92 84 L86 50 L90 106 L30 106 L34 50 L28 84 L16 82 L24 28 Z',
+    'M44 18 L52 52 L60 26 L68 52 L76 18',
+    'M33 64 H87',
+    'M60 52 V106',
+  ],
+  trousers: ['M38 18 H82 L88 104 H66 L60 46 L54 104 H32 Z', 'M38 27 H82', 'M60 27 V46'],
+  skirt: ['M42 24 H78 L94 98 H26 Z', 'M42 33 H78', 'M60 70 V98'],
+  dress: [
+    'M48 16 L52 28 Q60 34 68 28 L72 16 L78 22 L70 46 L92 104 H28 L50 46 L42 22 Z',
+    'M50 46 H70',
+  ],
+  tote: ['M28 48 H92 L87 102 H33 Z', 'M44 48 V38 Q44 24 60 24 Q76 24 76 38 V48'],
+  shoes: [
+    'M14 80 Q15 64 33 61 L56 58 Q71 58 82 66 L101 72 Q110 76 108 86 H17 Q12 86 14 80 Z',
+    'M16 86 H108 V91 H16 Z',
+    'M48 60 Q57 71 68 61',
+  ],
+  boots: ['M38 16 H66 V66 L94 77 Q104 81 102 94 H38 Z', 'M38 94 H102 V101 H38 Z', 'M38 28 H66'],
+  scarf: [
+    'M60 16 L104 60 L60 104 L16 60 Z',
+    'M60 30 L90 60 L60 90 L30 60 Z',
+    'M60 50 L70 60 L60 70 L50 60 Z',
+  ],
+};
+---
+
+<span class:list={['art', { small }]} style={`--tone:${tone}`} aria-hidden="true">
+  <svg
+    viewBox="0 0 120 120"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2.2"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+  >
+    {paths[kind].map((d, i) => (
+      <path
+        d={d}
+        fill={i === 0 ? 'currentColor' : 'none'}
+        fill-opacity={i === 0 ? 0.07 : undefined}
+      />
+    ))}
+  </svg>
+</span>
+
+<style>
+  .art {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 5;
+    width: 100%;
+    background: var(--tone);
+    color: rgb(20 20 20 / 0.5);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .art svg {
+    width: 58%;
+    height: auto;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .art.small {
+    aspect-ratio: 1;
+    border-radius: var(--radius-sm);
+  }
+
+  .art.small svg {
+    width: 72%;
+  }
+</style>

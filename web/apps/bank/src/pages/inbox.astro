@@ -34,7 +34,7 @@ const loaded = await loadInbox(target, who, backendHeaders(BANK_A_TOKEN));
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
-<ConsoleLayout title="Alibi inbox">
+<ConsoleLayout title="Alibi inbox" section="inbox">
   <h1>Alibi packages received</h1>
   {loaded.source === 'missing' ? (
     <p>{loaded.reason}</p>

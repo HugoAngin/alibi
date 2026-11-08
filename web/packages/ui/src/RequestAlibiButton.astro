@@ -2,28 +2,50 @@
 /**
  * "Request customer's Alibi". The button a bank's fraud analyst presses on a
  * case to ask the customer for context. It opens the bank's own request
- * screen, where the analyst picks the questions; the request then travels
- * through the bank connection, and the customer decides what to share.
+ * screen, where the analyst reviews what will be asked; the request then
+ * travels through the bank connection, and the customer decides what to share.
+ *
+ * `variant="solid"` is the primary, full-strength form for a case panel's
+ * footer; the default outline form sits inline among other actions. Extra
+ * attributes (such as data hooks) pass through to the link.
  */
+import type { HTMLAttributes } from 'astro/types';
+
 import Logomark from './Logomark.astro';
 
-interface Props {
+interface Props extends Omit<HTMLAttributes<'a'>, 'href'> {
   /** The bank system's own "compose request" screen for this case. */
   href: string;
   /** Set when a request is already open, so the analyst cannot send another. */
   disabledReason?: string;
+  variant?: 'outline' | 'solid';
+  /** Fill the width of its container. */
+  block?: boolean;
 }
 
-const { href, disabledReason } = Astro.props;
+const {
+  href,
+  disabledReason,
+  variant = 'outline',
+  block = false,
+  class: extra,
+  ...rest
+} = Astro.props;
+const classes = [
+  'alibi-request',
+  `alibi-request--${variant}`,
+  block && 'alibi-request--block',
+  extra,
+];
 ---
 
 {disabledReason ? (
-  <span class="alibi-request" aria-disabled="true" title={disabledReason}>
+  <span class:list={classes} aria-disabled="true" title={disabledReason}>
     <span>Request customer's</span>
     <Logomark height="1.1em" />
   </span>
 ) : (
-  <a class="alibi-request" href={href}>
+  <a class:list={classes} href={href} {...rest}>
     <span>Request customer's</span>
     <Logomark height="1.1em" />
   </a>
@@ -33,6 +55,7 @@ const { href, disabledReason } = Astro.props;
   .alibi-request {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.4em;
     min-height: 40px;
     padding: var(--space-2xs) var(--space-sm);
@@ -42,11 +65,39 @@ const { href, disabledReason } = Astro.props;
     color: var(--c-alibi);
     font: 600 var(--t-sm) / 1 var(--font-sans);
     text-decoration: none;
+    transition:
+      background-color 140ms ease-out,
+      color 140ms ease-out,
+      transform 120ms ease-out;
   }
 
-  a.alibi-request:hover {
+  a.alibi-request--outline:hover {
     background: var(--c-alibi);
     color: var(--c-alibi-ink);
+  }
+
+  .alibi-request--solid {
+    min-height: 48px;
+    padding-inline: 20px;
+    border-radius: 10px;
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    font-size: 0.9375rem;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+  }
+
+  a.alibi-request--solid:hover {
+    background: #262a33;
+    border-color: #262a33;
+  }
+
+  a.alibi-request:active {
+    transform: scale(0.98);
+  }
+
+  .alibi-request--block {
+    display: flex;
+    width: 100%;
   }
 
   [aria-disabled='true'].alibi-request {

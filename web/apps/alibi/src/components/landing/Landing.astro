@@ -1,14 +1,13 @@
 ---
 /**
- * The product landing page: island header, hero with the 3D passport, Core
- * (engine, integrations, control), a way into the case study, and Join.
+ * The product landing page: island header, the vertical journey through how Alibi works (hero,
+ * six chapters and a recap), a way into the case study, and Join.
  * Composition only; copy lives in src/data/product.ts.
  */
 import { Show } from '@clerk/astro/components';
 
 import IslandHeader from '@/components/site/IslandHeader.astro';
-import Hero from '@/components/site/Hero.astro';
-import Core from '@/components/site/Core.astro';
+import Journey from '@/components/site/Journey.astro';
 import SiteFooter from '@/components/site/SiteFooter.astro';
 
 interface Props {
@@ -22,8 +21,7 @@ const { offerApp = false } = Astro.props;
 <IslandHeader />
 
 <main id="main">
-  <Hero />
-  <Core />
+  <Journey />
 
   <section class="simulate s-wrap" aria-labelledby="simulate-title">
     <div class="simulate-card">

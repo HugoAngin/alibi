@@ -83,6 +83,51 @@ class Ownership(unittest.TestCase):
         self.assertIn("nobody yet", problems[1])
 
 
+class OpenPaths(unittest.TestCase):
+    team = {
+        "open_paths": ["web/"],
+        "members": [
+            {"role": "lead", "github": "Boss", "paths": ["agents/lead/", "web/apps/held/"]},
+            {"role": "data", "github": "Dana", "paths": ["agents/data/"]},
+        ],
+    }
+
+    def problems(self, login, path):
+        return check_ownership.violations(self.team, login, [path])
+
+    def test_anyone_on_the_roster_may_change_an_open_folder(self):
+        self.assertEqual(self.problems("dana", "web/apps/bank/x.astro"), [])
+        self.assertEqual(self.problems("Boss", "web/package.json"), [])
+
+    def test_a_member_keeps_a_folder_held_inside_it(self):
+        self.assertEqual(len(self.problems("Dana", "web/apps/held/x.astro")), 1)
+        self.assertEqual(self.problems("Boss", "web/apps/held/x.astro"), [])
+
+    def test_outsiders_are_still_refused(self):
+        self.assertEqual(len(self.problems("mallory", "web/apps/bank/x.astro")), 1)
+
+    def test_prefix_needs_the_whole_folder_name(self):
+        self.assertEqual(len(self.problems("Dana", "website/x.html")), 1)
+
+    def test_other_folders_stay_closed(self):
+        self.assertEqual(len(self.problems("Dana", "agents/lead/x.py")), 1)
+        self.assertEqual(len(self.problems("Dana", "tools/team.py")), 1)
+
+    def test_team_without_open_paths(self):
+        self.assertFalse(roster.is_open(TEAM, "web/x.astro"))
+
+    def test_only_held_folders_are_denied_to_claude(self):
+        rules = roster.edit_denies(self.team, "data")
+        self.assertIn("Edit(/web/apps/held/**)", rules)
+        self.assertNotIn("Edit(/web/**)", rules)
+
+    def test_setup_clears_a_deny_left_from_the_old_owner(self):
+        settings = {"permissions": {"deny": ["Edit(/web/**)", "Edit(/mine/**)"]}}
+        result = roster.with_rules(settings, [], ["Edit(/web/apps/held/**)"], ["web/"])
+        self.assertEqual(result["permissions"]["deny"],
+                         ["Edit(/mine/**)", "Edit(/web/apps/held/**)"])
+
+
 class QuietMentions(unittest.TestCase):
     def test_wraps_handles_so_they_tag_nobody(self):
         quiet = board.quiet_mentions("thanks @Dana, cc @boss-2")

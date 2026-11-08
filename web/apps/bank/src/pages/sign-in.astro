@@ -10,7 +10,7 @@ const enabled = Boolean(ANALYST_PASSCODE && BANK_SESSION_SECRET);
 const failed = Astro.url.searchParams.get('failed') === '1';
 ---
 
-<ConsoleLayout title="Analyst sign-in">
+<ConsoleLayout title="Analyst sign-in" section="sign-in">
   <h1>Analyst sign-in</h1>
   {enabled ? (
     <form method="post" action="/session/" class="panel">

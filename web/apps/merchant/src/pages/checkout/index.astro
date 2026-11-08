@@ -1,74 +1,272 @@
 ---
 /**
- * Checkout, the second place a merchant can offer "Connect to my Alibi". This
- * page shows an example buyer, not Maya, so the basket is labelled as an example.
+ * Checkout, the main place this shop offers "Connect to my Alibi". The buyer
+ * is an example person (not Maya), prefilled and labelled as such. Paying is
+ * simulated: POST places the order in a cookie, empties the basket and goes
+ * to the confirmation page. No payment is taken.
  */
-import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
-import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
-
 import ShopLayout from '@/layouts/ShopLayout.astro';
-import ConnectionStatus from '@/components/ConnectionStatus.astro';
-import { exampleBasket, formatGBP, shop } from '@/data/shop';
+import AlibiConnection from '@/components/AlibiConnection.astro';
+import ProductArt from '@/components/ProductArt.astro';
+import { deliveryOptions, exampleBuyer, formatGBP, shop, type DeliveryId } from '@/data/shop';
+import {
+  BASKET_COOKIE,
+  ORDER_COOKIE,
+  parseBasket,
+  priceBasket,
+  serializeBasket,
+  type PlacedOrder,
+} from '@/lib/basket';
 
-const basket = exampleBasket;
-const total = basket.reduce((sum, l) => sum + l.priceMinor, 0);
-const returnTo = new URL('/checkout/', Astro.site).toString();
+const ids = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value);
+if (ids.length === 0) return Astro.redirect('/basket/', 303);
+
+let values: Record<string, string> = { ...exampleBuyer, delivery: 'standard' };
+let errors: Record<string, string> = {};
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  values = Object.fromEntries(
+    ['email', 'name', 'line1', 'city', 'postcode', 'delivery'].map((k) => [
+      k,
+      String(form.get(k) ?? '').trim(),
+    ]),
+  );
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email ?? ''))
+    errors.email = 'Enter an email address.';
+  if (!values.name) errors.name = 'Enter your full name.';
+  if (!values.line1) errors.line1 = 'Enter the first line of your address.';
+  if (!values.city) errors.city = 'Enter a town or city.';
+  if (!values.postcode) errors.postcode = 'Enter a postcode.';
+
+  if (Object.keys(errors).length === 0) {
+    const delivery: DeliveryId = values.delivery === 'express' ? 'express' : 'standard';
+    const order: PlacedOrder = {
+      ref: `MM-${50000 + Math.floor(Math.random() * 10000)}`,
+      ids,
+      delivery,
+      name: values.name!,
+      email: values.email!,
+      totalMinor: priceBasket(ids, delivery).totalMinor,
+      placedAt: new Date().toISOString(),
+    };
+    const opts = { path: '/', sameSite: 'lax', maxAge: 60 * 60 * 24 * 30 } as const;
+    Astro.cookies.set(ORDER_COOKIE, JSON.stringify(order), opts);
+    Astro.cookies.set(BASKET_COOKIE, serializeBasket([]), opts);
+    return Astro.redirect('/checkout/complete/', 303);
+  }
+}
+
+const delivery: DeliveryId = values.delivery === 'express' ? 'express' : 'standard';
+const priced = priceBasket(ids, delivery);
+const prices = Object.fromEntries(
+  deliveryOptions.map((d) => [d.id, priceBasket(ids, d.id).totalMinor]),
+);
 ---
 
-<ShopLayout title="Checkout">
-  <h1>Checkout</h1>
+<ShopLayout title="Checkout" checkout>
+  <div class="layout">
+    <form method="post" class="steps" novalidate>
+      <h1>Checkout</h1>
+      <p class="example">Example buyer, prefilled for the demo. Not part of Maya’s case.</p>
 
-  <section class="panel" aria-labelledby="basket-title">
-    <h2 id="basket-title">Your basket</h2>
-    <p class="example">Example buyer and basket, not part of Maya’s case.</p>
-    <table>
-      <tbody>
-        {basket.map((l) => (
-          <tr>
-            <td>{l.title}</td>
-            <td class="num">{formatGBP(l.priceMinor)}</td>
-          </tr>
+      <section aria-labelledby="contact-title">
+        <h2 id="contact-title">Contact</h2>
+        <div class="field">
+          <label for="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autocomplete="off"
+            value={values.email}
+            aria-invalid={errors.email ? 'true' : undefined}
+          />
+          {errors.email && <p class="err">{errors.email}</p>}
+        </div>
+      </section>
+
+      <section aria-labelledby="delivery-title">
+        <h2 id="delivery-title">Delivery</h2>
+        <div class="field">
+          <label for="name">Full name</label>
+          <input
+            id="name"
+            name="name"
+            autocomplete="off"
+            value={values.name}
+            aria-invalid={errors.name ? 'true' : undefined}
+          />
+          {errors.name && <p class="err">{errors.name}</p>}
+        </div>
+        <div class="field">
+          <label for="line1">Address</label>
+          <input
+            id="line1"
+            name="line1"
+            autocomplete="off"
+            value={values.line1}
+            aria-invalid={errors.line1 ? 'true' : undefined}
+          />
+          {errors.line1 && <p class="err">{errors.line1}</p>}
+        </div>
+        <div class="pair">
+          <div class="field">
+            <label for="city">Town or city</label>
+            <input
+              id="city"
+              name="city"
+              autocomplete="off"
+              value={values.city}
+              aria-invalid={errors.city ? 'true' : undefined}
+            />
+            {errors.city && <p class="err">{errors.city}</p>}
+          </div>
+          <div class="field">
+            <label for="postcode">Postcode</label>
+            <input
+              id="postcode"
+              name="postcode"
+              autocomplete="off"
+              value={values.postcode}
+              aria-invalid={errors.postcode ? 'true' : undefined}
+            />
+            {errors.postcode && <p class="err">{errors.postcode}</p>}
+          </div>
+        </div>
+
+        <fieldset class="options">
+          <legend class="visually-hidden">Delivery speed</legend>
+          {deliveryOptions.map((d) => (
+            <label class="option">
+              <input
+                type="radio"
+                name="delivery"
+                value={d.id}
+                checked={d.id === delivery}
+                data-total={formatGBP(prices[d.id]!)}
+                data-price={formatGBP(d.priceMinor)}
+              />
+              <span>
+                <strong>{d.label}</strong>
+                <span class="muted">{d.detail}</span>
+              </span>
+              <span class="opt-price">{formatGBP(d.priceMinor)}</span>
+            </label>
+          ))}
+        </fieldset>
+      </section>
+
+      <section aria-labelledby="payment-title">
+        <h2 id="payment-title">Payment</h2>
+        <label class="option">
+          <input type="radio" name="payment" value="card" checked />
+          <span>
+            <strong>Card ending 4242</strong>
+            <span class="muted">Example card. No payment is taken.</span>
+          </span>
+          <span class="card-mark" aria-hidden="true">
+            VISA
+          </span>
+        </label>
+      </section>
+
+      <section aria-labelledby="proof-title">
+        <h2 id="proof-title">Proof of purchase</h2>
+        <AlibiConnection
+          context="checkout"
+          returnPath="/checkout/"
+          heading="Save this receipt to your Alibi"
+          pitch={`Keep a verified copy of this order in your Alibi passport, so you can explain the payment if your bank ever asks. ${shop.name} never sees your passport.`}
+          connected="This order and its receipt will be added to your Alibi passport when you pay."
+        />
+      </section>
+
+      <button class="btn wide pay">
+        Pay <span data-pay-total>{formatGBP(priced.totalMinor)}</span>
+      </button>
+      <p class="fine">Simulated checkout. Pressing pay places a demo order; no money moves.</p>
+    </form>
+
+    <aside class="summary" aria-labelledby="summary-title">
+      <h2 id="summary-title">Order summary</h2>
+      <ul class="lines">
+        {priced.items.map((l) => (
+          <li>
+            <span class="thumb">
+              <ProductArt kind={l.art} tone={l.tone} small />
+            </span>
+            <span class="what">
+              {l.title}
+              <span class="muted">
+                {l.size} · @{l.seller}
+              </span>
+            </span>
+            <span class="num">{formatGBP(l.priceMinor)}</span>
+          </li>
         ))}
-        <tr class="total">
-          <th scope="row">Total</th>
-          <td class="num">{formatGBP(total)}</td>
-        </tr>
-      </tbody>
-    </table>
-    <button type="button" disabled>
-      Pay (simulated, not wired)
-    </button>
-  </section>
-
-  <section class="panel" aria-labelledby="alibi-title">
-    <h2 id="alibi-title">Keep this purchase in your passport</h2>
-    <p>Connect {shop.name} so this order and its receipt are ready if anyone asks.</p>
-    <ConnectionStatus />
-    <ConnectAlibiButton
-      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
-      merchantId={shop.merchantId}
-      returnTo={returnTo}
-      context="checkout"
-    />
-  </section>
+      </ul>
+      <dl>
+        <div>
+          <dt>Items</dt>
+          <dd>{formatGBP(priced.subtotalMinor)}</dd>
+        </div>
+        <div>
+          <dt>Buyer protection</dt>
+          <dd>{formatGBP(priced.protectionMinor)}</dd>
+        </div>
+        <div>
+          <dt>Delivery</dt>
+          <dd data-delivery-price>{formatGBP(priced.deliveryMinor)}</dd>
+        </div>
+        <div class="total">
+          <dt>Total</dt>
+          <dd data-summary-total>{formatGBP(priced.totalMinor)}</dd>
+        </div>
+      </dl>
+      <a class="edit" href="/basket/">
+        Edit basket
+      </a>
+    </aside>
+  </div>
 </ShopLayout>
 
+<script>
+  // Keep the totals in step with the chosen delivery speed.
+  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="delivery"]')) {
+    radio.addEventListener('change', () => {
+      const set = (sel: string, text: string | undefined) => {
+        const el = document.querySelector(sel);
+        if (el && text) el.textContent = text;
+      };
+      set('[data-pay-total]', radio.dataset.total);
+      set('[data-summary-total]', radio.dataset.total);
+      set('[data-delivery-price]', radio.dataset.price);
+    });
+  }
+</script>
+
 <style>
-  .panel {
-    margin-block: var(--space-md);
-    padding: var(--space-md);
-    background: var(--c-surface);
-    border: 1px solid var(--c-line);
-    border-radius: var(--radius-md);
-    max-width: var(--measure);
+  .layout {
+    display: grid;
+    gap: var(--space-xl);
   }
 
-  h2 {
-    font-size: var(--t-md);
+  @media (min-width: 900px) {
+    .layout {
+      grid-template-columns: minmax(0, 1fr) 24rem;
+      align-items: start;
+    }
   }
 
-  .num {
-    text-align: right;
+  .steps {
+    max-width: 36rem;
+  }
+
+  h1 {
+    font-size: var(--t-lg);
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-3xs);
   }
 
   .example {
@@ -76,13 +274,196 @@ const returnTo = new URL('/checkout/', Astro.site).toString();
     color: var(--c-ink-faint);
   }
 
-  .total td {
+  section {
+    margin-top: var(--space-lg);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+    margin-bottom: var(--space-xs);
+  }
+
+  .field {
+    display: grid;
+    gap: 0.3rem;
+    margin-bottom: var(--space-xs);
+  }
+
+  label {
+    font-size: var(--t-sm);
+    font-weight: 550;
+  }
+
+  input:not([type='radio']) {
+    height: 46px;
+    padding: 0 0.85rem;
+    border: 1px solid var(--c-line);
+    border-radius: 8px;
+    font: inherit;
+    color: var(--c-ink);
+    background: #fff;
+  }
+
+  input:not([type='radio']):focus {
+    outline: none;
+    border-color: var(--c-ink);
+    box-shadow: 0 0 0 3px rgb(20 20 20 / 0.08);
+  }
+
+  input[aria-invalid='true'] {
+    border-color: var(--c-bad);
+  }
+
+  .err {
+    margin: 0;
+    font-size: var(--t-sm);
+    color: var(--c-bad);
+  }
+
+  .pair {
+    display: grid;
+    gap: 0 var(--space-xs);
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .options {
+    margin: var(--space-xs) 0 0;
+    padding: 0;
+    border: 0;
+    display: grid;
+    gap: var(--space-2xs);
+  }
+
+  .option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    font-weight: 400;
+    cursor: pointer;
+  }
+
+  .option:has(input:checked) {
+    border-color: var(--c-ink);
+    box-shadow: inset 0 0 0 1px var(--c-ink);
+  }
+
+  .option input {
+    accent-color: var(--c-ink);
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+  }
+
+  .option > span:first-of-type {
+    display: grid;
+    line-height: 1.35;
+  }
+
+  .opt-price {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card-mark {
+    margin-left: auto;
+    padding: 0.15rem 0.45rem;
+    border: 1px solid var(--c-line);
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    font-style: italic;
+    letter-spacing: 0.04em;
+    color: #1a1f71;
+  }
+
+  .muted {
+    color: var(--c-ink-faint);
+    font-size: var(--t-sm);
+  }
+
+  .pay {
+    margin-top: var(--space-lg);
+    min-height: 54px;
+    font-size: var(--t-md);
+  }
+
+  .fine {
+    margin-top: var(--space-2xs);
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+    text-align: center;
+  }
+
+  .summary {
+    padding: var(--space-md);
+    background: var(--c-soft);
+    border-radius: var(--radius-md);
+  }
+
+  @media (min-width: 900px) {
+    .summary {
+      position: sticky;
+      top: 96px;
+    }
+  }
+
+  .lines {
+    list-style: none;
+    margin: 0 0 var(--space-sm);
+    padding: 0;
+  }
+
+  .lines li {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+    gap: var(--space-xs);
+    align-items: center;
+    padding-block: var(--space-2xs);
+    font-size: var(--t-sm);
+  }
+
+  .what {
+    display: grid;
+    line-height: 1.3;
+  }
+
+  .num,
+  dd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  dl {
+    margin: 0;
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--c-line);
+  }
+
+  dl > div {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    font-size: var(--t-sm);
+  }
+
+  dd {
+    margin: 0;
+  }
+
+  dl > .total {
+    margin-top: var(--space-2xs);
+    padding-top: var(--space-xs);
+    border-top: 1px solid var(--c-line);
+    font-size: var(--t-md);
     font-weight: 700;
   }
 
-  button {
+  .edit {
+    display: inline-block;
     margin-top: var(--space-sm);
-    min-height: 44px;
-    padding-inline: var(--space-md);
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
   }
 </style>

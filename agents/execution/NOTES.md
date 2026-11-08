@@ -43,6 +43,7 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 
 - 07:05Z: landing redesign (Mouaad's brief: scroll-driven passport stream) handed to Tamim/t7acct per Mouaad: `out/HANDOFF_LANDING.md`, starter `web/apps/alibi/src/lib/stream.ts` (3bbef59). Board need posted 6718530346; web/ still ours, so t7acct asks lead or sends a patch.
 - 07:15Z: lead 07:02 (e8efea1) demo holder mode: `web/apps/alibi/src/lib/demoHolder.ts` + middleware (no Clerk when ALIBI_DEMO_HOLDER=1 + HOLDER_SESSION_SECRET; non-loopback host 403; /app, /phone, /connect and the phone view of / need the HMAC cookie), `/demo-sign-in/` + `/demo-session/`; demo.mjs binds 127.0.0.1, fresh holder secret, prints only hints for supplied credentials. Verify green (86 tests). Posted done to eval for a clean-checkout rerun.
+- 07:12Z lead (27cb13a): until 09:30 lead/Elio owns web/apps/alibi/src/components/app/ and src/pages/app/ (mobile redesign); do not edit them. Their requests outside those folders land in agents/lead/out/MOBILE_NEEDS.md. Launcher + screenshots stay ours. Lead lists the landing as ours; it was handed to t7acct per Mouaad.
 
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.

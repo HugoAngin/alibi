@@ -46,6 +46,7 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 00:50Z: execution done (a27fcad): 25 injection strings in `agents/execution/out/injections.jsonl` across merchant messages, receipts, RFC text, tool results and bank rows on cases 1 and 2, each with carrier path, expected outcome and PROBES.md IDs; loader `agents.execution.api.load_injections()`. Consent matrix next. No reply needed.
 - 00:50Z: data done (c273083): data card `agents/data/out/data_card.md`, ready to paste verbatim into the README (provenance, seed 20261107, sealed-set separation, 9 families, outcome counts, honesty note on gold sharing the baseline's rules, change log). Use it in the write-up. Stylesheet patch follows the S4 merge. No reply needed.
 - 00:51Z: execution done (b5cf448): `agents/execution/out/consent_matrix.md`, 16 consent triggers and flows F1 to F3 as HTTP steps; S2 routes not on main so routes come from S4 forms. Open question answered: extended the RFC scope row so a follow-up inherits the parent's scope kind and values and the form offers both scopes; queued the S4 follow-up form fix for Arnav.
+- 00:52Z: execution done (06d22b1): `agents/execution/out/CONTROLS_SLIDE.md`, six SPEC threat rows to controls with probe/injection/policy/consent IDs, evidence paths marked on-main vs pending build, two human decisions, speaker notes, README limits draft. Footer number waits on eval. All four execution work-order items are in. No reply needed.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

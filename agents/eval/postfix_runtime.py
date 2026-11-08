@@ -39,7 +39,8 @@ def replay(root):
     return common.load_json(root / 'summary.json')
 
 
-def capture(cases, *, output, candidate, private_root, deadline):
+def capture(cases, *, output, candidate, private_root, deadline, trusted_issuers_file=None,
+            trusted_issuers_sha256=None):
     """Private worker artifacts; only counts and fixed failure codes exported."""
     counts = dict(cases=len(cases), completed=0, failed=0, unstarted=0, scheduler_errors=0,
                   model_calls=0)
@@ -59,7 +60,9 @@ def capture(cases, *, output, candidate, private_root, deadline):
                 return run_isolated(case, 'rules', candidate=candidate, private_root=private_root,
                     credential=credential, output=output / 'workers' / str(case['case_number']),
                     scratch_parent=lane, denied_scratch=tuple(p for p in roots if p != lane),
-                    capture_root=output.parent, deadline=deadline)
+                    capture_root=output.parent, deadline=deadline,
+                    trusted_issuers_file=trusted_issuers_file,
+                    trusted_issuers_sha256=trusted_issuers_sha256)
             finally:
                 lanes.put(lane)
 
@@ -91,6 +94,7 @@ def main(argv=None):
         parser.add_argument('--' + name, type=Path)
     parser.add_argument('--candidate')
     parser.add_argument('--deadline')
+    parser.add_argument('--trusted-issuers-file', type=Path)
     args = parser.parse_args(argv)
     os.umask(0o077)
     output = args.out.resolve()
@@ -116,6 +120,11 @@ def main(argv=None):
     candidate = subprocess.check_output(['git', 'rev-parse', args.candidate + '^{commit}'],
                                        cwd=REPO, text=True).strip()
     manifest = common.load_json(args.manifest)
+    trust_digest = None
+    if args.trusted_issuers_file is not None:
+        from agents.eval.trusted_setup import load
+        trust_digest = digest(args.trusted_issuers_file)
+        load(args.trusted_issuers_file, trust_digest)
     initial_run_hash = digest(original / 'run.json')
     original_run = common.load_json(original / 'run.json')
     if original_run['input']['manifest'] != digest(args.manifest):
@@ -131,9 +140,11 @@ def main(argv=None):
         'disclosure': DISCLOSURE, 'authority': 'Tamim explicitly requested continuing fixes and testing',
         'original_run_sha256': initial_run_hash, 'manifest_sha256': digest(args.manifest),
         'candidate': candidate, 'evaluator': subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(), 'gold_read': False})
+            ['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(), 'gold_read': False,
+        'trusted_setup_sha256': trust_digest})
     summary = capture(cases, output=output, candidate=candidate, private_root=private,
-                      deadline=deadline)
+                      deadline=deadline, trusted_issuers_file=args.trusted_issuers_file,
+                      trusted_issuers_sha256=trust_digest)
     if (seal.case_entries(inputs) != (input_files, entries)
             or digest(original / 'run.json') != initial_run_hash):
         raise ValueError('original input commitments changed during diagnostic')

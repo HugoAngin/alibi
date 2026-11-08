@@ -14,6 +14,8 @@ def test_capture_counts_failures_without_exporting_case_values(tmp_path, monkeyp
         assert kwargs['capture_root'] == tmp_path.parent
         assert len(kwargs['denied_scratch']) == 3
         assert kwargs['private_root'] == tmp_path / 'private'
+        assert kwargs['trusted_issuers_file'] == tmp_path / 'trusted-private.json'
+        assert kwargs['trusted_issuers_sha256'] == 'a' * 64
         seen.append(case['case_number'])
         failed = case['case_number'] == 2
         return [], {'failures': ['error'] if failed else [],
@@ -22,7 +24,8 @@ def test_capture_counts_failures_without_exporting_case_values(tmp_path, monkeyp
     monkeypatch.setattr(diagnostic, 'run_isolated', worker)
     cases = [{'case_number': i, 'secret': 'PRIVATE_SENTINEL'} for i in (1, 2)]
     result = diagnostic.capture(cases, output=tmp_path, candidate='public-test',
-        private_root=tmp_path / 'private', deadline=datetime.now(timezone.utc) + timedelta(seconds=30))
+        private_root=tmp_path / 'private', deadline=datetime.now(timezone.utc) + timedelta(seconds=30),
+        trusted_issuers_file=tmp_path / 'trusted-private.json', trusted_issuers_sha256='a' * 64)
     assert sorted(seen) == [1, 2]
     assert result['metrics'] == dict(cases=2, completed=1, failed=1, unstarted=0,
                                      scheduler_errors=0, model_calls=0)

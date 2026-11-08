@@ -92,7 +92,7 @@ def verifier_probe_plan() -> list[dict]:
 
 
 def verifier_http_handlers() -> dict:
-    """SP-25..SP-32 HTTP handlers: probe_id -> callable(ctx) -> "blocked" | "not_blocked" | "not_run".
+    """SP-25..SP-32 HTTP handlers for eval's ProbeSession: probe_id -> callable(ctx) -> "blocked" | "not_blocked" | "not_run".
 
     The ctx contract is documented in agents/execution/verifier_http.py.
     """

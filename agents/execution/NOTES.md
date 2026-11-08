@@ -26,7 +26,8 @@ Lead work order 01:04Z (59b6c33):
 
 ## Next
 - When agents.lead.api.parse_rule_text lands: run `uv run --frozen python -m agents.execution.policy_harness`, record with results.py, put counts on CONTROLS_SLIDE / judge_qa Q15. Gemini run after S3 merges.
-- Eval need 00:59Z: HTTP handlers done in `verifier_http.py`, exported as `api.verifier_http_handlers()` (probe_id -> callable(ctx) -> blocked | not_blocked | not_run). ctx contract in the module docstring: `route(name, **p)`, `http(method, path, recipient=, data=, headers=)`, `keys` (bank's pinned alibi + merchant demo keys), optional `now()`, `note()`. Refusal probes need a valid baseline accepted first; 404/405/5xx/transport/missing prereq = not_run. Tested against fake banks (correct, accept-all, refuse-all, down, 404, no routes/keys).
+- Eval need 01:08Z: handlers moved onto eval's ProbeSession (agents/eval/http_probe_runtime.py): routes `verifier_deliver`/`verifier_inbox`, fixtures alibi/merchant key seeds (hex) + key ids, optional `verifier_codes`; blocked = check passed incl. controls. Compatibility test runs eval's attempt() against a local HTTP bank over BankInbox.
+- (superseded) Eval need 00:59Z: HTTP handlers done in `verifier_http.py`, exported as `api.verifier_http_handlers()` (probe_id -> callable(ctx) -> blocked | not_blocked | not_run). ctx contract in the module docstring: `route(name, **p)`, `http(method, path, recipient=, data=, headers=)`, `keys` (bank's pinned alibi + merchant demo keys), optional `now()`, `note()`. Refusal probes need a valid baseline accepted first; 404/405/5xx/transport/missing prereq = not_run. Tested against fake banks (correct, accept-all, refuse-all, down, 404, no routes/keys).
 - When S2 routes land: check the delivery path and body schema match; S2 may use a different package schema than eval's verifier.
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 

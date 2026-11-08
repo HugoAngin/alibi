@@ -1,8 +1,18 @@
 """Aggregate observed application actions against the published probe catalogue."""
 
 from collections import defaultdict
+from pathlib import Path
 
 from agents.execution.api import load_probes
+from alibi.eval.common import canonical_sha256
+
+
+def probe_receipt_path(results: Path) -> Path:
+    return results.with_name(results.name + ".receipt.json")
+
+
+def probe_receipt(commit: str, rows: list[dict]) -> dict:
+    return {"candidate_commit": commit, "outcomes_sha256": canonical_sha256(rows)}
 
 
 def _step_key(row: dict) -> tuple:

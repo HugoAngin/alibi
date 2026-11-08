@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hero prototype</title>
+<style>
+  :root {
+    --s-paper: #f7f4ee; --s-card: #fdfbf7; --s-ink: #1f1b16; --s-ink-soft: #5e554a;
+    --s-accent: #2b45c4; --s-line: #d9d2c5;
+  }
+  body { margin: 0; background: var(--s-paper); color: var(--s-ink); font-family: -apple-system, system-ui, sans-serif; }
+  .page { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; max-width: 1200px; margin: 0 auto; padding: 112px 24px; min-height: 100vh; align-items: center; }
+  .copy h1 { font-size: 56px; line-height: 1.04; letter-spacing: -0.03em; font-weight: 500; }
+  .spacer { height: 150vh; }
+  @media (max-width: 860px) { .page { grid-template-columns: 1fr; padding: 72px 16px; } .copy h1 { font-size: 36px; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="copy"><h1>Explain any payment before anyone asks.</h1><p>Prototype of the hero visual.</p></div>
+  <div class="visual">
+<!-- ===== HeroScene markup starts ===== -->
+<figure class="stream" data-hero-stream>
+  <svg viewBox="0 0 600 560" role="img" aria-labelledby="stream-title stream-desc">
+    <title id="stream-title">How Alibi answers a bank</title>
+    <desc id="stream-desc">Synthetic records from shops, bank accounts and a mule-pattern check flow into the Alibi engine, where the Matcher, Detective, Challenger and Curator work on them. A signed context package leaves for Bank A and answers request rfc-0001-01 about the £2,160.00 credit txn-0001-004.</desc>
+    <defs>
+      <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L8,4 L0,8 z" fill="#2b45c4" />
+      </marker>
+    </defs>
+
+    <!-- input paths (drawn first, under everything) -->
+    <g class="paths" fill="none">
+      <path id="p-mm"   d="M150,56  C230,56  230,232 262,250" />
+      <path id="p-ret"  d="M150,112 C220,112 226,240 262,258" />
+      <path id="p-food" d="M150,168 C210,168 220,252 262,266" />
+      <path id="p-cloth" d="M150,224 C200,224 220,268 262,274" />
+      <path id="p-elec" d="M150,280 C200,280 226,282 262,282" />
+      <path id="p-cur"  d="M150,356 C210,356 222,300 262,290" />
+      <path id="p-sav"  d="M150,412 C214,412 226,310 262,298" />
+      <path id="p-mule" d="M150,488 C220,488 230,322 262,306" />
+      <path id="p-out" class="out" d="M422,278 C470,278 470,420 520,440" />
+    </g>
+
+    <!-- sources -->
+    <g class="sources" font-size="12">
+      <g class="src src--case" transform="translate(10,40)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Mock Marketplace</text><text class="tag" x="12" y="44">case 1 · synthetic</text></g>
+      <g class="src" transform="translate(10,96)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Online retailer</text></g>
+      <g class="src" transform="translate(10,152)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Food delivery app</text></g>
+      <g class="src" transform="translate(10,208)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Clothing shop</text></g>
+      <g class="src" transform="translate(10,264)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Electronics store</text></g>
+      <text class="group" x="10" y="330">Bank accounts</text>
+      <g class="src src--bank" transform="translate(10,340)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Current account</text></g>
+      <g class="src src--bank" transform="translate(10,396)"><rect width="140" height="32" rx="6"/><text x="12" y="20">Savings account</text></g>
+      <text class="group" x="10" y="464">Mule-pattern check</text>
+      <g class="src src--mule" transform="translate(10,472)">
+        <rect width="140" height="32" rx="6"/>
+        <text x="12" y="20">Acct A</text><text x="104" y="20">Acct B</text>
+        <path class="mule-arrow" d="M58,16 L98,16" marker-end="url(#arrow)"/>
+      </g>
+      <text class="tag" x="10" y="540">All sources synthetic</text>
+    </g>
+
+    <!-- engine -->
+    <g class="engine" transform="translate(262,198)">
+      <rect class="engine-box" width="160" height="164" rx="12"/>
+      <text class="engine-name" x="80" y="30" text-anchor="middle">Alibi</text>
+      <text class="tag" x="80" y="46" text-anchor="middle">passport engine</text>
+      <g class="agent" data-agent="0" transform="translate(12,60)"><rect width="136" height="20" rx="10"/><text x="68" y="14" text-anchor="middle">Matcher</text></g>
+      <g class="agent" data-agent="1" transform="translate(12,84)"><rect width="136" height="20" rx="10"/><text x="68" y="14" text-anchor="middle">Detective</text></g>
+      <g class="agent" data-agent="2" transform="translate(12,108)"><rect width="136" height="20" rx="10"/><text x="68" y="14" text-anchor="middle">Challenger</text></g>
+      <g class="agent" data-agent="3" transform="translate(12,132)"><rect width="136" height="20" rx="10"/><text x="68" y="14" text-anchor="middle">Curator</text></g>
+      <text class="tag gemini" x="80" y="182" text-anchor="middle">agents on Gemini · code checks every total</text>
+    </g>
+
+    <!-- bank query and answer -->
+    <g class="bank" transform="translate(440,86)">
+      <rect width="150" height="88" rx="8"/>
+      <text x="12" y="22" class="bank-name">Bank A · fraud team</text>
+      <text x="12" y="40" class="mono">rfc-0001-01</text>
+      <text x="12" y="58">Where did the £2,160.00</text>
+      <text x="12" y="74">credit come from?</text>
+    </g>
+    <path class="ask" d="M515,174 C515,210 470,218 424,226" fill="none" marker-end="url(#arrow)"/>
+    <g class="package" transform="translate(452,398)" style="opacity:0">
+      <rect width="138" height="84" rx="8"/>
+      <text x="12" y="22" class="pkg-title">Context package</text>
+      <text x="12" y="40" class="mono">txn-0001-004 r1</text>
+      <text x="12" y="56" class="mono">PO-0001-01 r1</text>
+      <text x="12" y="74" class="seal">✓ signed · approved by Maya</text>
+    </g>
+
+    <!-- moving packets live here -->
+    <g class="packets"></g>
+  </svg>
+  <figcaption class="visually-hidden">Synthetic illustration. Only case 1 values are from the demo fixture.</figcaption>
+</figure>
+
+<style>
+  .stream { margin: 0; width: 100%; }
+  .stream svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .stream text { fill: var(--s-ink); font-family: inherit; }
+  .stream .tag { fill: var(--s-ink-soft); font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.04em; }
+  .stream .group { fill: var(--s-ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .stream .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; fill: var(--s-accent); }
+  .stream .paths path { stroke: var(--s-line); stroke-width: 1.5; }
+  .stream .paths path.out { stroke: var(--s-accent); stroke-dasharray: 4 5; stroke-width: 2; }
+  .stream .src rect { fill: var(--s-card); stroke: var(--s-line); }
+  .stream .src--case rect { stroke: var(--s-accent); stroke-width: 1.5; }
+  .stream .src--bank rect { stroke-dasharray: 0; }
+  .stream .src--mule rect { stroke-dasharray: 3 3; }
+  .stream .mule-arrow { stroke: var(--s-accent); stroke-width: 1.5; }
+  .stream .engine-box { fill: var(--s-card); stroke: var(--s-ink); stroke-width: 2; }
+  .stream .engine-name { font-size: 20px; font-weight: 700; }
+  .stream .agent rect { fill: var(--s-paper); stroke: var(--s-line); transition: fill 400ms cubic-bezier(0.22, 1, 0.36, 1), stroke 400ms; }
+  .stream .agent text { font-size: 12px; }
+  .stream .agent.is-on rect { fill: #e7eafa; stroke: var(--s-accent); }
+  .stream .agent.is-on text { fill: var(--s-accent); font-weight: 700; }
+  .stream .gemini { font-size: 9px; }
+  .stream .bank rect, .stream .package rect { fill: var(--s-card); stroke: var(--s-ink); stroke-width: 1.5; }
+  .stream .bank text { font-size: 11px; }
+  .stream .bank-name, .stream .pkg-title { font-weight: 700; font-size: 12px; }
+  .stream .ask { stroke: var(--s-accent); stroke-width: 1.5; stroke-dasharray: 2 4; }
+  .stream .package { transition: opacity 500ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .stream .seal { fill: var(--s-accent); font-size: 10px; font-weight: 700; }
+  .stream .packet rect { fill: var(--s-card); stroke: var(--s-accent); stroke-width: 1; }
+  .stream .packet text { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 9px; fill: var(--s-accent); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+
+<script type="module">
+  // Packets: short stamped labels that ride each input path into the engine.
+  // Case 1's records ride the Mock Marketplace and current-account paths; everything else is illustrative.
+  const STREAMS = [
+    { path: 'p-mm', labels: ['rec-0001-013 £450.00', 'PO-0001-01'] },
+    { path: 'p-ret', labels: ['£34.99'] },
+    { path: 'p-food', labels: ['£18.40'] },
+    { path: 'p-cloth', labels: ['−£25.00'] },
+    { path: 'p-elec', labels: ['£1,249.00'] },
+    { path: 'p-cur', labels: ['txn-0001-004 +£2,160.00'] },
+    { path: 'p-sav', labels: ['+£200.00'] },
+    { path: 'p-mule', labels: ['£950 in · £940 out'] },
+  ];
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
+
+  const root = document.querySelector('[data-hero-stream]');
+  const svg = root.querySelector('svg');
+  const layer = svg.querySelector('.packets');
+  const agents = [...svg.querySelectorAll('.agent')];
+  const pkg = svg.querySelector('.package');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NS = 'http://www.w3.org/2000/svg';
+
+  const packets = STREAMS.flatMap((s, i) =>
+    s.labels.map((text, j) => {
+      const g = document.createElementNS(NS, 'g');
+      g.setAttribute('class', 'packet');
+      const label = document.createElementNS(NS, 'text');
+      label.textContent = text;
+      label.setAttribute('x', '6');
+      label.setAttribute('y', '11');
+      const box = document.createElementNS(NS, 'rect');
+      box.setAttribute('height', '16');
+      box.setAttribute('rx', '3');
+      g.append(box, label);
+      layer.append(g);
+      box.setAttribute('width', String(label.getComputedTextLength() + 12));
+      return { g, path: svg.getElementById(s.path), offset: (i * 0.29 + j * 0.5) % 1, speed: 0.09 + (i % 3) * 0.015 };
+    }),
+  );
+  const out = svg.getElementById('p-out');
+
+  // 0 at the top of the page, 1 after scrolling 60% of a screen, while the hero is still in view.
+  let scroll = 0;
+  function setScroll(y) {
+    scroll = Math.min(1, Math.max(0, y / (window.innerHeight * 0.6)));
+  }
+
+  function frame(now) {
+    const t = now / 1000;
+    // Inputs always flow while visible; scroll decides how far the engine has got.
+    for (const p of packets) {
+      // Each packet travels during the first 55% of its cycle, then rests unseen,
+      // so only a few are on screen at once and none pile up at the engine.
+      const c = (p.offset + t * p.speed) % 1;
+      const u = Math.min(1, c / 0.55);
+      const len = p.path.getTotalLength();
+      const pt = p.path.getPointAtLength(u * len);
+      const w = Number(p.g.firstChild.getAttribute('width'));
+      p.g.setAttribute('transform', `translate(${pt.x - w / 2},${pt.y - 8})`);
+      p.g.style.opacity = String(c > 0.55 ? 0 : u < 0.1 ? u / 0.1 : u > 0.75 ? (1 - u) / 0.25 : 1);
+    }
+    // Engine: agents light one after another as the visitor scrolls (or on a slow loop at the top).
+    const phase = scroll > 0.05 ? scroll : ((t / 6) % 1) * 0.75;
+    agents.forEach((a, i) => a.classList.toggle('is-on', phase > 0.15 + i * 0.12 && phase < 0.95));
+    // Output: the package leaves once the Curator has run.
+    const go = Math.min(1, Math.max(0, (phase - 0.62) / 0.3));
+    const len = out.getTotalLength();
+    const pt = out.getPointAtLength(ease(go) * len);
+    pkg.setAttribute('transform', `translate(${pt.x - 69},${pt.y - 42})`);
+    pkg.style.opacity = go <= 0 ? '0' : String(ease(Math.min(1, go * 2)));
+  }
+
+  function still() {
+    // One readable frame: all agents on, the package delivered, a few packets mid-path.
+    agents.forEach((a) => a.classList.add('is-on'));
+    const len = out.getTotalLength();
+    const end = out.getPointAtLength(len);
+    pkg.setAttribute('transform', `translate(${end.x - 69},${end.y - 42})`);
+    packets.forEach((p, k) => {
+      const pt = p.path.getPointAtLength(p.path.getTotalLength() * (0.25 + (k % 4) * 0.15));
+      const w = Number(p.g.firstChild.getAttribute('width'));
+      p.g.setAttribute('transform', `translate(${pt.x - w / 2},${pt.y - 8})`);
+      p.g.style.opacity = k % 2 ? '0' : '1';
+    });
+  }
+
+  if (reduced) {
+    still();
+  } else {
+    let raf = 0;
+    const loop = (now) => { frame(now); raf = requestAnimationFrame(loop); };
+    new IntersectionObserver(([e]) => {
+      if (e.isIntersecting && !raf) raf = requestAnimationFrame(loop);
+      if (!e.isIntersecting && raf) { cancelAnimationFrame(raf); raf = 0; }
+    }).observe(root);
+    window.addEventListener('alibi:scroll', (e) => setScroll(e.detail.scroll));
+    window.addEventListener('scroll', () => setScroll(window.scrollY), { passive: true });
+  }
+</script>
+<!-- ===== HeroScene markup ends ===== -->
+  </div>
+</div>
+<div class="spacer"></div>
+</body>
+</html>

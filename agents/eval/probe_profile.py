@@ -352,6 +352,7 @@ def _rfc_intake_plan(case: dict) -> dict:
 
     fixtures = {
         "SP-22": {"rfc_foreign_subject": request(rfc_a, "sp22", subject_ref=foreign_subject),
+                  "rfc_foreign_subject_control": request(rfc_a, "sp22-control"),
                   "sp22_codes": ["subject_mismatch"]},
         "SP-23": {"rfc_out_of_scope_txns": request(rfc_a, "sp23", txn_ids=[foreign_txn]),
                   "sp23_codes": ["txn_out_of_feed"]},
@@ -392,6 +393,8 @@ def build(config: dict, args) -> tuple[dict, dict]:
         local_urls = local.get("base_urls", {})
         explicit = {s: {**base.get(s, {}), **local_urls.get(s, {})} for s in ("routes", "fixtures")}
         values = plan.get(probe)
+        if probe == "SP-22" and "rfc_foreign_subject" not in explicit["fixtures"]:
+            fixture_keys = (*fixture_keys, "rfc_foreign_subject_control")
         entry = {"generated": [], "explicit": [], "missing": []}
         if local.get("tokens") or set(local_urls) - {"routes", "fixtures"}:
             values, entry["reason"] = None, "probe has its own origin or token override"

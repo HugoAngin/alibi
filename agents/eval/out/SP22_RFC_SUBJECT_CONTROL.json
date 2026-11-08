@@ -1,0 +1,39 @@
+{
+  "scope": "Supplemental SP-22 on two independent synthetic Case 1 loopback stacks. Both used the paired-control evaluator profile.",
+  "frozen_probe_receipts_changed": false,
+  "focused_tests_passed": 40,
+  "observations": [
+    {
+      "candidate_commit": "3c5047639aade89f1916163ae2ad3a00050d1143",
+      "probe_id": "SP-22",
+      "outcome": "blocked",
+      "http_statuses": [
+        201,
+        400
+      ],
+      "refusal_code": "invalid_request",
+      "readback": {
+        "control_bank": 200,
+        "control_holder": 200,
+        "attack_bank": 404,
+        "attack_holder": 404
+      }
+    },
+    {
+      "candidate_commit": "2453eb667042a85e7d0b63adfb410c679c46b637",
+      "probe_id": "SP-22",
+      "outcome": "blocked",
+      "http_statuses": [
+        201,
+        400
+      ],
+      "refusal_code": "invalid_request",
+      "readback": {
+        "control_bank": 200,
+        "control_holder": 200,
+        "attack_bank": 404,
+        "attack_holder": 404
+      }
+    }
+  ]
+}

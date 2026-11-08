@@ -31,7 +31,9 @@ const { offerApp = false } = Astro.props;
   <nav aria-label="Main">
     <a href="#features">Features</a>
     <a href="#why">Why Alibi</a>
-    <a href="/app/">Open the app</a>
+    <a class="phone-switch" href="/phone/">
+      View on a phone
+    </a>
   </nav>
 </header>
 
@@ -82,8 +84,19 @@ const { offerApp = false } = Astro.props;
   nav {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-sm);
     font-size: var(--t-sm);
+  }
+
+  /* The switch to the simulated phone viewport (/phone/). */
+  .phone-switch {
+    padding: var(--space-3xs) var(--space-xs);
+    border: 1px solid var(--c-alibi);
+    border-radius: var(--radius-pill);
+    color: var(--c-alibi);
+    font-weight: 600;
+    text-decoration: none;
   }
 
   .site-footer {

@@ -22,7 +22,7 @@ pnpm dev:alibi      # or one at a time: dev:merchant, dev:bank
 pnpm verify         # format, lint, type check, tests, build: run before every commit
 ```
 
-To see the phone view of `/` on a desktop, open http://localhost:4321/?view=app (remembered in a cookie; `?view=site` switches back), or use the browser's device emulation with a phone user agent. `/app/` always shows the app.
+To see the app on a desktop, press **View on a phone** on the landing page. It opens http://localhost:4321/phone/, which runs `/app/` inside a 390 × 844 phone frame. `/app/` on its own always shows the app, and `/?view=app` makes `/` show it too (remembered in a cookie; `?view=site` switches back).
 
 Try the connect flow: open http://localhost:4322/account/settings/, press "Connect to my Alibi", then Connect or Not now on Alibi's consent page. The merchant shows the outcome.
 

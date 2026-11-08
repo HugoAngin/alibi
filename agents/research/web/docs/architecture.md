@@ -26,6 +26,8 @@ The adapter's defaults would provision a Cloudflare Images binding and a KV name
 
 `AppShell.astro` is a phone layout: a header, one screen at a time, and a bottom tab bar. Screens switch with anchors and CSS `:target`, with no client-side JavaScript; the passport screen shows when nothing is targeted. On a desktop the shell stays phone-width and centred.
 
+`/phone/` is the desktop preview behind the landing page's **View on a phone** button. `PhoneFrame.astro` loads `/app/` in an iframe at the phone viewport size set in the tokens (`--device-w`, `--device-h`), so the app's layout behaves as it does on a device. The frame loads `/app/` rather than `/?view=app`, so previewing never sets the view cookie. Links in the app that should leave the preview, such as Settings' link back to the website, use `target="_top"`.
+
 The screens show Maya's canonical case: the alert raised before any request, the £2,160 credit, and its reconciliation computed from integer pence. Requests, sharing history and settings are placeholders.
 
 ## Not built yet

@@ -1,0 +1,45 @@
+---
+/**
+ * `/phone/`: the app inside a simulated phone, so it can be seen on a desktop
+ * (the landing page's "View on a phone" button). The frame loads `/app/`,
+ * which never sets the view cookie, so leaving this page does not change what
+ * `/` shows.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import PhoneFrame from '@/components/PhoneFrame.astro';
+---
+
+<BaseLayout title="App on a phone">
+  <main id="main" class="stage">
+    <nav class="toolbar" aria-label="Preview">
+      <a href="/">← Back to the website</a>
+      <a href="/app/">Open full screen</a>
+    </nav>
+    <PhoneFrame src="/app/" title="The Alibi app, as it looks on a phone" />
+    <p class="hint">Simulated phone viewport, 390 × 844</p>
+  </main>
+</BaseLayout>
+
+<style>
+  .stage {
+    padding: var(--space-sm) var(--gutter) var(--space-lg);
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-xs);
+    max-width: calc(var(--device-w) + 2 * var(--device-bezel));
+    margin: 0 auto var(--space-sm);
+    font-size: var(--t-sm);
+  }
+
+  .hint {
+    margin: var(--space-xs) 0 0;
+    text-align: center;
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+  }
+</style>

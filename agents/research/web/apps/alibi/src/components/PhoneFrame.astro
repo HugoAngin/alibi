@@ -1,0 +1,54 @@
+---
+/**
+ * A phone-sized viewport for showing the app on a desktop. The app runs in an
+ * iframe at a real phone width, so its own layout and media queries behave
+ * exactly as on a device. On a screen narrower than the phone, the frame
+ * drops its bezel and fills the width.
+ */
+interface Props {
+  src: string;
+  title: string;
+}
+
+const { src, title } = Astro.props;
+---
+
+<div class="device">
+  <iframe class="screen" src={src} title={title}></iframe>
+</div>
+
+<style>
+  .device {
+    width: calc(var(--device-w) + 2 * var(--device-bezel));
+    height: calc(var(--device-h) + 2 * var(--device-bezel));
+    max-height: calc(100dvh - var(--space-2xl));
+    padding: var(--device-bezel);
+    border-radius: var(--device-radius);
+    background: var(--c-device);
+    margin-inline: auto;
+  }
+
+  .screen {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: calc(var(--device-radius) - var(--device-bezel));
+    background: var(--c-bg);
+  }
+
+  @media (max-width: 440px) {
+    .device {
+      width: 100%;
+      height: calc(100dvh - var(--space-2xl));
+      max-height: none;
+      padding: 0;
+      border-radius: 0;
+      background: none;
+    }
+
+    .screen {
+      border-radius: 0;
+    }
+  }
+</style>

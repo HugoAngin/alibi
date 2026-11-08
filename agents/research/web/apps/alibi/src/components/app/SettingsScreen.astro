@@ -1,12 +1,18 @@
 ---
-/** Settings: privacy rules and connections later. For now, a way back to the site. */
+/**
+ * Settings: privacy rules and connections later. For now, a way back to the
+ * site. The link targets `_top` so that inside the /phone/ preview it leaves
+ * the frame rather than loading the website inside the phone.
+ */
 ---
 
 <section id="settings" class="screen" aria-labelledby="settings-title">
   <h1 id="settings-title">Settings</h1>
   <p class="note">Privacy rules and connected services will be managed here.</p>
   <p>
-    <a href="/?view=site">View the Alibi website instead</a>
+    <a href="/?view=site" target="_top">
+      View the Alibi website instead
+    </a>
   </p>
 </section>
 

@@ -57,4 +57,12 @@
   --app-max: 26rem;
   /* Phone gutters. */
   --gutter: 16px;
+
+  /* The simulated phone on the desktop preview page: an iPhone-class
+   * viewport in CSS pixels, and the bezel drawn around it. */
+  --device-w: 390px;
+  --device-h: 844px;
+  --device-bezel: 12px;
+  --device-radius: 48px;
+  --c-device: #121212;
 }

@@ -76,3 +76,9 @@ def load_policy_rules() -> list[dict]:
 def load_policy_material() -> dict:
     """Passport vocabulary the policy parser receives for the rules above."""
     return json.loads((OUT / "policy_material.json").read_text(encoding="utf-8"))
+
+
+def load_injections() -> list[dict]:
+    """25 adversarial strings with plant location and expected behaviour (out/injections.jsonl)."""
+    with (OUT / "injections.jsonl").open(encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]

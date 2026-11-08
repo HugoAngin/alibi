@@ -15,11 +15,17 @@ Role: `execution` (sirExile44). Writes only in `agents/execution/`. Spec: `docs/
 
 Eval need 00:45Z: SP-25..SP-32 verifier probes. Plan `out/verifier_probes.json` (12 steps, SP-31 identical retry uses `expected_outcome: accepted`). Eval exported helpers (d8f2aa3); local reference run against eval's BankInbox: `uv run --frozen python -m agents.execution.verifier_probes --run` → 8/8 probes, 12 steps, all planned codes, refusals stored nothing. Recorded in `out/results.jsonl`, split `reference` (kept apart from live HTTP).
 
+Lead work order 01:04Z (59b6c33):
+- (1) `policy_harness.py`: runs policy_rules.jsonl through a parser, scores correct / held / safe_wrong / leak / invalid / error. Adapters: `rules` = agents.lead.api.parse_rule_text (not on main yet → unavailable), `gemini` = alibi.llm FLASH + policy_parse prompt (only with --parser gemini; wait for S3 per lead). Tested with oracle, null, fake Gemini. ff068b4.
+- (2) SP-25..32 HTTP handlers: done above (dba6019); no 00:20 route contract exists (lead NOTES confirms).
+- (3) `out/judge_qa.md`: 20 Q&As with evidence paths; pending numbers marked.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
 
 ## Next
+- When agents.lead.api.parse_rule_text lands: run `uv run --frozen python -m agents.execution.policy_harness`, record with results.py, put counts on CONTROLS_SLIDE / judge_qa Q15. Gemini run after S3 merges.
 - Eval need 00:59Z: HTTP handlers done in `verifier_http.py`, exported as `api.verifier_http_handlers()` (probe_id -> callable(ctx) -> blocked | not_blocked | not_run). ctx contract in the module docstring: `route(name, **p)`, `http(method, path, recipient=, data=, headers=)`, `keys` (bank's pinned alibi + merchant demo keys), optional `now()`, `note()`. Refusal probes need a valid baseline accepted first; 404/405/5xx/transport/missing prereq = not_run. Tested against fake banks (correct, accept-all, refuse-all, down, 404, no routes/keys).
 - When S2 routes land: check the delivery path and body schema match; S2 may use a different package schema than eval's verifier.
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.

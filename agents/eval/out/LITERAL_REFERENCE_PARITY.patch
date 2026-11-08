@@ -1,0 +1,46 @@
+--- a/alibi/baselines/one_pass.py
++++ b/alibi/baselines/one_pass.py
+@@ -344,11 +344,18 @@
+         # MAX_REFERENCE_LOOKUPS of them. The gateway still checks scope and signer, and nothing
+         # a lookup returns triggers a further lookup.
+         written: dict[str, list[EvidenceRecord]] = {}
++        # Typed bank references are already known values, so recognizing an issuer
++        # message that names one does not need the free-text token shape heuristic.
++        declared = {ref for txn in self.material.txns() for ref in txn.refs}
+         for message in messages:
+             if message.source_trust != SourceTrust.ISSUER_VERIFIED:
+                 continue
+-            for token in _TEXT_REF.findall(message.text or ""):
+-                if not (re.search(r"[A-Za-z]", token) and re.search(r"\d", token)) \
++            exact = [ref for ref in sorted(declared) if re.search(
++                rf"(?<![A-Za-z0-9-]){re.escape(ref)}(?![A-Za-z0-9-])",
++                message.text or "", re.IGNORECASE)]
++            for token in dict.fromkeys([*exact, *_TEXT_REF.findall(message.text or "")]):
++                if (token not in exact and not (re.search(r"[A-Za-z]", token)
++                                                and re.search(r"\d", token))) \
+                         or _norm(token) in by_norm:
+                     continue
+                 if token in written or len(written) < core_rules.MAX_REFERENCE_LOOKUPS:
+--- /dev/null
++++ b/alibi/tests/test_literal_reference_parity.py
+@@ -0,0 +1,20 @@
++"""Typed exact reference shapes across offline modes, public-derived fixtures only."""
++import json
++import pytest
++from alibi.adapter import run_case
++from alibi.llm.fake import FakeClient
++from alibi.tests.test_literal_reference_generalization import variant
++
++NO_PROPOSAL = {'claims': [], 'disclosures': [], 'rationale': 'Public synthetic control'}
++
++@pytest.mark.parametrize('ref', ['pay-Ab9-701', 'SETTLEMENTALPHA', 'pay_alpha_7', 'pay.alpha.7', 'Pay Group 7'])
++@pytest.mark.parametrize('mode', ['rules', 'one_pass'])
++def test_typed_literal_reference_shape_with_new_issuer(tmp_path, mode, ref):
++    case = json.loads(json.dumps(variant(ref, 2)).replace('mock-marketplace', 'public-synthetic-provider'))
++    rows = run_case(case, mode, client=FakeClient({'*': NO_PROPOSAL}),
++                    trusted_issuers={'public_provider_key': 'public-synthetic-provider'}, root=tmp_path / 'run')
++    assert all(row['failure'] is None for row in rows)
++    first = next(row for row in rows if row['request_id'] == 'request-921-01')
++    assert first['claims']['q.origin_evidence']['status'] == 'supported'
++    assert first['claims']['q.origin_evidence']['facts']['payout_references'] == [ref]
++    assert first['claims']['q.amount_components']['facts']['breakdown_minor']['net'] == 432000

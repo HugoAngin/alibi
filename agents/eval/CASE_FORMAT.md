@@ -119,6 +119,13 @@ the probe. Read `policy_version` from the holder review after investigation.
   and holder clock to `2026-11-05T09:16:00Z`. Supply the still-open RFC ID as
   `expired_request`. Pass the disposable holder credential to the driver in
   `ALIBI_HOLDER_TOKEN` so it can sync the feed.
+- SP-06. Create a second Bank A request with the same scope for the acceptance
+  control. Read the canonical request's `review.included` after investigation.
+  Sign revision 2 of one included merchant delivery as `correction_event`.
+  Use an uncited purchase on the same account for `unrelated_correction_event`.
+  Both use new event IDs and the disposable merchant signing key. Set
+  `merchant_correction` to `/connect/merchant/webhook?received_at=2026-11-05T09:00:00Z`
+  and supply the second RFC as `unrelated_correction_request`.
 - SP-07. Prepare a pending rule via the holder's `POST /rules/interpret` with
   `Never share item descriptions.` Set `policy_bump` to that rule's
   `/rules/{rule_id}/confirm` and `policy_bump_payload` to an empty object. The
@@ -126,7 +133,7 @@ the probe. Read `policy_version` from the holder review after investigation.
   policy version changes, the response code is `policy_version_changed`, and
   the bank's inbox remains empty.
 
-Run the three configured probes with `run_probes --ids SP-04 SP-05 SP-07`.
+Run the configured probes with `run_probes --ids SP-04 SP-05 SP-06 SP-07`.
 Supplemental results stay separate from any previously bound probe receipt.
 
 For a fresh S4 rehearsal stack, the optional `ingest_probe_profile` module

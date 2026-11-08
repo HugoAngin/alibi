@@ -34,6 +34,45 @@
       ],
       "bank_packages": 0
     },
+    "SP-06": {
+      "probe_id": "SP-06",
+      "outcome": "blocked",
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        409,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "separate_native_controls": [
+        {
+          "cited": true,
+          "correction_http": 200,
+          "revision_2_readback": true,
+          "dispatch_http": 409,
+          "refusal_code": "source_revision_changed",
+          "bank_package_count": 0
+        },
+        {
+          "cited": false,
+          "correction_http": 200,
+          "revision_2_readback": true,
+          "dispatch_http": 200,
+          "refusal_code": null,
+          "bank_package_count": 1
+        }
+      ]
+    },
     "SP-07": {
       "outcome": "not_run",
       "reason": "",

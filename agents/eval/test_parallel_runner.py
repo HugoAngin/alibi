@@ -162,7 +162,7 @@ def test_pinned_candidate_requires_tag_and_clean_evaluator(monkeypatch):
         run_sealed._pinned_candidate("sealed-candidate")
 
 
-@pytest.mark.parametrize("tag", ["sealed-candidate-2", "sealed-candidate-3", "sealed-candidate-4"])
+@pytest.mark.parametrize("tag", ["sealed-candidate-2", "sealed-candidate-3", "sealed-candidate-4", "sealed-candidate-5"])
 def test_refrozen_candidate_is_bound_to_its_own_approved_tag(monkeypatch, tag):
     commands = []
     responses = iter(["", "candidate2", "candidate2", "evaluator"])
@@ -189,7 +189,7 @@ def test_second_look_preserves_the_original_lock_and_binds_its_config(tmp_path):
                                          "manifest": run_sealed._digest(original_manifest)}})
 
     second_lock, original_hash = run_sealed._second_look_lock(lock, original_manifest, manifest)
-    assert second_lock == tmp_path / "capture-original-candidate-4.json"
+    assert second_lock == tmp_path / "capture-original-candidate-5.json"
     assert original_hash == run_sealed._digest(marker)
     assert common.load_json(lock) == {"run": str(original)}
     assert not second_lock.exists()
@@ -197,9 +197,10 @@ def test_second_look_preserves_the_original_lock_and_binds_its_config(tmp_path):
         run_sealed._second_look_lock(lock, original_manifest, {**manifest, "model_config": {"sha256": "other"}})
 
 
-def test_candidate_four_cannot_use_the_original_capture_route(capsys):
+@pytest.mark.parametrize("tag", ["sealed-candidate-4", "sealed-candidate-5"])
+def test_second_candidate_cannot_use_the_original_capture_route(capsys, tag):
     with pytest.raises(SystemExit) as error:
-        run_sealed.main(["--candidate-ref", "sealed-candidate-4"])
+        run_sealed.main(["--candidate-ref", tag])
     assert error.value.code == 2
     assert "require --post-fix-second-look" in capsys.readouterr().err
 

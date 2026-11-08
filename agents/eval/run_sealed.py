@@ -396,7 +396,7 @@ def _pinned_candidate(ref: str) -> tuple[str, str]:
     if status:
         raise ValueError("the evaluator checkout must be clean")
     candidate = git("rev-parse", "--verify", f"{ref}^{{commit}}")
-    approved_tag = ref if ref in ("sealed-candidate-2", "sealed-candidate-3", SECOND_LOOK_TAG) else "sealed-candidate"
+    approved_tag = ref if ref in ("sealed-candidate-2", "sealed-candidate-3", "sealed-candidate-4", SECOND_LOOK_TAG) else "sealed-candidate"
     tagged = git("rev-parse", "--verify", f"refs/tags/{approved_tag}^{{commit}}")
     if candidate != tagged:
         raise ValueError(f"candidate-ref must resolve to the {approved_tag} tag")
@@ -443,7 +443,7 @@ def main(argv: list[str] | None = None) -> None:
                 or args.original_manifest is None or args.public_rehearsal is None or args.workers != 4
                 or args.deadline != SECOND_LOOK_DEADLINE or args.checkpoint_at is not None):
             parser.error("the candidate-5 second look requires its tag, original manifest, four workers and 13:25 UTC deadline")
-    elif args.original_manifest is not None or (args.candidate_ref == SECOND_LOOK_TAG and not args.public_live):
+    elif args.original_manifest is not None or (args.candidate_ref in ("sealed-candidate-4", SECOND_LOOK_TAG) and not args.public_live):
         parser.error("candidate-5 sealed captures require --post-fix-second-look")
     if args.checkpoint_at is not None and (not args.candidate_ref or args.dry_run or args.public_live):
         parser.error("checkpoint-at requires an isolated frozen capture")

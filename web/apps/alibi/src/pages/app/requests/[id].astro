@@ -1,0 +1,49 @@
+---
+/**
+ * `/app/requests/<id>/`: a bank's request, the trace behind each answer, and
+ * Maya's private review and approval. Reads `/requests/<id>` from the backend
+ * as JSON, or the built-in case 1 data for Bank A's request.
+ */
+import { ALIBI_API_ORIGIN } from 'astro:env/server';
+
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import RequestView from '@/components/app/RequestView.astro';
+import { requestFixture } from '@/data/fixtures';
+import { isRequestDetail, loadContext } from '@/lib/api/client';
+import { ROUTES, backendHeaders, takeFlash } from '@/lib/screens';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+const loaded = await loadContext({
+  origin: ALIBI_API_ORIGIN,
+  path: ROUTES.request(id),
+  isShape: isRequestDetail,
+  fixture: () => requestFixture(id),
+  headers: backendHeaders(),
+});
+const flash = takeFlash(Astro.cookies);
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+if (loaded.source === 'missing') Astro.response.status = 404;
+---
+
+<BaseLayout title="Request" view="app">
+  {loaded.source === 'missing' ? (
+    <AppFrame active="requests">
+      <h1>Request not found</h1>
+      <p>{loaded.reason}</p>
+      <p>
+        <a href="/app/">Back to your passport</a>
+      </p>
+    </AppFrame>
+  ) : (
+    <AppFrame
+      active="requests"
+      fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+    >
+      <RequestView data={loaded.data} flash={flash} live={loaded.source === 'live'} />
+    </AppFrame>
+  )}
+</BaseLayout>

@@ -1,0 +1,98 @@
+---
+/**
+ * Status badges. Trust, claim status and link state are three separate
+ * vocabularies (shared/CONTRACTS.md) and must never look alike. Each value has
+ * a text mark and a border style, so they stay distinct without colour
+ * (the same scheme as alibi/app/UI.md).
+ */
+interface Props {
+  kind: 'trust' | 'claim' | 'link' | 'status';
+  value: string;
+  /** Overrides the label, e.g. a count on a link badge. */
+  label?: string;
+}
+
+const MARKS: Record<string, { mark: string; label: string; tone: string; border: string }> = {
+  issuer_verified: { mark: '●', label: 'Issuer verified', tone: 'ink', border: 'solid' },
+  bank_observed: { mark: '◆', label: 'Bank observed', tone: 'ink', border: 'thick' },
+  self_supplied: { mark: '○', label: 'Self-supplied', tone: 'ink', border: 'dashed' },
+  supported: { mark: '✓', label: 'Supported', tone: 'ok', border: 'solid' },
+  contradicted: { mark: '✕', label: 'Contradicted', tone: 'bad', border: 'double' },
+  unresolved: { mark: '?', label: 'Unresolved', tone: 'warn', border: 'dashed' },
+  linked: { mark: '=', label: 'Linked', tone: 'ok', border: 'solid' },
+  ambiguous: { mark: '~', label: 'Ambiguous', tone: 'warn', border: 'dotted' },
+  unmatched: { mark: '–', label: 'Unmatched', tone: 'faint', border: 'dashed' },
+};
+
+const { kind, value, label } = Astro.props;
+const known = kind === 'status' ? undefined : MARKS[value];
+const text = label ?? known?.label ?? value.replaceAll('_', ' ');
+---
+
+<span
+  class:list={[
+    'badge',
+    `badge--${kind}`,
+    known && `tone-${known.tone}`,
+    known && `border-${known.border}`,
+  ]}
+>
+  {known && <span aria-hidden="true">{known.mark}</span>}
+  {text}
+</span>
+
+<style>
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.05em 0.5em;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-pill);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    color: var(--c-ink-soft);
+    background: var(--c-surface);
+  }
+
+  .tone-ink {
+    color: var(--c-ink);
+    border-color: var(--c-ink);
+  }
+  .tone-ok {
+    color: var(--c-ok);
+    border-color: var(--c-ok);
+  }
+  .tone-bad {
+    color: var(--c-bad);
+    border-color: var(--c-bad);
+  }
+  .tone-warn {
+    color: var(--c-warn);
+    border-color: var(--c-warn);
+  }
+  .tone-faint {
+    color: var(--c-ink-faint);
+  }
+
+  .border-thick {
+    border-width: 2px;
+  }
+  .border-dashed {
+    border-style: dashed;
+  }
+  .border-dotted {
+    border-style: dotted;
+  }
+  .border-double {
+    border-style: double;
+    border-width: 3px;
+  }
+
+  /* Trust reads as a fact about the source, not a verdict: square corners. */
+  .badge--trust {
+    border-radius: var(--radius-sm);
+  }
+</style>

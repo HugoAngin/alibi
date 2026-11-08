@@ -5,7 +5,9 @@
  */
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import Landing from '@/components/landing/Landing.astro';
-import AppShell from '@/components/app/AppShell.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import PassportHome from '@/components/app/PassportHome.astro';
+import { loadPassport } from '@/lib/passport';
 import { VARY_HEADERS, VIEW_COOKIE, chooseView } from '@/lib/view';
 
 export const prerender = false;
@@ -36,11 +38,25 @@ Astro.response.headers.set('Vary', VARY_HEADERS.join(', '));
 Astro.response.headers.set('Accept-CH', 'Sec-CH-UA-Mobile');
 Astro.response.headers.set('Cache-Control', 'private, no-cache');
 Astro.response.headers.set('X-Alibi-View', `${decision.view}; reason=${decision.reason}`);
+
+const passport = decision.view === 'app' ? await loadPassport() : null;
 ---
 
 {decision.view === 'app' ? (
   <BaseLayout title="Passport" view="app">
-    <AppShell />
+    {passport?.source === 'live' || passport?.source === 'fixture' ? (
+      <AppFrame
+        active="passport"
+        holder={passport.data.holder.name}
+        fixtureReason={passport.source === 'fixture' ? passport.reason : undefined}
+      >
+        <PassportHome data={passport.data} />
+      </AppFrame>
+    ) : (
+      <AppFrame active="passport">
+        <p>{passport?.reason}</p>
+      </AppFrame>
+    )}
   </BaseLayout>
 ) : (
   <BaseLayout>

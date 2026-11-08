@@ -6,14 +6,14 @@ describe('connectUrl', () => {
   it('points at Alibi /connect with the merchant, context and return URL', () => {
     const href = connectUrl({
       alibiOrigin: 'http://localhost:4321',
-      merchantId: 'resalehub',
+      merchantId: 'mock-marketplace',
       returnTo: 'http://localhost:4322/account/settings/',
       context: 'account',
     });
     const url = new URL(href);
     expect(url.origin).toBe('http://localhost:4321');
     expect(url.pathname).toBe('/connect');
-    expect(url.searchParams.get('merchant')).toBe('resalehub');
+    expect(url.searchParams.get('merchant')).toBe('mock-marketplace');
     expect(url.searchParams.get('context')).toBe('account');
     expect(url.searchParams.get('return_to')).toBe('http://localhost:4322/account/settings/');
   });
@@ -21,12 +21,12 @@ describe('connectUrl', () => {
   it('round-trips through parseConnect', () => {
     const href = connectUrl({
       alibiOrigin: 'https://alibi.example',
-      merchantId: 'resalehub',
+      merchantId: 'mock-marketplace',
       returnTo: 'https://shop.example/checkout/?order=42',
       context: 'checkout',
     });
     expect(parseConnect(new URL(href).searchParams)).toEqual({
-      merchantId: 'resalehub',
+      merchantId: 'mock-marketplace',
       context: 'checkout',
       returnTo: 'https://shop.example/checkout/?order=42',
     });

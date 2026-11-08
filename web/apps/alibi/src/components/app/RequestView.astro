@@ -1,0 +1,450 @@
+---
+/**
+ * A bank's Request for Context, its trace, and Maya's private review. Every
+ * action posts to /app/act, which forwards it to the backend action URL this
+ * context supplied. Refusals come back as the backend's own words.
+ */
+import type { RequestDetail } from '@/lib/api/types';
+import { day, ref, when } from '@/lib/format';
+import type { Flash } from '@/lib/screens';
+
+import Badge from './Badge.astro';
+import TraceStep from './TraceStep.astro';
+
+interface Props {
+  data: RequestDetail;
+  flash: Flash | null;
+  /** False when showing fixture data: actions are shown but cannot be sent. */
+  live: boolean;
+}
+
+const { data, flash, live } = Astro.props;
+const { request: rq, investigation: inv, trace, review } = data;
+const back = `/app/requests/${encodeURIComponent(rq.request_id)}/`;
+const approval = review.approval;
+const questionText = new Map(rq.questions.map((q) => [q.question_id, q.text]));
+const includedByQuestion = rq.questions
+  .map((q) => ({ q, items: review.included.filter((i) => i.question_id === q.question_id) }))
+  .filter((g) => g.items.length > 0);
+const SHOW = 3;
+---
+
+<p class="back">
+  <a href="/app/">← Passport</a>
+</p>
+<h1 class="title">{rq.issuer} asks about your money</h1>
+<p class="meta">
+  Received {when(rq.received_at)} · reply by {day(rq.expires_at)} ·
+  <Badge kind="status" value={rq.status} />
+</p>
+
+{flash?.kind === 'refused' && (
+  <section class="refusal" role="alert" aria-labelledby="refusal-title">
+    <h2 id="refusal-title">Not sent. The backend refused.</h2>
+    <p class="refusal-code">
+      <code>{flash.refusal.code}</code>
+    </p>
+    <pre class="refusal-reason">{flash.refusal.reason}</pre>
+    <p class="meta">
+      This is the backend’s own reason, word for word. Nothing reached {rq.issuer}.
+    </p>
+  </section>
+)}
+{flash?.kind === 'unavailable' && <p class="notice">{flash.message}</p>}
+{flash?.kind === 'ok' && <p class="notice notice--ok">{flash.message}</p>}
+
+<section class="block" aria-labelledby="questions-title">
+  <h2 id="questions-title">What {rq.issuer} asked</h2>
+  <ol class="questions">
+    {rq.questions.map((q) => (
+      <li>{q.text}</li>
+    ))}
+  </ol>
+  <p class="meta">
+    About <code>{rq.txn_ids.join(', ') || 'a period'}</code>
+    {rq.period && ` · [${rq.period.from}, ${rq.period.to})`}
+    {rq.signature.verified ? ' · request signature verified' : ' · request signature NOT verified'}
+  </p>
+</section>
+
+<section class="block" aria-labelledby="investigation-title">
+  <h2 id="investigation-title">Investigation</h2>
+  <p>
+    <Badge kind="status" value={inv.status} />
+    {inv.budget.calls_cap > 0 && (
+      <span class="meta">
+        {' '}
+        {inv.budget.calls_used} of {inv.budget.calls_cap} Gemini calls
+      </span>
+    )}
+  </p>
+  {inv.failure_reason && <p class="notice">{inv.failure_reason}</p>}
+  {inv.roles.length > 0 && (
+    <ul class="roles">
+      {inv.roles.map((r) => (
+        <li>
+          <strong>{r.name}</strong> <Badge kind="status" value={r.status} />{' '}
+          <span class="meta">{r.note}</span>
+        </li>
+      ))}
+    </ul>
+  )}
+  {inv.can_run && (
+    <form method="post" action="/app/act">
+      <input type="hidden" name="action" value={inv.run_action} />
+      <input type="hidden" name="return_to" value={back} />
+      <button class="btn btn--primary" type="submit" disabled={!live}>
+        Run investigation
+      </button>
+    </form>
+  )}
+</section>
+
+<section class="block" aria-labelledby="trace-title">
+  <h2 id="trace-title">How each answer was reached</h2>
+  <p class="meta">
+    Agents propose; code checks every reference, date and amount before a claim is marked.
+  </p>
+  {trace.length === 0 && <p class="empty">No trace yet. Run the investigation to produce one.</p>}
+  {trace.map((step) => (
+    <TraceStep step={step} />
+  ))}
+</section>
+
+<section class="block private" aria-labelledby="review-title">
+  <h2 id="review-title">Your private review</h2>
+  <p class="meta">Only you see this. {rq.issuer} receives the included items and nothing else.</p>
+
+  <div class="group group--included" aria-labelledby="included-title">
+    <h3 id="included-title">
+      Sent to {approval.recipient} · {review.counts.included}
+    </h3>
+    {review.included.length === 0 && <p class="empty">Nothing is included.</p>}
+    {includedByQuestion.map(({ q, items }) => (
+      <div class="per-question">
+        <p class="q">{questionText.get(q.question_id)}</p>
+        <ul class="items">
+          {items.slice(0, SHOW).map((i) => (
+            <li>
+              <span class="item-label">{i.label}</span>
+              <span class="meta">
+                <code>{ref(i.record_id, i.revision)}</code> <Badge kind="trust" value={i.trust} />
+              </span>
+              <span class="meta">{i.reason}</span>
+              {i.removable && i.remove_action ? (
+                <form method="post" action="/app/act">
+                  <input type="hidden" name="action" value={i.remove_action} />
+                  <input type="hidden" name="return_to" value={back} />
+                  <button class="btn btn--small" type="submit" disabled={!live}>
+                    Remove
+                  </button>
+                </form>
+              ) : (
+                <span class="meta">Needed for the answer</span>
+              )}
+            </li>
+          ))}
+        </ul>
+        {items.length > SHOW && (
+          <details>
+            <summary>{items.length - SHOW} more items</summary>
+            <ul class="items">
+              {items.slice(SHOW).map((i) => (
+                <li>
+                  <span class="item-label">{i.label}</span>
+                  <span class="meta">
+                    <code>{ref(i.record_id, i.revision)}</code>{' '}
+                    <Badge kind="trust" value={i.trust} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    ))}
+  </div>
+
+  <div class="group group--excluded" aria-labelledby="excluded-title">
+    <h3 id="excluded-title">Not sent · {review.counts.excluded}</h3>
+    {review.excluded.length === 0 && <p class="empty">Nothing was left out.</p>}
+    <ul class="items">
+      {review.excluded.map((e) => (
+        <li>
+          <span class="item-label">{e.label}</span>
+          <span class="meta">{e.reason}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  <div class="group group--generalised" aria-labelledby="generalised-title">
+    <h3 id="generalised-title">Sent in less detail · {review.counts.generalised}</h3>
+    {review.generalised.length === 0 && <p class="empty">Nothing was generalised.</p>}
+    <ul class="items">
+      {review.generalised.map((g) => (
+        <li>
+          <span class="item-label">{g.label}</span>
+          <span class="meta">
+            <s>{g.original_summary}</s> → {g.generalised_as}
+          </span>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  {review.gaps.length > 0 && (
+    <div class="group" aria-labelledby="gaps-title">
+      <h3 id="gaps-title">Questions that stay open · {review.counts.gaps}</h3>
+      <ul class="items">
+        {review.gaps.map((g) => (
+          <li>
+            <span class="item-label">{g.description}</span>
+            <Badge kind="status" value={g.reason_code} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  <div class="approval" aria-labelledby="approval-title">
+    <h3 id="approval-title">Approve for {approval.recipient}</h3>
+    <p>
+      Approving sends exactly the items above to <strong>{approval.recipient}</strong> and nobody
+      else. Any change afterwards needs a new approval.
+    </p>
+    {approval.invalidated_reason && (
+      <p class="notice">Your earlier approval no longer applies: {approval.invalidated_reason}</p>
+    )}
+    <form method="post" action="/app/act">
+      <input type="hidden" name="action" value={approval.action} />
+      <input type="hidden" name="return_to" value={back} />
+      <input type="hidden" name="digest" value={approval.digest} />
+      <input type="hidden" name="audience" value={approval.audience} />
+      <input type="hidden" name="policy_version" value={approval.policy_version} />
+      <button
+        class="btn btn--primary btn--wide"
+        type="submit"
+        disabled={!live || approval.status === 'approved'}
+      >
+        {approval.status === 'approved'
+          ? `Approved for ${approval.recipient}`
+          : `Approve for ${approval.recipient}`}
+      </button>
+    </form>
+    {!live && (
+      <p class="meta">
+        Approval needs the backend: it binds your decision to the package’s digest.
+      </p>
+    )}
+    <details>
+      <summary>Approval details</summary>
+      <dl class="kv">
+        <dt>Status</dt>
+        <dd>
+          <Badge kind="status" value={approval.status} />
+        </dd>
+        <dt>Recipient</dt>
+        <dd>
+          {approval.recipient} <code>{approval.audience}</code>
+        </dd>
+        <dt>Body digest</dt>
+        <dd>
+          <code class="digest">{approval.digest || 'computed by the backend'}</code>
+        </dd>
+        <dt>Policy</dt>
+        <dd>
+          <code>{approval.policy_version || 'from the backend'}</code>
+        </dd>
+        <dt>Valid</dt>
+        <dd>
+          {approval.valid_from
+            ? `${when(approval.valid_from)} to ${when(approval.valid_until)}`
+            : 'set when you approve'}
+        </dd>
+      </dl>
+    </details>
+  </div>
+</section>
+
+<style>
+  .back {
+    margin: 0 0 var(--space-2xs);
+    font-size: var(--t-sm);
+  }
+
+  .title {
+    font-size: var(--t-lg);
+  }
+
+  .block {
+    margin-block: var(--space-md);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+
+  h3 {
+    font-size: var(--t-base);
+  }
+
+  .meta,
+  .empty {
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+  }
+
+  .questions {
+    padding-left: 1.2rem;
+    margin: 0 0 var(--space-2xs);
+  }
+
+  .roles {
+    list-style: none;
+    padding: 0;
+    font-size: var(--t-sm);
+  }
+
+  .refusal {
+    margin-block: var(--space-sm);
+    padding: var(--space-sm);
+    border: 2px solid var(--c-bad);
+    border-left-width: 6px;
+    border-radius: var(--radius-md);
+    background: var(--c-surface);
+  }
+
+  .refusal h2 {
+    color: var(--c-bad);
+  }
+
+  .refusal-reason {
+    white-space: pre-wrap;
+    font-size: var(--t-sm);
+    margin: var(--space-2xs) 0;
+  }
+
+  .notice {
+    padding: var(--space-2xs) var(--space-xs);
+    border: 1px dashed var(--c-warn);
+    border-radius: var(--radius-sm);
+    font-size: var(--t-sm);
+  }
+
+  .notice--ok {
+    border: 1px solid var(--c-ok);
+  }
+
+  .private {
+    padding: var(--space-sm);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    background: var(--c-surface);
+  }
+
+  .group {
+    margin-block: var(--space-sm);
+    padding-left: var(--space-xs);
+    border-left: 3px solid var(--c-line);
+  }
+
+  .group--included {
+    border-left-style: solid;
+    border-left-color: var(--c-ok);
+  }
+
+  .group--excluded {
+    border-left-style: dashed;
+    border-left-color: var(--c-bad);
+  }
+
+  .group--generalised {
+    border-left-style: dotted;
+  }
+
+  .q {
+    font-size: var(--t-sm);
+    font-weight: 600;
+    margin: var(--space-2xs) 0 var(--space-3xs);
+  }
+
+  .items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2xs);
+  }
+
+  .items > li {
+    display: grid;
+    gap: 2px;
+  }
+
+  .item-label {
+    font-weight: 600;
+    font-size: var(--t-sm);
+  }
+
+  details summary {
+    cursor: pointer;
+    font-size: var(--t-sm);
+    color: var(--c-alibi);
+    margin-top: var(--space-2xs);
+  }
+
+  .approval {
+    margin-top: var(--space-md);
+    padding: var(--space-sm);
+    border: 2px solid var(--c-alibi);
+    border-radius: var(--radius-md);
+  }
+
+  .btn {
+    min-height: 44px;
+    padding: var(--space-2xs) var(--space-md);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--c-alibi);
+    background: var(--c-surface);
+    color: var(--c-alibi);
+    font: 600 var(--t-base) / 1 var(--font-sans);
+  }
+
+  .btn--primary {
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+  }
+
+  .btn--small {
+    min-height: 32px;
+    font-size: var(--t-sm);
+    justify-self: start;
+  }
+
+  .btn--wide {
+    width: 100%;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-3xs) var(--space-xs);
+    font-size: var(--t-sm);
+    margin: var(--space-2xs) 0 0;
+  }
+
+  .kv dd {
+    margin: 0;
+    min-width: 0;
+  }
+
+  .digest {
+    overflow-wrap: anywhere;
+  }
+</style>

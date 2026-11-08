@@ -1,0 +1,118 @@
+---
+/**
+ * The phone app's frame: header, a notice when the screen is not showing live
+ * backend data, the screen itself, and a bottom tab bar. On a desktop it stays
+ * phone-width and centred; `/phone/` shows it inside a simulated phone.
+ */
+import Logomark from '@alibi/ui/Logomark.astro';
+
+interface Props {
+  holder?: string;
+  /** Why the screen is showing built-in data instead of the backend's. */
+  fixtureReason?: string;
+  active: 'passport' | 'requests' | 'settings';
+}
+
+const { holder = 'Maya', fixtureReason, active } = Astro.props;
+const tabs = [
+  { key: 'passport', label: 'Passport', href: '/app/' },
+  { key: 'requests', label: 'Requests', href: '/app/#requests' },
+  { key: 'settings', label: 'Settings', href: '/app/settings/' },
+] as const;
+---
+
+<div class="app">
+  <header class="app-header">
+    <a href="/app/" class="mark">
+      <Logomark height="1.4rem" />
+    </a>
+    <span class="who">{holder}</span>
+  </header>
+
+  {fixtureReason && (
+    <p class="fixture-note" role="note">
+      <strong>Built-in case 1 data, not a live run.</strong> {fixtureReason}
+    </p>
+  )}
+
+  <main id="main" class="screen">
+    <slot />
+  </main>
+
+  <nav class="tabs" aria-label="App">
+    {tabs.map((t) => (
+      <a href={t.href} aria-current={t.key === active ? 'page' : undefined}>
+        {t.label}
+      </a>
+    ))}
+  </nav>
+</div>
+
+<style>
+  .app {
+    max-width: var(--app-max);
+    min-height: 100dvh;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--c-bg);
+  }
+
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-xs) var(--gutter);
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+  }
+
+  .mark {
+    color: inherit;
+  }
+
+  .who {
+    font-size: var(--t-sm);
+  }
+
+  .fixture-note {
+    margin: 0;
+    padding: var(--space-2xs) var(--gutter);
+    font-size: var(--t-xs);
+    background: var(--c-surface);
+    border-bottom: 1px dashed var(--c-warn);
+    color: var(--c-ink-soft);
+  }
+
+  .screen {
+    flex: 1;
+    padding: var(--space-sm) var(--gutter) var(--space-xl);
+  }
+
+  .tabs {
+    position: sticky;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--c-line);
+    background: var(--c-surface);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tabs a {
+    min-height: 48px;
+    display: grid;
+    place-items: center;
+    font-size: var(--t-xs);
+    text-decoration: none;
+    color: var(--c-ink-soft);
+  }
+
+  .tabs a[aria-current='page'] {
+    color: var(--c-alibi);
+    font-weight: 700;
+  }
+</style>

@@ -1,12 +1,32 @@
 ---
 /**
- * `/app/`: the app view at a fixed URL, for any device. Prerendered, so it is
- * served straight from Cloudflare's static assets.
+ * `/app/`: Maya's passport home, on any device. `/` shows the same screen on a
+ * phone, and `/phone/` frames it on a desktop. Rendered per request because it
+ * reads the backend.
  */
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import AppShell from '@/components/app/AppShell.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import PassportHome from '@/components/app/PassportHome.astro';
+import { loadPassport } from '@/lib/passport';
+
+export const prerender = false;
+
+const loaded = await loadPassport();
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
 <BaseLayout title="Passport" view="app">
-  <AppShell />
+  {loaded.source === 'missing' ? (
+    <AppFrame active="passport">
+      <p>{loaded.reason}</p>
+    </AppFrame>
+  ) : (
+    <AppFrame
+      active="passport"
+      holder={loaded.data.holder.name}
+      fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+    >
+      <PassportHome data={loaded.data} />
+    </AppFrame>
+  )}
 </BaseLayout>

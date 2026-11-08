@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig, sessionDrivers } from 'astro/config';
+import { defineConfig, envField, sessionDrivers } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 
 // The Alibi site: the product landing page and the app, on one Cloudflare
@@ -16,6 +16,13 @@ export default defineConfig({
   // provisioning a KV namespace on deploy; replace it when sessions are needed.
   session: { driver: sessionDrivers.lruCache() },
   build: { format: 'directory' },
+  env: {
+    schema: {
+      // The Python backend (web/docs/backend-integration.md). Unset means
+      // "not connected": screens show the built-in case 1 data and say so.
+      ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'public', optional: true }),
+    },
+  },
   // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.
   devToolbar: { enabled: false },
 });

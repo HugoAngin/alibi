@@ -1,0 +1,203 @@
+---
+/**
+ * One question's trace, as a numbered chain a judge can follow without being
+ * told how: question → claim → lookup → sources → calculation → status.
+ * The lookup comes before the sources because, in the demo, the scoped lookup
+ * is what produced the deciding source.
+ */
+import type { TraceStep } from '@/lib/api/types';
+import { money, ref, when } from '@/lib/format';
+
+import Badge from './Badge.astro';
+
+interface Props {
+  step: TraceStep;
+}
+
+const { step } = Astro.props;
+const SHOW = 4;
+const first = step.sources.slice(0, SHOW);
+const rest = step.sources.slice(SHOW);
+---
+
+<article class="trace" id={step.step_id} data-status={step.status}>
+  <header class="trace-head">
+    <Badge kind="claim" value={step.status} />
+    <p class="reason">{step.status_reason}</p>
+  </header>
+
+  <ol class="chain">
+    <li>
+      <span class="label">Question</span>
+      <p>{step.question}</p>
+    </li>
+    <li>
+      <span class="label">Claim</span>
+      <p>{step.claim.text}</p>
+    </li>
+    <li>
+      <span class="label">Lookup</span>
+      {step.lookups.length === 0 && (
+        <p class="none">No lookup needed: the records were already in the passport.</p>
+      )}
+      {step.lookups.map((l) => (
+        <p class="lookup">
+          <code>
+            {l.tool}({l.args_summary})
+          </code>
+          <span class="result">→ {l.result_summary}</span>
+          <span class="none">{when(l.at)}</span>
+        </p>
+      ))}
+    </li>
+    <li>
+      <span class="label">Sources</span>
+      <ul class="chips">
+        {first.map((s) => (
+          <li>
+            <code>{ref(s.record_id, s.revision)}</code> <Badge kind="trust" value={s.trust} />
+          </li>
+        ))}
+      </ul>
+      {rest.length > 0 && (
+        <details>
+          <summary>{rest.length} more sources</summary>
+          <ul class="chips">
+            {rest.map((s) => (
+              <li>
+                <code>{ref(s.record_id, s.revision)}</code> <Badge kind="trust" value={s.trust} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </li>
+    <li>
+      <span class="label">Calculation</span>
+      {step.calculation ? (
+        <p>
+          <code class="calc">{step.calculation.expression}</code>
+          <span class="none">
+            = {money(step.calculation.result)}, computed by {step.calculation.computed_by};
+            {step.calculation.matches
+              ? ' matches the cited amounts'
+              : ' does not match the cited amounts'}
+          </span>
+        </p>
+      ) : (
+        <p class="none">No arithmetic for this question.</p>
+      )}
+    </li>
+    <li>
+      <span class="label">Status</span>
+      <p>
+        <Badge kind="claim" value={step.status} />
+      </p>
+    </li>
+  </ol>
+</article>
+
+<style>
+  .trace {
+    padding: var(--space-sm);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    margin-block: var(--space-sm);
+  }
+
+  .trace-head {
+    display: grid;
+    gap: var(--space-3xs);
+    justify-items: start;
+    margin-bottom: var(--space-xs);
+  }
+
+  .reason {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .chain {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 0 0 0 1.9rem;
+    border-left: 2px solid var(--c-alibi);
+    margin-left: 0.6rem;
+  }
+
+  .chain > li {
+    position: relative;
+    counter-increment: step;
+    padding-bottom: var(--space-xs);
+  }
+
+  .chain > li::before {
+    content: counter(step);
+    position: absolute;
+    left: calc(-1.9rem - 0.65rem);
+    top: 0;
+    width: 1.3rem;
+    height: 1.3rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    font-size: var(--t-xs);
+    font-weight: 700;
+  }
+
+  .chain p {
+    margin: 0;
+  }
+
+  .label {
+    display: block;
+    font-size: var(--t-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-ink-faint);
+  }
+
+  .lookup {
+    display: grid;
+    gap: var(--space-3xs);
+  }
+
+  .lookup code,
+  .calc {
+    font-size: var(--t-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .result {
+    font-size: var(--t-sm);
+  }
+
+  .none {
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+  }
+
+  .chips {
+    list-style: none;
+    margin: var(--space-3xs) 0 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3xs);
+  }
+
+  .chips code {
+    font-size: var(--t-sm);
+  }
+
+  details summary {
+    cursor: pointer;
+    font-size: var(--t-sm);
+    color: var(--c-alibi);
+    margin-top: var(--space-3xs);
+  }
+</style>

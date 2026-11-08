@@ -5,8 +5,8 @@
  */
 
 export const shop = {
-  merchantId: 'resalehub',
-  name: 'ResaleHub',
+  merchantId: 'mock-marketplace',
+  name: 'Mock Marketplace',
   tagline: 'Second-hand clothes, sold by people like you.',
 } as const;
 

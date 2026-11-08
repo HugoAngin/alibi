@@ -11,8 +11,8 @@ export interface MerchantEntry {
 }
 
 export const merchants: Record<string, MerchantEntry> = {
-  resalehub: {
-    name: 'ResaleHub',
+  'mock-marketplace': {
+    name: 'Mock Marketplace',
     shares: [
       'Sales and their status',
       'Refunds',

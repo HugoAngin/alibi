@@ -1,0 +1,146 @@
+"""Explicit post-hoc rules-only diagnostics on a previously evaluated pack.
+
+This is not a fresh unseen score. It never reads gold or changes the original
+capture. A completed run replays aggregate metrics without launching workers.
+"""
+import argparse
+from contextlib import ExitStack
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+import os
+from pathlib import Path
+from queue import Queue
+import subprocess
+from tempfile import TemporaryDirectory
+
+from alibi.eval import common, seal
+from agents.eval.isolated_candidate import run_isolated
+from agents.eval.parallel_capture import schedule
+from agents.eval.sealed_worker import REPO, case_payload
+from tools.lockbox import is_open
+
+DISCLOSURE = "Post-hoc runtime diagnostic on reused held-out inputs; not fresh unseen accuracy."
+
+
+def digest(path):
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def files(root):
+    return {str(p.relative_to(root)): digest(p) for p in sorted(root.rglob('*'))
+            if p.is_file() and p.name != 'receipt.json'}
+
+
+def replay(root):
+    receipt = common.load_json(root / 'receipt.json')
+    if receipt['files'] != files(root):
+        raise ValueError('post-hoc evidence changed')
+    return common.load_json(root / 'summary.json')
+
+
+def capture(cases, *, output, candidate, private_root, deadline):
+    """Private worker artifacts; only counts and fixed failure codes exported."""
+    counts = dict(cases=len(cases), completed=0, failed=0, unstarted=0, scheduler_errors=0,
+                  model_calls=0)
+    codes = {}
+    with ExitStack() as stack:
+        roots = [Path(stack.enter_context(TemporaryDirectory(prefix='alibi-postfix-')))
+                 for _ in range(4)]
+        lanes = Queue()
+        for root in roots:
+            lanes.put(root)
+        credential = output / 'no-model-credential'
+        credential.write_text('No model credentials; rules-only diagnostic.\n')
+
+        def run(case):
+            lane = lanes.get()
+            try:
+                return run_isolated(case, 'rules', candidate=candidate, private_root=private_root,
+                    credential=credential, output=output / 'workers' / str(case['case_number']),
+                    scratch_parent=lane, denied_scratch=tuple(p for p in roots if p != lane),
+                    capture_root=output.parent, deadline=deadline)
+            finally:
+                lanes.put(lane)
+
+        def progress(outcome, aggregate):
+            if outcome['status'] == 'not_started':
+                counts['unstarted'] += 1
+            elif outcome['status'] == 'error':
+                counts['scheduler_errors'] += 1
+            else:
+                rows, metadata = outcome['result']
+                failed = bool(metadata['failures'])
+                counts['failed' if failed else 'completed'] += 1
+                diagnostics = metadata.get('failure_diagnostics', {})
+                code = diagnostics.get('code', 'unclassified_failure') if failed else 'completed'
+                codes[code] = codes.get(code, 0) + 1
+            common.write_json(output / 'progress.json', counts)
+            print(json.dumps({'posthoc_runtime_progress': counts}), flush=True)
+
+        result = schedule(cases, run, workers=4, deadline=deadline, stop_on_error=True,
+                          progress=progress)
+    return dict(disclosure=DISCLOSURE, candidate=candidate, metrics=counts,
+                failure_codes=codes, scheduling=result['metadata'])
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--out', type=Path, required=True)
+    for name in ('cases', 'manifest', 'private-root', 'original-capture'):
+        parser.add_argument('--' + name, type=Path)
+    parser.add_argument('--candidate')
+    parser.add_argument('--deadline')
+    args = parser.parse_args(argv)
+    os.umask(0o077)
+    output = args.out.resolve()
+    if output.exists():
+        summary = replay(output)
+        print(json.dumps(summary['metrics'], sort_keys=True))
+        return
+    if not is_open():
+        parser.error('new diagnostic requires results.py add --split lockbox --reason')
+    if not all((args.cases, args.manifest, args.private_root, args.original_capture,
+                args.candidate, args.deadline)):
+        parser.error('new diagnostic requires all input commitments and a deadline')
+    private = args.private_root.resolve(strict=True)
+    original = args.original_capture.resolve(strict=True)
+    inputs = args.cases.resolve(strict=True)
+    if (not inputs.is_relative_to(private) or output.is_relative_to(private)
+            or output.is_relative_to(original) or output.is_relative_to(REPO)
+            or original.parent != output.parent):
+        raise ValueError('separate private capture sibling and original input root required')
+    deadline = datetime.fromisoformat(args.deadline)
+    if deadline.tzinfo is None or deadline <= datetime.now(timezone.utc):
+        raise ValueError('future timezone-aware deadline required')
+    candidate = subprocess.check_output(['git', 'rev-parse', args.candidate + '^{commit}'],
+                                       cwd=REPO, text=True).strip()
+    manifest = common.load_json(args.manifest)
+    initial_run_hash = digest(original / 'run.json')
+    original_run = common.load_json(original / 'run.json')
+    if original_run['input']['manifest'] != digest(args.manifest):
+        raise ValueError('manifest is not the previously evaluated pack')
+    input_files, entries = seal.case_entries(inputs)
+    if entries != manifest['cases']['entries']:
+        raise ValueError('case commitments changed')
+    cases = common.load_sealed_cases(inputs, require_gold=False)
+    for case in cases:
+        case_payload(case)
+    output.mkdir(mode=0o700)
+    common.write_json(output / 'authorization.json', {
+        'disclosure': DISCLOSURE, 'authority': 'Tamim explicitly requested continuing fixes and testing',
+        'original_run_sha256': initial_run_hash, 'manifest_sha256': digest(args.manifest),
+        'candidate': candidate, 'evaluator': subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(), 'gold_read': False})
+    summary = capture(cases, output=output, candidate=candidate, private_root=private,
+                      deadline=deadline)
+    if (seal.case_entries(inputs) != (input_files, entries)
+            or digest(original / 'run.json') != initial_run_hash):
+        raise ValueError('original input commitments changed during diagnostic')
+    common.write_json(output / 'summary.json', summary)
+    common.write_json(output / 'receipt.json', {'files': files(output)})
+    print(json.dumps(summary['metrics'], sort_keys=True))
+
+
+if __name__ == '__main__':
+    main()

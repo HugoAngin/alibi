@@ -1,0 +1,146 @@
+--- a/tools/results.py
++++ b/tools/results.py
+@@ -7,9 +7,10 @@
+
+ The command must print its metrics as one JSON object on its last line of output, such as
+ {"sharpe": 1.42, "max_drawdown": -0.08}. `add` runs it, so no number is ever typed by hand,
+-and appends a record to your agents/<role>/out/results.jsonl. `verify` reruns records in a
+-clean checkout of the commit they came from, with data/ linked in, and appends a verdict
+-to your agents/<role>/out/verified.jsonl.
++and appends a record to your agents/<role>/out/results.jsonl. Lockbox commands run in a
++temporary checkout of the recorded commit. Use an absolute path outside that checkout
++for artifacts you need to keep. `verify` reruns records in a clean checkout of the commit
++they came from, with data/ linked in, and appends a verdict to your agents/<role>/out/verified.jsonl.
+ """
+ from __future__ import annotations
+
+@@ -161,9 +162,8 @@
+     if args.split in NEEDS_VARIANTS and not args.variants:
+         die(f"--variants is required for {args.split}: how many versions you tried before this one.")
+     records = all_records()
+-    if args.split == "lockbox":
+-        if lockbox_from() is None:
+-            die("no lockbox is set in shared/splits.json. Ask lead.")
++    open_lockbox = args.split == "lockbox"
++    if open_lockbox:
+         problem = lockbox_problem(role, records, args.reason)
+         if problem:
+             die(problem)
+@@ -171,15 +171,19 @@
+     if leftovers:
+         die("commit these first, so the record points at the code that ran: "
+             + ", ".join(leftovers[:10]))
++    commit = git("rev-parse", "HEAD") if open_lockbox else None
+     print(f"results: running {args.command}", file=sys.stderr)
+     try:
+-        stdout = run(args.command, roster.ROOT, args.split == "lockbox", args.timeout)
++        if commit is not None:
++            stdout = run_lockbox(args.command, commit, args.timeout)
++        else:
++            stdout = run(args.command, roster.ROOT, False, args.timeout)
+         print("\n".join(stdout.rstrip().splitlines()[-20:]), file=sys.stderr)
+         metrics = metrics_from(stdout)
+     except (RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+         die(str(error))
+     record = {"role": role, "split": args.split, "metrics": metrics, "variants": args.variants,
+-              "command": args.command, "commit": git("rev-parse", "HEAD"), "created": now()}
++              "command": args.command, "commit": commit or git("rev-parse", "HEAD"), "created": now()}
+     if args.note:
+         record["note"] = args.note
+     if args.reason:
+@@ -234,6 +238,21 @@
+     git("worktree", "prune", check=False)
+
+
++def run_lockbox(command: str, commit: str, timeout: float | None) -> str:
++    with tempfile.TemporaryDirectory(prefix="lockbox-", ignore_cleanup_errors=True) as scratch:
++        into = Path(scratch) / "repo"
++        try:
++            error = checkout(commit, into)
++            if error:
++                die(error)
++            if lockbox_from(into / "shared" / "splits.json") is None:
++                die("no lockbox is set in shared/splits.json. Ask lead.")
++            return run(command, into, True, timeout)
++        finally:
++            if into.exists():
++                remove_checkout(into)
++
++
+ def verify_one(record: dict, cwd: Path, args: argparse.Namespace) -> dict:
+     verdict = {"id": record["id"], "checked": now()}
+     try:
+--- a/tools/test_results.py
++++ b/tools/test_results.py
+@@ -1,4 +1,9 @@
+ import json
++import os
++import shlex
++import shutil
++import subprocess
++import sys
+ import tempfile
+ import unittest
+ from datetime import date, datetime, timezone
+@@ -53,6 +58,61 @@
+             self.assertEqual(results.child_env(True)[lockbox.OPEN_FLAG], "1")
+
+
++    def test_add_runs_and_records_the_same_commit_when_the_source_branch_advances(self):
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++
++            def git(*args):
++                return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
++
++            git("init", "-q", "--template=")
++            git("config", "user.name", "Results test")
++            git("config", "user.email", "results@example.invalid")
++            git("config", "team.login", "test-eval")
++            (root / "tools").mkdir()
++            for name in ("results.py", "lockbox.py", "team.py"):
++                shutil.copyfile(Path(__file__).with_name(name), root / "tools" / name)
++            (root / "team.json").write_text(json.dumps({"members": [
++                {"role": "eval", "github": "test-eval", "paths": ["agents/eval/"]}
++            ]}))
++            (root / "shared").mkdir()
++            (root / "shared" / "splits.json").write_text('{"lockbox_from": 1}')
++            (root / "capture.py").write_text(
++                'import json, os, subprocess\n'
++                'from pathlib import Path\n'
++                'from tools.lockbox import is_open\n'
++                'assert is_open()\n'
++                'subprocess.run(["git", "merge", "--ff-only", "advance"], '
++                'cwd=os.environ["RESULTS_TEST_ROOT"], check=True)\n'
++                'print(json.dumps({"version": int(Path("version.txt").read_text())}))\n'
++            )
++            version = root / "version.txt"
++            version.write_text("1")
++            git("add", "tools", "shared", "team.json", "capture.py", "version.txt")
++            git("commit", "-qm", "launch version", "--no-gpg-sign")
++            launch_commit = git("rev-parse", "HEAD")
++            version.write_text("2")
++            git("commit", "-qam", "later version", "--no-gpg-sign")
++            later_commit = git("rev-parse", "HEAD")
++            git("branch", "advance", later_commit)
++            git("reset", "--hard", launch_commit)
++
++            command = [sys.executable, "capture.py"]
++            shell_command = subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
++            done = subprocess.run(
++                [sys.executable, "tools/results.py", "add", "--split", "lockbox",
++                 "--variants", "1", "--command", shell_command],
++                cwd=root, env={**os.environ, "RESULTS_TEST_ROOT": str(root)},
++                capture_output=True, text=True, timeout=30,
++            )
++            self.assertEqual(done.returncode, 0, done.stderr)
++            record = json.loads((root / "agents/eval/out/results.jsonl").read_text())
++            self.assertEqual(git("rev-parse", "HEAD"), later_commit)
++            self.assertEqual(record["commit"], launch_commit)
++            self.assertEqual(record["metrics"], {"version": 1})
++            self.assertEqual(git("worktree", "list", "--porcelain").count("worktree "), 1)
++
++
+ class Report(unittest.TestCase):
+     def test_rows_show_verdicts(self):
+         records = [{"id": "a1", "role": "research", "split": "validation", "variants": 12,

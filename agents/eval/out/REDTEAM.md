@@ -24,3 +24,26 @@ To reproduce the failing assertions directly, run the red-team file with `--runx
 ```sh
 uv run --frozen --offline python -m pytest -q --runxfail --tb=short agents/eval/test_redteam_llm.py
 ```
+
+## S1 core and the sharing boundary
+
+Reproduced against the S1 merge on `main` at `42aebb3`, using signed synthetic inputs, a temporary encrypted passport and disposable keys. The reproduction file is `agents/eval/test_redteam_core.py`. No Gemini or HTTP calls are needed.
+
+| Finding | Reproduced behaviour | Owner boundary |
+| --- | --- | --- |
+| Follow-up widens its parent’s scope | Bank B’s October request accepts a signed follow-up that starts in September. Parent issuer and subject are checked, but the requested interval is accepted unchanged. | [RFC intake](../../../alibi/core/ingest.py#L510). Enforce structural containment before saving the follow-up. |
+| Settlement exceeds the five-day limit | A signed matching settlement dated 14 days before the credit leaves the source claim `supported` in both the investigation and the signed package. The exactly-five-day control still passes. | [Timing verdict](../../../alibi/core/reconcile.py#L254). Apply the published window to the effective settlement time as well as the payout candidate search. |
+| Redacted package does not bind the subject | The holder’s policy withholds `subject_ref` and every attachment is an extract. The same signed package verifies for the correct and a different expected subject with the same request and recipient. | [Source consistency](../../../alibi/core/package.py#L962). Bind a recipient-scoped subject reference in signed scope or require trusted request-to-subject binding at verification. |
+| Bank RFC identifiers share a global namespace | Bank B cannot submit an otherwise valid request when Bank A used the same external ID. The refusal reveals that the ID already exists. | [Request save](../../../alibi/core/ingest.py#L588). Scope externally supplied IDs by issuer. |
+| Stored evidence can cross issuer boundaries | A correctly signed settlement from a different pinned merchant supports the original merchant’s payout when the lookup returns nothing and the record is already in the passport. | [Passport settlement fallback](../../../alibi/core/investigate_rules.py#L553). Require the matching payout’s issuer on both retrieval paths. |
+| One payout supports two credits across RFCs | Two distinct credits with separate RFCs receive `supported` from the same payout. The existing duplicate check works inside a single investigation. | [Payout reuse](../../../alibi/core/investigate_rules.py#L412). Check competing links across the scoped credit history. |
+| Pending settlement gap differs from the scorer contract | A request using `q.source_of_funds` keeps the pinned question ID and does not support the credit. It emits a sentence in `gap` where the evaluator expects `settlement_pending_at_booking`. | [Claim construction](../../../alibi/core/investigate_rules.py#L372). Preserve the sentence separately and emit the pinned code. |
+
+The native core verifier accepts a package produced by the published `load_fixture` → `run_investigation` → `build_review` → `approve` → `sign_and_package` flow. The existing independent CLI returns `invalid_registry` for the same export and native pinned registry. S1 uses a keyed registry with hex Ed25519 public keys and a different signed envelope from the eval reference. Native-format support is pending in the independent verifier.
+
+```sh
+uv run --frozen python -m pytest -q -rx agents/eval/test_redteam_core.py
+uv run --frozen python -m pytest -q --runxfail --tb=short agents/eval/test_redteam_core.py
+```
+
+The first command records seven strict expected failures and a passing boundary control. The second reproduces the seven failing assertions directly. The published S1 interface is in-process, so these results establish core behaviour before the HTTP and S5 adapters apply their own checks.

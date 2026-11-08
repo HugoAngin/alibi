@@ -64,11 +64,21 @@ def import_case_imports(store: Store, clock: CaseClock, *,
                         since: datetime | str | None = None) -> list[PutResult]:
     """Import the case's holder imports visible at the clock (and after ``since`` when given),
     each mapped with ``map_import`` and stored at its ``received_at``. Returns one
-    ``PutResult`` per import, in arrival order. Raises ``IngestError``."""
+    ``PutResult`` per stored import, in arrival order.
+
+    A holder document the backend cannot type (a kind outside the case kinds, or fields the
+    core schema does not take) is refused and skipped: ``import_record`` has already written
+    the refused audit event, and the rest of the case goes on. One unreadable self-supplied
+    document must never stop the investigation of everything else; it could not support a
+    claim anyway, since self-supplied evidence is never issuer evidence."""
     results: list[PutResult] = []
     for entry in clock.visible_imports(since):
         at = parse_time(entry["received_at"], "received_at")
-        results.append(import_record(store, entry["record"], subject_ref=clock.subject_ref, now=at))
+        try:
+            results.append(import_record(store, entry["record"], subject_ref=clock.subject_ref,
+                                         now=at))
+        except IngestError:
+            continue
     return results
 
 

@@ -176,3 +176,40 @@ def test_refused_import_reasons_name_fields_and_ids_only_and_are_audited(store):
         import_record(store, {**record, "amount_minor": "lots"}, subject_ref="seller-0039", now=NOW)
     assert record["event_id"] in info.value.reason and "lots" not in info.value.reason
     assert store.list_sources("seller-0039") == []
+
+
+# ----------------------------------------------------------------------- unreadable holder documents
+
+def _case1_with_imports(*records):
+    import copy
+
+    from agents.data import api as data_api
+
+    case = data_api.without_gold(data_api.load_case(1))
+    case = copy.deepcopy(case)
+    first = case["merchant_deliveries"][0]["received_at"]
+    case["imports"] = list(case.get("imports") or []) + [
+        {"received_at": first, "record": record} for record in records]
+    return case
+
+
+UNKNOWN_CASE_SHAPED = {  # crash shape B: case-shaped (amount_minor) with a kind outside the case kinds
+    "schema_version": "alibi.merchant_event.v1", "event_id": "evt-imp-x1", "record_id": "imp-x1",
+    "revision": 1, "issuer_id": "holder-upload", "subject_ref": "maya-001",
+    "kind": "settlement_screenshot", "occurred_at": "2026-10-27T16:00:00Z", "amount_minor": 216000,
+    "currency": "GBP", "import_source": "photo", "text": "SYNTHETIC screenshot"}
+UNKNOWN_CORE_SHAPED = {  # crash shape A: no amount_minor, unknown kind, extra fields
+    "record_id": "imp-x2", "kind": "bank_letter", "occurred_at": "2026-10-27T16:00:00Z",
+    "letter_ref": "L-1", "sender": "SYNTHETIC", "text": "SYNTHETIC letter"}
+
+
+def test_an_unreadable_holder_document_is_refused_and_the_case_still_runs(tmp_path, monkeypatch):
+    import alibi.adapter as adapter
+
+    monkeypatch.setenv("ALIBI_DATA_DIR", str(tmp_path))
+    case = _case1_with_imports(UNKNOWN_CASE_SHAPED, UNKNOWN_CORE_SHAPED)
+    rows = adapter.run_case(case, "rules")
+    assert [r["failure"] for r in rows] == [None, None]
+    claims = {qid: c for r in rows for qid, c in r["claims"].items()}
+    assert claims["q.source_of_funds"]["status"] == "supported"
+    assert claims["q.sales_refunds_in_period"]["status"] == "supported"

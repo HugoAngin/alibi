@@ -83,7 +83,10 @@ uv run --frozen python -m agents.eval.probe_profile --config "$ALIBI_BASE_PROBES
   --key-dir "$ALIBI_DEMO_KEYS" --out "$ALIBI_LIVE_PROBES"
 ```
 
-This prepares SP-17, SP-18 and SP-20 through SP-32. Run the three RFC intake
+This prepares SP-17 through SP-32. For SP-19 it supplies the native attachment
+and receipt reads from Bank B's verified package. The native bank has no PDF
+route, so SP-19 stays `not_run` overall if both reads hold and no PDF route is
+supplied. Any observed cross-bank leak fails the probe. Run the three RFC intake
 checks on a disposable bank clock inside both Case 1 RFC windows. SP-22
 expects `subject_mismatch` and SP-23 expects `txn_out_of_feed`. SP-24 sends a
 valid Bank B control and changes the declared issuer to Bank A on the attack. Supply the

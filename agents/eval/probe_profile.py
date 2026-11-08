@@ -4,7 +4,7 @@ Reads two already-dispatched public Case 1 receipts from the native mock bank
 (``alibi/bank/service.py``: ``/``, ``/inbox``, ``/packages/{id}``, ``/packages/{id}/raw``,
 ``/rfc/{id}``) and the holder's request from the S4 app (``alibi/app/main.py``: ``/health``,
 ``/requests/{id}``, ``/sources/{id}/{revision}``). After checking them it writes a
-run_probes config that adds native routes and fixtures for SP-17, SP-18 and SP-20..SP-32,
+run_probes config that adds native routes and fixtures for SP-17 through SP-32,
 each under that probe's own ``probes`` entry. SP-22..SP-24 use public RFC inputs rather
 than receipts. Run them with the bank's clock inside the Case 1 RFC window.
 
@@ -68,6 +68,8 @@ NEEDS = {
     "SP-17": ("bank_b", ("bank_a", "bank_b"), ("bank_inbox",), ("bank_b_package_id",)),
     "SP-18": ("bank_b", ("bank_a", "bank_b"), ("bank_package",),
               ("bank_b_package_id", "bank_b_absent_package_id")),
+    "SP-19": ("bank_b", ("bank_a", "bank_b"), ("attachment_download", "receipt_download"),
+              ("bank_b_package_id", "bank_b_attachment_id", "bank_b_receipt_id")),
     "SP-20": ("bank_b", ("bank_a", "bank_b"), (),
               ("consent_bank_service", "recipient_bank_a", "recipient_bank_b", "bank_b_package_id")),
     "SP-21": ("holder", ("holder", "bank_b"), ("source_record",),
@@ -192,7 +194,7 @@ def _receipt(stack: Stack, case: dict, recipient: str, explicit: str | None) -> 
         raise ProfileError(f"{recipient}: signed package is missing signed fields") from None
     stack.verify(signed_part, raw.get("signature"), SigningDomain.PACKAGE)
     stack.verify(request, signed_rfc.get("signature"), SigningDomain.REQUEST)
-    return {"package_id": pid, "request_id": rid, "raw": raw,
+    return {"package_id": pid, "request_id": rid, "receipt_id": receipt.get("receipt_id"), "raw": raw,
             "listed": {r.get("package_id") for r in listed}}
 
 
@@ -290,6 +292,19 @@ def _plan(b: dict | None, a: dict | None, h: dict | None) -> dict:
         plan["SP-18"] = {"routes": {"bank_package": "/packages/{package_id}"},
                          "fixtures": {"bank_b_package_id": pid,
                                       **({"bank_b_absent_package_id": absent} if absent else {})}}
+        resources = {"bank_b_package_id": pid}
+        if isinstance(b["receipt_id"], str) and b["receipt_id"]:
+            resources["bank_b_receipt_id"] = b["receipt_id"]
+        for attachment in b["raw"]["body"].get("attachments") or []:
+            if not isinstance(attachment, dict):
+                continue
+            attachment_id = attachment.get("attachment_id")
+            if isinstance(attachment_id, str) and attachment_id:
+                resources["bank_b_attachment_id"] = attachment_id
+                break
+        plan["SP-19"] = {"routes": {"attachment_download": "/packages/{package_id}/attachments",
+                                      "receipt_download": "/packages/{package_id}"},
+                         "fixtures": resources}
         plan["SP-20"] = {"routes": {}, "fixtures": {
             "consent_bank_service": "bank", "recipient_bank_a": "bank_a",
             "recipient_bank_b": "bank_b", "bank_b_package_id": pid}}

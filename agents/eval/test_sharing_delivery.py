@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
+import sys
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -517,6 +519,49 @@ def test_v1_full_record_issuer_verified_fails_closed_without_valid_proof(registr
         with pytest.raises(VerificationError) as exc:
             verify_package(raw, recipient="bank_a", registry=registry, now=NOW, issuer_records=[bad])
         assert exc.value.code == code
+
+
+def test_offline_verifier_checks_exported_bytes_and_issuer_proof(tmp_path, registry):
+    body = v1_body()
+    body["attachments"][0]["presentation"] = "full_record"
+    raw = seal_v1(body)
+    package_path = tmp_path / "package.json"
+    package_path.write_bytes(raw)
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(registry.to_json()), encoding="utf-8")
+    issuer_record = payout_record(record_id="rec-0001-004", revision=2, occurred_at="2026-10-02",
+                                  amount_minor=216000, currency="GBP", status="paid")
+    proof_path = tmp_path / "issuer.json"
+    proof_path.write_text(json.dumps(sign_record(issuer_record, MERCHANT, "merchant-demo-1"), indent=2),
+                          encoding="utf-8")
+
+    def run(recipient, *options):
+        return subprocess.run(
+            [sys.executable, "-m", "agents.eval.verify_package", str(package_path),
+             "--registry", str(registry_path), "--recipient", recipient,
+             "--at", "2026-11-07T12:00:00Z", *options],
+            capture_output=True, text=True, check=False,
+        )
+
+    proof = ("--issuer-proof", str(proof_path))
+    verified = run("bank_a", *proof)
+    assert verified.returncode == 0 and not verified.stderr
+    result = json.loads(verified.stdout)
+    assert result["status"] == "verified" and result["package_signature"] == "valid"
+    assert result["attachments"][0]["attestation"] == "issuer_signature"
+    assert result["digest"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+
+    for refused, code in [(run("bank_a"), "source_signature_missing"),
+                          (run("bank_b", *proof), "wrong_recipient")]:
+        assert refused.returncode == 1 and not refused.stdout
+        assert json.loads(refused.stderr) == {"status": "refused", "code": code}
+
+    envelope = json.loads(raw)
+    envelope["body"]["claims"][0]["rationale"] = "The exported package was altered."
+    package_path.write_bytes(reseal_envelope(envelope))
+    tampered = run("bank_a", *proof)
+    assert tampered.returncode == 1 and not tampered.stdout
+    assert json.loads(tampered.stderr) == {"status": "refused", "code": "bad_signature"}
 
 
 @pytest.mark.parametrize(

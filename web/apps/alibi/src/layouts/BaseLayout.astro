@@ -54,11 +54,6 @@ import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
     <a class="skip-link" href="#main">
       Skip to content
     </a>
-    {view === 'app' && (
-      <p class="simulated">
-        Hackathon prototype. Every person, account and record here is synthetic.
-      </p>
-    )}
     <slot />
     {view === 'site' && <script src="../scripts/motion.ts" />}
   </body>

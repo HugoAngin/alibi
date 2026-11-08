@@ -1,0 +1,186 @@
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -586,10 +586,12 @@
+         link = self.links.get(txn_id)
+         if outcome.status != ClaimStatus.SUPPORTED or link is None or link.record_ref is None:
+             return outcome
+-        payout = link.record_ref.ref_id
++        payouts = _allocated_payouts(link)
+         others = [other for other, seen in self.links.items() if other != txn_id
+-                  and seen.record_ref is not None and seen.record_ref.ref_id == payout]
+-        stored = self.competing_links(payout, exclude={txn_id, *self.links})
++                  and payouts.intersection(_allocated_payouts(seen))]
++        stored = sorted({other for payout in payouts
++                         for other in self.competing_links(payout, exclude={txn_id, *self.links})})
++        payout = ", ".join(sorted(payouts))
+         if not others and not stored:
+             return outcome
+         where = []
+@@ -604,7 +606,7 @@
+         detail = (f"Payout {payout} is also matched to {' and to '.join(where)}; one payout "
+                   f"cannot fund more than one credit, so it does not establish the source of "
+                   f"{txn_id}.")
+-        self.note("validation", reason=_clip(detail, 300), refs=[link.txn_ref, link.record_ref],
++        self.note("validation", reason=_clip(detail, 300), refs=[link.txn_ref, link.record_ref, *link.candidates],
+                   result={"record_id": payout, "other_txn_ids": others,
+                           "earlier_links": len(stored)})
+         return replace(outcome, status=ClaimStatus.UNRESOLVED,
+@@ -622,7 +624,7 @@
+         except StoreError:
+             return []
+         return sorted({l.txn_ref.ref_id for l in links
+-                       if l.record_ref is not None and l.record_ref.ref_id == record_id
++                       if record_id in _allocated_payouts(l)
+                        and l.txn_ref.ref_id not in exclude})
+ 
+     # ----------------------------------------------------------------------- source of funds
+@@ -870,7 +872,7 @@
+                 problems.append((GAP_SETTLEMENT_NOT_FOUND, _no_settlement_gap(payout, notes)))
+                 continue
+             settlements.append(settlement)
+-            own, code, problem = self.components(payout)
++            own, code, problem = self.components(payout, examined=evidence)
+             if own is None:
+                 problems.append((code or GAP_MISSING_CITED, problem))
+                 continue
+@@ -1046,7 +1048,7 @@
+                   result={"returned": record.ref().key(), "active": active.ref().key()})
+         return active
+ 
+-    def components(self, payout: EvidenceRecord
++    def components(self, payout: EvidenceRecord, *, examined: list[EvidenceRef] | None = None
+                    ) -> tuple[list[EvidenceRecord] | None, str | None, str]:
+         """The payout's component records (its ``related_record_ids``), picked from one
+         listing of the subject's active orders, refunds and fees, so a bundled payout costs
+@@ -1062,6 +1064,10 @@
+                 f"The component records of payout {payout.record_id} could not be listed ({err}).")
+         held = {r.record_id: r for r in records
+                 if r.kind in COMPONENT_KINDS and r.subject_ref == self.request.subject_ref}
++        # Keep relevant reads even when a missing member or failed sum prevents disclosure.
++        # These are revision dependencies, not permission to attach the component records.
++        if examined is not None:
++            examined.extend(held[record_id].ref() for record_id in wanted if record_id in held)
+         missing = [record_id for record_id in wanted if record_id not in held]
+         if missing:
+             return None, GAP_MISSING_CITED, (
+@@ -1238,6 +1244,17 @@
+ # --------------------------------------------------------------------------- matching
+ 
+ 
++def _allocated_payouts(link: Link) -> set[str]:
++    """Every member of a linked batch, or the sole payout of an ordinary linked credit.
++
++    Linked candidates are the matched members; ambiguous candidates reserve no allocation.
++    Using the persisted candidates also protects a secondary batch member across requests.
++    """
++    if link.link_state != LinkState.LINKED or link.record_ref is None:
++        return set()
++    return {link.record_ref.ref_id, *(ref.ref_id for ref in link.candidates)}
++
++
+ def _match(txn: BankTxn, found: Iterable[EvidenceRecord], window: timedelta,
+            settlements: Iterable[EvidenceRecord] = ()) -> _Match:
+     """Match a credit to payouts: by a reference it carries, else by amount and date.
+--- /dev/null
++++ b/alibi/tests/test_batch_dependencies.py
+@@ -0,0 +1,100 @@
++"""Public synthetic batches retain stale-source and exclusive-allocation safeguards."""
++import copy
++import json
++from datetime import timedelta
++
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi import api
++from alibi.adapter import _World, _run, run_case
++from alibi.connectors.case_source import CaseClock, parse_time
++from alibi.core.schemas import ClaimStatus, SigningDomain
++
++
++def case9():
++    return without_gold(load_case(9))
++
++
++def payouts(case):
++    return [d["event"] for d in case["merchant_deliveries"] if d["event"]["kind"] == "payout"]
++
++
++@pytest.mark.parametrize("problem", ["wrong_sum", "missing_component"])
++def test_examined_batch_component_correction_invalidates_empty_review(tmp_path, problem):
++    case = case9()
++    covered = payouts(case)[0]["covers_record_ids"]
++    target = covered[0]
++    if problem == "wrong_sum":
++        next(d["event"] for d in case["merchant_deliveries"]
++             if d["event"]["record_id"] == target)["amount_minor"] += 1
++    else:
++        case["merchant_deliveries"] = [d for d in case["merchant_deliveries"]
++                                        if d["event"]["record_id"] != covered[-1]]
++    at = parse_time(case["rfcs"][0]["issued_at"], "at")
++    world = _World(case, tmp_path / problem)
++    try:
++        world.seed(CaseClock(case, at))
++        rfc = world.store.get_request(case["rfcs"][0]["request_id"])
++        result, _ = _run(world, "rules", rfc, at, None)
++        assert all(c.status == ClaimStatus.UNRESOLVED for c in result.claims)
++        assert all(target in {r.ref_id for r in c.examined_refs} for c in result.claims)
++        draft = api.build_review(world.store, rfc.request_id, audience=rfc.audience, now=at)
++        approval = api.approve(world.store, draft.draft_id, holder_id="holder_maya", now=at)
++        assert draft.body.attachments == []
++        assert all(c.evidence_refs == [] and c.calculation is None for c in draft.body.claims)
++        body = world.store.get_source(target).to_event().to_json_dict()
++        body.update(event_id="public-batch-revision-two", revision=2, corrects_revision=1,
++                    correction_reason="Synthetic component correction")
++        body["amount_pence"] += 2
++        payload = {"event": body, "signature": world.keystore.sign(
++            body, kid="merchant_mock", domain=SigningDomain.RECORD).to_json_dict()}
++        put = api.ingest_merchant_event(world.store, payload, registry=world.registry, now=at)
++        assert {c.claim_id for c in result.claims} <= set(put.invalidated["claims"])
++        assert draft.draft_id in put.invalidated["drafts"]
++        assert approval.approval_id in put.invalidated["approvals"]
++        with pytest.raises(api.ApprovalError):
++            api.sign_and_package(world.store, approval.approval_id, keystore=world.keystore, now=at)
++    finally:
++        world.close()
++
++
++def with_secondary_credit(*, separate_requests):
++    case = case9()
++    primary = case["rfcs"][0]
++    original_id = primary["txn_ids"][0]
++    delivery = copy.deepcopy(next(d for d in case["bank_deliveries"]
++                                  if d["row"]["txn_id"] == original_id))
++    member = payouts(case)[1]
++    row = delivery["row"]
++    row.update(txn_id="txn-public-secondary", amount_minor=member["amount_minor"],
++               payment_reference=member["payout_reference"], description="Individual payout")
++    case["bank_deliveries"].append(delivery)
++    if separate_requests:
++        later = copy.deepcopy(primary)
++        later.update(request_id="rfc-public-secondary", audience="bank_b",
++                     txn_ids=[row["txn_id"]])
++        later["issued_at"] = (parse_time(primary["issued_at"], "at") + timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
++        case["rfcs"] = [primary, later]
++    else:
++        primary["txn_ids"].append(row["txn_id"])
++        case["rfcs"] = [primary]
++    return case, original_id
++
++
++def test_secondary_batch_payout_cannot_fund_another_credit_in_same_request(tmp_path):
++    case, _ = with_secondary_credit(separate_requests=False)
++    (prediction,) = run_case(case, "rules", root=tmp_path)
++    assert all(c["status"] == "unresolved" and c["gap"] == "payout_already_linked"
++               for c in prediction["claims"].values())
++    assert prediction["package"]["attachments"] == []
++
++
++def test_secondary_batch_payout_cannot_fund_later_other_bank_credit(tmp_path):
++    case, earlier_id = with_secondary_credit(separate_requests=True)
++    first, second = run_case(case, "rules", root=tmp_path)
++    assert all(c["status"] == "supported" for c in first["claims"].values())
++    assert all(c["status"] == "unresolved" and c["gap"] == "payout_already_linked"
++               for c in second["claims"].values())
++    assert second["package"]["attachments"] == []
++    assert earlier_id not in json.dumps(second["package"])

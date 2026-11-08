@@ -1,0 +1,289 @@
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -397,6 +397,7 @@
+     excluded: list[EvidenceRecord]     # payouts the decision ruled out explicitly
+     signals: list[str]
+     summary: str
++    batch: list[EvidenceRecord] = field(default_factory=list)  # every payout of a settlement batch
+ 
+ 
+ class _Run:
+@@ -676,6 +677,8 @@
+                           "candidates": [p.record_id for p in match.candidates]})
+         if match.payout is None:
+             return self.unlinked(txn, match)
++        if len(match.batch) > 1:
++            return self.linked_batch(txn, match)
+         return self.linked(txn, match)
+ 
+     def fetch_by_credit_reference(self, txn: BankTxn, found: list[EvidenceRecord]
+@@ -827,6 +830,112 @@
+                      "settled_at": [format_utc(effective)] if effective is not None else []}
+         return _Outcome(status, statement + ".", " ".join(parts), reason, gap=code, detail=gap,
+                         facts=facts, **base)
++
++    def linked_batch(self, txn: BankTxn, match: _Match) -> _Outcome:
++        """A credit matched to an issuer's settlement batch: several issuer-verified payouts of
++        the same issuer whose settlement reference the credit carries and whose amounts sum to
++        it. Each member must show its own settlement (``settlement_for``), have no explicit
++        conflict and reconcile to its own component records; the union of components must
++        then reconcile to the credit, with every member's settlement timing ok. Any member
++        failing makes the credit unresolved (or contradicted for an explicit conflict)."""
++        members = match.batch
++        primary = members[0]
++        batch_ref = primary.settlement_ref
++        statement = (f"Credit {txn.txn_id} of {_money(txn.amount_pence, txn.currency)} is "
++                     f"settlement batch {batch_ref} of {len(members)} payouts "
++                     f"({_ids(members)}; references "
++                     f"{', '.join(p.payment_ref or 'none' for p in members)})")
++        parts = [match.summary]
++        evidence: list[EvidenceRef] = [txn.ref(), *(p.ref() for p in members)]
++        settlements: list[EvidenceRecord] = []
++        components: list[EvidenceRecord] = []
++        problems: list[tuple[str, str]] = []
++        for payout in members:
++            settlement, path, notes = self.settlement_for(payout, txn)
++            parts += notes
++            self.note("note", tool="lookup_settlement",
++                      reason=f"Settlement path for batch member {payout.record_id}: {path}.",
++                      refs=[payout.ref(), *([settlement.ref()] if settlement else [])],
++                      result={"path": path, "payment_ref": payout.payment_ref or "none",
++                              "settlement": settlement.ref().key() if settlement else "none"})
++            if settlement is not None and settlement.record_id != payout.record_id:
++                evidence.append(settlement.ref())
++            conflict = _conflict(txn, payout, settlement)
++            if conflict is not None:
++                reason, code, gap = conflict
++                return _Outcome(ClaimStatus.CONTRADICTED, statement + ".", " ".join(parts),
++                                reason, gap=code, detail=gap, evidence=evidence, payout=primary,
++                                settlement=settlement)
++            if settlement is None:
++                problems.append((GAP_SETTLEMENT_NOT_FOUND, _no_settlement_gap(payout, notes)))
++                continue
++            settlements.append(settlement)
++            own, code, problem = self.components(payout)
++            if own is None:
++                problems.append((code or GAP_MISSING_CITED, problem))
++                continue
++            try:
++                part = reconcile.sum_terms(own, method=reconcile.METHOD_NET_PAYOUT, currency=txn.currency)
++            except ReconcileError as exc:
++                problems.append((GAP_AMOUNT_MISMATCH,
++                                 f"The components of payout {payout.record_id} could not be "
++                                 f"summed: {exc}"))
++                continue
++            if part.total_pence != payout.amount_pence:
++                problems.append((GAP_AMOUNT_MISMATCH,
++                                 f"The components of payout {payout.record_id} total "
++                                 f"{part.total_pence} pence, not its amount "
++                                 f"{payout.amount_pence}."))
++                continue
++            for record in own:
++                if all(record.record_id != held.record_id for held in components):
++                    components.append(record)
++        evidence += [record.ref() for record in components]
++        base = dict(evidence=evidence, payout=primary)
++        if problems:
++            code, problem = problems[0]
++            parts += [text for _, text in problems]
++            return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts),
++                            "A payout of the settlement batch is not established.", gap=code,
++                            detail=" ".join(text for _, text in problems), **base)
++        try:
++            calc = reconcile.reconcile_credit(txn, components=components, window=self.window)
++        except ReconcileError as exc:
++            gap = f"The batch amounts could not be reconciled: {exc}"
++            return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts + [gap]),
++                            gap, gap=GAP_AMOUNT_MISMATCH, detail=gap, **base)
++        timings = [reconcile.check_settlement_timing(s, txn, window=self.window)
++                   for s in settlements]
++        latest = max(range(len(timings)), key=lambda i: (
++            timings[i].settlement_effective_at or txn.booked_at, i))
++        data = {name: getattr(calc, name) for name in type(calc).model_fields}
++        data.update(timing=timings[latest] if all(t.ok for t in timings)
++                    else next(t for t in timings if not t.ok),
++                    cited_refs=_unique([*calc.cited_refs[:-1], *(p.ref() for p in members),
++                                        *(s.ref() for s in settlements), txn.ref()]))
++        calc = type(calc).model_validate(data)
++        parts.append(f"Batch reconciliation: the {len(components)} component records of the "
++                     f"{len(members)} payouts net to {calc.total_pence} pence against the credit "
++                     f"of {calc.target_pence} (difference {calc.difference_pence}).")
++        parts += [_timing_text(s, txn, self.window) for s in settlements]
++        self.note("calculation", reason=_clip(parts[-len(settlements) - 1], 300),
++                  refs=calc.cited_refs, result=_calc_summary(calc))
++        base.update(calculation=calc, components=components, settlement=settlements[latest])
++        if calc.balanced is not True or not reconcile.credit_supported(calc, window=self.window):
++            gap = ("The batch's components do not reconcile to the credit, or a member's "
++                   "settlement timing does not support it.")
++            return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), gap,
++                            gap=GAP_AMOUNT_MISMATCH if calc.balanced is not True
++                            else GAP_SETTLEMENT_NOT_FOUND, detail=gap, **base)
++        effective = [t.settlement_effective_at for t in timings]
++        statement += f", every payout settled before the credit was booked"
++        return _Outcome(ClaimStatus.SUPPORTED, statement + ".", " ".join(parts),
++                        f"Every payout of batch {batch_ref} settled by the booking and the batch "
++                        "reconciles to the credit.",
++                        facts={"payout_references": [p.payment_ref for p in members
++                                                     if p.payment_ref],
++                               "settled_at": [format_utc(t) for t in effective if t is not None]},
++                        **base)
+ 
+     def settlement_for(self, payout: EvidenceRecord, txn: BankTxn
+                        ) -> tuple[EvidenceRecord | None, str, list[str]]:
+@@ -1156,6 +1265,18 @@
+                     carried.setdefault(p.record_id, (
+                         f"{s.settlement_ref}, the settlement reference of {s.ref().key()} for "
+                         f"{p.payment_ref}, the payment reference of"))
++    if not carried:
++        batch = _settlement_batch(txn, payouts, tokens)
++        if batch:
++            listed = "; ".join(f"{p.ref().key()} ({p.payment_ref or 'no reference'}, "
++                               f"{_money(p.amount_pence, p.currency)})" for p in batch)
++            summary = (f"Matched by settlement batch: the credit carries {batch[0].settlement_ref}, "
++                       f"the settlement reference {batch[0].issuer_id} gave {len(batch)} "
++                       f"issuer-verified payouts ({listed}), which together total {amount}.")
++            signals = [f"The credit carries {batch[0].settlement_ref}, the settlement reference "
++                       f"of {p.ref().key()}." for p in batch]
++            return _Match(METHOD_REFERENCE, LinkState.LINKED, METHOD_REFERENCE, batch[0], batch,
++                          [], signals, summary, batch=batch)
+     named = [p for p in payouts if p.record_id in carried]
+     if named:
+         fits = [p for p in named if _compatible(p, txn)]
+@@ -1210,6 +1331,35 @@
+         summary += (f" {_ids(late, keys=True)} has the same amount but occurred after the "
+                     "booking, so it cannot explain the credit.")
+     return _Match(METHOD_AMOUNT_DATE, LinkState.UNMATCHED, None, None, [], late, signals, summary)
++
++
++def _settlement_batch(txn: BankTxn, payouts: list[EvidenceRecord],
++                      tokens: frozenset[str]) -> list[EvidenceRecord]:
++    """The payouts of the one settlement batch the credit names, else ``[]``. A batch is the
++    issuer-verified payouts of one issuer that carry the same settlement reference, which the
++    credit carries; it counts only when there are at least two, all compatible with the credit
++    (same currency, at or before the booking) with distinct payment references, and their
++    amounts sum exactly to the credit. Self-supplied records never join a batch, and a credit
++    naming two batches matches none."""
++    groups: dict[tuple[str, str], dict[str, EvidenceRecord]] = {}
++    for p in payouts:
++        if p.source_trust != SourceTrust.ISSUER_VERIFIED or not p.settlement_ref \
++                or p.settlement_ref.upper() not in tokens:
++            continue
++        group = groups.setdefault((p.issuer_id, p.settlement_ref.upper()), {})
++        held = group.get(p.record_id)
++        if held is None or p.revision > held.revision:
++            group[p.record_id] = p
++    if len(groups) != 1:
++        return []
++    members = sorted(next(iter(groups.values())).values(),
++                     key=lambda r: (r.occurred_at, r.record_id))
++    refs = [p.payment_ref for p in members]
++    if len(members) < 2 or not all(refs) or len(set(refs)) != len(refs) \
++            or not all(_compatible(p, txn) for p in members) \
++            or sum(p.amount_pence or 0 for p in members) != txn.amount_pence:
++        return []
++    return members
+ 
+ 
+ def _compatible(payout: EvidenceRecord, txn: BankTxn) -> bool:
+--- /dev/null
++++ b/alibi/tests/test_settlement_batch.py	2026-11-08 12:55:44
+@@ -0,0 +1,99 @@
++"""Settlement batches: one bank credit carrying the settlement reference that an issuer gave
++several of its own signed payouts (public bundled-payment cases 9-12 and focused negative
++variants of case 9; rules mode, no network)."""
++
++from __future__ import annotations
++
++import copy
++from datetime import datetime, timezone
++from types import SimpleNamespace
++
++from agents.data.api import load_case
++from alibi.adapter import run_case
++from alibi.core.investigate_rules import _settlement_batch
++from alibi.core.schemas import SourceTrust
++
++
++def _rules(case, tmp_path, name="c"):
++    return {p["request_id"]: p for p in run_case(case, "rules", root=tmp_path / name)}
++
++
++def _case9() -> dict:
++    case = copy.deepcopy(load_case(9))
++    case.pop("gold", None)
++    return case
++
++
++def _payout_events(case):
++    return [d["event"] for d in case["merchant_deliveries"] if d["event"]["kind"] == "payout"]
++
++
++def test_public_bundled_cases_link_every_batch_member(tmp_path):
++    for n in (9, 10, 11, 12):
++        gold = load_case(n)["gold"]
++        rid = next(iter(gold["answers"]))
++        pred = _rules(n, tmp_path, f"c{n}")[rid]
++        for qid, want in gold["answers"][rid].items():
++            got = pred["claims"][qid]
++            assert got["status"] == "supported", (n, qid, got.get("gap"))
++            assert got["facts"] == want["facts"], (n, qid)
++        assert sorted(pred["links"][0]["payout_record_ids"]) == \
++            sorted(gold["links"][0]["payout_record_ids"]), n
++
++
++def test_batch_that_does_not_sum_to_the_credit_is_not_supported(tmp_path):
++    case = _case9()
++    for d in case["bank_deliveries"]:
++        if d["row"]["txn_id"] == "txn-0009-004":
++            d["row"]["amount_minor"] += 1
++    pred = _rules(case, tmp_path)["rfc-0009-01"]
++    assert pred["claims"]["q.source_of_funds"]["status"] != "supported"
++    assert pred["claims"]["q.breakdown"]["status"] != "supported"
++
++
++def test_batch_member_without_settlement_is_not_supported(tmp_path):
++    case = _case9()
++    member = _payout_events(case)[1]
++    member["status"] = "pending"
++    member.pop("settled_at", None)
++    pred = _rules(case, tmp_path)["rfc-0009-01"]
++    assert pred["claims"]["q.source_of_funds"]["status"] != "supported"
++
++
++def test_batch_member_after_booking_breaks_the_batch(tmp_path):
++    case = _case9()
++    member = _payout_events(case)[1]
++    member["occurred_at"] = "2026-06-17T00:00:00Z"
++    member["settled_at"] = "2026-06-17T01:00:00Z"
++    pred = _rules(case, tmp_path)["rfc-0009-01"]
++    assert pred["claims"]["q.source_of_funds"]["status"] != "supported"
++
++
++def _rec(record_id, amount, ref, *, trust=SourceTrust.ISSUER_VERIFIED, batch="BATCH-1",
++         issuer="mock-marketplace", at="2026-06-14T04:00:00Z", currency="GBP"):
++    return SimpleNamespace(record_id=record_id, revision=1, amount_pence=amount, currency=currency,
++                           payment_ref=ref, settlement_ref=batch, source_trust=trust,
++                           issuer_id=issuer, occurred_at=datetime.fromisoformat(at.replace("Z", "+00:00")))
++
++
++_TXN = SimpleNamespace(amount_pence=300, currency="GBP",
++                       booked_at=datetime(2026, 6, 16, tzinfo=timezone.utc))
++_TOKENS = frozenset({"BATCH-1"})
++
++
++def test_batch_requires_issuer_verified_members_of_one_issuer():
++    a, b = _rec("r1", 100, "PO-1"), _rec("r2", 200, "PO-2")
++    assert [p.record_id for p in _settlement_batch(_TXN, [a, b], _TOKENS)] == ["r1", "r2"]
++    own = _rec("r2", 200, "PO-2", trust=SourceTrust.SELF_SUPPLIED)
++    assert _settlement_batch(_TXN, [a, own], _TOKENS) == []
++    other = _rec("r2", 200, "PO-2", issuer="other-platform")
++    assert _settlement_batch(_TXN, [a, other], _TOKENS) == []
++
++
++def test_batch_rejects_wrong_sum_duplicate_refs_and_unnamed_batches():
++    a = _rec("r1", 100, "PO-1")
++    assert _settlement_batch(_TXN, [a, _rec("r2", 201, "PO-2")], _TOKENS) == []
++    assert _settlement_batch(_TXN, [a, _rec("r2", 200, "PO-1")], _TOKENS) == []
++    assert _settlement_batch(_TXN, [a, _rec("r2", 200, "PO-2")], frozenset({"BATCH-2"})) == []
++    assert _settlement_batch(_TXN, [a, _rec("r2", 200, "PO-2", currency="EUR")], _TOKENS) == []
++    assert _settlement_batch(_TXN, [a], _TOKENS) == []

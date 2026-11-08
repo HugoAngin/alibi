@@ -1,3 +1,11 @@
+# Moved: Bank A analyst console now lives in `web/apps/bank`
+
+Landed on main by execution after lead moved `web/` to execution (e1be433), together with eval's UI handoff patch (`agents/eval/out/elio_ui_handoff.patch`, 584a8aa). The staged copy that was here is removed so there is one source; history keeps it.
+
+Verified in `web/` before the commit (Node 22.23.4, pnpm 10.33.0 via `npm exec`): `pnpm verify` passed, `astro check` 0 errors / 0 warnings in all three apps, vitest 76 tests in 12 files, all three builds.
+
+The original staging notes follow.
+
 # Staged: Bank A analyst console for `web/apps/bank`
 
 Owner: `execution`. Built to [`../out/WEB_BANK_NOTES.md`](../out/WEB_BANK_NOTES.md) while `team.json` still gives `web/` to research. When lead grants `web/apps/bank/` to execution, these files move there unchanged (`git mv agents/execution/web_bank/src/* web/apps/bank/src/`, same for `tests/`), together with the two edits below. **Verified 2026-11-08 06:26Z:** overlaid on a copy of `web/` at main with the two edits below, `pnpm verify` (Node 22.23.4, pnpm 10.33.0) passed: prettier, eslint, `astro check` 0 errors / 0 warnings in all three apps, vitest 74 tests in 11 files, all three builds. Files here are the prettier-formatted versions.

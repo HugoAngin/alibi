@@ -20,7 +20,6 @@ interface Props {
 
 const { data, flash, live } = Astro.props;
 const { request: rq, investigation: inv, trace, review } = data;
-const back = `/app/requests/${encodeURIComponent(rq.request_id)}/`;
 const approval = review.approval;
 const questionText = new Map(rq.questions.map((q) => [q.question_id, q.text]));
 const includedByQuestion = rq.questions
@@ -92,7 +91,6 @@ const SHOW = 3;
   {inv.can_run && (
     <form method="post" action="/app/act">
       <input type="hidden" name="action" value={inv.run_action} />
-      <input type="hidden" name="return_to" value={back} />
       <button class="btn btn--primary" type="submit" disabled={!live}>
         Run investigation
       </button>
@@ -134,7 +132,6 @@ const SHOW = 3;
               {i.removable && i.remove_action ? (
                 <form method="post" action="/app/act">
                   <input type="hidden" name="action" value={i.remove_action} />
-                  <input type="hidden" name="return_to" value={back} />
                   <button class="btn btn--small" type="submit" disabled={!live}>
                     Remove
                   </button>
@@ -210,29 +207,37 @@ const SHOW = 3;
   <div class="approval" aria-labelledby="approval-title">
     <h3 id="approval-title">Approve for {approval.recipient}</h3>
     <p>
-      Approving sends exactly the items above to <strong>{approval.recipient}</strong> and nobody
-      else. Any change afterwards needs a new approval.
+      Approval covers exactly the items above for <strong>{approval.recipient}</strong>. Any change
+      afterwards needs a new approval.
     </p>
     {approval.invalidated_reason && (
       <p class="notice">Your earlier approval no longer applies: {approval.invalidated_reason}</p>
     )}
     <form method="post" action="/app/act">
       <input type="hidden" name="action" value={approval.action} />
-      <input type="hidden" name="return_to" value={back} />
-      <input type="hidden" name="result_page" value="sent" />
       <input type="hidden" name="digest" value={approval.digest} />
       <input type="hidden" name="audience" value={approval.audience} />
       <input type="hidden" name="policy_version" value={approval.policy_version} />
       <button
         class="btn btn--primary btn--wide"
         type="submit"
-        disabled={!live || approval.status === 'approved'}
+        disabled={
+          !live || !approval.digest || approval.status === 'approved' || rq.status === 'sent'
+        }
       >
         {approval.status === 'approved'
           ? `Approved for ${approval.recipient}`
           : `Approve for ${approval.recipient}`}
       </button>
     </form>
+    {live && approval.status === 'approved' && rq.status !== 'sent' && (
+      <form method="post" action="/app/act">
+        <input type="hidden" name="action" value={`/requests/${rq.request_id}/dispatch`} />
+        <button class="btn btn--primary btn--wide" type="submit">
+          Send approved package to {approval.recipient}
+        </button>
+      </form>
+    )}
     {!live && (
       <p class="meta">
         Approval needs the backend: it binds your decision to the package’s digest.

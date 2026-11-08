@@ -51,8 +51,3 @@ export function takeFlash(cookies: AstroCookies): Flash | null {
     return null;
   }
 }
-
-/** Only return to pages inside the app. */
-export function safeReturn(path: string | null): string {
-  return path && /^\/app\/[A-Za-z0-9._~\-/#]*$/.test(path) ? path : '/app/';
-}

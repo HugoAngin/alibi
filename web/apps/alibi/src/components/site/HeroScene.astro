@@ -1,262 +1,461 @@
 ---
 /**
- * The hero's 3D visual: Maya's passport as a paper card, and three slips of
- * her real evidence from case 1 (the bank credit, the payout, the sales) that
- * start loose and dock onto the card as the visitor scrolls. That is the
- * product in one image: evidence gathered before anyone asks. Each slip
- * carries the site's signature, a stamped record reference.
+ * The hero's visual: the Alibi stream (agents/research/out/HERO_STREAM.md).
+ * Records flow in from shops, bank accounts and a mule-pattern check; the
+ * engine's four agents work on them; a signed context package leaves for a
+ * bank's fraud team. Scroll drives the engine and the hand-off, and packets
+ * keep flowing while the hero is on screen.
  *
- * The only motion is that scroll-linked docking: no idle loop, no parallax.
- * three.js loads only on this page, renders only while visible, and draws a
- * single still frame (docked) when the visitor prefers reduced motion.
+ * Data honesty: only the stamped case 1 values (txn-0001-004, PO-0001-01,
+ * rec-0001-013, rfc-0001-01, £2,160.00) come from the demo fixture. Every
+ * other source and amount is illustrative and labelled synthetic.
+ *
+ * SVG, no WebGL. It renders only while visible and shows one still, readable
+ * frame when the visitor prefers reduced motion.
  */
 ---
 
-<div class="scene" data-hero-scene>
-  <canvas aria-hidden="true"></canvas>
-  <noscript>
-    <p class="fallback">Maya’s passport, with her evidence attached</p>
-  </noscript>
-</div>
+<figure class="stream" data-hero-stream>
+  <svg viewBox="0 0 600 560" role="img" aria-labelledby="stream-title stream-desc">
+    <title id="stream-title">How Alibi answers a bank</title>
+    <desc id="stream-desc">
+      Synthetic records from shops, bank accounts and a mule-pattern check flow into the Alibi
+      engine, where the Matcher, Detective, Challenger and Curator work on them. A signed context
+      package leaves for Bank A and answers request rfc-0001-01 about the £2,160.00 credit
+      txn-0001-004.
+    </desc>
+    <defs>
+      <marker
+        id="stream-arrow"
+        viewBox="0 0 8 8"
+        refX="7"
+        refY="4"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M0,0 L8,4 L0,8 z" class="arrow-head"></path>
+      </marker>
+    </defs>
+
+    <g class="paths" fill="none">
+      <path id="p-mm" d="M150,56 C230,56 230,232 262,250"></path>
+      <path id="p-ret" d="M150,112 C220,112 226,240 262,258"></path>
+      <path id="p-food" d="M150,168 C210,168 220,252 262,266"></path>
+      <path id="p-cloth" d="M150,224 C200,224 220,268 262,274"></path>
+      <path id="p-elec" d="M150,280 C200,280 226,282 262,282"></path>
+      <path id="p-cur" d="M150,356 C210,356 222,300 262,290"></path>
+      <path id="p-sav" d="M150,412 C214,412 226,310 262,298"></path>
+      <path id="p-mule" d="M150,488 C220,488 230,322 262,306"></path>
+      <path id="p-out" class="out" d="M422,278 C470,278 470,420 520,440"></path>
+    </g>
+
+    <g class="sources">
+      <g class="src src--case" transform="translate(10,40)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Mock Marketplace
+        </text>
+        <text class="tag" x="12" y="44">
+          case 1 · synthetic
+        </text>
+      </g>
+      <g class="src" transform="translate(10,96)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Online retailer
+        </text>
+      </g>
+      <g class="src" transform="translate(10,152)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Food delivery app
+        </text>
+      </g>
+      <g class="src" transform="translate(10,208)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Clothing shop
+        </text>
+      </g>
+      <g class="src" transform="translate(10,264)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Electronics store
+        </text>
+      </g>
+      <text class="group" x="10" y="330">
+        Bank accounts
+      </text>
+      <g class="src" transform="translate(10,340)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Current account
+        </text>
+      </g>
+      <g class="src" transform="translate(10,396)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Savings account
+        </text>
+      </g>
+      <text class="group" x="10" y="464">
+        Mule-pattern check
+      </text>
+      <g class="src src--mule" transform="translate(10,472)">
+        <rect width="140" height="32" rx="6"></rect>
+        <text x="12" y="20">
+          Acct A
+        </text>
+        <text x="104" y="20">
+          Acct B
+        </text>
+        <path class="mule-arrow" d="M58,16 L98,16" marker-end="url(#stream-arrow)"></path>
+      </g>
+      <text class="tag" x="10" y="540">
+        All sources synthetic
+      </text>
+    </g>
+
+    <g class="engine" transform="translate(262,198)">
+      <rect class="engine-box" width="160" height="164" rx="12"></rect>
+      <text class="engine-name" x="80" y="30" text-anchor="middle">
+        Alibi
+      </text>
+      <text class="tag" x="80" y="46" text-anchor="middle">
+        passport engine
+      </text>
+      {['Matcher', 'Detective', 'Challenger', 'Curator'].map((name, i) => (
+        <g class="agent" data-agent transform={`translate(12,${60 + i * 24})`}>
+          <rect width="136" height="20" rx="10" />
+          <text x="68" y="14" text-anchor="middle">
+            {name}
+          </text>
+        </g>
+      ))}
+      <text class="tag small" x="80" y="182" text-anchor="middle">
+        agents on Gemini · code checks every total
+      </text>
+    </g>
+
+    <g class="bank" transform="translate(440,86)">
+      <rect width="150" height="88" rx="8"></rect>
+      <text x="12" y="22" class="strong bank-name">
+        Bank A · fraud team
+      </text>
+      <text x="12" y="40" class="stamp">
+        rfc-0001-01
+      </text>
+      <text x="12" y="58">
+        Where did the £2,160.00
+      </text>
+      <text x="12" y="74">
+        credit come from?
+      </text>
+    </g>
+    <path
+      class="ask"
+      d="M515,174 C515,210 470,218 424,226"
+      fill="none"
+      marker-end="url(#stream-arrow)"
+    ></path>
+
+    <g class="package" data-package transform="translate(452,398)">
+      <rect width="138" height="84" rx="8"></rect>
+      <text x="12" y="22" class="strong">
+        Signed package
+      </text>
+      <text x="12" y="40" class="stamp">
+        txn-0001-004 r1
+      </text>
+      <text x="12" y="56" class="stamp">
+        PO-0001-01 r1
+      </text>
+      <text x="12" y="74" class="seal">
+        ✓ approved by Maya
+      </text>
+    </g>
+
+    <g class="packets" data-packets></g>
+  </svg>
+</figure>
 
 <style>
-  .scene {
-    position: relative;
+  .stream {
+    margin: 0;
     width: 100%;
-    height: 100%;
-    min-height: 420px;
   }
 
-  canvas {
-    position: absolute;
-    inset: 0;
+  svg {
     width: 100%;
-    height: 100%;
+    height: auto;
     display: block;
+    overflow: visible;
   }
 
-  .fallback {
-    position: absolute;
-    bottom: 0;
-    color: var(--s-ink-soft);
+  text {
+    fill: var(--s-ink);
+    font-size: 12px;
+  }
+
+  .tag {
+    fill: var(--s-ink-soft);
+    font-family: var(--s-font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+
+  .tag.small {
+    font-size: 9px;
+  }
+
+  .group {
+    fill: var(--s-ink-soft);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .stamp {
+    fill: var(--s-accent);
+    font-family: var(--s-font-mono);
+    font-size: 11px;
+  }
+
+  .strong {
+    font-weight: 700;
+  }
+
+  .paths path {
+    stroke: var(--s-line);
+    stroke-width: 1.5;
+  }
+
+  .paths path.out {
+    stroke: var(--s-accent);
+    stroke-dasharray: 4 5;
+    stroke-width: 2;
+  }
+
+  .arrow-head {
+    fill: var(--s-accent);
+  }
+
+  .src rect {
+    fill: var(--s-card);
+    stroke: var(--s-line);
+  }
+
+  .src--case rect {
+    stroke: var(--s-accent);
+    stroke-width: 1.5;
+  }
+
+  .src--mule rect {
+    stroke-dasharray: 3 3;
+  }
+
+  .mule-arrow,
+  .ask {
+    stroke: var(--s-accent);
+    stroke-width: 1.5;
+  }
+
+  .ask {
+    stroke-dasharray: 2 4;
+  }
+
+  .engine-box {
+    fill: var(--s-card);
+    stroke: var(--s-ink);
+    stroke-width: 2;
+  }
+
+  .engine-name {
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .agent rect {
+    fill: var(--s-paper);
+    stroke: var(--s-line);
+    transition:
+      fill 400ms var(--s-ease),
+      stroke 400ms var(--s-ease);
+  }
+
+  .agent.is-on rect {
+    fill: var(--s-accent-soft);
+    stroke: var(--s-accent);
+  }
+
+  .agent.is-on text {
+    fill: var(--s-accent);
+    font-weight: 700;
+  }
+
+  .bank rect,
+  .package rect {
+    fill: var(--s-card);
+    stroke: var(--s-ink);
+    stroke-width: 1.5;
+  }
+
+  .bank text {
+    font-size: 11px;
+  }
+
+  .bank .bank-name {
+    font-size: 13px;
+  }
+
+  .package {
+    opacity: 0;
+  }
+
+  .seal {
+    fill: var(--s-accent);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* Packets are created by the script, so they sit outside Astro's scoping. */
+  .stream :global(.packet rect) {
+    fill: var(--s-card);
+    stroke: var(--s-accent);
+    stroke-width: 1;
+  }
+
+  .stream :global(.packet text) {
+    fill: var(--s-accent);
+    font-family: var(--s-font-mono);
+    font-size: 9px;
   }
 </style>
 
 <script>
-  import {
-    ACESFilmicToneMapping,
-    CanvasTexture,
-    DirectionalLight,
-    Group,
-    Mesh,
-    MeshBasicMaterial,
-    MeshStandardMaterial,
-    PerspectiveCamera,
-    PlaneGeometry,
-    PMREMGenerator,
-    Scene,
-    SRGBColorSpace,
-    Vector3,
-    WebGLRenderer,
-  } from 'three';
-  import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-  import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+  /** Short stamped labels that ride each input path. Case 1 values ride the Mock Marketplace
+   *  and current-account paths; the rest are illustrative. */
+  const STREAMS: { path: string; labels: string[] }[] = [
+    { path: 'p-mm', labels: ['rec-0001-013 £450.00', 'PO-0001-01'] },
+    { path: 'p-ret', labels: ['£34.99'] },
+    { path: 'p-food', labels: ['£18.40'] },
+    { path: 'p-cloth', labels: ['−£25.00'] },
+    { path: 'p-elec', labels: ['£1,249.00'] },
+    { path: 'p-cur', labels: ['txn-0001-004 +£2,160.00'] },
+    { path: 'p-sav', labels: ['+£200.00'] },
+    { path: 'p-mule', labels: ['£950 in · £940 out'] },
+  ];
+  const NS = 'http://www.w3.org/2000/svg';
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
-  const INK = '#1f1b16';
-  const SOFT = '#5e554a';
-  const STAMP = '#2b45c4';
-  const PAPER = 0xfdfbf7;
-
-  const host = document.querySelector<HTMLElement>('[data-hero-scene]');
-  const canvas = host?.querySelector('canvas');
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  type Line = { text: string; font: string; color: string; y: number; box?: boolean };
-
-  /** Draws text onto a transparent canvas for a label plane; `box` draws a stamp outline. */
-  function label(lines: Line[], w: number, h: number) {
-    const c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    const ctx = c.getContext('2d')!;
-    for (const l of lines) {
-      ctx.font = l.font;
-      ctx.fillStyle = l.color;
-      ctx.fillText(l.text, 48, l.y);
-      if (l.box) {
-        const width = ctx.measureText(l.text).width;
-        ctx.strokeStyle = l.color;
-        ctx.globalAlpha = 0.45;
-        ctx.lineWidth = 3;
-        ctx.strokeRect(36, l.y - 34, width + 24, 46);
-        ctx.globalAlpha = 1;
-      }
-    }
-    const tex = new CanvasTexture(c);
-    tex.colorSpace = SRGBColorSpace;
-    tex.anisotropy = 4;
-    return tex;
+  interface Packet {
+    g: SVGGElement;
+    width: number;
+    path: SVGPathElement;
+    offset: number;
+    speed: number;
   }
 
-  async function start(host: HTMLElement, canvas: HTMLCanvasElement) {
-    await document.fonts.ready;
+  function start(root: HTMLElement) {
+    const svg = root.querySelector('svg');
+    const layer = root.querySelector<SVGGElement>('[data-packets]');
+    const pkg = root.querySelector<SVGGElement>('[data-package]');
+    const out = root.querySelector<SVGPathElement>('#p-out');
+    if (!svg || !layer || !pkg || !out) return;
+    const agents = [...root.querySelectorAll<SVGGElement>('[data-agent]')];
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.outputColorSpace = SRGBColorSpace;
-
-    const scene = new Scene();
-    const pmrem = new PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    const sun = new DirectionalLight(0xfff6e8, 0.6);
-    sun.position.set(-3, 4, 6);
-    scene.add(sun);
-
-    const camera = new PerspectiveCamera(32, 1, 0.1, 100);
-    camera.position.set(0, 0, 12.5);
-
-    // The passport: a paper card with Maya's details printed on it.
-    const card = new Group();
-    card.add(
-      new Mesh(
-        new RoundedBoxGeometry(3.3, 4.5, 0.08, 8, 0.24),
-        new MeshStandardMaterial({ color: PAPER, roughness: 0.9 }),
-      ),
-    );
-    const face = new Mesh(
-      new PlaneGeometry(3.3, 4.5),
-      new MeshBasicMaterial({
-        transparent: true,
-        map: label(
-          [
-            { text: 'alibi', font: '600 88px "Inter Tight", sans-serif', color: INK, y: 136 },
-            { text: 'Financial passport', font: '500 32px Inter, sans-serif', color: SOFT, y: 192 },
-            { text: 'Maya', font: '500 64px "Inter Tight", sans-serif', color: INK, y: 1000 },
-            {
-              text: 'maya-001 · synthetic',
-              font: '500 28px "IBM Plex Mono", monospace',
-              color: SOFT,
-              y: 1046,
-            },
-          ],
-          792,
-          1080,
-        ),
-      }),
-    );
-    face.position.z = 0.045;
-    card.add(face);
-    scene.add(card);
-
-    // Evidence slips from case 1, each with its stamped reference.
-    const slips = [
-      { title: '£2,160.00 credit', ref: 'txn-0001-004 r1' },
-      { title: 'Payout PO-0001-01', ref: 'rec-0001-021 r1' },
-      { title: '8 sales · £2,400.00', ref: '18 records · rec-0001-001…018' },
-    ].map((t, i) => {
-      const g = new Group();
-      const body = new Mesh(
-        new RoundedBoxGeometry(2.5, 0.78, 0.04, 6, 0.12),
-        new MeshStandardMaterial({ color: PAPER, roughness: 0.85 }),
-      );
-      const text = new Mesh(
-        new PlaneGeometry(2.5, 0.78),
-        new MeshBasicMaterial({
-          transparent: true,
-          map: label(
-            [
-              { text: t.title, font: '500 56px "Inter Tight", sans-serif', color: INK, y: 92 },
-              {
-                text: t.ref,
-                font: '500 30px "IBM Plex Mono", monospace',
-                color: STAMP,
-                y: 168,
-                box: true,
-              },
-            ],
-            800,
-            250,
-          ),
-        }),
-      );
-      text.position.z = 0.025;
-      g.add(body, text);
-      scene.add(g);
-      return {
-        g,
-        // Loose around the card at the top of the page...
-        from: [
-          new Vector3(-1.75, 1.75, 1.2),
-          new Vector3(1.8, 0.35, 1.6),
-          new Vector3(-1.6, -1.85, 1.0),
-        ][i],
-        fromRot: [
-          new Vector3(0.2, 0.5, -0.18),
-          new Vector3(-0.15, -0.55, 0.14),
-          new Vector3(0.25, 0.4, 0.12),
-        ][i],
-        // ...and docked on its face, clear of the printed name, once scrolled.
-        to: new Vector3(0, 1.0 - i * 0.86, 0.12),
-      };
+    const packets: Packet[] = [];
+    STREAMS.forEach((s, i) => {
+      const path = root.querySelector<SVGPathElement>(`#${s.path}`);
+      if (!path) return;
+      s.labels.forEach((text, j) => {
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'packet');
+        const box = document.createElementNS(NS, 'rect');
+        box.setAttribute('height', '16');
+        box.setAttribute('rx', '3');
+        const label = document.createElementNS(NS, 'text');
+        label.textContent = text;
+        label.setAttribute('x', '6');
+        label.setAttribute('y', '11');
+        g.append(box, label);
+        layer.append(g);
+        const width = label.getComputedTextLength() + 12;
+        box.setAttribute('width', String(width));
+        packets.push({
+          g,
+          width,
+          path,
+          offset: (i * 0.29 + j * 0.5) % 1,
+          speed: 0.09 + (i % 3) * 0.015,
+        });
+      });
     });
 
-    let progress = reduced ? 1 : 0;
-    let visible = true;
-    let dirty = true;
-
-    const resize = () => {
-      const { width, height } = host.getBoundingClientRect();
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      // Keep the card comfortably inside narrow frames.
-      camera.position.z = width / height < 0.9 ? 15 : 12.5;
-      camera.updateProjectionMatrix();
-      dirty = true;
+    const place = (p: Packet, u: number) => {
+      const pt = p.path.getPointAtLength(u * p.path.getTotalLength());
+      p.g.setAttribute('transform', `translate(${pt.x - p.width / 2},${pt.y - 8})`);
+    };
+    const placePackage = (go: number) => {
+      const pt = out.getPointAtLength(ease(go) * out.getTotalLength());
+      pkg.setAttribute('transform', `translate(${pt.x - 69},${pt.y - 42})`);
+      pkg.style.opacity = go <= 0 ? '0' : String(ease(Math.min(1, go * 2)));
     };
 
-    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-    const up = new Vector3(0, 1, 0);
-
-    const render = () => {
-      const p = ease(progress);
-      card.rotation.set(-0.06, -0.45 * (1 - p), 0);
-      for (const t of slips) {
-        t.g.position.lerpVectors(t.from, t.to, p);
-        t.g.rotation.set(
-          t.fromRot.x * (1 - p) + card.rotation.x,
-          t.fromRot.y * (1 - p) + card.rotation.y,
-          t.fromRot.z * (1 - p),
-        );
-        // Docked slips ride on the card's surface.
-        if (p > 0) t.g.position.applyAxisAngle(up, card.rotation.y * p);
-      }
-      renderer.render(scene, camera);
-      dirty = false;
-    };
-
-    resize();
-    window.addEventListener('resize', resize);
-    render();
     if (reduced) {
-      window.addEventListener('resize', render);
+      // One still, readable frame: every agent on, the package delivered, a few packets mid-path.
+      agents.forEach((a) => a.classList.add('is-on'));
+      placePackage(1);
+      packets.forEach((p, k) => {
+        place(p, 0.25 + (k % 4) * 0.15);
+        p.g.style.opacity = k % 2 ? '0' : '1';
+      });
       return;
     }
 
+    // 0 at the top of the page, 1 after scrolling 60% of a screen, while the hero is in view.
+    let progress = 0;
     window.addEventListener('alibi:scroll', (e) => {
       const { scroll } = (e as CustomEvent<{ scroll: number }>).detail;
-      progress = Math.min(1, Math.max(0, scroll / (host.offsetHeight * 0.75)));
-      dirty = true;
+      progress = Math.min(1, Math.max(0, scroll / (window.innerHeight * 0.6)));
     });
-    new IntersectionObserver(([entry]) => (visible = entry.isIntersecting)).observe(host);
 
-    // Render only when something changed and the scene is on screen.
-    const loop = () => {
-      if (visible && dirty) render();
-      requestAnimationFrame(loop);
+    const frame = (now: number) => {
+      const t = now / 1000;
+      // Each packet travels for 55% of its cycle and rests unseen for the rest, so a few are
+      // on screen at once and none pile up at the engine.
+      for (const p of packets) {
+        const c = (p.offset + t * p.speed) % 1;
+        const u = Math.min(1, c / 0.55);
+        place(p, u);
+        p.g.style.opacity = String(
+          c > 0.55 ? 0 : u < 0.1 ? u / 0.1 : u > 0.75 ? (1 - u) / 0.25 : 1,
+        );
+      }
+      // Scroll moves the engine on; at the top of the page it cycles slowly on its own.
+      const phase = progress > 0.05 ? progress : ((t / 6) % 1) * 0.75;
+      agents.forEach((a, i) =>
+        a.classList.toggle('is-on', phase > 0.15 + i * 0.12 && phase < 0.95),
+      );
+      placePackage(Math.min(1, Math.max(0, (phase - 0.62) / 0.3)));
     };
-    requestAnimationFrame(loop);
+
+    let raf = 0;
+    const loop = (now: number) => {
+      frame(now);
+      raf = requestAnimationFrame(loop);
+    };
+    new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting && !raf) raf = requestAnimationFrame(loop);
+      if (!entry?.isIntersecting && raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    }).observe(root);
   }
 
-  if (host && canvas) start(host, canvas);
+  const root = document.querySelector<HTMLElement>('[data-hero-stream]');
+  if (root) start(root);
 </script>

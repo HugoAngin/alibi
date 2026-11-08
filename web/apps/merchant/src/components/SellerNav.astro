@@ -1,0 +1,46 @@
+---
+/** Tabs across the seller hub. */
+interface Props {
+  current: 'overview' | 'orders' | 'payouts' | 'messages' | 'settings';
+}
+const { current } = Astro.props;
+const tabs = [
+  { key: 'overview', href: '/seller/', label: 'Overview' },
+  { key: 'orders', href: '/seller/orders/', label: 'Orders' },
+  { key: 'payouts', href: '/seller/payouts/', label: 'Payouts' },
+  { key: 'messages', href: '/seller/messages/', label: 'Messages' },
+  { key: 'settings', href: '/account/settings/', label: 'Settings' },
+];
+---
+
+<nav class="seller-nav" aria-label="Seller hub">
+  {tabs.map((t) => (
+    <a href={t.href} aria-current={t.key === current ? 'page' : undefined}>
+      {t.label}
+    </a>
+  ))}
+</nav>
+
+<style>
+  .seller-nav {
+    display: flex;
+    gap: var(--space-xs);
+    overflow-x: auto;
+    border-bottom: 1px solid var(--c-line);
+    margin-bottom: var(--space-md);
+  }
+
+  a {
+    padding: var(--space-xs) var(--space-sm);
+    text-decoration: none;
+    color: var(--c-ink-soft);
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+  }
+
+  a[aria-current='page'] {
+    color: var(--c-ink);
+    font-weight: 700;
+    border-bottom-color: var(--c-shop);
+  }
+</style>

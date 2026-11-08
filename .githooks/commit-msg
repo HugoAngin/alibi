@@ -1,0 +1,7 @@
+#!/bin/sh
+# Strip AI attribution trailers from every commit message (team rule). Portable: no sed -i.
+msg="$1"
+tmp="$msg.alibi-tmp"
+grep -viE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|noreply@anthropic\.com)|claude-session:|.*generated with \[?claude code\]?)' "$msg" \
+  | awk '{ line[NR] = $0 } END { n = NR; while (n > 0 && line[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print line[i] }' > "$tmp"
+if [ -s "$tmp" ]; then mv "$tmp" "$msg"; else rm -f "$tmp"; fi

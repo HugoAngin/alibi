@@ -4,36 +4,43 @@
  * then sends her back to the screen with the outcome. The backend decides
  * everything; a refusal is shown in its own words (shared/CONTRACTS.md).
  *
- * Approving also sends the package, so an approval form carries
- * `result_page=sent`: its outcome (a receipt, a refusal, or "not sent")
- * lands on the request's dedicated result screen instead of the request page.
+ * Approval stays on the review page. Dispatch goes to the receipt or refusal page.
  */
 import type { APIRoute } from 'astro';
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
 import { forwardAction } from '@alibi/ui/api';
 import { asDispatch } from '@/lib/api/guards';
-import { backendHeaders, safeReturn, setFlash } from '@/lib/screens';
+import { backendHeaders, setFlash } from '@/lib/screens';
 
 export const prerender = false;
 
-const CONTROL_FIELDS = new Set(['action', 'return_to', 'result_page']);
+const REQUEST_ACTION =
+  /^\/requests\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/(run|restore|approve|dispatch|remove\/(?:record|txn)\/[A-Za-z0-9][A-Za-z0-9._-]{0,127})$/;
+const APPROVAL_FIELDS = ['digest', 'audience', 'policy_version'] as const;
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
+  if (request.headers.get('origin') !== new URL(request.url).origin) {
+    return new Response('Cross-site request refused.', { status: 403 });
+  }
+
   const form = await request.formData();
   const path = String(form.get('action') ?? '');
-  const returnTo = safeReturn(form.get('return_to') as string | null);
-  const toResult = form.get('result_page') === 'sent' && returnTo.endsWith('/');
+  const action = REQUEST_ACTION.exec(path);
+  if (!action) return new Response('Unknown request action.', { status: 400 });
 
+  const [, id, kind] = action;
+  const returnTo = `/app/requests/${id}/`;
   const body: Record<string, string> = {};
-  for (const [key, value] of form) {
-    if (!CONTROL_FIELDS.has(key) && typeof value === 'string') body[key] = value;
+  if (kind === 'approve') {
+    for (const field of APPROVAL_FIELDS) body[field] = String(form.get(field) ?? '');
   }
 
   const result = await forwardAction({
     origin: ALIBI_API_ORIGIN,
     path,
     body,
+    encoding: 'form',
     headers: backendHeaders(),
   });
 
@@ -51,5 +58,5 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     );
   }
 
-  return redirect(toResult ? `${returnTo}sent/` : returnTo, 303);
+  return redirect(kind === 'dispatch' ? `${returnTo}sent/` : returnTo, 303);
 };

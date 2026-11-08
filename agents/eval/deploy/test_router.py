@@ -151,6 +151,10 @@ BLOCKED_TARGETS = [
     "/merchant/admin/%2573eed",
     "/merchant/admin/reset%252F",
     "/bank/%255F%255Fdebug/trace",
+    "/merchant/ADMIN/seed",
+    "/merchant/%252561dmin/seed",
+    "/merchant/x/%252e%252e/%2573eed",
+    "/merchant/%25252525252525252561dmin/seed",
     # dot segments, which httpx removes before sending
     "/merchant/events/../admin/seed",
     "/merchant/events/%2e%2e/admin/seed",

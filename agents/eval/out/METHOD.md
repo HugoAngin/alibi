@@ -10,6 +10,8 @@ Run `uv run --frozen python -m agents.eval.audit_inputs` for the public cases. E
 
 The rehearsal covered 80 public cases and 94 requests, plus 44 private cases and 92 requests. It checked 50 public and 162 private record lookups, with no mismatches. All public gold labels were stripped. The worker payload also omitted evaluator titles, variants, family labels, and case labels. The scan found no direct runtime references in the 57 published Python files it checked. The references it did find were in evaluation and test code. `alibi/adapter.py` was absent, so rerun with `--require-adapter` at freeze and inspect the adapter's live traces. The macOS sandbox test verifies that the subprocess cannot open the gold file. Static scanning covers direct references and should be read alongside that process check.
 
+Before freeze, the evaluator moved the ignored authoring archive out of the checkout and into the protected private directory. SHA-256 comparisons verified that all 84 authoring files and three prepared release files retained their contents. The former archive path had no tracked history. The worker sandbox denied access to the prepared gold file and a relocated authoring file.
+
 ## What could fool us
 
 | Risk | Check run | Observed result and remaining check |

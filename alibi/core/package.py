@@ -565,8 +565,10 @@ def _timing_check(timing: TimingCheck, contents: Mapping[str, Any],
         return None  # generalised or malformed: the exact time is not disclosed
     if status is None and timing.settlement_status is not None:
         return None
-    effective = (stated or observed) if kind == "settlement" and status in SETTLED_STATUSES \
-        else None
+    # settlement evidence is a settlement record, or a payout that carries its own settlement
+    # status (the team's payouts fold the settlement state in; reconcile.is_settlement_evidence)
+    settles = kind == "settlement" or (kind == "payout" and status is not None)
+    effective = (stated or observed) if settles and status in SETTLED_STATUSES else None
     credit = contents.get(timing.credit_ref.key())
     if isinstance(credit, Mapping):
         booked = _exact_time(credit.get("booked_at"))

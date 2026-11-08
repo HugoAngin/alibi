@@ -305,16 +305,41 @@ def deliver_in_process(rt: Runtime):
     return deliver
 
 
-def deliver_over_http(base_url: str, timeout: float = 10.0, post=None):
-    """A ``deliver`` callable that POSTs the signed package to ``{base_url}/bank/{audience}/receive``.
-    ``post`` defaults to ``httpx.post``; tests pass a TestClient's ``post`` to route in-process."""
+def deliver_over_http(base_url: str, timeout: float = 10.0, post=None, *,
+                      tokens: dict[str, str] | None = None):
+    """A ``deliver`` callable that POSTs the signed package over HTTP.
+
+    With ``tokens`` (recipient -> bearer, the shared tokens file) the target is the mock bank
+    service: ``POST {base_url}/deliver`` with ``Authorization: Bearer <that recipient's token>``,
+    ``content-type: application/json`` and the canonical bytes. Its answer is normalised to the
+    flat receipt ``dispatch`` reads: a 200 ``{status: "verified", receipt: {...}}`` becomes the
+    nested receipt (``receipt_id``, ``package_sha256``, ``received_at``, ``accepted``, ``reasons``);
+    a 422 ``package_rejected`` or 409 ``audience_mismatch`` / ``package_id_reused`` /
+    ``unknown_request`` keeps ``code`` and ``reason`` and the rejection receipt when one came back.
+    Identical bytes resent get the same receipt (the service dedupes by package id and digest).
+
+    Without ``tokens`` the target is another app process's own bank routes,
+    ``POST {base_url}/bank/{audience}/receive`` (no credential: the package is signed), which
+    already answer with the flat receipt.
+
+    ``post`` defaults to ``httpx.post``; tests pass a TestClient's ``post`` to route in-process.
+    An unreachable service is ``503 bank_unreachable``; a non-JSON answer ``bank_bad_response``.
+    """
     send = post or httpx.post
 
     def deliver(audience: str, payload: dict) -> tuple[int, dict]:
+        headers = {"content-type": "application/json", "accept": "application/json"}
+        if tokens is not None:
+            url = f"{base_url}/deliver"
+            token = tokens.get(audience)
+            if not token:
+                return 401, {"code": "recipient_token_missing",
+                             "reason": f"no bearer token is configured for recipient {audience}"}
+            headers["authorization"] = f"Bearer {token}"
+        else:
+            url = f"{base_url}/bank/{audience}/receive"
         try:
-            response = send(f"{base_url}/bank/{audience}/receive",
-                            content=canon.canonical_bytes(payload),
-                            headers={"content-type": "application/json"}, timeout=timeout)
+            response = send(url, content=canon.canonical_bytes(payload), headers=headers, timeout=timeout)
         except httpx.HTTPError as exc:
             return 503, {"code": "bank_unreachable", "reason": f"the bank service at {base_url} could not be "
                                                                f"reached ({type(exc).__name__})"}
@@ -322,8 +347,30 @@ def deliver_over_http(base_url: str, timeout: float = 10.0, post=None):
             body = response.json()
         except ValueError:
             body = {"code": "bank_bad_response", "reason": "the bank service did not answer with JSON"}
+        if not isinstance(body, dict):
+            body = {"code": "bank_bad_response", "reason": "the bank service did not answer with a JSON object"}
+        if tokens is not None:
+            body = _flatten_service_answer(body, response.status_code)
         return response.status_code, body
     return deliver
+
+
+def _flatten_service_answer(body: dict, status_code: int) -> dict:
+    """The bank service's ``/deliver`` answer as the flat receipt ``dispatch`` reads."""
+    receipt = body.get("receipt") if isinstance(body.get("receipt"), dict) else None
+    if 200 <= status_code < 300:
+        if receipt is None:
+            return {"code": "bank_bad_response", "accepted": False,
+                    "reason": "the bank service answered without a receipt"}
+        return {**receipt, "status": body.get("status", "verified")}
+    flat = {"code": body.get("code", "delivery_rejected"), "reason": body.get("reason", "")}
+    if receipt is not None:
+        flat.update({k: v for k, v in receipt.items() if k not in flat})
+    flat["accepted"] = bool(receipt.get("accepted")) if receipt else False
+    rejection = body.get("rejection")
+    if isinstance(rejection, dict) and rejection.get("errors") and not flat.get("reasons"):
+        flat["reasons"] = list(rejection["errors"])
+    return flat
 
 
 # --------------------------------------------------------------------------- rules

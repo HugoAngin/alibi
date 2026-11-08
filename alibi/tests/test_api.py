@@ -581,7 +581,7 @@ def test_the_retail_fixture_imports_a_self_supplied_receipt(ctx):
     assert fx["txn_ids"] == list(fx["expected"]["links"]) and fx["request_ids"] == []
 
 
-@pytest.mark.parametrize("mode", ["agents", "single_call"])
+@pytest.mark.parametrize("mode", ["guess", "oracle"])   # agents and single_call dispatch since S5
 def test_other_investigation_modes_are_not_built(ctx, mode):
     load(ctx)
     with pytest.raises(NotImplementedError):

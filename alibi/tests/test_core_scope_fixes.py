@@ -308,7 +308,8 @@ def test_demo_keys_carry_the_team_case_issuer(tmp_path):
     assert DEMO_KEYS["merchant_mock"] == (KeyPurpose.RECORD_SIGNING, "mock-marketplace")
     from alibi.connectors.keys import CONNECTOR_KEYS
     from alibi.app.config import APP_KEYS
-    assert CONNECTOR_KEYS == DEMO_KEYS                 # the connector key set is now the core's
+    assert DEMO_KEYS.items() <= CONNECTOR_KEYS.items()  # one key spec: the core's keys plus the case issuers
+    assert CONNECTOR_KEYS == APP_KEYS                   # the connectors and the app share it
     assert DEMO_KEYS.items() <= APP_KEYS.items()       # the app adds kids, none clash
     keystore = DemoKeystore(tmp_path / "keys").ensure()
     entry = api.default_keystore(tmp_path / "keys").registry().get("merchant_mock")

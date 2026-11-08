@@ -7,6 +7,12 @@ signed with its own key, receives Context Packages through ``alibi.api.verify_pa
 records analyst dispositions whose ``request_more`` creates a signed follow-up request. The
 ``feed`` token serves the holder's read-only bank feed (``alibi/connectors/bank_feed.py``).
 
+Every issued request (a case RFC or a follow-up) is forwarded to the holder's passport: through
+the in-process ``rfc_sink`` (``alibi.connectors.plug.RfcSink``), or, with ``rfc_url``, over HTTP
+to the passport app's ``POST /connect/bank/rfc`` with the body ``{rfc, recipient, account_refs,
+now}`` and the recipient's own bearer token (``http_rfc_sink``). The outcome is recorded as
+``forwarded`` either way.
+
 The recipient and analyst come from the token only; posted ``recipient``, ``analyst`` or
 ``analyst_name`` fields are ignored. The ``/admin/*`` routes take the shared admin bearer
 (``alibi.connectors.http.admin_guard``: ``ALIBI_ADMIN_TOKEN``, else the ``admin`` entry of the
@@ -25,6 +31,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter, ValidationError
@@ -59,7 +66,8 @@ from alibi.bank.state import RECIPIENTS, BankState, InboxEntry, RecipientState, 
 
 __all__ = [
     "ANALYSTS", "DECISIONS", "DEFAULT_TOKENS_PATH", "FEED", "FOLLOW_UP_TTL", "SERVICE",
-    "TERMINAL_DECISIONS", "TOKEN_ENV", "BankService", "create_bank_app", "load_tokens",
+    "TERMINAL_DECISIONS", "TOKEN_ENV", "BankService", "create_bank_app", "http_rfc_sink",
+    "load_tokens",
 ]
 
 SERVICE = "mock-bank"
@@ -166,6 +174,51 @@ async def _json_object(request: Request, code: str, *, allow_empty: bool) -> dic
     return parsed
 
 
+# --------------------------------------------------------------------------- HTTP forwarder
+
+
+def http_rfc_sink(rfc_url: str, tokens: dict[str, str], client: Any | None = None,
+                  timeout: float = 10.0) -> RfcSink:
+    """An ``RfcSink`` that POSTs each issued request to the passport app's
+    ``POST /connect/bank/rfc`` as ``{"rfc": signed, "recipient", "account_refs", "now"}`` with
+    ``Authorization: Bearer <that recipient's token>``. The answer's ``status`` (``accepted`` or
+    ``refused``, with ``reason`` and ``code``) is the forwarded outcome; an unreachable passport,
+    a 5xx or a non-JSON body is ``error`` naming the status or the exception type only. Never
+    raises into the route. ``client`` is an ``httpx.Client`` or a TestClient taking absolute URLs."""
+    own = client if client is not None else httpx.Client(timeout=timeout)
+
+    def sink(signed: dict[str, Any], recipient: str, account_refs: list[str] | None,
+             now: str) -> dict[str, Any]:
+        token = tokens.get(recipient)
+        if not token:
+            return {"status": "error", "reason": f"no bearer token for recipient {recipient}"}
+        body = {"rfc": signed, "recipient": recipient, "account_refs": list(account_refs or []),
+                "now": now}
+        try:
+            response = own.post(rfc_url, json=body, headers={"Authorization": f"Bearer {token}",
+                                                             "Accept": "application/json"})
+        except httpx.HTTPError as exc:
+            return {"status": "error", "reason": f"passport unreachable: {type(exc).__name__}"}
+        try:
+            answer = response.json()
+        except ValueError:
+            answer = None
+        if not isinstance(answer, dict):
+            answer = {}
+        if 200 <= response.status_code < 300:
+            if answer.get("status") not in ("accepted", "refused"):
+                return {"status": "error", "reason": f"HTTP {response.status_code} without a status"}
+            return {k: v for k, v in answer.items() if k in ("status", "reason", "request_id", "audience")}
+        if 400 <= response.status_code < 500:
+            result = {"status": "refused", "reason": _clip(answer.get("reason") or f"HTTP {response.status_code}")}
+            if answer.get("code") is not None:
+                result["code"] = str(answer["code"])
+            return result
+        return {"status": "error", "reason": f"HTTP {response.status_code}"}
+
+    return sink
+
+
 # --------------------------------------------------------------------------- the service
 
 
@@ -178,10 +231,14 @@ class BankService:
 
     def __init__(self, *, keystore: DemoKeystore, registry: TrustRegistry,
                  tokens: dict[str, str], state_path: Path | str | None = None,
-                 rfc_sink: RfcSink | None = None, case_loader: CaseLoader = load_case_without_gold):
+                 rfc_sink: RfcSink | None = None, case_loader: CaseLoader = load_case_without_gold,
+                 rfc_url: str | None = None, http_client: Any | None = None):
         self.keystore = keystore
         self.registry = registry
+        if rfc_sink is None and rfc_url:
+            rfc_sink = http_rfc_sink(rfc_url, dict(tokens), client=http_client)
         self.rfc_sink = rfc_sink
+        self.rfc_url = rfc_url
         self.case_loader = case_loader
         self.state_path = Path(state_path) if state_path is not None else None
         self._tokens = dict(tokens)
@@ -789,7 +846,8 @@ class BankService:
 def create_bank_app(*, keystore: DemoKeystore, registry: TrustRegistry,
                     tokens: dict[str, str] | None = None, admin_token: str | None = None,
                     state_path: Path | str | None = None, rfc_sink: RfcSink | None = None,
-                    case_loader: CaseLoader = load_case_without_gold) -> FastAPI:
+                    case_loader: CaseLoader = load_case_without_gold,
+                    rfc_url: str | None = None, http_client: Any | None = None) -> FastAPI:
     """The mock bank as a FastAPI app (SERVICES.md, "Mock bank").
 
     ``tokens`` maps ``bank_a``, ``bank_b`` and ``feed`` (and optionally ``admin``) to bearer
@@ -798,8 +856,10 @@ def create_bank_app(*, keystore: DemoKeystore, registry: TrustRegistry,
     else ``tokens["admin"]``, else a fresh random token; whichever applies is kept as
     ``app.state.admin_token`` and never logged. State lives in memory, or at ``state_path`` as
     JSON (loaded when the file exists, replaced atomically on every write). ``rfc_sink``
-    receives every issued request (``plug.RfcSink``). The service object is reachable as
-    ``app.state.bank``.
+    receives every issued request (``plug.RfcSink``); without one, ``rfc_url`` (the passport
+    app's ``POST /connect/bank/rfc`` URL, like the merchant's ``passport_url``) forwards each
+    request over HTTP with the recipient's own bearer (``http_rfc_sink``; ``http_client`` is
+    for tests). The service object is reachable as ``app.state.bank``.
     """
     resolved = dict(tokens) if tokens is not None else load_tokens()
     missing = [name for name in RECIPIENT_TOKENS if not resolved.get(name)]
@@ -808,7 +868,8 @@ def create_bank_app(*, keystore: DemoKeystore, registry: TrustRegistry,
     admin = resolve_admin_token(admin_token, resolved)
     resolved.pop(ADMIN, None)      # the admin token is never a recipient or feed identity
     bank = BankService(keystore=keystore, registry=registry, tokens=resolved,
-                       state_path=state_path, rfc_sink=rfc_sink, case_loader=case_loader)
+                       state_path=state_path, rfc_sink=rfc_sink, case_loader=case_loader,
+                       rfc_url=rfc_url, http_client=http_client)
     app = FastAPI(title="Alibi mock bank", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.bank = bank
     app.state.admin_token = admin

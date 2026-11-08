@@ -830,3 +830,110 @@ def test_actions_take_json_bodies_and_dispatch_links_the_package(client):
     assert client.get("/health").json()["api_origin"] == "http://127.0.0.1:8100"
     before = client.get(f"/requests/{rid}/dispatch", headers=JSON).json()["dispatch"]
     assert before["package_url"] == sent["package_url"] and before["export_url"] == sent["export_url"]
+
+
+# --------------------------------------------------------------------------- track S5 app (connect routes, gate, dispatch page)
+
+
+def test_dispatch_page_before_any_attempt_is_not_a_refusal(client):
+    """QA P0 4: before any attempt the dispatch page is neutral (``not_attempted``, no refusal);
+    the Send button appears once an approval exists; the detail's approval carries ``dispatch_action``."""
+    rid = client.rid
+    page = client.get(f"/requests/{rid}/dispatch", headers=JSON).json()["dispatch"]
+    assert page["outcome"] == "not_attempted" and page["refusal"] is None and page["receipt"] is None
+    assert page["retry_action"] is None and page["package_id"] == "none"
+    assert "not_dispatched" not in json.dumps(page)
+    assert client.get(f"/requests/{rid}/dispatch").status_code == 200
+    assert client.get("/passport", headers=JSON).json()["requests"][0]["status"] != "refused"
+    detail = run_approve(client, rid)
+    assert detail["review"]["approval"]["dispatch_action"] == f"/requests/{rid}/dispatch"
+    after = client.get(f"/requests/{rid}", headers=JSON).json()["review"]["approval"]
+    assert after["status"] == "approved" and after["dispatch_action"] == f"/requests/{rid}/dispatch"
+    assert f'action="/requests/{rid}/dispatch"' in client.get(f"/requests/{rid}").text
+    ready = client.get(f"/requests/{rid}/dispatch", headers=JSON).json()["dispatch"]
+    assert ready["outcome"] == "not_attempted" and ready["retry_action"] == f"/requests/{rid}/dispatch"
+    dispatch_ok(client, rid)
+    assert client.get(f"/requests/{rid}/dispatch", headers=JSON).json()["dispatch"]["outcome"] == "success"
+
+
+def test_recipient_credential_is_refused_on_holder_routes(client):
+    """eval SP-21: a bank bearer or the alibi_bank cookie on a holder route is 403
+    ``recipient_credential`` and lands on that recipient's audit trail as ``access.refused``."""
+    rid = client.rid
+    for path in ("/passport", f"/requests/{rid}", "/alerts", "/rules", "/audit", "/requests", f"/txn/{client.txn}"):
+        r = client.get(path, headers={**JSON, **TOKEN_B})
+        assert r.status_code == 403 and r.json()["code"] == "recipient_credential", (path, r.text)
+        assert client.get(path, headers=JSON).status_code == 200, path
+    html = client.get("/passport", headers=TOKEN_A)
+    assert html.status_code == 403 and "recipient_credential" in html.text
+    run = client.post(f"/requests/{rid}/run", headers={**JSON, **TOKEN_A}, json={})
+    assert run.status_code == 403 and run.json()["code"] == "recipient_credential"
+    assert client.get(f"/requests/{rid}", headers=JSON).json()["investigation"]["status"] == "not_started"
+    cookie = client.get("/passport", headers=JSON, cookies={"alibi_bank": "demo-token-bank-a"})
+    assert cookie.status_code == 403 and cookie.json()["code"] == "recipient_credential"
+    sync = client.post("/connect/bank/sync", headers={**JSON, **TOKEN_B}, json={})
+    assert sync.status_code == 403 and sync.json()["code"] == "recipient_credential"
+    entries = client.get("/bank/bank_b/audit", headers={**JSON, **TOKEN_B}).json()["entries"]
+    assert any(e["action"] == "access.refused" and "holder route" in e["detail"] for e in entries)
+    assert not any(e["action"] == "access.refused" for e in client.get("/audit", headers=JSON).json()["entries"])
+    # a stale or unknown cookie value is not a recipient credential and changes nothing
+    assert client.get("/passport", headers=JSON, cookies={"alibi_bank": "stale"}).status_code == 200
+
+
+def test_connect_routes_exist_in_the_single_process_app(client):
+    """Without the service URLs the passport is filled by the case adapter: sync is a clear
+    refusal, the webhook still takes a signed push (duplicate), the RFC route takes a recipient bearer."""
+    health = client.get("/health").json()
+    assert health["seed"] == "case_adapter" and health["merchant_url"] == "case_adapter" and health["tokens_file"] is None
+    r = client.post("/connect/bank/sync", headers=JSON, json={})
+    assert r.status_code == 409 and r.json()["code"] == "no_bank_url"
+    rt = client.app.state.runtime
+    case = load_case(client.case_number)
+    delivery = case["merchant_deliveries"][0]
+    payload = cases.sign_event(cases.to_merchant_event(delivery["event"]), rt.keystore)
+    dup = client.post(f"/connect/merchant/webhook?received_at={delivery['received_at']}", json=payload)
+    assert dup.status_code == 200 and dup.json()["status"] == "duplicate"
+    assert client.post("/connect/merchant/webhook", json=payload).status_code == 400
+    assert client.post("/connect/bank/rfc", json={"rfc": {}, "recipient": "bank_a"}).status_code == 401
+    rfc = cases.to_rfc(next(r for r in case["rfcs"] if r["request_id"] == client.rid))
+    body = {"rfc": cases.sign_request(rfc, rt.keystore), "recipient": "bank_a", "account_refs": rt.account_refs,
+            "now": rfc["issued_at"]}
+    again = client.post("/connect/bank/rfc", json=body, headers=TOKEN_A)
+    assert again.status_code == 200 and again.json()["status"] == "accepted" and again.json()["request_id"] == client.rid
+    assert len(client.get("/requests", headers=JSON).json()["requests"]) == 2
+    wrong = client.post("/connect/bank/rfc", json=body, headers=TOKEN_B)
+    assert wrong.status_code == 403 and wrong.json()["code"] == "recipient_mismatch"
+
+
+def test_flatten_service_answer_pins_the_deliver_shapes():
+    """The bank service's ``/deliver`` answers as the flat receipt ``dispatch`` reads: the 200 nested
+    receipt, 422 ``package_rejected`` and the three 409 codes with ``{code, reason, receipt, rejection}``
+    (SERVICES.md). The code and the sentence come through verbatim; ``reasons`` falls back to the
+    rejection's errors; ``accepted`` is the receipt's, never assumed."""
+    from alibi.app.actions import _flatten_service_answer
+
+    receipt = {"receipt_id": "rcp_1", "package_sha256": "ab" * 32, "received_at": "2026-11-05T15:00:00Z",
+               "accepted": True, "reasons": []}
+    ok = _flatten_service_answer({"status": "verified", "receipt": receipt, "authentication": {}, "sources": []}, 200)
+    assert ok == {**receipt, "status": "verified"}
+    assert _flatten_service_answer({"status": "verified"}, 200) == {
+        "code": "bank_bad_response", "accepted": False, "reason": "the bank service answered without a receipt"}
+
+    rejected = {"code": "package_rejected", "reason": "the package was issued in the future",
+                "receipt": {"receipt_id": "rcp_2", "package_sha256": "cd" * 32, "received_at": "2026-11-04T14:00:00Z",
+                            "accepted": False, "reasons": ["the package was issued in the future"]},
+                "rejection": {"errors": ["issued_at is after now"]}}
+    flat = _flatten_service_answer(rejected, 422)
+    assert flat["code"] == "package_rejected" and flat["reason"] == "the package was issued in the future"
+    assert flat["accepted"] is False and flat["receipt_id"] == "rcp_2" and flat["package_sha256"] == "cd" * 32
+    assert flat["reasons"] == ["the package was issued in the future"]          # the receipt's reasons win
+    assert "rejection" not in flat and "receipt" not in flat
+
+    for code, reason in (("audience_mismatch", "the package is addressed to bank_b, not bank_a"),
+                         ("package_id_reused", "package pkg_1 is already in this inbox with a different digest"),
+                         ("unknown_request", "request rfc-x was not issued by bank_a")):
+        flat = _flatten_service_answer({"code": code, "reason": reason, "receipt": None,
+                                        "rejection": {"errors": [reason]}}, 409)
+        assert flat == {"code": code, "reason": reason, "accepted": False, "reasons": [reason]}, flat
+    # a refusal without a code or a receipt still reads as a refusal
+    assert _flatten_service_answer({}, 500) == {"code": "delivery_rejected", "reason": "", "accepted": False}

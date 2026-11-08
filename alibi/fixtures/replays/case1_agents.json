@@ -1,0 +1,599 @@
+{
+ "schema": "alibi.replay.v1",
+ "case": "case1",
+ "variant": "agents",
+ "recorded_at": "2026-11-08T09:03:45Z",
+ "models": [
+  "gemini-3.8-flash",
+  "gemini-4-argon"
+ ],
+ "calls": [
+  {
+   "seq": 0,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "781fec336742db65ba891b7ebd5d3cf290c95197746a44251fd4c06f7656c0f4",
+   "role": "# Detective",
+   "data": {
+    "alerts": [
+     {
+      "kind": "unexplained_credit",
+      "summary": "Credit txn-0001-004 of 216000 GBP booked on 2026-10-28 is currently unmatched with no settlement record.",
+      "refs": [
+       {
+        "record_id": "txn-0001-004",
+        "revision": 1
+       }
+      ],
+      "suggested_evidence": "Settlement record for payout PO-0001-01 confirming funds transferred to the bank."
+     }
+    ],
+    "claims": [
+     {
+      "claim_id": "c1",
+      "question_id": "q.source_of_funds",
+      "statement": "The incoming credit of 216000 GBP matches mock-marketplace withdrawal request PO-0001-01 referenced in message rec-0001-020 covering multiple orders, fees, and refunds.",
+      "status": "unresolved",
+      "refs": [
+       {
+        "record_id": "txn-0001-004",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-020",
+        "revision": 1,
+        "role": "confirms"
+       }
+      ],
+      "gaps": [
+       "rec-0001-020 indicates funds became available in seller balance and withdrawal was requested, but there is no settlement record confirming transfer to the bank."
+      ],
+      "next_checks": [
+       {
+        "type": "lookup_settlement",
+        "args": {
+         "payout_reference": "PO-0001-01",
+         "merchant_id": "mock-marketplace"
+        },
+        "reason": "Verify settlement of withdrawal PO-0001-01 to the bank account."
+       }
+      ]
+     },
+     {
+      "claim_id": "c2",
+      "question_id": "q.breakdown",
+      "statement": "The 216000 GBP amount is calculated from 8 orders totaling 240000 GBP minus 2 refunds totaling 18000 GBP and 8 fees totaling 6000 GBP as covered by rec-0001-020.",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "rec-0001-020",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-002",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-003",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-004",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-005",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-006",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-007",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-008",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-009",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-010",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-011",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-012",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-013",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-014",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-015",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-016",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-017",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-018",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [],
+      "next_checks": [
+       {
+        "type": "none",
+        "args": {},
+        "reason": "All component order, fee, and refund records are present."
+       }
+      ]
+     }
+    ]
+   },
+   "usage": {
+    "prompt_tokens": 6755,
+    "output_tokens": 1436,
+    "thinking_tokens": 0,
+    "total_tokens": 8191
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:03:56Z"
+  },
+  {
+   "seq": 1,
+   "model": "gemini-4-argon",
+   "prompt_sha256": "27b060ca13f5c3a1ab72199453740e4f451a6ab1b7e7421a4e65858410976b22",
+   "role": "# Challenger",
+   "data": {
+    "claim_id": "c1",
+    "proposed_status": "unresolved",
+    "bank_settlement_established": false,
+    "payout_reference": "PO-0001-01",
+    "confirming_refs": [
+     {
+      "record_id": "txn-0001-004",
+      "revision": 1,
+      "why": "Bank credit of 216000 GBP booked at 2026-10-28T06:30:00Z with payment reference PO-0001-01."
+     },
+     {
+      "record_id": "rec-0001-020",
+      "revision": 1,
+      "why": "Message states 216000 GBP became available in seller balance and withdrawal PO-0001-01 to the bank was requested."
+     }
+    ],
+    "conflicting_refs": [],
+    "missing_evidence": [
+     "A settlement record for payout reference PO-0001-01 confirming transfer to the bank completed at or before 2026-10-28T06:30:00Z."
+    ],
+    "next_action": {
+     "type": "lookup_settlement",
+     "args": {
+      "payout_reference": "PO-0001-01",
+      "merchant_id": "mock-marketplace"
+     },
+     "reason": "rec-0001-020 only shows funds released to the seller balance and a withdrawal requested under PO-0001-01; a settlement record is needed to establish bank settlement."
+    },
+    "trace": [
+     "Checked txn-0001-004 rev 1: bank_credit of 216000 GBP booked 2026-10-28T06:30:00Z, payment_references cites PO-0001-01.",
+     "Checked rec-0001-020 rev 1: message on 2026-10-26T08:00:00Z for 216000 GBP with payout_reference REL-0001-01; text notes funds are in seller balance and withdrawal PO-0001-01 was requested.",
+     "Checked settlements: none supplied in the material.",
+     "Release to seller balance and withdrawal request do not establish bank settlement; claim remains unresolved pending lookup_settlement for PO-0001-01."
+    ],
+    "rationale": "The bank credit and merchant message match on the 216000 GBP amount and reference PO-0001-01, but rec-0001-020 only shows release to the platform seller balance and a withdrawal request. A settlement record for PO-0001-01 must be retrieved to confirm the transfer settled to the bank by the booking time."
+   },
+   "usage": {
+    "prompt_tokens": 8562,
+    "output_tokens": 713,
+    "thinking_tokens": 0,
+    "total_tokens": 9275
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:04:07Z"
+  },
+  {
+   "seq": 2,
+   "model": "gemini-4-argon",
+   "prompt_sha256": "1816729d9fc8c8cc49f689a7ec0f585e32230d0a5d8022b1b57c7991fe848511",
+   "role": "# Challenger",
+   "data": {
+    "claim_id": "c1",
+    "proposed_status": "supported",
+    "bank_settlement_established": true,
+    "payout_reference": "PO-0001-01",
+    "confirming_refs": [
+     {
+      "record_id": "txn-0001-004",
+      "revision": 1,
+      "why": "Bank credit of 216000 GBP booked at 2026-10-28T06:30:00Z with payment reference PO-0001-01."
+     },
+     {
+      "record_id": "rec-0001-021",
+      "revision": 1,
+      "why": "Payout PO-0001-01 of 216000 GBP has status settled effective 2026-10-27T16:00:00Z, before the bank credit booking time."
+     },
+     {
+      "record_id": "rec-0001-020",
+      "revision": 1,
+      "why": "Message notes 216000 GBP available and withdrawal PO-0001-01 requested covering the same component records."
+     }
+    ],
+    "conflicting_refs": [],
+    "missing_evidence": [],
+    "next_action": {
+     "type": "none",
+     "args": {},
+     "reason": "Lookup of settlement for PO-0001-01 returned settled payout record rec-0001-021, which confirms amount, reference, and settlement timing."
+    },
+    "trace": [
+     "Checked txn-0001-004 rev 1: 216000 GBP bank credit booked 2026-10-28T06:30:00Z with reference PO-0001-01.",
+     "Checked rec-0001-020 rev 1: message at 2026-10-26T08:00:00Z showing 216000 GBP released to seller balance and withdrawal PO-0001-01 requested.",
+     "Checked lookup_results[0] (rec-0001-021 rev 1): payout PO-0001-01 for 216000 GBP has status settled with effective_at 2026-10-27T16:00:00Z, covering the 18 order, refund, and fee records.",
+     "Verified timing and reference: settlement effective_at (2026-10-27T16:00:00Z) precedes bank booking (2026-10-28T06:30:00Z), establishing bank settlement."
+    ],
+    "rationale": "The retrieved payout record rec-0001-021 confirms that withdrawal PO-0001-01 for 216000 GBP settled on 2026-10-27T16:00:00Z, prior to the bank credit booking at 2026-10-28T06:30:00Z. Amount, reference, components, and settlement timing all match."
+   },
+   "usage": {
+    "prompt_tokens": 9279,
+    "output_tokens": 807,
+    "thinking_tokens": 0,
+    "total_tokens": 10086
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:04:20Z"
+  },
+  {
+   "seq": 3,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "e89144afe422eaab956bb7c3041318d53cd974a5e55c9df492aff2e5012ed8bb",
+   "role": "# Curator",
+   "data": {
+    "disclosures": [
+     {
+      "question_id": "q.source_of_funds",
+      "record_id": "txn-0001-004",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "booked_at",
+       "currency",
+       "description",
+       "txn_id"
+      ],
+      "reason": "the incoming credit transaction under inquiry"
+     },
+     {
+      "question_id": "q.source_of_funds",
+      "record_id": "rec-0001-021",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "effective_at",
+       "issuer_id",
+       "occurred_at",
+       "payment_ref",
+       "status"
+      ],
+      "reason": "marketplace payout showing the amount and payment reference matching the credit"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-021",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "effective_at",
+       "issuer_id",
+       "occurred_at",
+       "payment_ref",
+       "status"
+      ],
+      "reason": "total payout amount issued by the marketplace"
+     }
+    ],
+    "exclusions": [],
+    "gaps": [
+     {
+      "question_id": "q.source_of_funds",
+      "description": "Settlement linking the marketplace payout to the bank account credit is missing."
+     },
+     {
+      "question_id": "q.breakdown",
+      "description": "Itemised constituent orders, refunds, and fee records supporting the net payout calculation are not available."
+     }
+    ],
+    "rationale": "Both claims are unresolved due to the absence of a settlement record linking the payout to the credit. The available credit and payout records are disclosed to demonstrate the partial match, while the absence of settlement and itemised breakdown components is reported as gaps."
+   },
+   "usage": {
+    "prompt_tokens": 3764,
+    "output_tokens": 483,
+    "thinking_tokens": 0,
+    "total_tokens": 4247
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:04:25Z"
+  },
+  {
+   "seq": 4,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "01b6d5932625c0058ed350ae6752d53d2819ded91b7869c310e0ab883fe1b682",
+   "role": "# Detective",
+   "data": {
+    "alerts": [],
+    "claims": [
+     {
+      "claim_id": "c1",
+      "question_id": "q.sales_refunds_in_period",
+      "statement": "Between 01 October 2026 and 31 October 2026, documented marketplace activity comprises 8 orders (rec-0001-001, rec-0001-003, rec-0001-006, rec-0001-008, rec-0001-010, rec-0001-013, rec-0001-015, rec-0001-017) and 2 refunds (rec-0001-005, rec-0001-012).",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "rec-0001-001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-003",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-005",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-006",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-008",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-010",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-012",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-013",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-015",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-017",
+        "revision": 1,
+        "role": "confirms"
+       }
+      ],
+      "gaps": [],
+      "next_checks": [
+       {
+        "type": "none",
+        "args": {},
+        "reason": "All relevant order and refund records for the specified period are documented and verified."
+       }
+      ]
+     }
+    ]
+   },
+   "usage": {
+    "prompt_tokens": 7029,
+    "output_tokens": 586,
+    "thinking_tokens": 0,
+    "total_tokens": 7615
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:04:30Z"
+  },
+  {
+   "seq": 5,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "3eabc5928966014d9fa3ebcac6c5330ddef4d184133a0d41dd9a9c26d5798010",
+   "role": "# Curator",
+   "data": {
+    "disclosures": [
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-003",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-005",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "refund transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-006",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-008",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-010",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-012",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "refund transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-013",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-015",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-017",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order transaction in period"
+     }
+    ],
+    "exclusions": [],
+    "gaps": [],
+    "rationale": "All shareable records are verified marketplace sales and refunds within October 2026 supporting the claim. Minimal financial and timing fields are extracted to confirm totals without disclosing extraneous item descriptions."
+   },
+   "usage": {
+    "prompt_tokens": 5354,
+    "output_tokens": 1001,
+    "thinking_tokens": 0,
+    "total_tokens": 6355
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:04:38Z"
+  }
+ ]
+}

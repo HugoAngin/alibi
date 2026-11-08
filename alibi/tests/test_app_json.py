@@ -349,3 +349,34 @@ def test_json_field_types_are_checked_not_coerced(client):
                       json={**base, "question_ids": "q.purpose", "requested_evidence": "statement\nnotice"})
     assert one.status_code == 200, one.text
     assert one.json()["question_ids"] == ["q.purpose"] and one.json()["requested_evidence"] == ["statement", "notice"]
+
+
+# --------------------------------------------------------------------------- track S5 app
+
+
+def test_health_reports_seed_and_tokens_file_and_interpret_lists_its_layers(client, tmp_path):
+    """``/health`` names the seed path and the tokens file (path only); ``POST /rules/interpret``
+    answers with ``source``, ``layers`` and ``skipped`` as UI.md's route table says."""
+    import json
+
+    health = client.get("/health").json()
+    assert health["seed"] == "case_adapter" and health["tokens_file"] is None and health["merchant_url"] == "case_adapter"
+    resolved = client.post("/rules/interpret", headers=JSON, json={"text": "don't share item names"}).json()
+    assert resolved["status"] == "resolved" and resolved["source"] in ("execution", "core")
+    assert isinstance(resolved["layers"], list) and isinstance(resolved["skipped"], dict)
+    assert "gemini" in resolved["skipped"]       # no key in tests: the live layer says why it did not run
+    held = client.post("/rules/interpret", headers=JSON, json={"text": "share everything with everyone"}).json()
+    assert held["status"] == "held" and isinstance(held["layers"], list) and isinstance(held["skipped"], dict)
+    path = tmp_path / "tokens.json"
+    settings = settings_from_env({"ALIBI_TOKENS_FILE": str(path)}, case_number=1, data_dir=tmp_path / "app2",
+                                 key_dir=tmp_path / "keys2", fixed_now=NOW, api_origin=ORIGIN)
+    cl = TestClient(create_app(settings))
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        health = cl.get("/health").json()
+        assert health["tokens_file"] == str(path)
+        assert not any(value in json.dumps(health) for value in stored.values())
+        assert cl.get("/bank/bank_a/inbox", headers={**JSON, "authorization": f"Bearer {stored['bank_a']}"}).status_code == 200
+        refusal(cl.get("/bank/bank_a/inbox", headers={**JSON, **TOKEN_A}), 401, "not_authenticated")
+    finally:
+        cl.app.state.runtime.close()

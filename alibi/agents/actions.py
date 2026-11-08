@@ -2,8 +2,12 @@
 
 The Challenger (and the Detective's ``next_checks``) may propose one of:
 
-* ``lookup_settlement {payout_reference}``: the merchant connector's settlement record for a
-  payout reference one retrieved record carries (``Gateway.lookup_settlement``);
+* ``lookup_settlement {payout_reference}``: the merchant connector's settlement evidence for a
+  payout reference one retrieved record carries (``Gateway.lookup_settlement``): a
+  ``settlement`` record, or a ``payout`` record carrying a ``status`` (the team's payouts fold
+  the settlement state in). Either is stored in the ``Material`` tagged ``via_lookup``, and
+  ``Material.settlement_lookup_refs`` then names the reference, so the candidate rule treats a
+  payout returned for its own reference as the merchant's answer about its settlement;
 * ``lookup_payouts_covering {record_id}``: payouts and settlements whose ``covers_record_ids``
   name a retrieved record (a passport listing filtered in code);
 * ``lookup_by_date {payout_date}``: payouts and settlements initiated or effective on a

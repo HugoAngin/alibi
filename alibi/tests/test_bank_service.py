@@ -936,3 +936,66 @@ def test_feed_routes_report_an_absent_feed_module(client, monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
     response = client.get("/feed/transactions", headers=auth("feed"))
     assert response.status_code == 503 and response.json()["code"] == "sink_unavailable"
+
+
+# --------------------------------------------------------------------------- rfc_url forwarder (S5 app track)
+
+
+def test_rfc_url_forwards_issued_requests_over_http_with_the_recipient_bearer(built):
+    """``create_bank_app(rfc_url=...)`` POSTs every issued request (case RFC and follow-up) to the
+    passport app's ``/connect/bank/rfc`` as ``{rfc, recipient, account_refs, now}`` with the
+    recipient's own token; the answer is recorded as ``forwarded`` exactly like the sink path."""
+    import httpx
+    calls = []
+
+    class Passport:
+        def __init__(self):
+            self.status, self.body, self.raise_error = 200, None, False
+
+        def post(self, url, *, json, headers):
+            if self.raise_error:
+                raise httpx.ConnectError("down")
+            calls.append({"url": url, "json": json, "headers": headers})
+            body = self.body if self.body is not None else {"status": "accepted",
+                                                            "request_id": json["rfc"]["request"]["request_id"]}
+            return httpx.Response(self.status, json=body)
+
+    passport = Passport()
+    app = create_bank_app(keystore=built.keystore, registry=built.registry, tokens=TOKENS,
+                          rfc_url="http://app.test/connect/bank/rfc", http_client=passport)
+    client = TestClient(app)
+    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": AS_OF}).status_code == 200
+    issued = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
+    assert issued.status_code == 201, issued.json()
+    assert issued.json()["forwarded"] == {"status": "accepted", "request_id": RFC_A}
+    assert len(calls) == 1 and calls[0]["url"] == "http://app.test/connect/bank/rfc"
+    sent = calls[0]["json"]
+    assert sent["recipient"] == "bank_a" and sent["account_refs"] == [ACCOUNT] and sent["now"] == AS_OF
+    assert sent["rfc"]["request"]["request_id"] == RFC_A and "signature" in sent["rfc"]
+    assert calls[0]["headers"]["Authorization"] == f"Bearer {TOKENS['bank_a']}"
+    # the follow-up a request_more creates goes the same way, with bank_a's own token again
+    delivered = client.post("/deliver", json=built.p1, headers=auth("bank_a"))
+    assert delivered.status_code == 200, delivered.json()
+    disp = client.post(f"/packages/{built.p1['package_id']}/disposition", headers=auth("bank_a"),
+                       json={"decision": "request_more", "reason": "more", "requested_evidence": ["the settlement"]})
+    assert disp.status_code == 200, disp.json()
+    assert disp.json()["follow_up"]["forwarded"]["status"] == "accepted"
+    assert calls[-1]["json"]["rfc"]["request"]["parent_request_id"] == RFC_A
+    assert calls[-1]["headers"]["Authorization"] == f"Bearer {TOKENS['bank_a']}"
+    audit = client.get("/audit", headers=auth("bank_a")).json()["entries"]
+    assert any("forwarded accepted" in e["detail"] for e in audit)
+    # a refusing passport is ``refused`` with its code and reason; an unreachable one is ``error``
+    passport.status, passport.body = 409, {"code": "rfc_refused", "reason": "no", "status": "refused"}
+    issued_b = client.post("/rfc", json={"request_id": RFC_B}, headers=auth("bank_b"))
+    assert issued_b.status_code == 201
+    assert issued_b.json()["forwarded"] == {"status": "refused", "reason": "no", "code": "rfc_refused"}
+    assert calls[-1]["headers"]["Authorization"] == f"Bearer {TOKENS['bank_b']}"
+    passport.raise_error = True
+    custom = client.post("/rfc", headers=auth("bank_b"),
+                         json={"request": {"request_id": "rfc-custom-1", "subject_ref": SUBJECT,
+                                           "questions": [{"question_id": "q.x", "text": "x"}],
+                                           "issued_at": AS_OF, "expires_at": "2026-11-20T00:00:00Z",
+                                           "period": OCTOBER}})
+    assert custom.status_code == 201, custom.json()
+    assert custom.json()["forwarded"] == {"status": "error", "reason": "passport unreachable: ConnectError"}
+    assert TOKENS["bank_a"] not in json.dumps(custom.json()) and TOKENS["bank_b"] not in json.dumps(custom.json())

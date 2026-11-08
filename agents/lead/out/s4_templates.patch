@@ -1436,10 +1436,18 @@ index 11661a6..aed2731 100644
    </div>
  </section>
 diff --git a/alibi/app/templates/requests/dispatch.html b/alibi/app/templates/requests/dispatch.html
-index 9fa7b08..b49a5af 100644
+index 9fa7b08..b8b11d6 100644
 --- a/alibi/app/templates/requests/dispatch.html
 +++ b/alibi/app/templates/requests/dispatch.html
-@@ -8,6 +8,7 @@
+@@ -1,13 +1,14 @@
+ {% extends "base.html" %}
+ {#
+   Dispatch result (holder). Context from preview_render.ctx_dispatch:
+-    dispatch  {outcome: "success"|"refused", package_id, request_id, recipient, attempted_at,
++    dispatch  {outcome: "success"|"refused"|"not_attempted", package_id, request_id, recipient, attempted_at,
+                receipt{receipt_id, package_digest, received_at, status, signer_key_id, expires_at}|None,
+                refusal{code, reason, checked_at, expected_digest, actual_digest}|None,
+                retry_action|None, review_href, history_href}
  #}
  {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
  {% from "partials/money.html" import money, money_raw %}
@@ -1472,7 +1480,34 @@ index 9fa7b08..b49a5af 100644
    </dl>
    <p class="muted small">The receipt binds this package ID to its digest. The bank's receipt shows the bytes arrived intact; it does not mark any claim true.</p>
    <div class="btn-row">
-@@ -57,7 +58,7 @@
+@@ -46,6 +47,26 @@
+   </div>
+ </div>
+ 
++{% elif dispatch.outcome == "not_attempted" %}
++<div class="result section-anchor" id="not-sent">
++  <h2>Not yet sent</h2>
++  <dl class="kv">
++    <dt>Request ID</dt>
++    <dd><code>{{ dispatch.request_id }}</code></dd>
++    <dt>Recipient</dt>
++    <dd>{{ dispatch.recipient }}</dd>
++  </dl>
++  <p>No dispatch has been attempted for this request. {% if dispatch.retry_action %}An approval is recorded: sending revalidates it against the current body, signs the exact approved bytes and delivers them to {{ dispatch.recipient }}.{% else %}Review and approve the package first.{% endif %}</p>
++  <div class="btn-row">
++    <a class="btn" href="{{ dispatch.review_href }}">Back to the review</a>
++    {% if dispatch.retry_action %}
++    <form method="post" action="{{ dispatch.retry_action }}" class="inline">
++      <button type="submit" class="btn btn--primary">Send to {{ dispatch.recipient }}</button>
++    </form>
++    {% endif %}
++  </div>
++</div>
++
+ {% else %}
+ <div class="result result--refused section-anchor" id="refused">
+   <h2>Dispatch refused</h2>
+@@ -57,7 +78,7 @@
      <dt>Recipient</dt>
      <dd>{{ dispatch.recipient }}</dd>
      <dt>Attempted at</dt>

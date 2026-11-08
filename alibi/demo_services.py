@@ -22,6 +22,7 @@ Never pass GEMINI_API_KEY or ALIBI_MASTER_KEY on the command line; they are not 
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import sys
 import threading
@@ -59,6 +60,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--bank-port", type=int, default=DEFAULT_BANK_PORT)
     parser.add_argument("--passport-url", default=None,
                         help="the passport's merchant webhook URL; pushes go there when given")
+    parser.add_argument("--passport-rfc-url", dest="passport_rfc_url", default=None,
+                        help="the passport's RFC intake URL; the bank forwards issued requests "
+                             "there with the recipient's bearer when given")
     parser.add_argument("--keys", default=str(DEFAULT_KEY_DIR), help="key directory")
     parser.add_argument("--state", default=str(DEFAULT_STATE), help="bank state file")
     parser.add_argument("--tokens", default=str(DEFAULT_TOKENS), help="bank tokens file")
@@ -82,8 +86,15 @@ def build_apps(args: argparse.Namespace) -> dict[str, Any]:
     tokens = load_tokens(args.tokens)      # one file: bank_a, bank_b, feed and admin
     merchant = create_merchant_app(keystore=keystore, passport_url=args.passport_url,
                                    admin_token=tokens[ADMIN])
+    bank_kwargs: dict[str, Any] = {}
+    rfc_url = getattr(args, "passport_rfc_url", None)
+    if rfc_url:
+        if "rfc_url" not in inspect.signature(create_bank_app).parameters:
+            raise SystemExit("--passport-rfc-url needs a bank with HTTP RFC forwarding "
+                             "(create_bank_app(rfc_url=...)); this one has none")
+        bank_kwargs["rfc_url"] = rfc_url          # the bank forwards issued RFCs over HTTP
     bank = create_bank_app(keystore=keystore, registry=keystore.registry(), tokens=tokens,
-                           state_path=args.state)
+                           state_path=args.state, **bank_kwargs)
     seeds: dict[str, Any] = {}
     if not args.no_seed:
         params: dict[str, Any] = {"case": args.case}

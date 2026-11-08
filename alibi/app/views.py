@@ -514,7 +514,9 @@ def _trace(rt: Runtime, rfc: RequestForContext) -> tuple[list[dict[str, Any]], d
 def _approval_view(rt: Runtime, rfc: RequestForContext, draft: Draft | None) -> dict[str, Any]:
     store = rt.store
     view = {"status": "none", "recipient": rt.recipient_name(rfc.audience), "audience": rfc.audience,
-            "action": f"/requests/{rfc.request_id}/approve", "digest": "", "policy_version": "",
+            "action": f"/requests/{rfc.request_id}/approve",
+            "dispatch_action": f"/requests/{rfc.request_id}/dispatch",
+            "digest": "", "policy_version": "",
             "valid_from": c.iso(rfc.issued_at), "valid_until": c.iso(rfc.expires_at),
             "approved_at": None, "invalidated_reason": None, "approval_id": None}
     if draft is None:
@@ -771,14 +773,21 @@ def dispatch_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] 
     except NotFound:
         return None
     last = rt.sidecar.get(f"dispatch:{request_id}")
+    send_action: str | None = f"/requests/{request_id}/dispatch"
     if not last:
-        last = {"outcome": "refused", "package_id": "none", "request_id": request_id,
-                "attempted_at": rt.now_text(), "receipt": None,
-                "refusal": {"code": "not_dispatched", "reason": "No dispatch has been attempted for this request.",
-                            "checked_at": rt.now_text(), "expected_digest": "—", "actual_digest": "—"}}
+        # Nothing has been attempted: a neutral state, never a refusal. The Send button is offered
+        # only when a usable approval exists; before that the review page is the way forward.
+        approvals = [a for a in rt.store.list_approvals(request_id=request_id)
+                     if ApprovalStatus(a.status) in (ApprovalStatus.PENDING, ApprovalStatus.CONSUMED)]
+        send_action = send_action if approvals else None
+        last = {"outcome": "not_attempted", "package_id": "none", "request_id": request_id,
+                "attempted_at": None, "receipt": None, "refusal": None,
+                "note": ("Not yet sent. No dispatch has been attempted for this request"
+                         + ("; the approved body is ready to send." if approvals
+                            else "; approve the reviewed body first."))}
     ctx = _holder_base(rt, "Dispatch result", "requests", flashes)
     ctx["dispatch"] = {**last, "recipient": rt.recipient_name(rfc.audience), "audience": rfc.audience,
-                       "retry_action": f"/requests/{request_id}/dispatch",
+                       "retry_action": send_action,
                        "review_href": f"/requests/{request_id}#review",
                        "history_href": "/passport#sharing",
                        **dispatch_urls(rt, request_id, rfc.audience, last)}

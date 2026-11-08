@@ -1705,3 +1705,120 @@ The code's public behaviour wins. These API functions take arguments DESIGN.md d
     `run_investigation` and `build_review` take `audience` and raise `AmbiguousRequest` for a
     shared bare id, and `load_fixture` returns the `{"request_id", "audience"}` pairs as
     `requests`. The `build_review` refusal audit names the bank.
+
+## Adapter (`alibi.adapter`)
+
+The adapter is the system-under-test harness: it runs one team case through the simulated
+services into a fresh passport and emits one prediction per RFC in the shape of
+`alibi/eval/predictions.md` (`alibi/eval/schemas/prediction.schema.json`). Every emitted object
+is validated with `alibi.eval.jsonschema_lite` before it is returned.
+
+```python
+from alibi.adapter import run_case
+predictions = run_case(1, "rules")                       # one dict per RFC of case 1
+predictions = run_case(case_dict, "agents", client=fake) # a case dict (gold is stripped), a test client
+```
+
+`run_case(case, mode, as_of=None, *, client=None, run_id=None, replay=None, root=None)`:
+
+- `case` is a case number (`agents.data.api.load_case`; the lockbox hides sealed numbers) or a
+  case dict in the data schema. Cases are loaded only through `agents.data.api`
+  (`load_case`, `without_gold`, `lookup` behind the mock merchant); gold is removed either way.
+- `mode` is `rules` (the core engine, `alibi.core.investigate_rules`), `one_pass` (the single-call
+  Gemini baseline, `alibi.baselines.one_pass`; alias `single_call`) or `agents` (the Gemini roles
+  pipeline, `alibi.agents.runner`; alias `alibi`). `alibi.api.run_investigation(mode=...)`
+  dispatches the same way and takes `client` for the model modes.
+- `as_of` answers every RFC issued by that moment at that moment. Without it each RFC is
+  answered at its own `issued_at` (below).
+- `client` is the model client for the model modes (anything with the `GeminiClient.generate`
+  signature, e.g. `alibi.llm.fake.FakeClient`). Without one the adapter builds
+  `GeminiClient.for_run(mode, run_id)` (a fresh log under `data/alibi/llm_logs/`, every row
+  scoped to the case through `client.scoped(case_number=n)`) and wraps it with
+  `alibi.agents.replay.make_client(case=f"case{n}", variant=mode, live=client)`, so
+  `ALIBI_REPLAY=1` serves the recording in `alibi/fixtures/replays/case<n>_<mode>.json` and a
+  live run records it. The process cap is `ALIBI_LLM_CAP` and the response cache stays on.
+  `replay=True` wraps a given client in the recorder too (tests leave it off).
+- `root` moves the per-case store folder; the default is
+  `data/alibi/adapter/<mode>/case_<n>/`, emptied before each run.
+
+What one run does, through the real paths only:
+
+1. A fresh `Store`, `keys.connector_keystore(<root>/keys)` and its registry (passed to every
+   passport call; the default keystore would drop the merchant and app issuer keys).
+2. The mock merchant (`alibi.connectors.merchant.create_merchant_app`) with a
+   `plug.webhook_sink` over the store and the mock bank (`alibi.bank.service.create_bank_app`)
+   with a `plug.rfc_sink`, both as in-process `TestClient`s with fresh bearer tokens for
+   `bank_a`, `bank_b`, `feed` and `admin` (never written or printed). The services load the
+   case through a loader bound to this case only, so a sealed case given as a dict works.
+3. `connectors.clients.bootstrap(store, registry, case=n, merchant=MerchantClient(...),
+   banks={bank_a, bank_b}, feed=FeedClient(HttpFeed over the bank client, feed token),
+   clock=CaseClock(case, first issued_at))`: the merchant pushes its visible signed webhooks,
+   the bank is seeded and the feed synced with its cursor, the visible holder imports go
+   through the self-supplied import, and each bank issues its visible RFCs into `receive_rfc`.
+   A holder policy on the case (`holder_policy` or `policy`) is recorded with `record_policy`;
+   otherwise the subject has no policy.
+4. **The clock.** RFCs are answered in `issued_at` order, each with `now=issued_at`. When the
+   next RFC is issued later than the clock, the adapter advances the merchant and bank clocks
+   (`POST /admin/advance`), which pushes the newly visible deliveries, syncs the feed, imports
+   what became visible and issues the newly visible RFCs, and only then answers it. The first
+   RFC is always answered before the clock moves.
+5. Per RFC: `run_investigation(store, request_id, audience=rfc.audience, mode=mode,
+   registry=registry, now=issued_at, **connect(merchant, feed))` (the one-pass mode calls
+   `one_pass.run_one_pass` directly so the pre-policy proposal is available, and the adapter
+   then writes the same `run_investigation` audit row, actor `one_pass`, that
+   `api.run_investigation(mode="one_pass")` writes, so every mode's run is in the passport's
+   audit), then `build_review(store, request_id, audience=..., now=issued_at)` for the
+   policy-filtered draft.
+
+No lookahead: an RFC is answered with what the services had delivered or made available by its
+`issued_at` and nothing later. No development case has data arriving between its RFCs, so the
+clock-advance path is pinned by `alibi/tests/test_adapter.py::
+test_an_rfc_is_answered_before_later_data_lands_and_the_next_one_sees_it` on a synthetic copy of
+case 1 whose lookup-only settlement and one extra order arrive between the two RFCs: Bank A's
+answer is `unresolved settlement_not_found` after one empty lookup and never mentions either
+record; Bank B, answered after the advance, observes the extra order. Every prediction's refs
+are also checked against `agents.data.api.known_at(case, issued_at, include_lookup=True)`.
+
+The prediction object:
+
+| Field | Source |
+| --- | --- |
+| `links` | The active link in the store for the case `holder_claim.txn_id`: `state`, `payout_record_ids` (the linked payout plus every payout record the supported source-of-funds claim cites, so a settlement batch lists all of them), `candidate_record_ids`, `method`. |
+| `claims` | The stored `Claim` of the run per question: `status`; `gap` is the pinned code at the head of `Claim.gap` for an unresolved answer (null otherwise, as gold); `facts` is `Claim.facts`; `evidence_refs` are the claim refs plus the calculation terms in gold syntax (`bank:<txn_id>`, `merchant:<record_id>` for issuer-verified records whether pushed or looked up, `import:<record_id>` for self-supplied records with the `self_` namespace stripped); `statement`, `rationale`, `calculation`. |
+| `package_claims` | Extra (ignored by the scorer): the draft body claim per question with the `claim_changes` reason from the review, so a downgrade by the policy gate is visible. |
+| `package` | The draft body: `{request_id, audience, empty, attachments[{ref, form, fields (extracts: the disclosed field names), content, source_trust}]}`. |
+| `exclusions` | The `excluded` entries of the draft review plus every active record and bank entry of the subject that is neither attached nor cited (`not needed to answer the questions`). Never part of the package. |
+| `proposed_package` | The pre-policy proposal, same shape with `claims`: rules, the unfiltered cited set; one_pass, the model `disclosures` and claims from `OnePassRun.proposal`; agents, the Curator kept set from the trace notes (the cited set of the claims when the Curator gave no answer). |
+| `cost` | `model_calls`, `tokens` (agents: `runner.run_stats`; one_pass: `OnePassRun`; rules: 0), `tool_calls` (gateway calls), `latency_ms` (investigation plus review), `cost_usd_estimate` 0 (no price list is pinned; `cost_note` says so). |
+| `retrieval` | `lookups`, `observed_inputs` (agents and one_pass from their counters; rules: gateway `lookup_settlement` calls and the active records plus bank entries of the subject after the run) and the predeclared `strategy` (`alibi.adapter.STRATEGIES`). |
+| `failure` | `null`, or typed: an engine exception (`error`), a gateway or model budget refusal (`budget_exceeded`), an outage or missing key (`unavailable`), a schema failure (`invalid_output`). In the model modes a failed role or model call is read from the result (`unavailable` entries, the one-pass `generate` note) and reported here; the engines never raise for it. |
+| `system`, `issued_at` | The mode label and the clock the request was answered at. |
+
+Retrieval strategy per mode (`retrieval.strategy`): **rules**: deterministic; list the records
+and bank entries of the subject, and when no stored payout settles the credit, look up the
+settlement for the payout reference the credit carries or the subject records name, one call
+per reference. **one_pass**: `FIXED_RETRIEVAL`, look up any payout reference named in a
+`balance_release` message, then one model call. **agents**: adaptive; the Detective proposes
+checks and the Challenger requests at most one lookup per round (settlement by reference,
+payouts by covered record or date) within an action budget of 3 per question and 3 rounds.
+
+CLI:
+
+```
+uv run --frozen python -m alibi.adapter --mode rules --cases 1-80 --out data/alibi/predictions
+uv run --frozen python -m alibi.adapter --modes rules,one_pass,agents --cases 1,2 --families demo
+uv run --frozen python -m alibi.adapter --mode rules --cases 1-80 --as-of 2026-11-04T14:00:00Z
+```
+
+It writes one `<out>/<mode>.jsonl` per mode, first line `{"system": {"name", "model",
+"commit"}}`, then one prediction per request; `--out` must be under `data/alibi`
+(`ALIBI_DATA_DIR` moves it; exit code 2 otherwise, and 2 when no visible case matches). It
+prints one progress line per case and, last, one JSON summary per mode: `{mode, cases,
+requests, failures, lookups, observed_inputs, model_calls, tokens, out}`. A case whose seeding
+raises is written as one typed `error` failure per RFC, so the file stays complete. The same
+runs from Python: `run_cases(cases, mode, out=Path, as_of=None, run_id=None, client=None,
+log=None, root=None)` returns the summary; `root` is `run_case`'s store folder. Score with
+`uv run --frozen python -m alibi.eval.scorer --predictions data/alibi/predictions/rules.jsonl --by-family`.
+
+Tests: `alibi/tests/test_adapter.py` (no Gemini: `FakeClient` for the model modes; stores under
+the test `tmp_path`, the CLI under a `tmp_path` `ALIBI_DATA_DIR`).

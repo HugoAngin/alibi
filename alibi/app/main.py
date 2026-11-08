@@ -7,6 +7,12 @@ and the same validation, and in JSON mode answers ``{"version", "ok": true, ...r
 a redirect. Refusals answer with a 4xx status and a body ``{"version", "code", "reason"}``, the code
 and sentence coming from the backend verbatim; the HTML path shows the same sentence.
 
+The connect routes are how the simulated services fill the passport (``alibi/connectors/SERVICES.md``):
+``POST /connect/merchant/webhook`` takes the merchant's signed pushes (loopback only; the issuer
+signature is the authentication), ``POST /connect/bank/rfc`` takes the bank service's forwarded
+requests with the recipient's bearer, and ``POST /connect/bank/sync`` pulls the holder's feed from
+``ALIBI_BANK_URL``. Each successful call re-runs the monitor, so alerts appear without a restart.
+
 Run: ``uv run --frozen python -m alibi.app [--host H] [--port P] [--timeout SECONDS]``.
 """
 
@@ -15,6 +21,8 @@ from __future__ import annotations
 import html as htmlmod
 import json
 import secrets
+
+import httpx
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -31,6 +39,10 @@ from alibi.app import actions, bank, monitor, views
 from alibi.app.actions import Refusal
 from alibi.app.config import Settings, settings_from_env
 from alibi.app.runtime import Runtime
+from alibi.connectors.bank_feed import FeedClient, FeedError, HttpFeed
+from alibi.connectors.http import is_loopback_client
+from alibi.connectors.plug import rfc_sink, webhook_sink
+from alibi.core.ingest import IngestError
 from alibi.core.store import NotFound
 
 APP_DIR = Path(__file__).resolve().parent
@@ -41,8 +53,11 @@ FLASH_COOKIE = "alibi_flash"
 BANK_COOKIE = "alibi_bank"
 HOLDER_COOKIE = "alibi_holder"
 # Paths that never ask for the holder credential: the health check, static files, the bank
-# service (its own credentials) and the root redirect.
-PUBLIC_PREFIXES = ("/health", "/static/", "/bank/")
+# service (its own credentials), the root redirect and the two service-facing connect routes
+# (the merchant's signature and the recipient's bearer are their credentials).
+PUBLIC_PREFIXES = ("/health", "/static/", "/bank/", "/connect/merchant/webhook", "/connect/bank/rfc")
+WEBHOOK_STATUS = {"inserted": 200, "duplicate": 200, "corrected": 200, "stale": 200,
+                  "refused": 409, "error": 503}
 
 
 def make_env() -> Environment:
@@ -225,6 +240,12 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         ``Authorization: Bearer <token>`` or the ``alibi_holder`` cookie that
         ``GET /passport?token=<token>`` sets once (303 back to ``/passport`` so the credential
         leaves the address bar). Unset, the holder is the demo holder and nothing is asked.
+
+        Role gate (eval SP-21): a recipient credential (a bank bearer or the ``alibi_bank``
+        cookie) on any holder route is refused 403 ``recipient_credential`` and audited on that
+        recipient's trail as ``access.refused``. The holder's credential is never a recipient
+        credential, so on a bank route it is refused 401 ``not_authenticated`` by ``bank.authenticate``
+        like any unknown token. Banks only ever receive approved packages.
         """
         path = request.url.path
         if request.method == "POST" and not path.endswith("/receive"):
@@ -232,6 +253,15 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
                 return JSONResponse({"version": UI_VERSION, "code": "cross_site_post",
                                      "reason": "state-changing posts are accepted from this site only"},
                                     status_code=403)
+        if holder_path(path):
+            bearer = bearer_of(request)
+            who = settings.recipient_for_token(bearer) or settings.recipient_for_token(request.cookies.get(BANK_COOKIE))
+            if who is not None:
+                rt.bank_audit(who, action="access.refused", outcome="refused", target_id=None,
+                              detail=f"recipient credential presented on holder route {path[:80]}")
+                exc = Refusal("recipient_credential", "a recipient credential cannot act on holder routes",
+                              status=403)
+                return refusal_json(exc) if wants_json(request) else refusal_page(exc, "analyst")
         if settings.holder_token and holder_path(path):
             expected = settings.holder_token
             if path == "/passport" and request.method == "GET" and "token" in request.query_params:
@@ -248,8 +278,17 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
                                                    "a session", status=401)
                 return refusal_json(exc) if wants_json(request) else refusal_page(exc, "holder")
         return await call_next(request)
-    deliver = (actions.deliver_over_http(settings.bank_url) if settings.bank_url
-               else actions.deliver_in_process(rt))
+    if settings.bank_url:
+        def _post(url: str, **kwargs):
+            client = rt.http_client(settings.bank_url)
+            if not isinstance(client, httpx.Client):
+                kwargs.pop("timeout", None)        # an injected TestClient takes no per-call timeout
+            return client.post(url, **kwargs)
+        deliver = actions.deliver_over_http(settings.bank_url, tokens=settings.tokens, post=_post)
+    else:
+        deliver = actions.deliver_in_process(rt)
+    merchant_sink = webhook_sink(rt.store, rt.registry, subject_ref=rt.subject_ref)
+    bank_rfc_sink = rfc_sink(rt.store, rt.registry)
 
     # ------------------------------------------------------------------- helpers
 
@@ -306,7 +345,10 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         return JSONResponse({"status": "ok", "version": UI_VERSION, "case": settings.case_number,
                              "subject_ref": rt.subject_ref, "mode": "rules-only", "replay": settings.replay,
                              "now": rt.now_text(), "db": str(settings.db_path),
-                             "bank_url": settings.bank_url or "in-process", "api_origin": settings.api_origin,
+                             "bank_url": settings.bank_url or "in-process",
+                             "merchant_url": settings.merchant_url or "case_adapter",
+                             "seed": rt.seed, "api_origin": settings.api_origin,
+                             "tokens_file": str(settings.tokens_file) if settings.tokens_file else None,
                              "holder_auth": "bearer" if settings.holder_token else "demo"})
 
     @app.get("/")
@@ -541,6 +583,112 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         return Response(raw, media_type="application/json",
                         headers={"content-disposition": f'attachment; filename="{filename}"'})
 
+    # ------------------------------------------------------------------- connect: the services
+
+    async def json_object(request: Request) -> dict[str, Any]:
+        raw = await request.body()
+        try:
+            obj = json.loads(raw) if raw.strip() else None
+        except ValueError:
+            obj = None
+        if not isinstance(obj, dict):
+            raise Refusal("bad_request", "the request body must be a JSON object", status=400)
+        return obj
+
+    @app.post("/connect/merchant/webhook")
+    async def connect_merchant_webhook(request: Request) -> Response:
+        """The merchant's push: ``{event, signature}`` at ``?received_at=``. The issuer signature
+        inside the payload is the authentication; the route is served to loopback clients only,
+        like the services' admin routes. The sink's outcome is the answer: 200 for inserted,
+        duplicate, corrected and stale; 409 ``ingest_refused``; 503 ``store_error``."""
+        if not is_loopback_client(request):
+            return refusal_json(Refusal("forbidden", "the merchant webhook is served to loopback clients only",
+                                        status=403))
+        received_at = request.query_params.get("received_at", "").strip()
+        if not received_at:
+            return refusal_json(Refusal("bad_request", "received_at is required: ?received_at=<utc>", status=400))
+        try:
+            payload = await json_object(request)
+        except Refusal as exc:
+            return refusal_json(exc)
+        if not isinstance(payload.get("event"), dict) or not isinstance(payload.get("signature"), dict):
+            return refusal_json(Refusal("bad_request", "the body must be {event, signature}", status=400))
+        with rt.lock:
+            result = merchant_sink({"event": payload["event"], "signature": payload["signature"]}, received_at)
+            if result.get("status") in WEBHOOK_STATUS and WEBHOOK_STATUS[result["status"]] == 200:
+                monitor.tick(rt)
+        status = WEBHOOK_STATUS.get(result.get("status"), 503)
+        body = dict(result)
+        if status >= 400:
+            body = {"code": "ingest_refused" if status == 409 else "store_error",
+                    "reason": result.get("reason") or result.get("status"), **result}
+        return JSONResponse(jsonable_encoder({"version": UI_VERSION, **body}), status_code=status)
+
+    @app.post("/connect/bank/rfc")
+    async def connect_bank_rfc(request: Request) -> Response:
+        """The bank service's forwarded request: ``{rfc: {request, signature}, recipient,
+        account_refs, now}`` with the recipient's bearer. The recipient in the body must be the
+        one the bearer names; ``receive_rfc`` then verifies the bank's signature and scope."""
+        who = settings.recipient_for_token(bearer_of(request))
+        if who is None:
+            return refusal_json(Refusal("not_authenticated", "a recipient bearer token is required", status=401))
+        try:
+            body = await json_object(request)
+        except Refusal as exc:
+            return refusal_json(exc)
+        if body.get("recipient") != who:
+            rt.bank_audit(who, action="access.refused", outcome="refused", target_id=None,
+                          detail="forwarded request names another recipient")
+            return refusal_json(Refusal("recipient_mismatch", f"the credential is for {who}, not the recipient named",
+                                        status=403))
+        signed = body.get("rfc")
+        if not isinstance(signed, dict) or not isinstance(signed.get("request"), dict):
+            return refusal_json(Refusal("bad_request", "rfc must be the signed {request, signature} object", status=400))
+        account_refs = body.get("account_refs")
+        if account_refs is not None and (not isinstance(account_refs, list)
+                                         or not all(isinstance(a, str) for a in account_refs)):
+            return refusal_json(Refusal("bad_request", "account_refs must be a list of account ids", status=400))
+        now = body.get("now") if isinstance(body.get("now"), str) and body.get("now") else rt.now_text()
+        with rt.lock:
+            result = bank_rfc_sink(signed, who, account_refs, now)
+            if result.get("status") == "accepted":
+                rt.record_rfc_signature(result["request_id"], who)
+                monitor.tick(rt)
+        if result.get("status") == "accepted":
+            payload = {**result, "href": f"/requests/{result['request_id']}"}
+            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **payload}), status_code=200)
+        if result.get("status") == "refused":
+            rt.bank_audit(who, action="rfc.refused", outcome="refused",
+                          target_id=signed["request"].get("request_id") if _ident(signed["request"].get("request_id")) else None,
+                          detail=result.get("reason"))
+            return JSONResponse({"version": UI_VERSION, "code": "rfc_refused", **result}, status_code=409)
+        return JSONResponse({"version": UI_VERSION, "code": "store_error", **result}, status_code=503)
+
+    @app.post("/connect/bank/sync")
+    def connect_bank_sync(request: Request, _body: None = Depends(body_ok)) -> Response:
+        """Pull the holder's bank feed from ``ALIBI_BANK_URL`` with the feed token
+        (``FeedClient.sync`` over ``HttpFeed``), then re-run the monitor."""
+        back = "/passport#transactions"
+        if not settings.bank_url:
+            return refused(request, Refusal("no_bank_url", "ALIBI_BANK_URL is not set: the passport's bank feed is "
+                                                           "loaded by the case adapter, there is nothing to sync"), back)
+        feed = FeedClient(HttpFeed(settings.bank_url, settings.feed_token, client=rt.http_client(settings.bank_url)),
+                          rt.store, subject_ref=rt.subject_ref, connection_id=rt.connection_id)
+        try:
+            with rt.lock:
+                summary = feed.sync(now=rt.clock())
+                tick = monitor.tick(rt)
+        except FeedError as exc:
+            return refused(request, Refusal("feed_unavailable", f"the bank feed could not be read: {exc}", status=502), back)
+        except IngestError as exc:
+            return refused(request, Refusal("feed_refused", f"the passport refused the feed page: {exc.reason}"), back)
+        rt.audit(action="bank_sync", outcome="ok", target_id=rt.connection_id,
+                 detail=f"feed sync: {summary['inserted']} inserted, {summary['duplicate']} duplicate, "
+                        f"{summary['corrected']} corrected, {summary['stale']} stale; cursor {summary['cursor']}")
+        return redirect(request, back, payload={**summary, "tick": tick},
+                        flash=("info", f"Bank feed synced: {summary['inserted']} new, {summary['duplicate']} already "
+                                       f"known, {summary['corrected']} corrected."))
+
     # ------------------------------------------------------------------- holder: audit
 
     @app.get("/audit")
@@ -569,8 +717,11 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
             who, _ = bank_auth(request, recipient)
         except Refusal as exc:
             return bank_refused(request, exc)
-        return JSONResponse(jsonable_encoder({"version": UI_VERSION, "recipient": who,
-                                              "entries": rt.bank_audit_entries(who)}))
+        try:
+            entries = bank.audit_entries(rt, who)
+        except Refusal as exc:
+            return bank_refused(request, exc)
+        return JSONResponse(jsonable_encoder({"version": UI_VERSION, "recipient": who, "entries": entries}))
 
     def bank_page(request: Request, template: str, ctx: dict, token: str | None, status: int = 200) -> Response:
         response = page(request, template, ctx, status)
@@ -595,7 +746,11 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
             response = RedirectResponse(f"/bank/{who}/inbox", status_code=303)
             response.set_cookie(BANK_COOKIE, token, httponly=True, samesite="lax")
             return response
-        return bank_page(request, "analyst/inbox.html", bank.inbox(rt, who, flashes_from(request)), None)
+        try:
+            ctx = bank.inbox(rt, who, flashes_from(request))
+        except Refusal as exc:
+            return bank_refused(request, exc)
+        return bank_page(request, "analyst/inbox.html", ctx, None)
 
     @app.get("/bank/{recipient}/requests")
     def bank_requests(request: Request, recipient: str) -> Response:
@@ -603,8 +758,11 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
             who, _ = bank_auth(request, recipient)
         except Refusal as exc:
             return bank_refused(request, exc)
-        return JSONResponse(jsonable_encoder({"version": UI_VERSION, "recipient": who,
-                                              "requests": bank.issued_requests(rt, who)}))
+        try:
+            issued = bank.issued_requests(rt, who)
+        except Refusal as exc:
+            return bank_refused(request, exc)
+        return JSONResponse(jsonable_encoder({"version": UI_VERSION, "recipient": who, "requests": issued}))
 
     @app.get("/bank/{recipient}/packages/{package_id}")
     def bank_package(request: Request, recipient: str, package_id: str, disposition: str = "") -> Response:
@@ -612,7 +770,11 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
             who, token = bank_auth(request, recipient)
         except Refusal as exc:
             return bank_refused(request, exc)
-        ctx = bank.package_view(rt, who, package_id, disposition_id=disposition or None, flashes=flashes_from(request))
+        try:
+            ctx = bank.package_view(rt, who, package_id, disposition_id=disposition or None,
+                                    flashes=flashes_from(request))
+        except Refusal as exc:
+            return bank_refused(request, exc)
         if ctx is None:
             return not_found(request, f"no package {package_id} for {who}")
         return bank_page(request, "analyst/package.html", ctx, token)
@@ -673,3 +835,8 @@ def get_app() -> FastAPI:
     if app is None:
         app = create_app()
     return app
+
+
+def _ident(value: Any) -> bool:
+    import re
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}", value) is not None

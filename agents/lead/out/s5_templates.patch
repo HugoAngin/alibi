@@ -1,0 +1,1603 @@
+diff --git a/alibi/app/templates/analyst/inbox.html b/alibi/app/templates/analyst/inbox.html
+index 921cf1b..0ed21e9 100644
+--- a/alibi/app/templates/analyst/inbox.html
++++ b/alibi/app/templates/analyst/inbox.html
+@@ -35,7 +35,7 @@
+     </div>
+     {% if packages %}
+     <div class="table-wrap">
+-      <table class="table">
++      <table class="table stack">
+         <thead>
+           <tr>
+             <th scope="col">Package</th>
+@@ -51,20 +51,20 @@
+         <tbody>
+           {% for pkg in packages %}
+           <tr id="pkg-{{ pkg.package_id }}">
+-            <td><a href="{{ pkg.href }}"><code>{{ pkg.package_id }}</code></a></td>
+-            <td><code>{{ pkg.request_id }}</code></td>
+-            <td class="nowrap">{{ pkg.received_at }}</td>
+-            <td class="nowrap">{{ pkg.expires_at }}</td>
+-            <td><code>{{ pkg.subject_ref_masked }}</code></td>
+-            <td>{{ status_badge(pkg.authentication) }}</td>
+-            <td>
++            <td data-label="Package"><a href="{{ pkg.href }}"><code>{{ pkg.package_id }}</code></a></td>
++            <td data-label="Request"><code>{{ pkg.request_id }}</code></td>
++            <td class="nowrap" data-label="Received">{{ pkg.received_at }}</td>
++            <td class="nowrap" data-label="Expires">{{ pkg.expires_at }}</td>
++            <td data-label="Subject"><code>{{ pkg.subject_ref_masked }}</code></td>
++            <td data-label="Authentication">{{ status_badge(pkg.authentication) }}</td>
++            <td data-label="Claims">
+               <span class="cluster">
+                 <span class="nowrap">{{ claim_badge("supported") }} {{ pkg.claim_counts.supported }}</span>
+                 <span class="nowrap">{{ claim_badge("contradicted") }} {{ pkg.claim_counts.contradicted }}</span>
+                 <span class="nowrap">{{ claim_badge("unresolved") }} {{ pkg.claim_counts.unresolved }}</span>
+               </span>
+             </td>
+-            <td>
++            <td data-label="Disposition">
+               {% if pkg.disposition %}
+                 {{ status_badge(pkg.disposition) }}
+               {% else %}
+@@ -92,7 +92,7 @@
+     </div>
+     {% if requests_sent %}
+     <div class="table-wrap">
+-      <table class="table">
++      <table class="table stack">
+         <thead>
+           <tr>
+             <th scope="col">Request</th>
+@@ -105,17 +105,17 @@
+         <tbody>
+           {% for req in requests_sent %}
+           <tr id="req-{{ req.request_id }}">
+-            <td><code>{{ req.request_id }}</code></td>
+-            <td>
++            <td data-label="Request"><code>{{ req.request_id }}</code></td>
++            <td data-label="Parent request">
+               {% if req.parent_request_id %}
+                 <code>{{ req.parent_request_id }}</code>
+               {% else %}
+                 <span class="muted">—</span>
+               {% endif %}
+             </td>
+-            <td class="nowrap">{{ req.sent_at }}</td>
+-            <td>{{ status_badge(req.status) }}</td>
+-            <td class="num">{{ req.question_count }}</td>
++            <td class="nowrap" data-label="Sent">{{ req.sent_at }}</td>
++            <td data-label="Status">{{ status_badge(req.status) }}</td>
++            <td class="num" data-label="Questions">{{ req.question_count }}</td>
+           </tr>
+           {% endfor %}
+         </tbody>
+diff --git a/alibi/app/templates/analyst/package.html b/alibi/app/templates/analyst/package.html
+index b8400ce..460e24e 100644
+--- a/alibi/app/templates/analyst/package.html
++++ b/alibi/app/templates/analyst/package.html
+@@ -4,16 +4,22 @@
+   Context variables used (plus the base.html set):
+     recipient             {id, name, analyst_name}
+     package               {package_id, request_id, recipient, subject_ref_masked,
+-                           period: {from, to}, issued_at, expires_at, ...}
++                           period: {from, to} | None, txn_ids: [str], issued_at, expires_at, ...}
++    rejected              bool. When true only #summary and #authentication render.
++    rejection             None | {reasons: [str], received_at, package_digest}
+     authentication        {status: valid | invalid | expired | wrong_audience | replayed,
+                            received_at, verified_at, package_digest, signer_key_id,
+-                           checks: [{name, result, detail}], note}
++                           checks: [{name, result: "pass" | "fail", detail}], note}
+     source_trust          [{attachment_id, record_id, revision, issuer, trust,
++                            attestation: issuer_signature | package_signer | none, redacted: bool,
+                             signature_check, detail}]
+     claim_status          [{question_id, status, summary}]
+     evidence_by_question  [{question_id, question, claim: {status, rationale},
+-                            evidence: [{attachment_id, record_id, revision, trust, summary, href}],
++                            evidence: [{attachment_id, record_id, revision, trust,
++                                        attestation, redacted, summary, href}],
+                             calculation: None | {expression, result, computed_by, matches},
++                            timing: None | {payout_ref, released_to_balance_at, bank_settled_at,
++                                            credit_booked_at, settled_before_booking: bool | None},
+                             gap: None | str}]
+     reconciliation        {title, lines: [{label, kind, sign, amount, source_ids}],
+                            expression, result, compared_to: {label, amount}, difference,
+@@ -21,15 +27,46 @@
+     contradictions        [{claim_id, question_id, description,
+                             sources: [{record_id, revision, trust}]}]
+     gaps                  [{question_id, description, reason_code}]
+-    disposition_form      {action, options: [{value, label}], analyst_name,
+-                           current: None | {disposition, analyst_name, recorded_at, note}}
+-    followup_form         {action, parent_request_id, subject_ref_masked,
+-                           period: {from, to}, question_prefill, consent_note}
++    disposition_form      {action, options: [{value, label}], analyst, final: bool,
++                           questions: [{question_id, text}],
++                           current: None | {decision, analyst, decided_at, reason,
++                                            question_ids: [str], requested_evidence: [str]},
++                           history: [same shape as current]}
++    followup_form         {action, parent_request_id, disposition_id: str | None,
++                           subject_ref_masked, scope: txn_ids | period, txn_ids: [str],
++                           period: {from, to} | None, question_prefill, consent_note}
+ #}
+ {% extends "base.html" %}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
+ 
++{% macro disposition_record(rec) %}
++<dl class="kv">
++  <dt>Decision</dt>
++  <dd>{{ status_badge(rec.decision) }}</dd>
++  <dt>Analyst</dt>
++  <dd>{{ rec.analyst }}</dd>
++  <dt>Decided at</dt>
++  <dd>{{ rec.decided_at }}</dd>
++  <dt>Reason</dt>
++  <dd>{% if rec.reason %}{{ rec.reason }}{% else %}<span class="muted">none</span>{% endif %}</dd>
++  <dt>Questions</dt>
++  <dd>{% if rec.question_ids %}{% for qid in rec.question_ids %}<code>{{ qid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% else %}<span class="muted">none</span>{% endif %}</dd>
++  <dt>Requested evidence</dt>
++  <dd>
++    {% if rec.requested_evidence %}
++    <ul>
++      {% for req in rec.requested_evidence %}
++      <li>{{ req }}</li>
++      {% endfor %}
++    </ul>
++    {% else %}
++    <span class="muted">none</span>
++    {% endif %}
++  </dd>
++</dl>
++{% endmacro %}
++
+ {% block content %}
+ <h1 class="page-title">Package <code>{{ package.package_id }}</code></h1>
+ <p class="page-lede">Reviewing as {{ recipient.analyst_name }} for {{ recipient.name }} (<code>{{ recipient.id }}</code>).</p>
+@@ -45,23 +82,60 @@
+       <dd>{{ package.recipient }}</dd>
+       <dt>Received</dt>
+       <dd>{{ authentication.received_at }}</dd>
+-      <dt>Period</dt>
+-      <dd>{{ package.period.from }} to {{ package.period.to }} <span class="muted small">(from inclusive, to exclusive)</span></dd>
++      {% if not rejected %}
++      <dt>Scope</dt>
++      <dd>
++        {% if package.period %}
++        {{ package.period.from }} to {{ package.period.to }} <span class="muted small">(from inclusive, to exclusive)</span>
++        {% else %}
++        transaction-scoped: {% for txn_id in package.txn_ids %}<code>{{ txn_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
++        {% endif %}
++      </dd>
+       <dt>Issued</dt>
+       <dd>{{ package.issued_at }}</dd>
+       <dt>Expires</dt>
+       <dd>{{ package.expires_at }}</dd>
++      {% endif %}
+       <dt>Subject</dt>
+       <dd><code>{{ package.subject_ref_masked }}</code></dd>
+     </dl>
+   </section>
+ 
++  {% if rejected %}
++  <section class="section-anchor" id="checks">
++    <h2>Verification</h2>
++    <div class="panel-grid">
++      <section class="panel panel--auth" id="authentication">
++        <h3 class="panel__title">Package authentication</h3>
++        <p class="muted small panel__question">Did this package arrive from Alibi, unaltered, addressed to this recipient?</p>
++        <p>{{ status_badge(authentication.status) }}</p>
++        <dl class="kv">
++          <dt>Received</dt>
++          <dd>{{ rejection.received_at if rejection else authentication.received_at }}</dd>
++          <dt>Digest</dt>
++          <dd><span class="digest">{{ rejection.package_digest if rejection else authentication.package_digest }}</span></dd>
++        </dl>
++        <h3>Rejected</h3>
++        <ul>
++          {% for reason in (rejection.reasons if rejection else []) %}
++          <li>{{ reason }}</li>
++          {% else %}
++          <li class="muted">No reason recorded.</li>
++          {% endfor %}
++        </ul>
++        <p>The package was rejected by verification. Its contents are not shown as evidence.</p>
++      </section>
++    </div>
++  </section>
++  {% else %}
++
+   <section class="section-anchor" id="checks">
+     <h2>Verification</h2>
+     <div class="panel-grid">
+ 
+-      <section class="panel" id="authentication">
++      <section class="panel panel--auth" id="authentication">
+         <h3 class="panel__title">Package authentication</h3>
++        <p class="muted small panel__question">Did this package arrive from Alibi, unaltered, addressed to this recipient?</p>
+         <p>{{ status_badge(authentication.status) }}</p>
+         <dl class="kv">
+           <dt>Received</dt>
+@@ -75,7 +149,7 @@
+         </dl>
+         {% if authentication.checks %}
+         <div class="table-wrap">
+-          <table class="table table--compact">
++          <table class="table table--compact stack">
+             <thead>
+               <tr>
+                 <th scope="col">Check</th>
+@@ -86,9 +160,9 @@
+             <tbody>
+               {% for check in authentication.checks %}
+               <tr>
+-                <td>{{ check.name }}</td>
+-                <td>{{ status_badge(check.result) }}</td>
+-                <td class="small">{{ check.detail }}</td>
++                <td data-label="Check">{{ check.name }}</td>
++                <td data-label="Result">{{ status_badge(check.result) }}</td>
++                <td class="small" data-label="Detail">{{ check.detail }}</td>
+               </tr>
+               {% endfor %}
+             </tbody>
+@@ -100,8 +174,9 @@
+         <p class="muted small">{{ authentication.note }}</p>
+       </section>
+ 
+-      <section class="panel" id="source-trust">
++      <section class="panel panel--trust" id="source-trust">
+         <h3 class="panel__title">Source trust (per attachment)</h3>
++        <p class="muted small panel__question">Who stands behind each attached record, and how was it attested?</p>
+         {% if source_trust %}
+         <ul class="items">
+           {% for src in source_trust %}
+@@ -110,9 +185,10 @@
+               <span class="item__title"><code>{{ src.attachment_id }}</code></span>
+               <span class="item__meta"><code>{{ src.record_id }} r{{ src.revision }}</code></span>
+             </div>
+-            <div class="item__meta">{{ src.issuer }}</div>
++            <div class="item__meta">{{ src.issuer }}{% if src.redacted %} <span class="small">Redacted extract, attested by Alibi</span>{% endif %}</div>
+             <div class="cluster">
+               {{ trust_badge(src.trust) }}
++              {{ status_badge(src.attestation) }}
+               <span class="small muted">Signature:</span> {{ status_badge(src.signature_check) }}
+             </div>
+             <p class="small muted">{{ src.detail }}</p>
+@@ -124,8 +200,9 @@
+         {% endif %}
+       </section>
+ 
+-      <section class="panel" id="claim-status">
++      <section class="panel panel--claims" id="claim-status">
+         <h3 class="panel__title">Claim status</h3>
++        <p class="muted small panel__question">What does the cited evidence establish for each question?</p>
+         {% if claim_status %}
+         <ul class="items">
+           {% for cs in claim_status %}
+@@ -162,22 +239,24 @@
+ 
+         {% if item.evidence %}
+         <div class="table-wrap">
+-          <table class="table table--compact">
++          <table class="table table--compact stack">
+             <thead>
+               <tr>
+                 <th scope="col">Attachment</th>
+                 <th scope="col">Record</th>
+                 <th scope="col">Trust</th>
++                <th scope="col">Attestation</th>
+                 <th scope="col">Summary</th>
+               </tr>
+             </thead>
+             <tbody>
+               {% for ev in item.evidence %}
+               <tr>
+-                <td><a href="{{ ev.href }}"><code>{{ ev.attachment_id }}</code></a></td>
+-                <td><code>{{ ev.record_id }} r{{ ev.revision }}</code></td>
+-                <td>{{ trust_badge(ev.trust) }}</td>
+-                <td class="small">{{ ev.summary }}</td>
++                <td data-label="Attachment"><a href="{{ ev.href }}"><code>{{ ev.attachment_id }}</code></a></td>
++                <td data-label="Record"><code>{{ ev.record_id }} r{{ ev.revision }}</code></td>
++                <td data-label="Trust">{{ trust_badge(ev.trust) }}</td>
++                <td data-label="Attestation">{{ status_badge(ev.attestation) }}{% if ev.redacted %} <span class="small">Redacted extract, attested by Alibi</span>{% endif %}</td>
++                <td class="small" data-label="Summary">{{ ev.summary }}</td>
+               </tr>
+               {% endfor %}
+             </tbody>
+@@ -203,6 +282,22 @@
+         </dl>
+         {% endif %}
+ 
++        {% if item.timing %}
++        <h4>Settlement timing</h4>
++        <dl class="kv">
++          <dt>Payout reference</dt>
++          <dd><code>{{ item.timing.payout_ref }}</code></dd>
++          <dt>Released to platform balance</dt>
++          <dd>{% if item.timing.released_to_balance_at %}{{ item.timing.released_to_balance_at }}{% else %}—{% endif %} <span class="muted small">(not a bank settlement)</span></dd>
++          <dt>Bank settlement</dt>
++          <dd>{% if item.timing.bank_settled_at %}{{ item.timing.bank_settled_at }}{% else %}— not settled{% endif %}</dd>
++          <dt>Credit booked</dt>
++          <dd>{{ item.timing.credit_booked_at }}</dd>
++          <dt>Settled before booking</dt>
++          <dd>{% if item.timing.settled_before_booking is none %}unknown{% elif item.timing.settled_before_booking %}yes{% else %}no{% endif %}</dd>
++        </dl>
++        {% endif %}
++
+         {% if item.gap %}
+         <p class="small"><span class="muted">Gap:</span> {{ item.gap }}</p>
+         {% endif %}
+@@ -217,8 +312,9 @@
+   <section class="card section-anchor" id="reconciliation">
+     <h2>Reconciliation</h2>
+     <p class="muted small">{{ reconciliation.title }}</p>
++    {% if reconciliation.lines %}
+     <div class="table-wrap">
+-      <table class="recon">
++      <table class="recon stack">
+         <thead>
+           <tr>
+             <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
+@@ -231,43 +327,46 @@
+         <tbody>
+           {% for line in reconciliation.lines %}
+           <tr>
+-            <td class="sign">{{ line.sign }}</td>
+-            <td>{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
+-            <td>{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+-            <td class="num">{{ money(line.amount) }}</td>
+-            <td class="num">{{ money_raw(line.amount) }}</td>
++            <td class="sign" data-label="Sign">{{ line.sign }}</td>
++            <td data-label="Line">{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
++            <td data-label="Sources">{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
++            <td class="num" data-label="Amount">{{ money(line.amount) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(line.amount) }}</td>
+           </tr>
+           {% endfor %}
+           <tr class="recon__total">
+-            <td class="sign">=</td>
+-            <td>Result</td>
+-            <td></td>
+-            <td class="num">{{ money(reconciliation.result) }}</td>
+-            <td class="num">{{ money_raw(reconciliation.result) }}</td>
++            <td class="sign" data-label="Sign">=</td>
++            <td data-label="Line">Result</td>
++            <td data-label="Sources"></td>
++            <td class="num" data-label="Amount">{{ money(reconciliation.result) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.result) }}</td>
+           </tr>
+           <tr class="recon__compare">
+-            <td class="sign"></td>
+-            <td>Compared to {{ reconciliation.compared_to.label }}</td>
+-            <td></td>
+-            <td class="num">{{ money(reconciliation.compared_to.amount) }}</td>
+-            <td class="num">{{ money_raw(reconciliation.compared_to.amount) }}</td>
++            <td class="sign" data-label="Sign"></td>
++            <td data-label="Line">Compared to {{ reconciliation.compared_to.label }}</td>
++            <td data-label="Sources"></td>
++            <td class="num" data-label="Amount">{{ money(reconciliation.compared_to.amount) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.compared_to.amount) }}</td>
+           </tr>
+           <tr class="recon__compare">
+-            <td class="sign"></td>
+-            <td>Difference
++            <td class="sign" data-label="Sign"></td>
++            <td data-label="Line">Difference
+               {% if reconciliation.matches %}
+                 {{ status_badge("pass", "matches") }}
+               {% else %}
+                 {{ status_badge("fail", "does not match") }}
+               {% endif %}
+             </td>
+-            <td></td>
+-            <td class="num">{{ money(reconciliation.difference) }}</td>
+-            <td class="num">{{ money_raw(reconciliation.difference) }}</td>
++            <td data-label="Sources"></td>
++            <td class="num" data-label="Amount">{{ money(reconciliation.difference) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.difference) }}</td>
+           </tr>
+         </tbody>
+       </table>
+     </div>
++    {% else %}
++    <p class="empty">{{ reconciliation.expression }}</p>
++    {% endif %}
+     <p class="recon__expression">{{ reconciliation.expression }}</p>
+     <p class="muted small">Recomputed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}.</p>
+   </section>
+@@ -320,42 +419,69 @@
+   <section class="card section-anchor" id="disposition">
+     <h2>Disposition</h2>
+     {% if disposition_form.current %}
+-    <dl class="kv">
+-      <dt>Recorded</dt>
+-      <dd>{{ status_badge(disposition_form.current.disposition) }}</dd>
+-      <dt>Analyst</dt>
+-      <dd>{{ disposition_form.current.analyst_name }}</dd>
+-      <dt>Recorded at</dt>
+-      <dd>{{ disposition_form.current.recorded_at }}</dd>
+-      <dt>Note</dt>
+-      <dd>{% if disposition_form.current.note %}{{ disposition_form.current.note }}{% else %}<span class="muted">none</span>{% endif %}</dd>
+-    </dl>
+-    <hr>
++    <h3>Current disposition</h3>
++    {{ disposition_record(disposition_form.current) }}
+     {% else %}
+     <p class="muted small">No disposition recorded yet.</p>
+     {% endif %}
++    {% if disposition_form.history %}
++    <h3>Earlier dispositions</h3>
++    <ul class="items">
++      {% for rec in disposition_form.history %}
++      <li>
++        <div class="item__head">
++          <span class="item__title">{{ status_badge(rec.decision) }} by {{ rec.analyst }}</span>
++          <span class="item__meta">{{ rec.decided_at }}</span>
++        </div>
++        <p class="small">{% if rec.reason %}{{ rec.reason }}{% else %}<span class="muted">no reason</span>{% endif %}
++          {% if rec.question_ids %}· {% for qid in rec.question_ids %}<code>{{ qid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
++          {% if rec.requested_evidence %}· requested: {{ rec.requested_evidence | join("; ") }}{% endif %}</p>
++      </li>
++      {% endfor %}
++    </ul>
++    {% endif %}
++    {% if disposition_form.final %}
++    <p class="muted small">This package has a final disposition.</p>
++    {% else %}
++    {% if disposition_form.current %}<hr>{% endif %}
+     <form class="form" method="post" action="{{ disposition_form.action }}">
++      <dl class="kv">
++        <dt>Analyst</dt>
++        <dd>{{ disposition_form.analyst }}</dd>
++      </dl>
+       <fieldset>
+-        <legend>Disposition</legend>
++        <legend>Decision</legend>
+         {% for opt in disposition_form.options %}
+         <label class="choice">
+-          <input type="radio" name="disposition" value="{{ opt.value }}" required>
++          <input type="radio" name="decision" value="{{ opt.value }}" required>
+           <span>{{ opt.label }}</span>
+         </label>
+         {% endfor %}
+       </fieldset>
+       <div class="field">
+-        <label for="disposition-analyst-name">Analyst name</label>
+-        <input type="text" id="disposition-analyst-name" name="analyst_name" value="{{ disposition_form.analyst_name }}" required>
++        <label for="disposition-reason">Reason</label>
++        <textarea id="disposition-reason" name="reason" required></textarea>
+       </div>
++      <fieldset>
++        <legend>Questions this applies to</legend>
++        {% for q in disposition_form.questions %}
++        <label class="choice">
++          <input type="checkbox" name="question_ids" value="{{ q.question_id }}">
++          <span><code>{{ q.question_id }}</code> {{ q.text }}</span>
++        </label>
++        {% else %}
++        <span class="muted small">No questions in this package.</span>
++        {% endfor %}
++      </fieldset>
+       <div class="field">
+-        <label for="disposition-note">Note</label>
+-        <textarea id="disposition-note" name="note"></textarea>
++        <label for="disposition-requested-evidence">Requested evidence (optional, one item per line)</label>
++        <textarea id="disposition-requested-evidence" name="requested_evidence"></textarea>
+       </div>
+       <div class="btn-row">
+         <button type="submit" class="btn btn--primary">Record disposition</button>
+       </div>
+     </form>
++    {% endif %}
+     <p class="muted small">A disposition is a human record. It does not change the holder&#39;s account automatically.</p>
+   </section>
+ 
+@@ -366,20 +492,37 @@
+     </div>
+     <form class="form" method="post" action="{{ followup_form.action }}">
+       <input type="hidden" name="parent_request_id" value="{{ followup_form.parent_request_id }}">
++      <input type="hidden" name="disposition_id" value="{{ followup_form.disposition_id if followup_form.disposition_id else '' }}">
+       <dl class="kv">
+         <dt>Parent request</dt>
+         <dd><code>{{ followup_form.parent_request_id }}</code></dd>
+         <dt>Subject</dt>
+         <dd><code>{{ followup_form.subject_ref_masked }}</code></dd>
+       </dl>
++      <fieldset>
++        <legend>Scope</legend>
++        <label class="choice">
++          <input type="radio" name="scope" value="txn_ids"{% if followup_form.scope == "txn_ids" %} checked{% endif %}>
++          <span>Named transactions</span>
++        </label>
++        <label class="choice">
++          <input type="radio" name="scope" value="period"{% if followup_form.scope == "period" %} checked{% endif %}>
++          <span>Period</span>
++        </label>
++      </fieldset>
++      <div class="field">
++        <label for="followup-txn-ids">Transaction IDs</label>
++        <input type="text" id="followup-txn-ids" name="txn_ids" class="mono" value="{{ followup_form.txn_ids | join(", ") }}">
++        <span class="field__hint">Comma-separated. Used when the scope is named transactions.</span>
++      </div>
+       <div class="field">
+         <label for="followup-period-from">Period from (UTC)</label>
+-        <input type="text" id="followup-period-from" name="period_from" class="mono" value="{{ followup_form.period.from }}" required>
+-        <span class="field__hint">Inclusive. UTC ISO-8601, for example 2026-10-01T00:00:00Z.</span>
++        <input type="text" id="followup-period-from" name="period_from" class="mono" value="{{ followup_form.period.from if followup_form.period else '' }}">
++        <span class="field__hint">Inclusive. UTC ISO-8601, for example 2026-10-01T00:00:00Z. Used when the scope is a period.</span>
+       </div>
+       <div class="field">
+         <label for="followup-period-to">Period to (UTC)</label>
+-        <input type="text" id="followup-period-to" name="period_to" class="mono" value="{{ followup_form.period.to }}" required>
++        <input type="text" id="followup-period-to" name="period_to" class="mono" value="{{ followup_form.period.to if followup_form.period else '' }}">
+         <span class="field__hint">Exclusive.</span>
+       </div>
+       <div class="field">
+@@ -392,5 +535,7 @@
+     </form>
+   </section>
+ 
++  {% endif %}
++
+ </div>
+ {% endblock %}
+diff --git a/alibi/app/templates/audit/list.html b/alibi/app/templates/audit/list.html
+index f4f44d9..a63f8cb 100644
+--- a/alibi/app/templates/audit/list.html
++++ b/alibi/app/templates/audit/list.html
+@@ -42,7 +42,7 @@
+     <h2 id="entries-heading">Entries</h2>
+     {% if entries %}
+     <div class="table-wrap">
+-      <table class="table table--compact">
++      <table class="table table--compact stack">
+         <thead>
+           <tr>
+             <th scope="col">At (UTC)</th>
+@@ -56,16 +56,16 @@
+         <tbody>
+           {% for entry in entries %}
+           <tr id="{{ entry.entry_id }}" class="section-anchor">
+-            <td class="nowrap">{{ entry.at }}</td>
+-            <td>{{ entry.actor }} <span class="muted small">{{ entry.role }}</span></td>
+-            <td><code>{{ entry.action }}</code></td>
+-            <td>
++            <td class="nowrap" data-label="At (UTC)">{{ entry.at }}</td>
++            <td data-label="Actor">{{ entry.actor }} <span class="muted small">{{ entry.role }}</span></td>
++            <td data-label="Action"><code>{{ entry.action }}</code></td>
++            <td data-label="Request / event">
+               {% if entry.request_id is none %}—{% else %}<code>{{ entry.request_id }}</code>{% endif %}
+               /
+               {% if entry.event_id is none %}—{% else %}<code>{{ entry.event_id }}</code>{% endif %}
+             </td>
+-            <td>{{ status_badge(entry.outcome) }}</td>
+-            <td>{{ entry.detail }}</td>
++            <td data-label="Outcome">{{ status_badge(entry.outcome) }}</td>
++            <td data-label="Detail">{{ entry.detail }}</td>
+           </tr>
+           {% endfor %}
+         </tbody>
+diff --git a/alibi/app/templates/partials/when.html b/alibi/app/templates/partials/when.html
+new file mode 100644
+index 0000000..379d8d6
+--- /dev/null
++++ b/alibi/app/templates/partials/when.html
+@@ -0,0 +1,12 @@
++{#
++  Timestamp macro. Import with:
++    {% from "partials/when.html" import when %}
++
++  when(ts) takes a UTC ISO-8601 string and prints it inside
++  <time class="when" datetime="..."> so the stylesheet and scripts can find
++  every timestamp. A falsy value (None or "") prints an em dash in .muted.
++#}
++
++{% macro when(ts) -%}
++{%- if ts %}<time class="when" datetime="{{ ts }}">{{ ts }}</time>{% else %}<span class="muted">—</span>{% endif -%}
++{%- endmacro %}
+diff --git a/alibi/app/templates/passport/alerts.html b/alibi/app/templates/passport/alerts.html
+index f78f1ce..677e17c 100644
+--- a/alibi/app/templates/passport/alerts.html
++++ b/alibi/app/templates/passport/alerts.html
+@@ -11,6 +11,7 @@
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ {% block content %}
+ <h1 class="page-title">Alerts</h1>
+ <p class="page-lede">Things Alibi noticed in your records. Each alert is an observation with the facts behind it, not a judgement about you or a merchant.</p>
+@@ -28,14 +29,14 @@
+         </div>
+         <p class="item__meta">
+           {{ status_badge(alert.kind) }}
+-          Severity: {{ alert.severity }} · Raised {{ alert.created_at }} · <code>{{ alert.alert_id }}</code>
++          Severity: {{ alert.severity }} · Raised {{ when(alert.created_at) }} · <code>{{ alert.alert_id }}</code>
+         </p>
+         <p>{{ alert.explanation }}</p>
+ 
+         <h4>Facts behind this alert</h4>
+         {% if alert.facts %}
+         <div class="table-wrap">
+-          <table class="table table--compact">
++          <table class="table table--compact stack">
+             <thead>
+               <tr>
+                 <th scope="col">Fact</th>
+@@ -46,9 +47,9 @@
+             <tbody>
+               {% for fact in alert.facts %}
+               <tr>
+-                <td>{{ fact.label }}</td>
+-                <td>{{ fact.value }}</td>
+-                <td><a href="{{ fact.href }}"><code>{{ fact.source_id }}</code> r{{ fact.source_revision }}</a></td>
++                <td data-label="Fact">{{ fact.label }}</td>
++                <td data-label="Value">{{ fact.value }}</td>
++                <td data-label="Source"><a href="{{ fact.href }}"><code>{{ fact.source_id }}</code> r{{ fact.source_revision }}</a></td>
+               </tr>
+               {% endfor %}
+             </tbody>
+@@ -76,6 +77,11 @@
+     {% endif %}
+   </section>
+ 
++  <form method="post" action="{{ tick_action }}" class="btn-row no-print">
++    <button type="submit" class="btn">Re-run checks now</button>
++    <span class="muted small">Last checked {% if last_tick %}{{ when(last_tick) }}{% else %}at start{% endif %}. Checks also run on every start.</span>
++  </form>
++
+   <section id="merchant-lookup" class="card section-anchor" aria-labelledby="lookup-heading">
+     <div class="card__head">
+       <h2 id="lookup-heading">Merchant lookup</h2>
+@@ -103,7 +109,7 @@
+       <dt>Registry</dt>
+       <dd>{{ result.registry }}</dd>
+       <dt>Checked at</dt>
+-      <dd>{{ result.checked_at }}</dd>
++      <dd>{{ when(result.checked_at) }}</dd>
+       <dt>Notes</dt>
+       <dd>{{ result.notes }}</dd>
+     </dl>
+diff --git a/alibi/app/templates/passport/home.html b/alibi/app/templates/passport/home.html
+index 55b1bb8..591c4a6 100644
+--- a/alibi/app/templates/passport/home.html
++++ b/alibi/app/templates/passport/home.html
+@@ -15,6 +15,7 @@
+ {% extends "base.html" %}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Financial passport</h1>
+@@ -34,33 +35,65 @@
+     </dl>
+   </section>
+ 
+-  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
++  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
+     <div class="card__head">
+-      <h2 id="connections-title">Connections</h2>
+-      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
++      <h2 id="alerts-title">Alerts</h2>
++      <a href="/alerts" class="small">All alerts</a>
+     </div>
+-    {% if connections %}
++    {% if alerts %}
+     <ul class="items">
+-      {% for c in connections %}
+-      <li id="{{ c.connection_id }}">
++      {% for a in alerts %}
++      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
+         <div class="item__head">
+-          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
++          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
+           <span class="cluster">
+-            {{ status_badge(c.status) }}
+-            {{ trust_badge(c.trust) }}
++            {{ status_badge(a.severity) }}
++            {{ status_badge(a.status) }}
+           </span>
+         </div>
+-        <div class="item__meta">
+-          Kind: {{ c.kind }} ·
+-          Last synced {{ c.last_synced_at }} ·
+-          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
+-          <code>{{ c.connection_id }}</code>
+-        </div>
++        <div class="item__meta">Created {{ when(a.created_at) }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
+       </li>
+       {% endfor %}
+     </ul>
+     {% else %}
+-    <p class="empty">No connections yet.</p>
++    <p class="empty">No alerts.</p>
++    {% endif %}
++  </section>
++
++  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
++    <div class="card__head">
++      <h2 id="requests-title">Requests</h2>
++      <a href="/requests" class="small">All requests</a>
++    </div>
++    {% if requests %}
++    <div class="table-wrap">
++      <table class="table stack">
++        <thead>
++          <tr>
++            <th scope="col">Request</th>
++            <th scope="col">From</th>
++            <th scope="col" class="num">Questions</th>
++            <th scope="col">Received</th>
++            <th scope="col">Expires</th>
++            <th scope="col">Status</th>
++          </tr>
++        </thead>
++        <tbody>
++          {% for q in requests %}
++          <tr id="{{ q.request_id }}">
++            <td data-label="Request"><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
++            <td data-label="From">{{ q.recipient }}</td>
++            <td class="num" data-label="Questions">{{ q.question_count }}</td>
++            <td class="nowrap" data-label="Received">{{ when(q.received_at) }}</td>
++            <td class="nowrap" data-label="Expires">{{ when(q.expires_at) }}</td>
++            <td data-label="Status">{{ status_badge(q.status) }}</td>
++          </tr>
++          {% endfor %}
++        </tbody>
++      </table>
++    </div>
++    {% else %}
++    <p class="empty">No requests received.</p>
+     {% endif %}
+   </section>
+ 
+@@ -71,7 +104,7 @@
+     </div>
+     {% if transactions %}
+     <div class="table-wrap">
+-      <table class="table">
++      <table class="table stack">
+         <thead>
+           <tr>
+             <th scope="col">Booked</th>
+@@ -83,13 +116,13 @@
+         <tbody>
+           {% for t in transactions %}
+           <tr id="{{ t.txn_id }}">
+-            <td class="nowrap">{{ t.booked_at }}</td>
+-            <td>
++            <td class="nowrap" data-label="Booked">{{ when(t.booked_at) }}</td>
++            <td data-label="Description">
+               <a href="{{ t.href }}">{{ t.description }}</a>
+               <div class="item__meta"><code>{{ t.txn_id }}</code> r{{ t.revision }} · {{ t.direction }}</div>
+             </td>
+-            <td class="num"><span class="item__amount amount--{{ t.direction }}">{{ money(t.amount) }}</span></td>
+-            <td>{{ link_badge(t.link_state, t.linked_count) }}</td>
++            <td class="num" data-label="Amount"><span class="item__amount amount--{{ t.direction }}">{{ money(t.amount) }}</span></td>
++            <td data-label="Link state">{{ link_badge(t.link_state, t.linked_count) }}</td>
+           </tr>
+           {% endfor %}
+         </tbody>
+@@ -103,7 +136,7 @@
+   <section class="card section-anchor" id="evidence" aria-labelledby="evidence-title">
+     <div class="card__head">
+       <h2 id="evidence-title">Evidence status</h2>
+-      <span class="item__meta">Last checked {{ evidence_status.last_checked_at }}</span>
++      <span class="item__meta">Last checked {{ when(evidence_status.last_checked_at) }}</span>
+     </div>
+     <div class="stats">
+       <div class="stat">
+@@ -128,90 +161,6 @@
+     </p>
+   </section>
+ 
+-  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
+-    <div class="card__head">
+-      <h2 id="alerts-title">Alerts</h2>
+-      <a href="/alerts" class="small">All alerts</a>
+-    </div>
+-    {% if alerts %}
+-    <ul class="items">
+-      {% for a in alerts %}
+-      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
+-        <div class="item__head">
+-          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
+-          <span class="cluster">
+-            {{ status_badge(a.severity) }}
+-            {{ status_badge(a.status) }}
+-          </span>
+-        </div>
+-        <div class="item__meta">Created {{ a.created_at }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
+-      </li>
+-      {% endfor %}
+-    </ul>
+-    {% else %}
+-    <p class="empty">No alerts.</p>
+-    {% endif %}
+-  </section>
+-
+-  <section class="card card--private section-anchor" id="rules" aria-labelledby="rules-title">
+-    <div class="card__head">
+-      <h2 id="rules-title">Privacy rules</h2>
+-      <a href="/rules" class="small">Manage rules</a>
+-    </div>
+-    {% if rules %}
+-    <ul class="items">
+-      {% for r in rules %}
+-      <li id="{{ r.rule_id }}">
+-        <div class="item__head">
+-          <span class="item__title"><a href="{{ r.href }}">{{ r.text }}</a></span>
+-          {{ status_badge(r.status) }}
+-        </div>
+-        <div class="item__meta">{{ r.summary }} · <code>{{ r.rule_id }}</code></div>
+-      </li>
+-      {% endfor %}
+-    </ul>
+-    {% else %}
+-    <p class="empty">No rules yet. Default-minimum disclosure applies.</p>
+-    {% endif %}
+-  </section>
+-
+-  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
+-    <div class="card__head">
+-      <h2 id="requests-title">Requests</h2>
+-      <a href="/requests" class="small">All requests</a>
+-    </div>
+-    {% if requests %}
+-    <div class="table-wrap">
+-      <table class="table">
+-        <thead>
+-          <tr>
+-            <th scope="col">Request</th>
+-            <th scope="col">From</th>
+-            <th scope="col" class="num">Questions</th>
+-            <th scope="col">Received</th>
+-            <th scope="col">Expires</th>
+-            <th scope="col">Status</th>
+-          </tr>
+-        </thead>
+-        <tbody>
+-          {% for q in requests %}
+-          <tr id="{{ q.request_id }}">
+-            <td><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
+-            <td>{{ q.recipient }}</td>
+-            <td class="num">{{ q.question_count }}</td>
+-            <td class="nowrap">{{ q.received_at }}</td>
+-            <td class="nowrap">{{ q.expires_at }}</td>
+-            <td>{{ status_badge(q.status) }}</td>
+-          </tr>
+-          {% endfor %}
+-        </tbody>
+-      </table>
+-    </div>
+-    {% else %}
+-    <p class="empty">No requests received.</p>
+-    {% endif %}
+-  </section>
+-
+   <section class="card section-anchor" id="sharing" aria-labelledby="sharing-title">
+     <div class="card__head">
+       <h2 id="sharing-title">Sharing history</h2>
+@@ -219,7 +168,7 @@
+     </div>
+     {% if sharing_history %}
+     <div class="table-wrap">
+-      <table class="table">
++      <table class="table stack">
+         <thead>
+           <tr>
+             <th scope="col">Package</th>
+@@ -233,15 +182,15 @@
+         <tbody>
+           {% for p in sharing_history %}
+           <tr id="{{ p.package_id }}">
+-            <td>
++            <td data-label="Package">
+               <a href="{{ p.href }}"><code>{{ p.package_id }}</code></a>
+               <div class="item__meta">for <code>{{ p.request_id }}</code></div>
+             </td>
+-            <td>{{ p.recipient }}</td>
+-            <td class="nowrap">{{ p.sent_at }}</td>
+-            <td class="nowrap">{{ p.expires_at }}</td>
+-            <td class="num">{{ p.item_count }}</td>
+-            <td>{{ status_badge(p.status) }}</td>
++            <td data-label="Recipient">{{ p.recipient }}</td>
++            <td class="nowrap" data-label="Sent">{{ when(p.sent_at) }}</td>
++            <td class="nowrap" data-label="Expires">{{ when(p.expires_at) }}</td>
++            <td class="num" data-label="Items">{{ p.item_count }}</td>
++            <td data-label="Status">{{ status_badge(p.status) }}</td>
+           </tr>
+           {% endfor %}
+         </tbody>
+@@ -252,5 +201,57 @@
+     {% endif %}
+   </section>
+ 
++
++  <section class="card card--private section-anchor" id="rules" aria-labelledby="rules-title">
++    <div class="card__head">
++      <h2 id="rules-title">Privacy rules</h2>
++      <a href="/rules" class="small">Manage rules</a>
++    </div>
++    {% if rules %}
++    <ul class="items">
++      {% for r in rules %}
++      <li id="{{ r.rule_id }}">
++        <div class="item__head">
++          <span class="item__title"><a href="{{ r.href }}">{{ r.text }}</a></span>
++          {{ status_badge(r.status) }}
++        </div>
++        <div class="item__meta">{{ r.summary }} · <code>{{ r.rule_id }}</code></div>
++      </li>
++      {% endfor %}
++    </ul>
++    {% else %}
++    <p class="empty">No rules yet. Default-minimum disclosure applies.</p>
++    {% endif %}
++  </section>
++
++  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
++    <div class="card__head">
++      <h2 id="connections-title">Connections</h2>
++      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
++    </div>
++    {% if connections %}
++    <ul class="items">
++      {% for c in connections %}
++      <li id="{{ c.connection_id }}">
++        <div class="item__head">
++          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
++          <span class="cluster">
++            {{ status_badge(c.status) }}
++            {{ trust_badge(c.trust) }}
++          </span>
++        </div>
++        <div class="item__meta">
++          Kind: {{ c.kind }} ·
++          Last synced {{ when(c.last_synced_at) }} ·
++          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
++          <code>{{ c.connection_id }}</code>
++        </div>
++      </li>
++      {% endfor %}
++    </ul>
++    {% else %}
++    <p class="empty">No connections yet.</p>
++    {% endif %}
++  </section>
+ </div>
+ {% endblock %}
+diff --git a/alibi/app/templates/passport/rules.html b/alibi/app/templates/passport/rules.html
+index ed46f37..d354b1a 100644
+--- a/alibi/app/templates/passport/rules.html
++++ b/alibi/app/templates/passport/rules.html
+@@ -12,6 +12,7 @@
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ {% block content %}
+ <h1 class="page-title">Privacy rules</h1>
+ <p class="page-lede">A rule written in plain English becomes a typed policy that code applies to every package. Nothing changes until you confirm the interpretation.</p>
+@@ -111,7 +112,7 @@
+         <p>{{ rule.summary }}</p>
+         <p class="item__meta">
+           {{ status_badge(rule.kind) }}
+-          <code>{{ rule.rule_id }}</code> · Policy version {{ rule.version }} · Confirmed {{ rule.confirmed_at }}
++          <code>{{ rule.rule_id }}</code> · Policy version {{ rule.version }} · Confirmed {{ when(rule.confirmed_at) }}
+         </p>
+         <form class="inline" method="post" action="{{ rule.retire_action }}">
+           <button type="submit" class="btn btn--small">Retire</button>
+@@ -137,7 +138,7 @@
+           {{ status_badge("held") }}
+         </div>
+         <p>{{ rule.reason }}</p>
+-        <p class="item__meta"><code>{{ rule.rule_id }}</code> · Held since {{ rule.created_at }}</p>
++        <p class="item__meta"><code>{{ rule.rule_id }}</code> · Held since {{ when(rule.created_at) }}</p>
+         <div class="btn-row">
+           <form class="inline" method="post" action="{{ rule.clarify_action }}">
+             <button type="submit" class="btn btn--small">Clarify</button>
+diff --git a/alibi/app/templates/passport/transaction.html b/alibi/app/templates/passport/transaction.html
+index 6a1ff25..5424e3b 100644
+--- a/alibi/app/templates/passport/transaction.html
++++ b/alibi/app/templates/passport/transaction.html
+@@ -6,7 +6,8 @@
+                      link_state, linked_count, href, account_label, connection_name, references[],
+                      provenance{connection_id, retrieved_at, source_version}, trust}
+     sources         list of {record_id, revision, kind, issuer, trust, occurred_at, amount{minor,currency},
+-                             status, summary, href, signature{present, key_id, verified}, superseded}
++                             status, summary, href, signature{present, key_id, verified}, superseded,
++                             via_lookup: bool}
+     reconciliation  {title, lines[{label, kind, sign, amount, source_ids[]}], expression, result,
+                      compared_to{label, amount}, difference, matches, computed_by, computed_at}
+     claims          list of {claim_id, question_id, question, status, rationale, href}
+@@ -18,6 +19,7 @@
+ {% extends "base.html" %}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Transaction <code>{{ txn.txn_id }}</code></h1>
+@@ -39,7 +41,7 @@
+       <dt>Revision</dt>
+       <dd>r{{ txn.revision }}</dd>
+       <dt>Booked</dt>
+-      <dd>{{ txn.booked_at }}</dd>
++      <dd>{{ when(txn.booked_at) }}</dd>
+       <dt>Description</dt>
+       <dd>{{ txn.description }}</dd>
+       <dt>Amount</dt>
+@@ -61,7 +63,7 @@
+       <dt>Provenance</dt>
+       <dd>
+         Connection <code>{{ txn.provenance.connection_id }}</code>,
+-        retrieved {{ txn.provenance.retrieved_at }},
++        retrieved {{ when(txn.provenance.retrieved_at) }},
+         source version <code>{{ txn.provenance.source_version }}</code>
+       </dd>
+     </dl>
+@@ -87,6 +89,7 @@
+           </span>
+           <span class="cluster">
+             {{ trust_badge(s.trust) }}
++            {% if s.via_lookup %}{{ status_badge("via_lookup", "retrieved by lookup") }}{% endif %}
+             {{ status_badge(s.status) }}
+             <span class="item__amount">{{ money(s.amount) }}</span>
+           </span>
+@@ -94,7 +97,7 @@
+         <p class="small">{{ s.summary }}</p>
+         <div class="item__meta">
+           Issuer: {{ s.issuer }} ·
+-          Occurred {{ s.occurred_at }} ·
++          Occurred {{ when(s.occurred_at) }} ·
+           {{ money_raw(s.amount) }} ·
+           {% if s.signature.present %}
+             Issuer signature key <code>{{ s.signature.key_id }}</code>, {% if s.signature.verified %}verified{% else %}not verified{% endif %}
+@@ -118,8 +121,9 @@
+       <h2 id="reconciliation-title">Reconciliation</h2>
+       <span class="item__meta">{{ reconciliation.title }}</span>
+     </div>
++    {% if reconciliation.lines %}
+     <div class="table-wrap">
+-      <table class="recon">
++      <table class="recon stack">
+         <thead>
+           <tr>
+             <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
+@@ -132,39 +136,42 @@
+         <tbody>
+           {% for line in reconciliation.lines %}
+           <tr>
+-            <td class="sign">{{ line.sign }}</td>
+-            <td>{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
+-            <td>{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+-            <td class="num">{{ money(line.amount) }}</td>
+-            <td class="num">{{ money_raw(line.amount) }}</td>
++            <td class="sign" data-label="Sign">{{ line.sign }}</td>
++            <td data-label="Line">{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
++            <td data-label="Sources">{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
++            <td class="num" data-label="Amount">{{ money(line.amount) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(line.amount) }}</td>
+           </tr>
+           {% endfor %}
+           <tr class="recon__total">
+-            <td class="sign">=</td>
+-            <td>Result</td>
+-            <td></td>
+-            <td class="num">{{ money(reconciliation.result) }}</td>
+-            <td class="num">{{ money_raw(reconciliation.result) }}</td>
++            <td class="sign" data-label="Sign">=</td>
++            <td data-label="Line">Result</td>
++            <td data-label="Sources"></td>
++            <td class="num" data-label="Amount">{{ money(reconciliation.result) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.result) }}</td>
+           </tr>
+           <tr class="recon__compare">
+-            <td class="sign"></td>
+-            <td>Compared to {{ reconciliation.compared_to.label }}</td>
+-            <td>{% if reconciliation.matches %}matches{% else %}does not match{% endif %}</td>
+-            <td class="num">{{ money(reconciliation.compared_to.amount) }}</td>
+-            <td class="num">{{ money_raw(reconciliation.compared_to.amount) }}</td>
++            <td class="sign" data-label="Sign"></td>
++            <td data-label="Line">Compared to {{ reconciliation.compared_to.label }}</td>
++            <td data-label="Sources">{% if reconciliation.matches %}matches{% else %}does not match{% endif %}</td>
++            <td class="num" data-label="Amount">{{ money(reconciliation.compared_to.amount) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.compared_to.amount) }}</td>
+           </tr>
+           <tr class="recon__compare">
+-            <td class="sign"></td>
+-            <td>Difference</td>
+-            <td>{{ status_badge("ok" if reconciliation.matches else "fail", "Matches" if reconciliation.matches else "Does not match") }}</td>
+-            <td class="num">{{ money(reconciliation.difference) }}</td>
+-            <td class="num">{{ money_raw(reconciliation.difference) }}</td>
++            <td class="sign" data-label="Sign"></td>
++            <td data-label="Line">Difference</td>
++            <td data-label="Sources">{{ status_badge("ok" if reconciliation.matches else "fail", "Matches" if reconciliation.matches else "Does not match") }}</td>
++            <td class="num" data-label="Amount">{{ money(reconciliation.difference) }}</td>
++            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.difference) }}</td>
+           </tr>
+         </tbody>
+       </table>
+     </div>
++    {% else %}
++    <p class="empty">{{ reconciliation.expression }}</p>
++    {% endif %}
+     <p class="recon__expression">{{ reconciliation.expression }}</p>
+-    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}. The sum is taken from the cited amounts, not typed by hand.</p>
++    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ when(reconciliation.computed_at) }}. The sum is taken from the cited amounts, not typed by hand.</p>
+   </section>
+ 
+   <section class="card section-anchor" id="claims" aria-labelledby="claims-title">
+@@ -201,11 +208,11 @@
+       <li id="{{ ch.change_id }}">
+         <div class="item__head">
+           <span class="item__title"><code>{{ ch.record_id }}</code> r{{ ch.older.revision }} to r{{ ch.newer.revision }} <span class="muted">· {{ ch.kind }}</span></span>
+-          <span class="item__meta">Received {{ ch.received_at }}</span>
++          <span class="item__meta">Received {{ when(ch.received_at) }}</span>
+         </div>
+         <p class="small">{{ ch.effect }}</p>
+         <div class="table-wrap">
+-          <table class="table table--compact">
++          <table class="table table--compact stack">
+             <thead>
+               <tr>
+                 <th scope="col">Field</th>
+@@ -216,9 +223,9 @@
+             <tbody>
+               {% for d in ch.diff %}
+               <tr>
+-                <td><code>{{ d.field }}</code></td>
+-                <td><span class="diff-before">{{ d.before }}</span></td>
+-                <td><span class="diff-after">{{ d.after }}</span></td>
++                <td data-label="Field"><code>{{ d.field }}</code></td>
++                <td data-label="Before (r{{ ch.older.revision }})"><span class="diff-before">{{ d.before }}</span></td>
++                <td data-label="After (r{{ ch.newer.revision }})"><span class="diff-after">{{ d.after }}</span></td>
+               </tr>
+               {% endfor %}
+             </tbody>
+@@ -231,7 +238,7 @@
+               <div class="revision__title">Revision r{{ ch.older.revision }} <span class="badge badge--status badge--superseded">superseded</span></div>
+               <dl class="kv">
+                 <dt>Received</dt>
+-                <dd>{{ ch.older.received_at }}</dd>
++                <dd>{{ when(ch.older.received_at) }}</dd>
+                 {% for f in ch.older.fields %}
+                 <dt><code>{{ f.name }}</code></dt>
+                 <dd>{{ f.value }}</dd>
+@@ -243,7 +250,7 @@
+               <div class="revision__title">Revision r{{ ch.newer.revision }} <span class="muted small">(active)</span></div>
+               <dl class="kv">
+                 <dt>Received</dt>
+-                <dd>{{ ch.newer.received_at }}</dd>
++                <dd>{{ when(ch.newer.received_at) }}</dd>
+                 {% for f in ch.newer.fields %}
+                 <dt><code>{{ f.name }}</code></dt>
+                 <dd>{{ f.value }}</dd>
+diff --git a/alibi/app/templates/requests/detail.html b/alibi/app/templates/requests/detail.html
+index 11661a6..aed2731 100644
+--- a/alibi/app/templates/requests/detail.html
++++ b/alibi/app/templates/requests/detail.html
+@@ -2,14 +2,15 @@
+ {#
+   Request detail (holder). Context from preview_render.ctx_request_detail:
+     request        {request_id, parent_request_id|None, issuer, audience, subject_ref,
+-                    received_at, expires_at, period{from,to}, txn_ids[], questions[{question_id,text}],
++                    received_at, expires_at, period{from,to}|None, txn_ids[], questions[{question_id,text}],
+                     status, signature{verified,key_id}, href}
+-    investigation  {status, can_run, run_action, started_at, completed_at,
++    investigation  {status, mode_label, can_run, run_action, started_at, completed_at,
+                     budget{calls_used,calls_cap}, roles[{name,status,calls,note}], failure_reason|None}
+     trace          [{step_id, question_id, question, claim{claim_id,text,status},
+-                     sources[{record_id,revision,trust,href}],
++                     sources[{record_id,revision,trust,href,via_lookup|None}],
+                      lookups[{tool,args_summary,result_summary,at}],
+-                     calculation{expression,result,computed_by,matches}|None,
++                     calculation{expression,result,computed_by,matches,
++                                 terms[{label,sign,amount,source_ids[]}]}|None,
+                      status, status_reason, at}]
+     review         {claims[{claim_id,question_id,question,status,rationale,href}],
+                     included[{item_id,question_id,label,kind,record_id,revision,trust,reason,removable,remove_action|None}],
+@@ -23,6 +24,7 @@
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Request {{ request.request_id }}</h1>
+@@ -48,11 +50,17 @@
+     <dt>Subject</dt>
+     <dd><code>{{ request.subject_ref }}</code></dd>
+     <dt>Received</dt>
+-    <dd>{{ request.received_at }}</dd>
++    <dd>{{ when(request.received_at) }}</dd>
+     <dt>Expires</dt>
+-    <dd>{{ request.expires_at }}</dd>
++    <dd>{{ when(request.expires_at) }}</dd>
+     <dt>Period</dt>
+-    <dd><code>[{{ request.period.from }}, {{ request.period.to }})</code> <span class="muted small">half-open</span></dd>
++    <dd>
++      {% if request.period %}
++      <code>[{{ request.period.from }}, {{ request.period.to }})</code> <span class="muted small">half-open</span>
++      {% else %}
++      transaction-scoped: {% for txn_id in request.txn_ids %}<code>{{ txn_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
++      {% endif %}
++    </dd>
+     <dt>Transactions</dt>
+     <dd>
+       {% if request.txn_ids %}
+@@ -82,13 +90,16 @@
+ <section class="card section-anchor" id="investigation" aria-labelledby="investigation-title">
+   <div class="card__head">
+     <h2 id="investigation-title">Investigation</h2>
+-    {{ status_badge(investigation.status) }}
++    <span class="cluster">
++      {{ status_badge(investigation.status) }}
++      {{ status_badge(investigation.mode_label) }}
++    </span>
+   </div>
+   <dl class="kv">
+     <dt>Started</dt>
+-    <dd>{% if investigation.started_at %}{{ investigation.started_at }}{% else %}not started{% endif %}</dd>
++    <dd>{% if investigation.started_at %}{{ when(investigation.started_at) }}{% else %}not started{% endif %}</dd>
+     <dt>Completed</dt>
+-    <dd>{% if investigation.completed_at %}{{ investigation.completed_at }}{% else %}not completed{% endif %}</dd>
++    <dd>{% if investigation.completed_at %}{{ when(investigation.completed_at) }}{% else %}not completed{% endif %}</dd>
+     <dt>Budget</dt>
+     <dd>{{ investigation.budget.calls_used }} of {{ investigation.budget.calls_cap }} Gemini calls</dd>
+     {% if investigation.failure_reason %}
+@@ -99,17 +110,17 @@
+ 
+   <h3>Roles</h3>
+   <div class="table-wrap">
+-    <table class="table table--compact">
++    <table class="table table--compact stack">
+       <thead>
+         <tr><th scope="col">Role</th><th scope="col">Status</th><th scope="col" class="num">Calls</th><th scope="col">Note</th></tr>
+       </thead>
+       <tbody>
+         {% for role in investigation.roles %}
+         <tr>
+-          <td>{{ role.name }}</td>
+-          <td>{{ status_badge(role.status) }}</td>
+-          <td class="num">{{ role.calls }}</td>
+-          <td>{{ role.note }}</td>
++          <td data-label="Role">{{ role.name }}</td>
++          <td data-label="Status">{{ status_badge(role.status) }}</td>
++          <td class="num" data-label="Calls">{{ role.calls }}</td>
++          <td data-label="Note">{{ role.note }}</td>
+         </tr>
+         {% else %}
+         <tr><td colspan="4" class="empty">No roles have run yet.</td></tr>
+@@ -139,27 +150,27 @@
+         {{ claim_badge(step.status) }}
+       </div>
+       <ol class="trace__steps">
+-        <li>
++        <li class="trace__step trace__step--question">
+           <span class="trace__label">Question</span>
+           <code>{{ step.question_id }}</code> {{ step.question }}
+         </li>
+-        <li>
++        <li class="trace__step trace__step--claim">
+           <span class="trace__label">Claim</span>
+           <code>{{ step.claim.claim_id }}</code> {{ step.claim.text }} {{ claim_badge(step.claim.status) }}
+         </li>
+-        <li>
++        <li class="trace__step trace__step--sources">
+           <span class="trace__label">Sources</span>
+           {% if step.sources %}
+           <ul class="items">
+             {% for src in step.sources %}
+-            <li><a href="{{ src.href }}"><code>{{ src.record_id }} r{{ src.revision }}</code></a> {{ trust_badge(src.trust) }}</li>
++            <li><a href="{{ src.href }}"><code>{{ src.record_id }} r{{ src.revision }}</code></a> {{ trust_badge(src.trust) }}{% if src.via_lookup is not none %} <span class="badge badge--status badge--status-via_lookup">via lookup {{ src.via_lookup + 1 }}</span>{% endif %}</li>
+             {% endfor %}
+           </ul>
+           {% else %}
+           <span class="muted">no sources</span>
+           {% endif %}
+         </li>
+-        <li>
++        <li class="trace__step trace__step--lookups">
+           <span class="trace__label">Lookups</span>
+           {% if step.lookups %}
+           <ul class="items">
+@@ -167,7 +178,7 @@
+             <li>
+               <code>{{ lk.tool }}</code> <code class="small">{{ lk.args_summary }}</code>
+               <span class="trace__arrow" aria-hidden="true">→</span> {{ lk.result_summary }}
+-              <span class="item__meta">at {{ lk.at }}</span>
++              <span class="item__meta">at {{ when(lk.at) }}</span>
+             </li>
+             {% endfor %}
+           </ul>
+@@ -175,21 +186,47 @@
+           <span class="muted">no scoped lookups</span>
+           {% endif %}
+         </li>
+-        <li>
++        <li class="trace__step trace__step--calculation">
+           <span class="trace__label">Calculation</span>
+           {% if step.calculation %}
+           <code>{{ step.calculation.expression }}</code>
+           <span class="trace__arrow" aria-hidden="true">→</span> {{ money(step.calculation.result) }} ({{ money_raw(step.calculation.result) }})
+           <span class="item__meta">computed by {{ step.calculation.computed_by }};
+             {% if step.calculation.matches %}matches the cited amounts{% else %}does not match the cited amounts{% endif %}</span>
++          {% if step.calculation.terms %}
++          <div class="table-wrap">
++            <table class="table table--compact stack">
++              <thead>
++                <tr>
++                  <th scope="col">Sign</th>
++                  <th scope="col">Line</th>
++                  <th scope="col">Sources</th>
++                  <th scope="col" class="num">Amount</th>
++                  <th scope="col" class="num">Minor units</th>
++                </tr>
++              </thead>
++              <tbody>
++                {% for term in step.calculation.terms %}
++                <tr>
++                  <td class="sign" data-label="Sign">{{ term.sign }}</td>
++                  <td data-label="Line">{{ term.label }}</td>
++                  <td data-label="Sources">{% for sid in term.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
++                  <td class="num" data-label="Amount">{{ money(term.amount) }}</td>
++                  <td class="num" data-label="Minor units">{{ money_raw(term.amount) }}</td>
++                </tr>
++                {% endfor %}
++              </tbody>
++            </table>
++          </div>
++          {% endif %}
+           {% else %}
+           <span class="muted">no calculation</span>
+           {% endif %}
+         </li>
+-        <li>
++        <li class="trace__step trace__step--status">
+           <span class="trace__label">Status</span>
+           {{ claim_badge(step.status) }} {{ step.status_reason }}
+-          <span class="item__meta">at {{ step.at }}</span>
++          <span class="item__meta">at {{ when(step.at) }}</span>
+         </li>
+       </ol>
+     </li>
+@@ -229,6 +266,7 @@
+     <div class="stat"><div class="stat__value">{{ review.counts.gaps }}</div><div class="stat__label">Gaps</div></div>
+   </div>
+ 
++  <section class="review-group review-group--included">
+   <h3 id="included">Included</h3>
+   <p class="muted small">These items are in the package body as it stands. Removing one changes the body and invalidates any pending approval.</p>
+   <ul class="review-list">
+@@ -252,7 +290,9 @@
+     <li class="empty">Nothing is included.</li>
+     {% endfor %}
+   </ul>
++  </section>
+ 
++  <section class="review-group review-group--excluded">
+   <h3 id="excluded">Excluded</h3>
+   <p class="muted small">The bank never sees this list. It exists so you can check what was left out and why.</p>
+   <ul class="review-list review-list--excluded">
+@@ -265,7 +305,9 @@
+     <li class="empty">Nothing was excluded.</li>
+     {% endfor %}
+   </ul>
++  </section>
+ 
++  <section class="review-group review-group--generalised">
+   <h3 id="generalised">Generalised</h3>
+   <ul class="review-list">
+     {% for item in review.generalised %}
+@@ -278,7 +320,9 @@
+     <li class="empty">Nothing was generalised.</li>
+     {% endfor %}
+   </ul>
++  </section>
+ 
++  <section class="review-group review-group--gaps">
+   <h3 id="gaps">Gaps</h3>
+   <ul class="review-list">
+     {% for gap in review.gaps %}
+@@ -293,6 +337,7 @@
+     <li class="empty">No gaps.</li>
+     {% endfor %}
+   </ul>
++  </section>
+ 
+   {% set approval = review.approval %}
+   <div class="approval" id="approval">
+@@ -309,10 +354,10 @@
+       <dt>Policy version</dt>
+       <dd><code>{{ approval.policy_version }}</code></dd>
+       <dt>Validity window</dt>
+-      <dd class="approval__window">{{ approval.valid_from }} to {{ approval.valid_until }}</dd>
++      <dd class="approval__window">{{ when(approval.valid_from) }} to {{ when(approval.valid_until) }}</dd>
+       {% if approval.approved_at %}
+       <dt>Approved at</dt>
+-      <dd>{{ approval.approved_at }}</dd>
++      <dd>{{ when(approval.approved_at) }}</dd>
+       {% endif %}
+       {% if approval.invalidated_reason %}
+       <dt>Invalidated</dt>
+@@ -326,6 +371,12 @@
+       <input type="hidden" name="policy_version" value="{{ approval.policy_version }}">
+       <button type="submit" class="btn btn--primary">Approve for {{ approval.recipient }}</button>
+     </form>
++    {% if approval.status == "approved" %}
++    <form method="post" action="{{ approval.dispatch_action|default('/requests/' ~ request.request_id ~ '/dispatch') }}" class="btn-row" id="send">
++      <button type="submit" class="btn btn--primary">Send to {{ approval.recipient }}</button>
++    </form>
++    <p class="muted small">Sending revalidates this approval against the current body, signs the exact approved bytes and delivers them to {{ approval.recipient }}. A changed body is refused.</p>
++    {% endif %}
+     <p class="muted small">An edit, a different recipient, expiry of the window, or a change to a cited source invalidates a pending approval. The backend checks the digest again at dispatch and refuses if the body differs.</p>
+   </div>
+ </section>
+diff --git a/alibi/app/templates/requests/dispatch.html b/alibi/app/templates/requests/dispatch.html
+index 9fa7b08..b8b11d6 100644
+--- a/alibi/app/templates/requests/dispatch.html
++++ b/alibi/app/templates/requests/dispatch.html
+@@ -1,13 +1,14 @@
+ {% extends "base.html" %}
+ {#
+   Dispatch result (holder). Context from preview_render.ctx_dispatch:
+-    dispatch  {outcome: "success"|"refused", package_id, request_id, recipient, attempted_at,
++    dispatch  {outcome: "success"|"refused"|"not_attempted", package_id, request_id, recipient, attempted_at,
+                receipt{receipt_id, package_digest, received_at, status, signer_key_id, expires_at}|None,
+                refusal{code, reason, checked_at, expected_digest, actual_digest}|None,
+                retry_action|None, review_href, history_href}
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Dispatch result</h1>
+@@ -21,7 +22,7 @@
+     <dt>Request ID</dt>
+     <dd><code>{{ dispatch.request_id }}</code></dd>
+     <dt>Attempted at</dt>
+-    <dd>{{ dispatch.attempted_at }}</dd>
++    <dd>{{ when(dispatch.attempted_at) }}</dd>
+   </dl>
+ 
+   <h3 id="receipt">Receipt</h3>
+@@ -31,13 +32,13 @@
+     <dt>Package digest</dt>
+     <dd class="digest">{{ dispatch.receipt.package_digest }}</dd>
+     <dt>Received at</dt>
+-    <dd>{{ dispatch.receipt.received_at }}</dd>
++    <dd>{{ when(dispatch.receipt.received_at) }}</dd>
+     <dt>Status</dt>
+     <dd>{{ status_badge(dispatch.receipt.status) }}</dd>
+     <dt>Signer key</dt>
+     <dd><code>{{ dispatch.receipt.signer_key_id }}</code></dd>
+     <dt>Expires</dt>
+-    <dd>{{ dispatch.receipt.expires_at }}</dd>
++    <dd>{{ when(dispatch.receipt.expires_at) }}</dd>
+   </dl>
+   <p class="muted small">The receipt binds this package ID to its digest. The bank's receipt shows the bytes arrived intact; it does not mark any claim true.</p>
+   <div class="btn-row">
+@@ -46,6 +47,26 @@
+   </div>
+ </div>
+ 
++{% elif dispatch.outcome == "not_attempted" %}
++<div class="result section-anchor" id="not-sent">
++  <h2>Not yet sent</h2>
++  <dl class="kv">
++    <dt>Request ID</dt>
++    <dd><code>{{ dispatch.request_id }}</code></dd>
++    <dt>Recipient</dt>
++    <dd>{{ dispatch.recipient }}</dd>
++  </dl>
++  <p>No dispatch has been attempted for this request. {% if dispatch.retry_action %}An approval is recorded: sending revalidates it against the current body, signs the exact approved bytes and delivers them to {{ dispatch.recipient }}.{% else %}Review and approve the package first.{% endif %}</p>
++  <div class="btn-row">
++    <a class="btn" href="{{ dispatch.review_href }}">Back to the review</a>
++    {% if dispatch.retry_action %}
++    <form method="post" action="{{ dispatch.retry_action }}" class="inline">
++      <button type="submit" class="btn btn--primary">Send to {{ dispatch.recipient }}</button>
++    </form>
++    {% endif %}
++  </div>
++</div>
++
+ {% else %}
+ <div class="result result--refused section-anchor" id="refused">
+   <h2>Dispatch refused</h2>
+@@ -57,7 +78,7 @@
+     <dt>Recipient</dt>
+     <dd>{{ dispatch.recipient }}</dd>
+     <dt>Attempted at</dt>
+-    <dd>{{ dispatch.attempted_at }}</dd>
++    <dd>{{ when(dispatch.attempted_at) }}</dd>
+     {% if dispatch.refusal %}
+     <dt>Code</dt>
+     <dd>{{ status_badge(dispatch.refusal.code) }}</dd>
+diff --git a/alibi/app/templates/requests/export.html b/alibi/app/templates/requests/export.html
+index 9c02e38..b9c0095 100644
+--- a/alibi/app/templates/requests/export.html
++++ b/alibi/app/templates/requests/export.html
+@@ -2,7 +2,7 @@
+ {#
+   Approved package rendering (holder, print-friendly). Context from preview_render.ctx_export:
+     package  {package_id, request_id, version, audience, recipient, case_id, subject_ref_masked,
+-              period{from,to}, issued_at, expires_at, digest,
++              period{from,to}|None, txn_ids[], issued_at, expires_at, digest,
+               signature{alg,key_id,domain,value},
+               claims[{question_id, question, status, rationale,
+                       evidence_refs[{record_id,revision,trust}],
+@@ -15,6 +15,7 @@
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Package {{ package.package_id }}</h1>
+@@ -56,12 +57,18 @@
+     <dd><code>{{ package.case_id }}</code></dd>
+     <dt>Subject</dt>
+     <dd><code>{{ package.subject_ref_masked }}</code> <span class="muted small">masked</span></dd>
+-    <dt>Period</dt>
+-    <dd><code>[{{ package.period.from }}, {{ package.period.to }})</code> <span class="muted small">half-open</span></dd>
++    <dt>Scope</dt>
++    <dd>
++      {% if package.period %}
++      <code>[{{ package.period.from }}, {{ package.period.to }})</code> <span class="muted small">half-open</span>
++      {% else %}
++      transaction-scoped: {% for txn_id in package.txn_ids %}<code>{{ txn_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
++      {% endif %}
++    </dd>
+     <dt>Issued</dt>
+-    <dd>{{ package.issued_at }}</dd>
++    <dd>{{ when(package.issued_at) }}</dd>
+     <dt>Expires</dt>
+-    <dd>{{ package.expires_at }}</dd>
++    <dd>{{ when(package.expires_at) }}</dd>
+     <dt>Body digest</dt>
+     <dd class="digest">{{ package.digest }}</dd>
+     <dt>Signature</dt>
+@@ -85,7 +92,7 @@
+     <dt>Recipient</dt>
+     <dd>{{ export.approval.recipient }}</dd>
+     <dt>Approved at</dt>
+-    <dd>{% if export.approval.approved_at %}{{ export.approval.approved_at }}{% else %}not approved{% endif %}</dd>
++    <dd>{% if export.approval.approved_at %}{{ when(export.approval.approved_at) }}{% else %}not approved{% endif %}</dd>
+     <dt>Policy version</dt>
+     <dd><code>{{ export.approval.policy_version }}</code></dd>
+     {% if export.approval.invalidated_reason %}
+@@ -141,7 +148,7 @@
+     <h2 id="attachments-title">Attachments</h2>
+   </div>
+   <div class="table-wrap">
+-    <table class="table table--compact">
++    <table class="table table--compact stack">
+       <thead>
+         <tr>
+           <th scope="col">ID</th>
+@@ -157,14 +164,14 @@
+       <tbody>
+         {% for att in package.attachments %}
+         <tr id="{{ att.attachment_id }}">
+-          <td><code>{{ att.attachment_id }}</code></td>
+-          <td>{{ att.kind }}</td>
+-          <td><code>{{ att.record_id }} r{{ att.revision }}</code></td>
+-          <td>{{ att.issuer }}</td>
+-          <td>{{ trust_badge(att.trust) }}</td>
+-          <td>{{ status_badge(att.attestation) }}</td>
+-          <td>{% if att.redacted %}yes{% else %}no{% endif %}</td>
+-          <td>{{ att.summary }}</td>
++          <td data-label="ID"><code>{{ att.attachment_id }}</code></td>
++          <td data-label="Kind">{{ att.kind }}</td>
++          <td data-label="Record"><code>{{ att.record_id }} r{{ att.revision }}</code></td>
++          <td data-label="Issuer">{{ att.issuer }}</td>
++          <td data-label="Trust">{{ trust_badge(att.trust) }}</td>
++          <td data-label="Attestation">{{ status_badge(att.attestation) }}{% if att.redacted %} <span class="small">Redacted extract, attested by Alibi</span>{% endif %}</td>
++          <td data-label="Redacted">{% if att.redacted %}yes{% else %}no{% endif %}</td>
++          <td data-label="Summary">{{ att.summary }}</td>
+         </tr>
+         {% else %}
+         <tr><td colspan="8" class="empty">No attachments.</td></tr>

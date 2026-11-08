@@ -13,7 +13,10 @@ returns an ``InvestigationResult`` with ``mode="agents"``. Per request:
 3. Source-of-funds questions, per credit:
    a. the pinned candidate rule (``settlement_candidates``) joins the credit to payouts;
       only an ``ambiguous`` join calls the Matcher, whose ``linked`` is accepted only for a
-      record in the candidate pool (and only if the optional second opinion agrees);
+      record in the candidate pool (and only if the optional second opinion agrees). The
+      settlement evidence is a separate ``settlement`` record (S1's fixtures) or the payout's
+      own ``status`` (the team's cases fold the settlement state into the payout; see
+      ``alibi.agents.candidates``), and the ``settlements`` list the roles see holds both;
    b. the Detective proposes a claim per question (and alerts, saved when their refs validate);
    c. the Challenger runs up to ``max_rounds`` rounds; its one validated ``next_action`` is
       executed through ``alibi.agents.actions`` within ``action_budget`` and fed back under
@@ -22,8 +25,10 @@ returns an ``InvestigationResult`` with ``mode="agents"``. Per request:
       a settled candidate whose reference the credit carries, whose components reconcile and
       whose evidence is issuer evidence is ``supported``; an explicit conflict (settlement
       failed, pending at or after booking, settled after booking, amount mismatch) is
-      ``contradicted``; everything else is ``unresolved`` with a team gap code at the start of
-      ``Claim.gap``. The Challenger may only downgrade a status: to ``contradicted`` only when
+      ``contradicted``; settlement evidence that merely fails to show bank settlement (a payout
+      still pending before the booking, a settlement too early or without a settlement
+      status) is ``unresolved`` with the rejection's gap code; everything else is
+      ``unresolved`` with a team gap code at the start of ``Claim.gap``. The Challenger may only downgrade a status: to ``contradicted`` only when
       every conflicting ref it cites is a payout or settlement with an explicit-field conflict
       (``CandidateResult.conflicts``, or a failed, late, pending-at-booking or mismatched
       settlement), else a ``supported`` verdict goes to ``unresolved``; a proposal produced
@@ -390,9 +395,22 @@ class _Run:
 
     # ----------------------------------------------------------------------- joins
 
+    def candidates(self, txn: BankTxn) -> CandidateResult:
+        """The pinned rule over the current material; a payout that a settlement lookup
+        returned for its own reference counts as settlement evidence for itself."""
+        return settlement_candidates(txn, self.material.records(),
+                                     looked_up=self.material.settlement_lookup_refs())
+
+    def role_records(self) -> tuple[list[EvidenceRecord], list[EvidenceRecord]]:
+        """``(merchant, settlements)`` for the Detective and Challenger: every record but the
+        separate settlement records, and the settlement evidence (separate settlement records
+        plus payouts carrying a status), so a payout with a status appears in both."""
+        merchant = [r for r in self.material.records() if r.kind != RecordKind.SETTLEMENT]
+        return merchant, self.material.settlement_evidence()
+
     def join(self, txn: BankTxn) -> None:
         """Deterministic candidate rule, then the Matcher only when it is ambiguous."""
-        result = settlement_candidates(txn, self.material.records())
+        result = self.candidates(txn)
         join = _Join(result)
         self.joins[txn.txn_id] = join
         self.note("validation", tool="settlement_candidates", reason=result.summary(),
@@ -452,8 +470,7 @@ class _Run:
             if join is not None:
                 state, to = _link_view(join.initial, join.choice)
             bank.append((txn, state, to))
-        merchant = [r for r in self.material.records() if r.kind != RecordKind.SETTLEMENT]
-        settlements = self.material.records(kinds=[RecordKind.SETTLEMENT])
+        merchant, settlements = self.role_records()
         rr = self.call("detective", roles.run_detective,
                        detective_input(self.material, self.rfc, bank, merchant, settlements))
         self.detective = rr
@@ -550,13 +567,12 @@ class _Run:
     def investigate_credit(self, txn: BankTxn, question: Question, proposal: DetectiveClaim | None) -> _Outcome:
         join = self.joins[txn.txn_id]
         claim = self.claim_dict(txn, question, proposal, join)
-        result = settlement_candidates(txn, self.material.records())
+        result = self.candidates(txn)
         last: ChallengerOutput | None = None
         stale = False        # the last proposal predates a retrieval that changed the material
         for index in range(self.max_rounds):
             self.rounds += 1
-            merchant = [r for r in self.material.records() if r.kind != RecordKind.SETTLEMENT]
-            settlements = self.material.records(kinds=[RecordKind.SETTLEMENT])
+            merchant, settlements = self.role_records()
             rr = self.call("challenger", roles.run_challenger,
                            challenger_input(self.material, claim, [txn], merchant, settlements,
                                             round_index=index, actions_left=self.budget.remaining))
@@ -595,7 +611,7 @@ class _Run:
                 break
             if res.outcome == "ok" and res.new_keys:
                 stale = True
-            result = settlement_candidates(txn, self.material.records())
+            result = self.candidates(txn)
             claim["link_state"], claim["linked_to"] = _link_view(result, join.choice)
         outcome = self.verdict(txn, result, join)
         if last is not None and stale:
@@ -652,6 +668,8 @@ class _Run:
                             evidence=[txn.ref(), *(p.ref() for p in pool)])
         if len(result.provisional) == 1:
             return self.provisional(txn, result.provisional[0], result)
+        if result.coded:
+            return self.undecided(txn, result.coded[0], result)
         payouts = self.material.records(kinds=[RecordKind.PAYOUT])
         if not payouts and self.records_err:
             gap = (f"The merchant records could not be retrieved ({self.records_err}), so no payout could be "
@@ -673,12 +691,14 @@ class _Run:
     def linked(self, txn: BankTxn, cand: Candidate, result: CandidateResult) -> _Outcome:
         payouts, settlement = cand.payouts, cand.settlement
         assert settlement is not None
+        itself = cand.settles_itself      # the payout's own status is the settlement evidence
+        what = _what(settlement)
         payout = payouts[0] if len(payouts) == 1 else None
         ref = cand.group_ref or (payout.payment_ref if payout else None) or "none"
         statement = (f"Credit {txn.txn_id} of {_money(txn.amount_pence, txn.currency)} is payout "
                      f"{_ids(payouts)} (reference {ref})")
         unknown = _unknown_source(txn.txn_id, txn)
-        evidence = [txn.ref(), *(p.ref() for p in payouts), settlement.ref()]
+        evidence = _unique([txn.ref(), *(p.ref() for p in payouts), settlement.ref()])
         parts = [result.summary()]
         components, problem = self.components(payouts)
         calc = None
@@ -698,7 +718,8 @@ class _Run:
             parts.append(problem)
             return _Outcome(ClaimStatus.UNRESOLVED, unknown, " ".join(parts), problem, gap=problem,
                             evidence=evidence, calculation=calc)
-        own = [f"{r.kind.value} {r.record_id}" for r in [*payouts, settlement, *(components or [])]
+        own = [f"{r.kind.value} {r.record_id}"
+               for r in [*payouts, *([] if itself else [settlement]), *(components or [])]
                if r.source_trust == SourceTrust.SELF_SUPPLIED]
         if own:
             gap = (f"{', '.join(own)} {'is' if len(own) == 1 else 'are'} self-supplied (imported by the "
@@ -721,16 +742,24 @@ class _Run:
             return _Outcome(ClaimStatus.UNRESOLVED, unknown, " ".join(parts + [gap]),
                             "The amounts do not reconcile.", gap=gap, evidence=evidence, calculation=calc)
         if not reconcile.credit_supported(calc):
-            gap = (f"{GAP_SETTLEMENT_NOT_FOUND}: settlement {settlement.ref().key()} does not show the "
-                   "funds reached the bank by the booking.")
+            gap = (f"{GAP_SETTLEMENT_NOT_FOUND}: {what} does not show the funds reached the bank by the "
+                   "booking.")
             return _Outcome(ClaimStatus.UNRESOLVED, unknown, " ".join(parts + [gap]),
                             "The reconciliation does not support the credit.", gap=gap,
                             evidence=evidence, calculation=calc)
-        statement += f", settled as {settlement.record_id} before the credit was booked."
-        parts.append(f"References: the credit carries {ref}, matching the payout and settlement.")
-        return _Outcome(ClaimStatus.SUPPORTED, statement, " ".join(parts),
-                        f"Settlement {settlement.ref().key()} is {settlement.status} by the booking, the "
-                        f"amounts reconcile and the credit carries {ref}.",
+        effective = reconcile.settlement_effective_time(settlement)
+        if itself:
+            statement += (f", whose own status {settlement.status} took effect at "
+                          f"{format_utc(effective)}, before the credit was booked.")
+            parts.append(f"References: the credit carries {ref}, matching the payout.")
+            reason = (f"Payout {settlement.ref().key()} carries status {settlement.status}, effective by the "
+                      f"booking; the amounts reconcile and the credit carries {ref}.")
+        else:
+            statement += f", settled as {settlement.record_id} before the credit was booked."
+            parts.append(f"References: the credit carries {ref}, matching the payout and settlement.")
+            reason = (f"Settlement {settlement.ref().key()} is {settlement.status} by the booking, the "
+                      f"amounts reconcile and the credit carries {ref}.")
+        return _Outcome(ClaimStatus.SUPPORTED, statement, " ".join(parts), reason,
                         evidence=evidence, calculation=calc)
 
     def provisional(self, txn: BankTxn, cand: Candidate, result: CandidateResult) -> _Outcome:
@@ -740,9 +769,20 @@ class _Run:
                     if r.status == "released_to_balance"
                     or (r.text and "balance" in r.text.lower() and "released" in r.text.lower())]
         code = GAP_BALANCE_RELEASE if released else GAP_SETTLEMENT_NOT_FOUND
-        gap = (f"{code}: no settlement record for payout {ref} shows a transfer to the bank account; a payout "
-               "record" + (" or a release to the platform balance" if released else "")
-               + " does not show bank settlement.")
+        payout = payouts[0] if len(payouts) == 1 else None
+        # Honest about what the payout record itself says: a status that is not decisive
+        # (``alibi.agents.candidates.own_status_decisive``) is named, never called absent.
+        if payout is None:
+            why = "the payout records of the group do not show bank settlement"
+        elif payout.status is None:
+            why = "a payout record with no status does not show bank settlement"
+        elif payout.status in PENDING_STATUSES:
+            why = (f"the payout's own status {payout.status}, observed {format_utc(payout.occurred_at)} before "
+                   "the booking, is its initial state and does not show bank settlement")
+        else:
+            why = f"the payout's own status {payout.status} is not a settlement status and does not show bank settlement"
+        gap = (f"{code}: no settlement record for payout {ref} shows a transfer to the bank account; {why}"
+               + ("; a release to the platform balance is not a settlement." if released else "."))
         misses = [lk for lk in self.material.lookups if lk.tool == "lookup_settlement"
                   and lk.outcome == "not_found" and str(lk.args.get("payout_reference", "")).upper() == str(ref).upper()]
         if misses:
@@ -751,11 +791,27 @@ class _Run:
                         " ".join([result.summary(), gap]), "No settlement record for the candidate payout.",
                         gap=gap, evidence=[txn.ref(), *(p.ref() for p in payouts)])
 
+    def undecided(self, txn: BankTxn, rejection: Rejection, result: CandidateResult) -> _Outcome:
+        """Settlement evidence was retrieved but shows no bank settlement and no explicit
+        conflict (a payout still pending before the booking, a settlement too early or with no
+        settlement status): unresolved, with the rejection's gap code."""
+        settlement = rejection.settlement
+        code = rejection.code or GAP_SETTLEMENT_NOT_FOUND
+        evidence = _unique([txn.ref(), *(p.ref() for p in rejection.payouts),
+                            *([settlement.ref()] if settlement is not None else [])])
+        gap = f"{code}: {rejection.reason}; the source of funds is not established."
+        parts = [result.summary()]
+        if settlement is not None:
+            parts.append(_timing_text(settlement, txn))
+        return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), " ".join(parts),
+                        f"Settlement evidence does not show bank settlement: {rejection.reason}",
+                        gap=gap, evidence=evidence)
+
     def contradicted(self, txn: BankTxn, rejection: Rejection, result: CandidateResult) -> _Outcome:
         code = _conflict_code(rejection, txn)
         settlement = rejection.settlement
-        evidence = [txn.ref(), *(p.ref() for p in rejection.payouts),
-                    *([settlement.ref()] if settlement is not None else [])]
+        evidence = _unique([txn.ref(), *(p.ref() for p in rejection.payouts),
+                            *([settlement.ref()] if settlement is not None else [])])
         gap = f"{code}: {rejection.reason}; the credit's origin remains unresolved."
         parts = [result.summary()]
         if settlement is not None:
@@ -1141,7 +1197,17 @@ def _field_conflict(item: Any, txn: BankTxn, result: CandidateResult) -> bool:
                                                  rejection.settlement.revision) == key:
             return True
     if item.kind == RecordKind.PAYOUT:
-        return item.status in FAILED_STATUSES
+        # A payout carrying a status is settlement evidence for itself: failed, still pending
+        # when observed at or after the booking, or effective only after it conflicts; a
+        # payout with no status, or pending before the booking, conflicts with nothing.
+        if item.status in FAILED_STATUSES:
+            return True
+        if not reconcile.is_settlement_evidence(item):
+            return False
+        if item.status in PENDING_STATUSES and item.occurred_at >= txn.booked_at:
+            return True
+        effective = reconcile.settlement_effective_time(item)
+        return effective is not None and effective > txn.booked_at
     if item.kind != RecordKind.SETTLEMENT:
         return False
     if item.status in FAILED_STATUSES:
@@ -1191,7 +1257,10 @@ def _alert_text(kind: str, items: list[Any]) -> tuple[str, str]:
 
 
 def _conflict_code(rejection: Rejection, txn: BankTxn) -> str:
-    """The team gap code for an explicit conflict, from the records' fields."""
+    """The team gap code for an explicit conflict, from the records' fields (the candidate
+    rule's own code when it set one)."""
+    if rejection.code:
+        return rejection.code
     settlement = rejection.settlement
     if settlement is None:
         return GAP_SETTLEMENT_FAILED if any(p.status in FAILED_STATUSES for p in rejection.payouts) else GAP_AMOUNT_MISMATCH
@@ -1215,13 +1284,20 @@ def _calc_text(calc: Calculation, components: list[EvidenceRecord], payouts: lis
             f"{calc.target_ref.key() if calc.target_ref else 'no target'} at {calc.target_pence}: difference "
             f"{calc.difference_pence}, {'balanced' if calc.balanced else 'not balanced'}.")
     amounts = " Payout " + ", ".join(f"{p.record_id} is {p.amount_pence}" for p in payouts)
-    if settlement is not None:
+    if settlement is not None and not any(settlement.record_id == p.record_id for p in payouts):
         amounts += f" and settlement {settlement.record_id} is {settlement.amount_pence}"
     return text + amounts + "."
 
 
+def _what(settlement: EvidenceRecord) -> str:
+    """``payout <key>`` when the settlement evidence is a payout's own status, else
+    ``settlement <key>``: the trace never calls a payout a settlement record."""
+    label = "payout" if settlement.kind == RecordKind.PAYOUT else "settlement"
+    return f"{label} {settlement.ref().key()}"
+
+
 def _timing_text(settlement: EvidenceRecord, txn: BankTxn) -> str:
-    text = (f"Timing: settlement {settlement.ref().key()} status {settlement.status or 'none'}, observed "
+    text = (f"Timing: {_what(settlement)} status {settlement.status or 'none'}, observed "
             f"{format_utc(settlement.occurred_at)}")
     if settlement.effective_at is not None:
         text += f", effective {format_utc(settlement.effective_at)}"

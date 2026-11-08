@@ -562,7 +562,7 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                       settlement_lookup: SettlementLookup | None = None,
                       txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
                       registry: TrustRegistry | None = None,
-                      now: datetime | None = None) -> InvestigationResult:
+                      now: datetime | None = None, client: Any = None) -> InvestigationResult:
     """Investigate a stored request and save its links, claims and trace.
 
     ``request`` is a request_id together with ``audience`` (the bank that sent it; without it a
@@ -570,14 +570,49 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
     ``RequestForContext``, whose own audience is used (an ``audience`` that contradicts it raises ``StoreError``). Without ``gateway`` a
     ``Gateway`` is built for the
     request's subject and the next run id, with the connector callables, budget and registry
-    given (the registry verifies settlement lookups). Only ``mode="rules"`` is built; other
-    modes raise ``NotImplementedError``.
+    given (the registry verifies settlement lookups).
+
+    ``mode`` picks the engine: ``"rules"`` is the deterministic core engine
+    (``alibi.core.investigate_rules``); ``"agents"`` is the Gemini roles pipeline
+    (``alibi.agents.runner.run_investigation``); ``"one_pass"`` (alias ``"single_call"``) is the
+    single-call baseline (``alibi.baselines.one_pass.run_investigation``). The model modes take
+    ``client`` (anything with ``GeminiClient.generate``'s signature; default a ``GeminiClient``,
+    which needs ``GEMINI_API_KEY`` on first use) and never raise for a model failure: the
+    affected claims come back unresolved and the result's ``unavailable`` and trace say why.
+    Any other mode name raises ``NotImplementedError``.
     """
-    if mode != core_rules.MODE:
-        raise NotImplementedError(f"mode {mode!r} is not built yet; this build runs mode "
-                                  "'rules' only (agents and single_call arrive later)")
+    modes = {core_rules.MODE: "rules", "agents": "agents", "one_pass": "one_pass",
+             "single_call": "one_pass"}
+    engine = modes.get(mode)
+    if engine is None:
+        raise NotImplementedError(f"mode {mode!r} is not built; modes are 'rules', 'agents' and "
+                                  "'one_pass' (alias 'single_call')")
     at = _clock(now)
     rfc = _stored_request(store, request, audience)
+    if engine != "rules":
+        if client is None:
+            from alibi.llm.client import GeminiClient   # lazy: no key is needed to import
+            client = GeminiClient()
+        if engine == "agents":
+            from alibi.agents import runner as agents_runner   # lazy: the runner imports this module
+            result = agents_runner.run_investigation(
+                store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
+                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now)
+            actor = agents_runner.ACTOR
+        else:
+            from alibi.baselines import one_pass
+            result = one_pass.run_investigation(
+                store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
+                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now)
+            actor = one_pass.ACTOR
+        answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
+                            for claim in result.claims)
+        problems = f"; {len(result.unavailable)} model step(s) failed" if result.unavailable else ""
+        _audit(store, action="run_investigation", actor=actor, outcome="ok", at=at,
+               target_id=rfc.request_id,
+               detail=f"run {result.run_id} ({result.mode}) for {rfc.audience}: {answers}; "
+                      f"{result.calls_used} gateway calls{problems}")
+        return result
     if gateway is None:
         if registry is None and settlement_lookup is not None:
             registry = default_keystore().registry()

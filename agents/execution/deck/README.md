@@ -34,4 +34,4 @@ Until `bank_inbox.png` and `bank_package.png` exist, slides 2b and 10 fall back 
 
 ## Placeholders still open
 
-All lockbox numbers (PH-03 to PH-05, PH-10 to PH-12, PH-15 to PH-45) wait on eval's frozen run. PH-01 (final commit, links) is lead's. PH-08 (invalidation on correction) can cite execution's `test_dispatch_conformance.py` C8 once eval records it.
+All lockbox numbers (PH-03 to PH-05, PH-10 to PH-12, PH-15 to PH-45) wait on eval's frozen run. PH-01 (final commit, links) is lead's. PH-08 is filled from eval's record bc1a8728a3 (native signed-correction fixture).

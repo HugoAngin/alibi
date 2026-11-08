@@ -13,15 +13,15 @@ Role: `execution` (sirExile44). Writes only in `agents/execution/`. Spec: `docs/
 - (3) `out/consent_matrix.md`, triggers C1–C16 + HTTP flows F1–F3. Routes from S4 form actions; RFC intake and merchant events are placeholders. b5cf448. F2 updated to inherited txn_ids per lead 7a7ba1e (follow-up keeps parent scope; wider = new RFC).
 - (4) `out/CONTROLS_SLIDE.md`, six threat rows → control, IDs, evidence; README limits draft. 06d22b1.
 
-Eval need 00:45Z: SP-25..SP-32 verifier probes. Plan prepared in `out/verifier_probes.json` (11 steps, 3 checks) via `verifier_probes.py`; `api.verifier_probe_plan()` is in `score_probe_steps` format. Expected codes match eval's reference verifier.
+Eval need 00:45Z: SP-25..SP-32 verifier probes. Plan `out/verifier_probes.json` (12 steps, SP-31 identical retry uses `expected_outcome: accepted`). Eval exported helpers (d8f2aa3); local reference run against eval's BankInbox: `uv run --frozen python -m agents.execution.verifier_probes --run` → 8/8 probes, 12 steps, all planned codes, refusals stored nothing. Recorded in `out/results.jsonl`, split `reference` (kept apart from live HTTP).
 
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
 
 ## Next
-- When S2 bank routes and the S5 attempt contract land: implement the SP-25..32 runner (local reference run against eval's BankInbox, then HTTP), push, send eval the commit and command.
+- When S2 bank routes and the S5 attempt contract land: HTTP runner for SP-25..32 reusing `_build` bytes, observations to a separate file and split.
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- 2026-11-08 ~01:00Z need to eval: export TrustRegistry, sign_record, verify_package and the PURPOSE_* constants from agents.eval.api for the local reference run. Assumption if no reply: write the HTTP runner only.
+- None.

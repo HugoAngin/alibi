@@ -68,7 +68,7 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Lead 06:06Z (to eval): "data: merchant worker under agents/data". Hosting stays inside our own folder. Not yet assigned to data directly.
 
 ## Lead batch (06:49Z, post 6718410490)
-- (1) GEMINI_SHOWCASE.md is done, with an evidence link for each row. vision_check.py scores 3 receipts (rcpt-06, 09, 10) against receipts.json. It has not run: there is no GEMINI_API_KEY on this Mac. At ~06:55Z I asked Hugo, through the parent session, to put one in the repo-root .env. Once the key is there, run `uv run --frozen python -m agents.data.vision_check` and update the vision row from out/vision_check.json. The "measured on sealed cases" section waits on eval's results.jsonl.
+- (1) GEMINI_SHOWCASE.md is done, with an evidence link for each row. vision_check.py scores 3 receipts (rcpt-06, 09, 10) against receipts.json. Eval ran it live (record 73e742c7d7): 20/21 fields; rcpt-09 got the issuer wrong. The showcase cites that record. Hugo later added GEMINI_API_KEY to .env and approved 3 calls; they were NOT spent, because eval's record already covers it. Ask Hugo before making any call. The "measured on sealed cases" section waits on eval's results.jsonl.
 - (2) QA pass 2 once S5 lands: the Astro web/ apps and Jinja, both inboxes. (3) Finalise demo_script from RUNBOOK, do two timed dry runs, then record a replay video under 4 min outside the repo and link it from the README. The video needs Hugo to screen-record (macOS, not Xbox Game Bar). (4) Regenerate the figures from the real numbers. (5) Finalise data_card.
 
 ## Next

@@ -39,10 +39,33 @@ def test_both_scorers_read_recipient_visible_results(tmp_path):
     for filename in run_sealed.PREDICTION_FILES.values():
         common.write_jsonl(tmp_path / filename, rows)
     common.write_jsonl(tmp_path / run_sealed.PROBE_FILE, [])
-    run_sealed.score_saved(tmp_path, [case], [], dry=True)
+    run_sealed.score_saved(tmp_path, [case], [], kind="public_rehearsal")
     report = common.load_json(tmp_path / "scores.json")
     assert report["official"]["rules"]["requests_safe"] > 0
     assert report["independent"]["rules"]["metrics"]["requests_observed"] == len(case["rfcs"])
+
+
+def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(tmp_path, monkeypatch):
+    private_root, output = tmp_path / "private", tmp_path / "capture"
+    private_root.mkdir()
+    monkeypatch.setattr(run_sealed, "is_open", lambda: False)
+    monkeypatch.setattr(run_sealed.seal, "git_commit", lambda _: ("commit", False))
+    monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
+    calls = []
+
+    def worker(case, mode, *, dry_run, timeout, blocked):
+        assert case["case_number"] == 1 and not dry_run
+        assert private_root in blocked and output in blocked
+        calls.append(mode)
+        return rules_reference.predictions_for([case])
+
+    monkeypatch.setattr(run_sealed, "run_case_worker", worker)
+    run_sealed.main(["--public-live", "--case", "1", "--case", "1",
+                     "--private-root", str(private_root), "--out", str(output)])
+    assert calls == list(run_sealed.MODES)
+    assert common.load_json(output / "scores.json")["mode"] == "public_live"
+    assert common.load_json(output / "run.json")["input"]["commit"] == "commit"
+    assert (output / "deck-table.md").read_text().startswith("# Public live adapter check")
 
 
 def test_closed_lockbox_stops_before_private_paths_are_read(tmp_path, monkeypatch, capsys):

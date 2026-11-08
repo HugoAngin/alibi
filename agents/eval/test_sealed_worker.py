@@ -41,7 +41,12 @@ def test_sandbox_proves_gold_path_is_unreadable(tmp_path):
     private.mkdir()
     gold = private / "gold.jsonl"
     gold.write_text("synthetic marker")
-    verify_file_isolation((private,), gold)
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    predictions = capture / "agents.jsonl"
+    predictions.write_text("synthetic earlier prediction")
+    verify_file_isolation((private, capture), gold)
+    verify_file_isolation((private, capture), predictions)
     with pytest.raises(RuntimeError, match="could not prove"):
         verify_file_isolation((tmp_path / "unrelated",), gold)
     rows = run_case_worker(canonical_case(), "rules", dry_run=True, timeout=15, blocked=(private,))

@@ -79,6 +79,13 @@ Rehearse the one-command runner on public data before freezing. `--case` selects
 uv run --frozen python -m agents.eval.run_sealed --dry-run --out "$REHEARSAL_OUTPUT"
 ```
 
+When `alibi.adapter.run_case` lands, check it on public cases before freeze. Run from the clean candidate with the lockbox closed and the model credentials in the environment. Choose a new output directory. Start with Cases 1 and 2 to cover the settled and pending examples and both bank recipients. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage.
+
+```bash
+uv run --frozen python -m agents.eval.run_sealed --public-live --case 1 --case 2 \
+  --private-root "$ALIBI_FROZEN_PRIVATE_ROOT" --out "$PUBLIC_LIVE_OUTPUT"
+```
+
 For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The current live isolation preflight uses macOS `sandbox-exec` to deny the worker access to the private root and repository data. The worker receives the allowlisted case over stdin and starts with separate scratch state for each case and system.
 
 ```bash
@@ -86,4 +93,4 @@ python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \
   --command 'uv run --frozen python -m agents.eval.run_sealed'
 ```
 
-The runner verifies the seal before and after capture. It binds the manifest to one run directory and retains the original predictions and probe JSONL. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.
+The runner verifies the seal before and after capture. It binds the manifest to one run directory and retains the original predictions and probe JSONL. Both live modes deny workers access to that directory so later cases and systems cannot read earlier predictions. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.

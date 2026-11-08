@@ -17,6 +17,11 @@ from tools.lockbox import is_open
 
 PREDICTION_FILES = {mode: f"{mode}.jsonl" for mode in MODES}
 PROBE_FILE = "probes.jsonl"
+REPORT_HEADINGS = {
+    "public_rehearsal": "Public rehearsal, stubbed model and drafts only",
+    "public_live": "Public live adapter check",
+    "frozen": "Frozen comparison",
+}
 
 
 def _digest(path: Path) -> str:
@@ -50,10 +55,10 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         return
 
     probe_rows = _probe_rows(probes)
-    if not dry and not probe_rows:
+    if not dry and lock is not None and not probe_rows:
         raise ValueError("capture the full probe catalogue before the frozen run")
     if not dry and find_spec("alibi.adapter") is None:
-        raise RuntimeError("the frozen candidate does not contain alibi.adapter.run_case")
+        raise RuntimeError("the candidate does not contain alibi.adapter.run_case")
     for case in cases:
         case_payload(case)
     if lock is not None:
@@ -142,10 +147,10 @@ def _measured_costs(score: scorer.SystemScore) -> None:
         score.notes.append(f"{score.system.name}: cost is unknown because some requests lack complete measurements.")
 
 
-def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, dry: bool) -> dict:
+def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kind: str) -> dict:
     systems = [scorer.load_predictions(output / filename, mode) for mode, filename in PREDICTION_FILES.items()]
     outcomes = scorer.load_probe_results(output / PROBE_FILE)
-    probes = scorer.probe_metrics(outcomes) if not dry else {}
+    probes = scorer.probe_metrics(outcomes) if outcomes and kind != "public_rehearsal" else {}
     official = scorer.run(cases, systems, probes)
     attack_scores = scorer.run(adversarial, systems, probes) if adversarial else []
     for score in [*official, *attack_scores]:
@@ -160,11 +165,10 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, dry
     table += "\n| Independent safe-complete | " + " | ".join(
         f"{independent[system.name]['metrics']['safe_complete']}/{len(cases)}" for system in systems
     ) + " |"
-    heading = "# Public rehearsal, stubbed model and drafts only" if dry else "# Frozen comparison"
-    (output / "deck-table.md").write_text(f"{heading}\n\n{table}\n", encoding="utf-8")
+    (output / "deck-table.md").write_text(f"# {REPORT_HEADINGS[kind]}\n\n{table}\n", encoding="utf-8")
     (output / "report.md").write_text(scorer.markdown_report(official), encoding="utf-8")
     common.write_json(output / "scores.json", {
-        "mode": "public_rehearsal" if dry else "frozen",
+        "mode": kind,
         "official": {score.system.name: score.metrics for score in official}, "independent": independent,
         "adversarial": {score.system.name: score.metrics for score in attack_scores},
         "independent_adversarial": independent_scores(adversarial) if adversarial else {},
@@ -183,8 +187,10 @@ def _path_argument(parser, option):
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", help="use public cases and stubbed model output")
-    parser.add_argument("--case", type=int, action="append", help="public case selection for a dry run")
+    public = parser.add_mutually_exclusive_group()
+    public.add_argument("--dry-run", action="store_true", help="use public cases and stubbed model output")
+    public.add_argument("--public-live", action="store_true", help="run public cases through the real adapter")
+    parser.add_argument("--case", type=int, action="append", help="public case selection")
     parser.add_argument("--timeout", type=float, default=90, help="seconds per case and system")
     for option in ("out", "cases", "gold", "manifest", "model_config", "private_root", "probes"):
         _path_argument(parser, option)
@@ -195,9 +201,25 @@ def main(argv: list[str] | None = None) -> None:
     blocked = ()
     adversarial = []
     lock = None
+    kind = "frozen"
     if args.dry_run:
+        kind = "public_rehearsal"
         cases = [load_case(number) for number in args.case] if args.case else load_cases()
         signature = {"dry": True, "inputs": common.canonical_sha256(cases), "timeout": args.timeout}
+    elif args.public_live:
+        kind = "public_live"
+        if is_open() or not args.case or args.private_root is None:
+            parser.error("public live checks require explicit --case and --private-root with the lockbox closed")
+        root = _private_path(args.private_root)
+        if not root.is_dir() or output.is_relative_to(root):
+            parser.error("use an existing private root and a separate run directory")
+        commit, dirty = seal.git_commit("HEAD")
+        if dirty:
+            parser.error("run the public live check from a clean candidate checkout")
+        cases = [load_case(number) for number in dict.fromkeys(args.case)]
+        blocked = (root, REPO / "data", REPO / "agents" / "data" / "out" / "cases", output)
+        signature = {"kind": kind, "commit": commit, "inputs": common.canonical_sha256(cases),
+                     "timeout": args.timeout}
     else:
         if not is_open():
             parser.error("use the authorized tools/results.py lockbox command")
@@ -218,14 +240,14 @@ def main(argv: list[str] | None = None) -> None:
         attack_ids = {case["case_number"] for case in common.read_jsonl(input_path / "adversarial.jsonl")}
         if not attack_ids or not attack_ids < {case["case_number"] for case in cases}:
             parser.error("expected a separate adversarial file in the prepared pack")
-        blocked = (root, REPO / "data", REPO / "agents" / "data" / "out" / "cases")
+        blocked = (root, REPO / "data", REPO / "agents" / "data" / "out" / "cases", output)
         verify_file_isolation(blocked, gold_path)
         signature = {"dry": False, "commit": commit, "manifest": _digest(args.manifest), "timeout": args.timeout}
         lock = gold_path.parent / f"capture-{manifest['set_sha256']}.json"
 
     _capture_once(output, cases, signature, dry=args.dry_run, timeout=args.timeout, blocked=blocked,
                   probes=args.probes, lock=lock)
-    if not args.dry_run:
+    if kind == "frozen":
         problems, _ = seal.verify_manifest(args.manifest, input_path, gold_path, args.model_config)
         if problems or _digest(args.manifest) != signature["manifest"]:
             parser.error("frozen commitments changed during capture")
@@ -233,7 +255,7 @@ def main(argv: list[str] | None = None) -> None:
         cases = [{**case, "gold": gold[case["case_number"]]} for case in cases]
         adversarial = [case for case in cases if case["case_number"] in attack_ids]
         cases = [case for case in cases if case["case_number"] not in attack_ids]
-    print(json.dumps(score_saved(output, cases, adversarial, dry=args.dry_run), sort_keys=True, allow_nan=False))
+    print(json.dumps(score_saved(output, cases, adversarial, kind=kind), sort_keys=True, allow_nan=False))
 
 
 if __name__ == "__main__":

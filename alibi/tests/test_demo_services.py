@@ -52,3 +52,56 @@ def test_serve_runs_until_the_timeout_and_exits_cleanly(tmp_path):
     tokens = json.loads((tmp_path / "tokens.json").read_text())
     assert not any(value in out.getvalue() for value in tokens.values())   # never printed
     assert lines[-1] == {"stopped": True, "failed": []}
+
+
+def test_live_http_round_trip_through_both_services(tmp_path):
+    """Real sockets: the merchant and bank served by uvicorn on ephemeral ports, driven with
+    httpx clients. Bounded waits only; both servers are stopped before the test returns."""
+    import threading
+    import time
+
+    import httpx
+
+    from alibi.connectors.bank_feed import FeedClient, HttpFeed
+    from alibi.connectors.clients import BankClient, MerchantClient, bootstrap
+    from alibi.core.store import Store
+
+    args = _args(tmp_path, "--as-of", "2026-11-04T14:00:00Z")
+    built = demo_services.build_apps(args)
+    servers = [demo_services._Server(built["merchant"], "127.0.0.1", 0, "merchant"),
+               demo_services._Server(built["bank"], "127.0.0.1", 0, "bank")]
+    for server in servers:
+        server.start()
+    deadline = time.monotonic() + 15
+    while not all(s.server.started for s in servers):
+        assert time.monotonic() < deadline, "servers did not start within 15s"
+        time.sleep(0.05)
+    try:
+        ports = [s.server.servers[0].sockets[0].getsockname()[1] for s in servers]
+        tokens = json.loads((tmp_path / "tokens.json").read_text())
+        registry = built["keystore"].registry()
+        with httpx.Client(base_url=f"http://127.0.0.1:{ports[0]}", timeout=10) as mc, \
+                httpx.Client(base_url=f"http://127.0.0.1:{ports[1]}", timeout=10) as bc, \
+                Store(tmp_path / "passport.db") as store:
+            merchant = MerchantClient(mc)
+            assert merchant.identity()["issuer_id"] == "mock-marketplace"
+            banks = {name: BankClient(bc, tokens[name], recipient=name) for name in ("bank_a", "bank_b")}
+            feed = FeedClient(HttpFeed("", tokens["feed"], client=bc), store,
+                              subject_ref="maya-001", connection_id="conn-maya-001")
+            summary = bootstrap(store, registry, case=1, merchant=merchant, banks=banks, feed=feed,
+                                as_of="2026-11-04T14:00:00Z")
+            assert summary["merchant_pushed"] == 20 and set(summary["replayed"]) == {"inserted"}
+            assert summary["feed"]["inserted"] == 4
+            assert summary["rfcs"]["rfc-0001-01"]["status"] == "accepted"
+            assert summary["rfcs"]["rfc-0001-02"]["status"] == "accepted"
+            found = merchant.lookup(payout_reference="PO-0001-01")
+            assert [e["event"]["record_id"] for e in found] == ["rec-0001-021"]
+            assert banks["bank_a"].whoami() == {"recipient": "bank_a", "analyst": "analyst_a1"}
+            unauth = bc.get("/inbox")
+            assert unauth.status_code == 401 and unauth.json()["code"] == "unauthenticated"
+    finally:
+        for server in servers:
+            server.stop()
+        for server in servers:
+            server.join(timeout=10)
+    assert not any(s.is_alive() for s in servers)

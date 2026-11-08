@@ -15,6 +15,7 @@ from alibi.eval import common, jsonschema_lite
 
 
 CAPTURE = Path(__file__).resolve().parent / "out" / "public_rehearsal_c6ea270"
+PARALLEL_CAPTURE = CAPTURE.parent / "public_parallel_c6ea270"
 CANDIDATE = "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8"
 PUBLIC_CASES = (1, 2)
 
@@ -25,6 +26,32 @@ def _field_count(value, name: str) -> int:
     if isinstance(value, list):
         return sum(_field_count(item, name) for item in value)
     return 0
+
+
+def _parallel_metrics(cases: list[dict]) -> dict:
+    run = common.load_json(PARALLEL_CAPTURE / "run.json")
+    if run["input"]["candidate"] != CANDIDATE:
+        raise ValueError("parallel capture candidate differs from the documented candidate")
+    rows = [row for name in PREDICTION_FILES.values()
+            for row in common.read_jsonl(PARALLEL_CAPTURE / name)]
+    if any(row["case_number"] not in PUBLIC_CASES for row in rows):
+        raise ValueError("parallel capture contains a non-rehearsal case")
+    with TemporaryDirectory(prefix="alibi-public-parallel-score-") as directory:
+        output = Path(directory)
+        for filename in (*PREDICTION_FILES.values(), PROBE_FILE):
+            shutil.copyfile(PARALLEL_CAPTURE / filename, output / filename)
+        metrics = score_saved(output, cases, [], kind="public_live")
+    schema = common.load_schema("prediction")
+    metrics["prediction_schema_rows"] = len(rows)
+    metrics["prediction_schema_invalid_rows"] = sum(bool(jsonschema_lite.errors(schema, row)) for row in rows)
+    for failure in ("invalid_output", "timeout"):
+        metrics[f"rfc_{failure}_count"] = sum((row.get("failure") or {}).get("type") == failure for row in rows)
+    scheduling = common.load_json(PARALLEL_CAPTURE / "scheduling.json")
+    metrics.update({f"scheduler_{key}": int(value) for key, value in scheduling["aggregate"].items()
+                    if type(value) in (int, bool)})
+    for mode, counts in scheduling["systems"].items():
+        metrics.update({f"{mode}_workers_{key}": value for key, value in counts.items()})
+    return {f"parallel_{key}": value for key, value in metrics.items()}
 
 
 def replay() -> dict:
@@ -73,6 +100,7 @@ def replay() -> dict:
             metrics[f"retained_usage_{mode}_{key}"] = measured[key]
     metrics["retained_usage_cost_usd_estimate_total"] = round(sum(
         measured["cost_usd_estimate"] for measured in usage.values()), 10)
+    metrics.update(_parallel_metrics(cases))
     return metrics
 
 

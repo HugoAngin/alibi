@@ -8,7 +8,9 @@ Reproduce from the repository root:
 uv run --frozen python -m agents.eval.public_rehearsal_report
 ```
 
-The final JSON line retains the original headline metrics and adds schema counts, policy field/status checks, retained usage estimates and the existing second scorer's safe-complete counts. Both scorers run through `score_saved` in a temporary directory; the committed capture is not modified. Replay depends on the public cases and scoring code in the checked-out commit.
+The final JSON line retains the sequential capture's original headline metrics and adds schema counts, policy field/status checks, retained usage estimates and the existing second scorer's safe-complete counts. Metrics prefixed `parallel_` describe the separately retained second capture below. Both captures run through `score_saved` in temporary directories; committed captures are not modified. Replay depends on the public cases and scoring code in the checked-out commit.
+
+## Sequential capture
 
 | Result | agents | one_pass | rules |
 | --- | ---: | ---: | ---: |
@@ -35,3 +37,19 @@ Public capture:
 - [Policy control](public_rehearsal_c6ea270/policy-control.json), [policy restriction](public_rehearsal_c6ea270/policy-restriction.json).
 
 Detailed external worker logs and raw outputs remain with the evaluator's original public capture; this replay uses the committed subset linked above.
+
+## Four-worker parallel capture
+
+A second public capture verified the newly integrated parallel harness before unseen evaluation. It used the same frozen candidate and public cases, with four workers and the pinned per-system timeouts. Both captures are retained and reported separately; no best-run selection or pooling is performed.
+
+| Result | agents | one_pass | rules |
+| --- | ---: | ---: | ---: |
+| Official safe-complete cases | 0/2 | 0/2 | 1/2 |
+| Worker jobs attempted | 2 | 2 | 2 |
+| Jobs with an RFC failure | 2 | 0 | 0 |
+
+All six scheduled jobs returned; the scheduler recorded zero exceptions, zero unstarted jobs, no rate-limit reduction and no deadline abort. All 12 retained prediction envelopes validate. Two agent RFCs, `rfc-0001-01` and `rfc-0002-01`, explicitly record `invalid_output` from the challenger. The preserved public replay for each records `SchemaValidationError: $.trace[1]: longer than 200`. This is a candidate internal-output schema failure, distinct from invalid captured prediction envelopes. No timeout or retry occurred. The two failures remain part of the second capture's score.
+
+The replay command computes `parallel_rfc_invalid_output_count=2`, `parallel_rfc_timeout_count=0`, schema counts and scheduler/worker counts directly from committed outputs. The detailed challenger error text above was inspected in external public `public-parallel-c6ea270/capture-workers/agents-{1,2}/replay.json`; raw model logs are not needed by the replay command and are not copied into the repository.
+
+Parallel capture: [agents](public_parallel_c6ea270/agents.jsonl), [one-pass](public_parallel_c6ea270/one_pass.jsonl), [rules](public_parallel_c6ea270/rules.jsonl), [run metadata](public_parallel_c6ea270/run.json), [scheduling](public_parallel_c6ea270/scheduling.json), [original scores](public_parallel_c6ea270/scores.json), [probe rows](public_parallel_c6ea270/probes.jsonl).

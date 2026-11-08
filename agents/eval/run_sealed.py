@@ -351,9 +351,10 @@ def _pinned_candidate(ref: str) -> tuple[str, str]:
     if git("status", "--porcelain", "--untracked-files=all"):
         raise ValueError("the evaluator checkout must be clean")
     candidate = git("rev-parse", "--verify", f"{ref}^{{commit}}")
-    tagged = git("rev-parse", "--verify", "refs/tags/sealed-candidate^{commit}")
+    approved_tag = "sealed-candidate-2" if ref == "sealed-candidate-2" else "sealed-candidate"
+    tagged = git("rev-parse", "--verify", f"refs/tags/{approved_tag}^{{commit}}")
     if candidate != tagged:
-        raise ValueError("candidate-ref must resolve to the sealed-candidate tag")
+        raise ValueError(f"candidate-ref must resolve to the {approved_tag} tag")
     return candidate, git("rev-parse", "HEAD")
 
 
@@ -364,7 +365,7 @@ def main(argv: list[str] | None = None) -> None:
     public.add_argument("--public-live", action="store_true", help="run public cases through the real adapter")
     parser.add_argument("--case", type=int, action="append", help="public case selection")
     parser.add_argument("--timeout", type=float, default=90, help="seconds per case and system")
-    parser.add_argument("--candidate-ref", help="run the sealed-candidate source with isolated parallel workers")
+    parser.add_argument("--candidate-ref", help="run sealed-candidate or lead's sealed-candidate-2 with isolated workers")
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
     for option in ("out", "cases", "gold", "manifest", "model_config", "private_root", "probes"):

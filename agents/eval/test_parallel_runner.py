@@ -159,6 +159,19 @@ def test_pinned_candidate_requires_tag_and_clean_evaluator(monkeypatch):
         run_sealed._pinned_candidate("sealed-candidate")
 
 
+def test_second_candidate_is_bound_to_its_own_approved_tag(monkeypatch):
+    commands = []
+    responses = iter(["", "candidate2", "candidate2", "evaluator"])
+
+    def git(command, **_kwargs):
+        commands.append(command)
+        return next(responses)
+
+    monkeypatch.setattr(run_sealed.subprocess, "check_output", git)
+    assert run_sealed._pinned_candidate("sealed-candidate-2") == ("candidate2", "evaluator")
+    assert commands[2][-1] == "refs/tags/sealed-candidate-2^{commit}"
+
+
 def test_public_cli_signature_binds_candidate_and_evaluator_separately(tmp_path, monkeypatch):
     private = tmp_path / "private"
     private.mkdir()

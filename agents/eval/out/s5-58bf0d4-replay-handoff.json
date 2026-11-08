@@ -108,5 +108,23 @@
         "mode": "keyless replay, live mock connectors"
       }
     ]
+  },
+  "signed_in_browser": {
+    "web_source_commit": "2fea61e",
+    "dashboard_patch_commit": "1601e7f",
+    "scope": "Disposable local holder and Bank A frontends, candidate 58bf0d4 with synthetic Case 1 and keyless replay",
+    "checks": {
+      "bankARequestedInBrowser": true,
+      "trustExplicit": true,
+      "noPreTapReceipt": true,
+      "bankAOneTapSent": true,
+      "bankADispositionClear": true,
+      "bankBSeparateApprovalAndSend": true,
+      "simulationReadOnly": true
+    },
+    "independent_receipt_verification": {
+      "bank_a_attachments": 20,
+      "bank_b_attachments": 10
+    }
   }
 }

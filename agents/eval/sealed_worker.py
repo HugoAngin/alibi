@@ -39,7 +39,7 @@ def _isolation(paths: tuple[Path, ...]) -> list[str]:
         raise RuntimeError("a sealed worker needs the verified macOS sandbox")
     profile = "(version 1)(allow default)" + "".join(
         f"(deny file-read* file-write* (subpath {json.dumps(str(path.resolve()), ensure_ascii=False)}))"
-        for path in paths
+        for path in (*paths, REPO / ".env")
     )
     return [sandbox, "-p", profile]
 
@@ -88,7 +88,9 @@ def _complete_rows(result, case: dict, mode: str) -> list[dict]:
 def _worker_env(work: str, dry_run: bool) -> dict[str, str]:
     names = ("PATH", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE")
     if not dry_run:
-        names += ("GEMINI_API_KEY", "GOOGLE_API_KEY", "ALIBI_LLM_CAP", "LOCKBOX_OPEN")
+        # The evaluator loads the run key before launch. Access to the lockbox stays
+        # with the evaluator even though the worker receives one case over stdin.
+        names += ("GEMINI_API_KEY", "ALIBI_LLM_CAP")
     env = {name: os.environ[name] for name in names if name in os.environ}
     return dict(env, ALIBI_DATA_DIR=work, TMPDIR=work, PYTHONDONTWRITEBYTECODE="1")
 

@@ -45,6 +45,8 @@ def test_adapter_preflight_imports_inside_the_sandbox_without_running_a_case(tmp
     shutil.copyfile(Path(sealed_worker.__file__), worker)
     adapter = checkout / "alibi" / "adapter.py"
     adapter.parent.mkdir()
+    env_file = checkout / ".env"
+    env_file.write_text("synthetic credential file")
     private = tmp_path / "private"
     private.mkdir()
     marker = private / "marker"
@@ -53,6 +55,11 @@ def test_adapter_preflight_imports_inside_the_sandbox_without_running_a_case(tmp
         "from pathlib import Path\n"
         "import os\n"
         "assert Path(os.environ['ALIBI_DATA_DIR']).resolve() == Path.cwd()\n"
+        "assert os.environ['GEMINI_API_KEY'] == 'synthetic-run-key'\n"
+        "assert 'LOCKBOX_OPEN' not in os.environ and 'GOOGLE_API_KEY' not in os.environ\n"
+        f"try:\n    Path({str(env_file)!r}).open().close()\n"
+        "except PermissionError:\n    pass\n"
+        "else:\n    raise AssertionError('repository dotenv was readable')\n"
         f"try:\n    Path({str(marker)!r}).open().close()\n"
         "except PermissionError:\n    pass\n"
         "else:\n    raise AssertionError('sandbox denied path was readable')\n"
@@ -60,6 +67,9 @@ def test_adapter_preflight_imports_inside_the_sandbox_without_running_a_case(tmp
         encoding="utf-8",
     )
     monkeypatch.setattr(sealed_worker, "REPO", checkout)
+    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-run-key")
+    monkeypatch.setenv("GOOGLE_API_KEY", "synthetic-unrelated-key")
+    monkeypatch.setenv("LOCKBOX_OPEN", "synthetic-flag")
     sealed_worker.verify_adapter((private,))
 
     adapter.write_text("def run_case(case):\n    pass\n", encoding="utf-8")

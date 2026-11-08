@@ -131,7 +131,7 @@ uv run --frozen python -m agents.eval.run_sealed --public-live --case 1 --case 2
   --private-root "$ALIBI_FROZEN_PRIVATE_ROOT" --out "$PUBLIC_LIVE_OUTPUT"
 ```
 
-For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The current live isolation preflight uses macOS `sandbox-exec` to deny the worker access to the private root and repository data. The worker receives the allowlisted case over stdin and starts with separate scratch state for each case and system.
+For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The macOS `sandbox-exec` preflight denies the worker access to the private root, repository data and repository `.env`. The evaluator loads the Gemini run credential and keeps lockbox access in the parent. Each worker receives one allowlisted case over stdin and starts with separate scratch state for that case and system.
 
 ```bash
 python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \

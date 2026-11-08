@@ -23,6 +23,10 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - api.lookup gained covers_record_id and payout_date keys. The gold candidate rule also accepts withdrawal_id as the credit's reference. Gold gains retrieval_path and clue_refs for this family.
 - naive_regex_probe in the tests: 40/40 on the originals, 6/10 on hidden_reference.
 
+## Lead work order (00:46Z, post 6715221388)
+- (1) demo_script.md done (8b99d67). (2) case2_walkthrough.md done (a8ee960). (3) data_card.md done (README-ready). (4) Stylesheet patch: waiting for the S4 merge.
+- Fixed case 2/20: a pending payout is available only from its status_as_of time (c339e2a).
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

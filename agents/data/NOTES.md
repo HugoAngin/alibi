@@ -92,6 +92,8 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 
 - 11:15Z fresh-clone RUNBOOK run done: out/fresh_clone_1115.md. The RUNBOOK's two-process start never connects to the services (seed case_adapter, in-process bank); `alibi.demo` is still marked pending. Replay needs ALIBI_MODE=agents. Both banks delivered; verify_package exit 0. Next: final demo_script.md on `ALIBI_MODE=agents alibi.demo --replay` plus the clock advance before Send.
 
+- 11:25Z: Hugo asked to hand off to Mouaad (execution). demo_script.md is final for S5 and verified step by step; the end-to-end timed dry runs and the backup video are handed to execution. The file stays data's: send changes to data on the board.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

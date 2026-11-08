@@ -1,79 +1,108 @@
-# Demo script: four minutes on case 1, then case 2
+# Demo script: four minutes on case 1
 
-Owner: data (Hugo). Source: `docs/SPEC.md` "Four-minute demo" and "Acceptance criteria", `docs/FRONTEND.md`, `alibi/app/UI.md` on `s4a`, and the canonical fixture `agents.data.api.canonical_case()` (case 1, pinned in `shared/CONTRACTS.md`). Case 2 is the contradiction variant; its step-by-step expected states are in `case2_walkthrough.md`.
+**Handed to execution (Mouaad) at 11:25Z.** Dry run 2 (11:24Z, replay, clean `--reset`) was stopped after D2. The T−10 checks, 0:00, D1, the 0:25 screens and D2 were re-checked in that run. The 0:45–3:10 beats are from QA pass 2 and the 11:15 run, where each step was run on its own; they have not yet been timed end to end. Still to do: two timed dry runs, then the backup video.
 
-**Status when written (2026-11-08 ~01:00Z, main 5107aca).** No routes are wired on `main` yet. The URLs below are the ones `docs/FRONTEND.md` names. Button labels come from `UI.md`. Anything marked **[verify]** has to be checked against the S4/S5 build before rehearsal. Lead fills those in or tells data what to change.
+Owner: data (Hugo). Final for the S5 build (`sealed-candidate`, main after `649b292`). Every command, URL, button and screen below was run by data on 2026-11-08 between 10:17 and 11:30Z (`QA_0430.md` pass 2, `fresh_clone_1115.md`). The Jinja app on 8100 is the screen. The phone holder app and the bank console run on the same backend once research and execution have wired them. Their routes go in the last section when they are verified.
 
 ## Roles
 
-| Role | Who (lead confirms) | Does |
+| Role | Who | Does |
 | --- | --- | --- |
-| Presenter | Arnav (lead) | Speaks every line below, faces the judges, never touches the keyboard. |
-| Driver | Hugo (data) | Clicks, keeps the phone-width holder window and the analyst window side by side, and triggers the live arrivals. |
-| Backup | Elio (research) | Has the replay (`ALIBI_REPLAY=1`) started in a second terminal and calls the switch. Owns the results slide at 3:10. |
+| Presenter | Arnav (lead) | Speaks every line, never touches the keyboard. |
+| Driver | Hugo (data) | Runs the three Driver commands from a hidden terminal and clicks in three browser windows. |
+| Backup | Elio (research) | Calls the switch to replay at T−5 and owns the results slide at 3:10. |
 
 ## Before going on stage (T−10 min)
 
-1. Start everything: `uv run --frozen python -m alibi.demo --timeout 600`. This runs the merchant mock, the bank mock and the app on `http://127.0.0.1:8100` with Maya loaded. **[verify the S5 command]**
-2. Check the starting state. It must match what 0:00 needs:
-   - Maya's history is present: 8 sales (`rec-0001-001` … `rec-0001-017`, 5–13 Oct), 2 refunds (`rec-0001-005`, `rec-0001-012`), 8 fees, the eyewear purchase `rec-0001-019`, and the rent, grocery and pharmacy debits (`txn-0001-001` … `-003`).
-   - The £2,160.00 credit `txn-0001-004` (booked 2026-10-28 06:30Z, reference `PO-0001-01`) is in the bank feed.
-   - The balance release `rec-0001-020` is **not** delivered yet, and the payout `rec-0001-021` is lookup-only.
-   - No RFC yet.
-   - **[verify]** how the build seeds "history up to, but not including, `rec-0001-020`", and the command that pushes it live.
-3. Gemini check: `uv run --frozen python -m alibi.llm.probe` (on `s3a`) **[verify]**. If it fails, or if latency goes over about 10 s, start the replay instead (see Fallback) and tell the Presenter before going on.
-4. Open three windows:
-   - Holder: `/passport`, at 390 px width (phone).
-   - Bank A: `/bank/bank_a/inbox`.
-   - Bank B: `/bank/bank_b/inbox`, a background tab.
-5. Have the results slide ready on the deck laptop (3:10).
+1. **Start the stack** from the repo root, in a terminal the judges cannot see:
+
+   ```bash
+   ALIBI_MODE=agents uv run --frozen python -m alibi.demo --timeout 900 --case 1 --reset
+   ```
+
+   For the replay fallback, add `--replay` (see Fallback). **`ALIBI_MODE=agents` is required in both cases.** Without it the app runs the rules engine and every Gemini role shows "skipped".
+
+   Wait for the one-line JSON. It must contain `"passport_seed": "connectors"` and `"merchant_pushed": 19`.
+
+2. **Check the state:** `uv run --frozen python -m alibi.demo status`. The app must show `"mode": "agents"` and `"seed": "connectors"`, and both services `"as_of": "2026-10-25T00:00:00Z"`.
+
+3. **Live Gemini only:** `uv run --frozen python -m alibi.llm.probe` makes 2–4 real calls (ask Hugo first). If it fails, or answers slowly, restart with `--replay` and tell the Presenter.
+
+4. **Open three browser windows.** They must use separate cookies: a bank login on the same host blocks the holder pages with `403 recipient_credential`.
+
+   | Window | URL | Notes |
+   | --- | --- | --- |
+   | Holder (phone width, 390 px) | `http://localhost:8100/passport` | Note: `localhost`, not `127.0.0.1`. |
+   | Bank A | `http://127.0.0.1:8100/bank/bank_a/inbox?token=<bank_a>` | The token is the `bank_a` entry of `data/alibi/bank_tokens.json`. Open it once; after that the bare URL works. |
+   | Bank B | the same with `bank_b`, in a **private window** | |
+
+5. Bookmark `http://localhost:8100/sources/rec-0001-020/1` in the holder window. Nothing in the app links to the release record before Run, and the page returns 404 until D1.
+6. Put the results slide on the deck laptop (3:10).
+
+**Expiry.** `rfc-0001-01` expires **2026-11-09 09:00Z**. After that this script no longer works as written; regenerate the fixtures (`ALIBI_NOW` freezes the app clock and breaks the approval window).
+
+## The three Driver commands
+
+```bash
+# D1 at 0:25: the release message, the £2,160 credit and the alert arrive through the connectors
+uv run --frozen python -m alibi.demo advance --to 2026-10-28T07:30:00Z
+
+# D2 at 0:45: move both services past real time (needed before the first Send), then Bank A's request
+uv run --frozen python -m alibi.demo advance --to $(date -u -v+15M +%Y-%m-%dT%H:%M:00Z)   # Linux: date -u -d '+15 min' +%Y-%m-%dT%H:%M:00Z
+uv run --frozen python -m alibi.demo rfc bank_a
+
+# D3 at 2:45: Bank B's request
+uv run --frozen python -m alibi.demo rfc bank_b
+```
+
+Each takes about 1 second and prints one JSON line. `rfc` must print `"forwarded": {"status": "accepted", …}`.
+
+**Why D2 has a clock step.** The app runs on the wall clock, while the services run on the demo clock. If Bank A's service clock is behind the package's issue time, it refuses the package with "the package was issued in the future", and that package ID can never be sent again in this run (QA pass 2, P0-A). Never skip the `advance` in D2.
 
 ## The run
 
 | Time | Window, URL | Driver does | Must be on screen | Presenter says |
 | --- | --- | --- | --- | --- |
-| 0:00–0:25 | Holder `/passport` | Nothing. Scroll once to Alerts. | Holder Maya, `maya-001`. Connections: mock marketplace (issuer verified), bank feed (bank observed), imports (self-supplied). The history above. An **alert that exists before any request**: unexplained credit, £2,160.00 on 28 Oct, with no settlement record linked. Requests: none. | "This is Maya. She resells clothes, and her bank has restricted her account over a £2,160 credit. Rent is due. Alibi has been keeping her evidence in the background, before anyone asked. It has already noticed that this credit has no settlement record behind it." |
-| 0:25–0:45 | Holder `/txn/txn-0001-004` | Trigger the merchant webhook for `rec-0001-020` **[verify command]**, then open the transaction. | A new linked source: `rec-0001-020` r1, kind `balance_release`, issuer verified. Its message: "£2,160.00 from your recent sales is now available in your seller balance. Withdrawal PO-0001-01 … has been requested." Reconciliation computed by code: `240000 − 18000 − 6000 = 216000`, £2,160.00. Link state still **unmatched**, or flagged settlement discrepancy. | "A signed message just arrived from the marketplace. The arithmetic works: £2,400 of sales, less £180 of refunds and £60 of fees, is exactly £2,160. But read the message. The money went to her seller balance. That is not the same as reaching her bank." |
-| 0:45–1:25 | Holder `/requests/rfc-0001-01` | Have the bank mock send Bank A's RFC **[verify trigger]**, open it, and click **Run investigation**. | Request `rfc-0001-01` from Bank A, audience `bank_a`, `txn_ids: [txn-0001-004]`, expires 2026-11-09 09:00Z. Questions: `q.source_of_funds` ("What is the origin of the incoming payment of £2,160.00 booked on 2026-10-28?") and `q.breakdown` ("Please show how this amount was calculated."). Roles table: Matcher, Detective, Challenger, Curator. The Detective's candidate may start as **Unresolved**, which is acceptable (SPEC). The Challenger notes that release to balance is not settlement and calls `merchant lookup payout_reference=PO-0001-01`. | "Bank A asks where the money came from. The Detective proposes an explanation. The Challenger refuses to accept a matching amount as proof. It sees the release names withdrawal PO-0001-01, and asks the marketplace for that payout's settlement record." |
-| 1:25–1:50 | Same page, `#trace` | Scroll to the trace and open the `q.source_of_funds` step. | Lookup result: `rec-0001-021` r1, payout `PO-0001-01`, **settled 2026-10-27 16:00Z**, before the credit was booked at 2026-10-28 06:30Z. The reference matches the credit. Link state is **linked**. `q.source_of_funds` is **Supported**, and so is `q.breakdown`. The trace chain reads: question → claim → sources (`txn-0001-004` r1 bank observed, `rec-0001-021` r1 issuer verified, plus the covered sales, refunds and fees) → lookup → calculation `240000 − 18000 − 6000 = 216000` → status. | "Here is the trail a bank analyst can check. The settlement record says the payout reached the bank the afternoon before the credit was booked, under the same reference. The arithmetic is recomputed by code from the cited records, not by the model. Only now is the claim supported." |
-| 1:50–2:25 | Same page, `#review`, then the dispatch page | 1. Show the three groups. 2. Click **Approve for Bank A**. 3. Click **Remove** on one optional included item (an extract or the self-supplied item, if offered). 4. Send **[verify where the send button lives]**. The refusal page appears. 5. Click **Review and approve the revised body**, then **Approve for Bank A**, then send again. | Included: the credit `txn-0001-004` and payout `rec-0001-021`, plus whatever the breakdown needs. Excluded, with reasons: rent `txn-0001-001`, grocery `-002`, pharmacy `-003`, the eyewear purchase `rec-0001-019`. The approval box names **Bank A**, with the digest and validity window shown. After the edit: **Dispatch refused**, code `approval digest mismatch`, and the backend reason verbatim. After re-approval: **Delivered to Bank A**. | "Maya sees exactly what Bank A will receive, and what is left out and why. Her rent, her groceries and a pharmacy purchase stay private. She approves. Now watch: change one item after approval, and the backend refuses to send, because the approved digest no longer matches the body. She reviews the new version and approves again." |
-| 2:25–2:45 | Bank A `/bank/bank_a/inbox`, then the package | Open the package. Scroll through the three panels. Under Disposition, pick **clear**, type a note and submit. | Three separate panels: **Package authentication** valid (signature, digest, recipient binding, expiry, replay); **Source trust** for each attachment (issuer verified, bank observed); **Claim status** Supported for both questions. The disposition is recorded by a named analyst. | "Bank A verifies the package. A valid signature only proves who sent it and that it was not altered. Trust in each source, and whether each claim is supported, are shown separately. A human analyst records the decision. Nothing clears the account automatically." |
-| 2:45–3:10 | Holder `/requests/rfc-0001-02`, then Bank B `/bank/bank_b/inbox` | Have the bank mock send Bank B's RFC **[verify]**. Click **Run investigation**, then **Approve for Bank B**, then send. Switch to the Bank B inbox. Then, in the Bank A window, paste Bank B's package URL. | `rfc-0001-02`, audience `bank_b`, period `[2026-10-01, 2026-11-01)`, `q.sales_refunds_in_period`. Supported: sales £2,400.00 (8), refunds £180.00 (2). The sources are the **same IDs** (`rec-0001-001` …, `rec-0001-005`, `rec-0001-012`), with no new import. A new selection: no payout, no fees, no Bank A package. A fresh approval for **Bank B**. Sharing history shows two separate entries. Bank B's inbox shows it; Bank A's does not. Bank A fetching Bank B's package is **refused** by the backend. | "A second bank asks a different question: her marketplace sales and refunds in October. Same passport, same record IDs, nothing re-imported. A new, narrower package, and a fresh approval for Bank B. And Bank A cannot open Bank B's package, even with the link." |
-| 3:10–4:00 | Deck: results slide | Switch to the deck. | Eval's frozen numbers: Alibi against the rules baseline and one-pass Gemini on the sealed cases. Denominators, intervals, cost and one failure. | "On cases we never saw while building, …" (read the eval numbers as they are). Close: "Reusable evidence, controlled disclosure. Whether real banks would accept this is unmeasured." |
+| 0:00–0:25 | Holder `/passport` | Nothing. | Maya, `maya-001`. Connections: Mock Marketplace (issuer verified) and Bank A account feed (bank observed). Rent −£650.00, grocery −£12.40 and pharmacy −£23.50 in Transactions. No alerts, no requests. | "This is Maya. She resells clothes online. Alibi keeps her evidence as it arrives: signed records from the marketplace, and her bank feed." |
+| 0:25–0:45 | Holder `/passport`, then `/sources/rec-0001-020/1` | **D1**, then reload. Open the alert, then the release record. | Alert **Unexplained credit**, open, raised before any bank has asked: "Credit txn-0001-004 … has no settlement record in the passport that names its reference and matches its amount and timing." The credit **£2,160.00** `MOCK MARKETPLACE PAYOUT PO-0001-01`, **Unmatched**. Record `rec-0001-020`, issuer verified: "£2,160.00 from your recent sales is now available in your **seller balance**. Withdrawal PO-0001-01 … has been requested." | "£2,160 just landed in her bank. Alibi noticed on its own: nothing in her passport proves where it came from. The marketplace did send a signed message, but read it: the money reached her seller balance. That is not the same as reaching her bank." |
+| 0:45–1:25 | Holder `/requests/rfc-0001-01` | **D2**, reload the passport, open the request under Requests, click **Run investigation**. | Request from Bank A, signature **verified key bank_a**, transaction-scoped `txn-0001-004`, expires 2026-11-09 09:00Z. Questions `q.source_of_funds` and `q.breakdown`. After Run, the roles table reads Detective **complete 4**, Challenger **complete 3**, Curator **complete 2**, and a "code verdict" row with lookups 1. | "Bank A has restricted her account and asks where the money came from. Gemini agents investigate: one proposes an answer, one challenges it, one prepares what to share. The models only propose. Code checks every reference and amount and decides the result." |
+| 1:25–1:50 | Same page, Trace | Scroll to the trace for `q.source_of_funds`. | LOOKUPS: `lookup_settlement payment_ref=PO-0001-01 → found=True … record_id=rec-0001-021 … status=settled`. Source `rec-0001-021` r1 **Issuer verified via lookup**. CALCULATION `240000 - 18000 - 6000 = 216000 → £2,160.00`, computed by code. Both questions **✓ Supported**. | "The agents did not accept a matching amount. They asked the marketplace for payout PO-0001-01 itself, and it came back settled on 27 October, before the credit was booked. £2,400 of sales, less £180 of refunds and £60 of fees, is exactly £2,160, and code recomputed that from the cited records. Only now is the answer supported." |
+| 1:50–2:25 | Same page, Private review and Approval; then the dispatch page | Show Included. Click **Approve for Bank A**, then **Send to Bank A**. | 20 Included: the 18 sales, refunds and fees, plus payout `rec-0001-021`. Rent, grocery, pharmacy and her own purchase are **not** in the list. The approval names **Bank A** with the body digest. Then **Delivered to Bank A**, with a package ID and a receipt with status **accepted**. | "Maya sees exactly what Bank A will receive: her sales, refunds, fees and the payout. Her rent, her groceries, her pharmacy purchase and what she bought herself are not in it. She approves this exact version for this bank, and sends." |
+| 2:25–2:45 | Bank A window, inbox, then the package | Reload the inbox, open the package, then under Disposition pick **Clear**, type a short reason and click **Record disposition**. | Inbox: one package, authentication **valid**, Supported 2. Package page: three separate panels. **Package authentication** has 7 checks, all pass. **Source trust** shows each attachment issuer verified, with issuer signature pass. **Claim status** is Supported. Then "Disposition recorded: clear. No account action was taken." | "Bank A checks the package. A valid signature only proves it came from Alibi unaltered. Who stands behind each record, and whether each answer is supported, are shown separately. A human analyst records the decision; nothing clears her account automatically." |
+| 2:45–3:10 | Holder `/requests/rfc-0001-02`, then the Bank B window, then the Bank A window | **D3**. Open the request, click **Run investigation**, **Approve for Bank B**, **Send to Bank B**. Reload Bank B's inbox. Copy Bank B's package URL and paste it into the **Bank A** window. | Request from Bank B, period `[2026-10-01, 2026-11-01)`, one question. **Supported**: sales **£2,400.00 from 8 records**, refunds **£180.00 from 2 records**, the **same record IDs** as Bank A's (`rec-0001-001` …). 10 Included: no payout, no fees. Delivered to Bank B; its inbox lists it, Bank A's does not. In the Bank A window, Bank B's URL is **Refused, recipient_mismatch**. | "A second bank asks a different question: her October sales and refunds. Same passport, same record IDs, nothing re-imported. A smaller package, and a fresh approval for Bank B. And Bank A cannot open Bank B's package, even with the link." |
+| 3:10–4:00 | Deck: results slide | Switch to the deck. | Eval's verified numbers only. | Read the numbers as they are on the slide. Close: "Reusable evidence, controlled disclosure. Whether real banks would accept this is unmeasured." |
 
-## Case 2 (contradiction variant)
+Timing note. In the 11:2xZ dry run each Driver command took about 1 s and each Run about 3 s in replay. A live Gemini run takes longer; if the 0:45 beat runs over, cut the 1:25 line to its last two sentences.
 
-Use case 2 when the judges ask "what if the settlement doesn't check out?", or as a second run in rehearsal. The path is identical to the one above up to 1:25. Then:
+## Do not do on stage
 
-- The Challenger's lookup of `PO-0002-01` returns `rec-0002-021` with **status pending**, no `settled_at`, and **still pending as of 2026-10-29 06:30Z**, a day after the credit was booked.
-- The settlement claim is **Contradicted**. The credit's origin (`q.source_of_funds`) and `q.breakdown` stay **Unresolved**, with gap `settlement_pending_at_booking`. The amounts still reconcile on screen.
-- Bank A's package carries the gap, not a supported answer. The analyst picks **request more**.
-- Bank B's period answer is unaffected.
-
-Every expected state is listed in `case2_walkthrough.md`.
-
-> Presenter line at the lookup: "This time the marketplace says the transfer was still pending a day after the money arrived. The amounts still add up, but they cannot be the explanation. Alibi marks the settlement claim contradicted and leaves the source unresolved. It refuses to tell the bank something the evidence does not support."
-
-## Fallback: Gemini down or slow
-
-- **Decide by T−5 min** (Backup calls it). If the probe fails, or one live investigation takes over about 10 s in rehearsal, use the replay.
-- Start: `ALIBI_REPLAY=1 uv run --frozen python -m alibi.demo --timeout 600` **[verify]**. Every page then shows the **REPLAY** banner (`banner--replay`). Do not hide it.
-- The script, clicks and expected screens stay the same. Only the agent output is recorded.
-- Presenter adds one sentence at 0:45: "Gemini is not reachable from this room, so this is a clearly labelled recorded run of the same flow. The backend checks, refusals and signatures are running live." Only say the last part if it is true in replay mode **[verify which parts stay live in replay]**.
-- If the app itself fails, play the recorded demo video (owner: Elio, from the deck capture).
+- **Do not Remove an included item after approving.** Every included record is cited, so removing one turns both of Bank A's answers into Unresolved ("withheld by holder"). There is no Restore button, and running again keeps the removal. To show that an edit voids the approval, rehearse it first; the screen then says "The body changed, so any earlier approval no longer matches", and Send disappears.
+- **Do not show a follow-up request from the Jinja app.** The holder-side proxy route is a known limit (lead 10:52Z). A follow-up is shown only on the bank console (native route). If the console is down, skip that beat.
+- Do not call a claim "verified" or "true". Say **supported**, **contradicted** or **unresolved**, as the badge says.
+- Do not say the bank accepted anything or cleared the account. The disposition is a human record.
+- Do not say Gemini or the app cannot read the data.
+- Do not show the terminal, the tokens file or dev tools.
 - Never present replay output as live.
 
-## Things that must not happen on stage
+## Fallback: replay (Gemini down or slow)
 
-- Do not call the claim "verified" or "true". Say **supported**, **contradicted** or **unresolved**, as the badge says.
-- Do not say the bank accepted anything or that the account was cleared. The disposition is a human record.
-- Do not say Gemini or the app cannot read the data. SPEC forbids that claim.
-- Do not open the browser dev tools or any terminal on the judges' screen.
+- Backup decides by T−5. Restart with:
 
-## Open items for lead ([verify])
+  ```bash
+  ALIBI_MODE=agents uv run --frozen python -m alibi.demo --timeout 900 --case 1 --reset --replay
+  ```
 
-1. The start command, and how to seed "history before `rec-0001-020`".
-2. How the Driver triggers, during the demo, the `rec-0001-020` webhook, Bank A's RFC and Bank B's RFC (CLI, a hidden admin button, or a timed script).
-3. The exact package URL in the analyst console, and where the send/dispatch button lives (export page or detail page).
-4. The Gemini probe command, and what stays live under `ALIBI_REPLAY=1`.
-5. Whether the starting alert is "unexplained credit" (the credit is already in the feed at 0:00, as written here). SPEC 0:25 also mentions a bank feed update arriving live; if lead prefers that, push `txn-0001-004` at 0:25 together with `rec-0001-020`. The alert then appears at 0:25 instead, so it is no longer "before any request" until the RFC at 0:45.
+- Every page shows the **REPLAY · Recorded run** banner. Do not hide it.
+- The agents' answers come from `alibi/fixtures/replays/case1_agents.json` (Detective 4, Challenger 3, Curator 2, 0 live calls). The connectors, the feed, request intake, signature checks, the approval digest, dispatch, the bank's verification and every refusal still run live.
+- The clicks, Driver commands and screens are the same as above.
+- Presenter adds at 0:45: "Gemini is not reachable from this room, so the agents' answers are a clearly labelled recording of the same case. The connectors, signatures, checks and refusals you see are running live."
+  - The banner text says "not live agent or connector activity", which is wrong about the connectors (QA pass 2, item I). Say the sentence above anyway, because it is accurate.
+- If the app itself fails, play the backup video.
+
+## Case 2 (contradiction), only if asked
+
+`--case 2` gives the same story with payout `PO-0002-01` still **pending** a day after the credit, so the settlement claim is **Contradicted** and the origin stays **Unresolved** (`case2_walkthrough.md`). **Not rehearsed on S5.** There is no case 2 replay recording, so it needs live Gemini. S5 also notes that the rules engine does not reach the pending payout on case 2. Run it only if lead has rehearsed it.
+
+## Phone holder app and bank console
+
+Lead's plan is the phone holder app (research) plus the bank console (execution) on this backend, with the Jinja app as the fallback. When those are wired to S5, the marks, Driver commands and expected states above stay the same; only the windows change. Research and execution add the verified URLs here. Data checked at 10:27Z: the deployed `/simulate/` pages are a fixture simulation that disagrees with the backend (QA pass 2, item D), and the deployed bank console needs a passcode data does not have. Neither is ready to replace the Jinja windows yet.

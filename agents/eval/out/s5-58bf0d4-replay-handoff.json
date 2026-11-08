@@ -126,5 +126,21 @@
       "bank_a_attachments": 20,
       "bank_b_attachments": 10
     }
+  },
+  "hosted_read_only_dashboard": {
+    "web_commit": "aaf355f",
+    "deployment_version": "2c556669",
+    "url": "https://www.alibi-app.workers.dev/simulate/",
+    "tested_widths_px": [
+      1440,
+      390
+    ],
+    "checks": {
+      "opens": 8,
+      "viewports": 2,
+      "hostedLive": true,
+      "readOnlyRequestLinks": true
+    },
+    "scope": "Anonymous browser verification of live dashboard cards, dialogs and simulation routing. Signed-in sharing was tested separately on disposable frontends."
   }
 }

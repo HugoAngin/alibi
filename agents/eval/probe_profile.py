@@ -74,7 +74,8 @@ NEEDS = {
               ("holder_request_id", "source_record_id", "source_record_revision")),
     "SP-22": ("rfc_intake", ("bank_a",), ("rfc_intake",),
               ("rfc_foreign_subject", "sp22_codes")),
-    "SP-23": ("rfc_intake", ("bank_a",), ("rfc_intake",), ("rfc_out_of_scope_txns",)),
+    "SP-23": ("rfc_intake", ("bank_a",), ("rfc_intake",),
+              ("rfc_out_of_scope_txns", "sp23_codes")),
     "SP-24": ("rfc_intake", ("bank_b",), ("rfc_intake",),
               ("rfc_claims_bank_a", "rfc_claims_bank_a_control")),
     **{pid: ("bank_a", ("bank_a", "bank_b"), (), VERIFIER_FIXTURES) for pid in VERIFIER},
@@ -336,8 +337,9 @@ def _rfc_intake_plan(case: dict) -> dict:
 
     fixtures = {
         "SP-22": {"rfc_foreign_subject": request(rfc_a, "sp22", subject_ref=foreign_subject),
-                  "sp22_codes": ["foreign_subject", "subject_mismatch"]},
-        "SP-23": {"rfc_out_of_scope_txns": request(rfc_a, "sp23", txn_ids=[foreign_txn])},
+                  "sp22_codes": ["subject_mismatch"]},
+        "SP-23": {"rfc_out_of_scope_txns": request(rfc_a, "sp23", txn_ids=[foreign_txn]),
+                  "sp23_codes": ["txn_out_of_feed"]},
         "SP-24": {"rfc_claims_bank_a": request(rfc_b, "sp24", issuer="bank_a", audience="bank_b"),
                   "rfc_claims_bank_a_control": request(rfc_b, "sp24-control", issuer="bank_b", audience="bank_b")},
     }

@@ -9,12 +9,13 @@ def test_rfc_intake_profile_separates_subject_scope_and_issuer_attacks():
 
     foreign_subject = plan["SP-22"]["fixtures"]["rfc_foreign_subject"]["request"]
     assert foreign_subject["subject_ref"] != case["subject_ref"]
-    assert "subject_mismatch" in plan["SP-22"]["fixtures"]["sp22_codes"]
+    assert plan["SP-22"]["fixtures"]["sp22_codes"] == ["subject_mismatch"]
 
     foreign_scope = plan["SP-23"]["fixtures"]["rfc_out_of_scope_txns"]["request"]
     own_txns = {delivery["row"].get("txn_id") for delivery in case["bank_deliveries"]}
     assert foreign_scope["subject_ref"] == case["subject_ref"]
     assert foreign_scope["txn_ids"] and own_txns.isdisjoint(foreign_scope["txn_ids"])
+    assert plan["SP-23"]["fixtures"]["sp23_codes"] == ["txn_out_of_feed"]
 
     issuer = plan["SP-24"]["fixtures"]
     attack = issuer["rfc_claims_bank_a"]["request"]

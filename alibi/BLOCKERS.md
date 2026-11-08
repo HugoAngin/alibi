@@ -43,3 +43,16 @@ commits of the hook-and-binding edits the S4 brief asked for (ten templates and 
 from the repo root). Until research commits them (or `team.json` adds the path to lead),
 `alibi/tests/test_app_routes.py` and `alibi/tests/test_ui_preview.py` pass only in a checkout
 that has the patch applied. No override was used.
+
+## Refusal codes beyond the consent matrix (a `need` to lead, not posted from this session)
+
+`shared/CONTRACTS.md` pins the refusal codes to `agents/execution/out/consent_matrix.md` and says
+a new code is a `need` to `lead`. The app needed codes the matrix lacks (`not_authenticated`,
+`recipient_mismatch`, `cross_site_post`, `item_not_in_draft`, `request_already_answered`,
+`approval_consumed`, `draft_missing`, `package_rejected`, `not_a_package`, `bad_request`,
+`bad_period`, `bad_decision`, `reason_required`, `question_required`, `parent_not_found`,
+`package_not_found`, `rule_not_pending`, `rule_not_active`, `policy_rejected`,
+`investigation_failed`, `review_failed`, `bank_unreachable`, `bank_bad_response`,
+`delivery_rejected`, `not_dispatched`, `approval_invalid`, `unknown_recipient`). This session may
+not edit `shared/` or post to the board, so the full list with meanings is in `alibi/app/UI.md`
+("Routes, JSON and credentials") for lead to pin or for execution to add to the matrix.

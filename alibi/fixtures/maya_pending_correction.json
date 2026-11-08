@@ -1,0 +1,433 @@
+{
+  "account_ref": "acc_maya_bank_a",
+  "bank_txns": [
+    {
+      "account_ref": "acc_maya_bank_a",
+      "amount_pence": 216000,
+      "booked_at": "2026-11-03T10:00:00Z",
+      "currency": "GBP",
+      "description": "THREADLINE PAYOUT PO-5001 STL-88001",
+      "provenance": {
+        "connection_id": "conn_bank_a_maya",
+        "connector": "bank_feed",
+        "retrieved_at": "2026-11-03T10:05:00Z",
+        "source_version": "bank_a_feed.v1"
+      },
+      "refs": [
+        "PO-5001",
+        "STL-88001"
+      ],
+      "revision": 1,
+      "schema_version": "alibi.bank_txn.v1",
+      "source_trust": "bank_observed",
+      "subject_ref": "subj_maya",
+      "txn_id": "txn_9001"
+    }
+  ],
+  "corrections": [
+    {
+      "amount_pence": 216000,
+      "correction_reason": "Status restated: the transfer had not completed and is still pending with the receiving bank.",
+      "corrects_revision": 1,
+      "currency": "GBP",
+      "event_id": "evt_stl_88001_r2",
+      "issuer_id": "threadline",
+      "kind": "settlement",
+      "occurred_at": "2026-11-04T09:00:00Z",
+      "payment_ref": "PO-5001",
+      "record_id": "stl_88001",
+      "related_record_ids": [],
+      "revision": 2,
+      "schema_version": "alibi.merchant_event.v1",
+      "settlement_ref": "STL-88001",
+      "status": "pending",
+      "subject_ref": "subj_maya"
+    }
+  ],
+  "expected": {
+    "claims": {
+      "rfc_a_001": {
+        "q1": {
+          "after_correction": {
+            "correction": "record:stl_88001@2",
+            "earlier_claim_state": "invalidated",
+            "evidence": [
+              "record:po_5001@1",
+              "record:stl_88001@2",
+              "txn:txn_9001@1"
+            ],
+            "statuses": [
+              "contradicted",
+              "unresolved"
+            ]
+          },
+          "evidence": [
+            "record:po_5001@1",
+            "record:stl_88001@1",
+            "txn:txn_9001@1"
+          ],
+          "statuses": [
+            "supported"
+          ]
+        }
+      },
+      "rfc_b_001": {
+        "q1": {
+          "currency": "GBP",
+          "evidence": [
+            "record:ord_1001@1",
+            "record:ord_1002@1",
+            "record:ord_1003@1",
+            "record:ord_1004@1"
+          ],
+          "statuses": [
+            "supported"
+          ],
+          "total_pence": 240000
+        },
+        "q2": {
+          "currency": "GBP",
+          "evidence": [
+            "record:rfd_2001@1"
+          ],
+          "statuses": [
+            "supported"
+          ],
+          "total_pence": 18000
+        }
+      }
+    },
+    "links": {
+      "txn_9001": {
+        "after_correction": {
+          "candidates": [
+            "po_5001"
+          ],
+          "link_state": "linked",
+          "method": "reference",
+          "record_id": "po_5001"
+        },
+        "candidates": [
+          "po_5001"
+        ],
+        "link_state": "linked",
+        "method": "reference",
+        "record_id": "po_5001"
+      }
+    },
+    "reconciliation": {
+      "balanced": true,
+      "components": [
+        "ord_1001",
+        "ord_1002",
+        "ord_1003",
+        "ord_1004",
+        "rfd_2001",
+        "fee_3001"
+      ],
+      "credit_pence": 216000,
+      "credit_txn_id": "txn_9001",
+      "currency": "GBP",
+      "difference_pence": 0,
+      "fees_pence": 6000,
+      "net_pence": 216000,
+      "payout_pence": 216000,
+      "payout_record_ids": [
+        "po_5001"
+      ],
+      "refunds_pence": 18000,
+      "sales_pence": 240000
+    },
+    "settlement_timing": [
+      {
+        "available": "lookup",
+        "credit_booked_at": "2026-11-03T10:00:00Z",
+        "credit_txn_id": "txn_9001",
+        "effective_time": "2026-11-03T07:45:00Z",
+        "observed_at": "2026-11-03T08:00:00Z",
+        "ok": true,
+        "payment_ref": "PO-5001",
+        "record_id": "stl_88001",
+        "revision": 1,
+        "status": "settled"
+      },
+      {
+        "available": "correction",
+        "credit_booked_at": "2026-11-03T10:00:00Z",
+        "credit_txn_id": "txn_9001",
+        "effective_time": null,
+        "observed_at": "2026-11-04T09:00:00Z",
+        "ok": false,
+        "payment_ref": "PO-5001",
+        "record_id": "stl_88001",
+        "revision": 2,
+        "status": "pending"
+      }
+    ],
+    "source_trust": {
+      "record:fee_3001": "issuer_verified",
+      "record:msg_7001": "issuer_verified",
+      "record:ord_1001": "issuer_verified",
+      "record:ord_1002": "issuer_verified",
+      "record:ord_1003": "issuer_verified",
+      "record:ord_1004": "issuer_verified",
+      "record:po_5001": "issuer_verified",
+      "record:rfd_2001": "issuer_verified",
+      "record:stl_88001": "issuer_verified",
+      "txn:txn_9001": "bank_observed"
+    }
+  },
+  "fixture": "maya",
+  "issuer_id": "threadline",
+  "lookup_events": [
+    {
+      "amount_pence": 216000,
+      "currency": "GBP",
+      "effective_at": "2026-11-03T07:45:00Z",
+      "event_id": "evt_stl_88001_r1",
+      "issuer_id": "threadline",
+      "kind": "settlement",
+      "occurred_at": "2026-11-03T08:00:00Z",
+      "payment_ref": "PO-5001",
+      "record_id": "stl_88001",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "settlement_ref": "STL-88001",
+      "status": "settled",
+      "subject_ref": "subj_maya"
+    }
+  ],
+  "merchant_events": [
+    {
+      "amount_pence": 60000,
+      "currency": "GBP",
+      "event_id": "evt_ord_1001_r1",
+      "issuer_id": "threadline",
+      "items": [
+        {
+          "category": "outerwear",
+          "description": "Vintage wool overcoat, charcoal",
+          "quantity": 1,
+          "unit_amount_pence": 60000
+        }
+      ],
+      "kind": "order",
+      "occurred_at": "2026-10-04T14:12:00Z",
+      "record_id": "ord_1001",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "completed",
+      "subject_ref": "subj_maya"
+    },
+    {
+      "amount_pence": 72000,
+      "currency": "GBP",
+      "event_id": "evt_ord_1002_r1",
+      "issuer_id": "threadline",
+      "items": [
+        {
+          "category": "outerwear",
+          "description": "Denim jacket, washed indigo",
+          "quantity": 1,
+          "unit_amount_pence": 42000
+        },
+        {
+          "category": "footwear",
+          "description": "Leather ankle boots, tan",
+          "quantity": 1,
+          "unit_amount_pence": 30000
+        }
+      ],
+      "kind": "order",
+      "occurred_at": "2026-10-11T09:30:00Z",
+      "record_id": "ord_1002",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "completed",
+      "subject_ref": "subj_maya"
+    },
+    {
+      "amount_pence": 48000,
+      "currency": "GBP",
+      "event_id": "evt_ord_1003_r1",
+      "issuer_id": "threadline",
+      "items": [
+        {
+          "category": "dresses",
+          "description": "Silk midi dress, emerald",
+          "quantity": 1,
+          "unit_amount_pence": 30000
+        },
+        {
+          "category": "accessories",
+          "description": "Cashmere scarf, oatmeal",
+          "quantity": 1,
+          "unit_amount_pence": 18000
+        }
+      ],
+      "kind": "order",
+      "occurred_at": "2026-10-18T16:45:00Z",
+      "record_id": "ord_1003",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "completed",
+      "subject_ref": "subj_maya"
+    },
+    {
+      "amount_pence": 18000,
+      "currency": "GBP",
+      "event_id": "evt_rfd_2001_r1",
+      "issuer_id": "threadline",
+      "items": [
+        {
+          "category": "accessories",
+          "description": "Cashmere scarf, oatmeal",
+          "quantity": 1,
+          "unit_amount_pence": 18000
+        }
+      ],
+      "kind": "refund",
+      "occurred_at": "2026-10-22T10:00:00Z",
+      "record_id": "rfd_2001",
+      "related_record_ids": [
+        "ord_1003"
+      ],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "completed",
+      "subject_ref": "subj_maya"
+    },
+    {
+      "amount_pence": 60000,
+      "currency": "GBP",
+      "event_id": "evt_ord_1004_r1",
+      "issuer_id": "threadline",
+      "items": [
+        {
+          "category": "trousers",
+          "description": "Corduroy trousers, rust",
+          "quantity": 2,
+          "unit_amount_pence": 15000
+        },
+        {
+          "category": "knitwear",
+          "description": "Hand-knitted cardigan, cream",
+          "quantity": 1,
+          "unit_amount_pence": 30000
+        }
+      ],
+      "kind": "order",
+      "occurred_at": "2026-10-25T11:05:00Z",
+      "record_id": "ord_1004",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "completed",
+      "subject_ref": "subj_maya"
+    },
+    {
+      "amount_pence": 6000,
+      "currency": "GBP",
+      "event_id": "evt_fee_3001_r1",
+      "issuer_id": "threadline",
+      "kind": "fee",
+      "occurred_at": "2026-10-31T18:00:00Z",
+      "record_id": "fee_3001",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "completed",
+      "subject_ref": "subj_maya"
+    },
+    {
+      "amount_pence": 216000,
+      "currency": "GBP",
+      "event_id": "evt_msg_7001_r1",
+      "issuer_id": "threadline",
+      "kind": "message",
+      "occurred_at": "2026-11-01T08:00:00Z",
+      "record_id": "msg_7001",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "released_to_balance",
+      "subject_ref": "subj_maya",
+      "text": "Your October earnings of £2,160.00 have been released to your seller balance. This covers sales of £2,400.00 less refunds of £180.00 and fees of £60.00. Withdrawals from your seller balance to your bank account are sent separately as payouts and usually arrive within 1-3 working days."
+    },
+    {
+      "amount_pence": 216000,
+      "currency": "GBP",
+      "event_id": "evt_po_5001_r1",
+      "issuer_id": "threadline",
+      "kind": "payout",
+      "occurred_at": "2026-11-02T08:30:00Z",
+      "payment_ref": "PO-5001",
+      "record_id": "po_5001",
+      "related_record_ids": [
+        "ord_1001",
+        "ord_1002",
+        "ord_1003",
+        "ord_1004",
+        "rfd_2001",
+        "fee_3001"
+      ],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "initiated",
+      "subject_ref": "subj_maya"
+    }
+  ],
+  "merchant_kid": "merchant_demo",
+  "notes": "Pending correction: the supported case plus a signed revision 2 of stl_88001 (status pending, observed 2026-11-04T09:00:00Z, corrects_revision 1), pushed after the first investigation. RFC A q1 is supported before it arrives; afterwards the earlier claim is invalidated and a rerun gives contradicted or unresolved. The link and RFC B do not change. RFC B (bank_b) asks for documented sales and refunds over [2026-10-01, 2026-11-01): 240000 and 18000, supported in every variant. Synthetic, labelled data: no real people, merchants, accounts or money. Bodies are unsigned: sign merchant events at load time with alibi.fixtures.maya.sign_event and a DemoKeystore, and RFCs with sign_request. merchant_events are pushed by webhook before any RFC; lookup_events are reachable only by follow-up retrieval (settlement_lookup); corrections are pushed later; self_supplied items go through the self-supplied import. Money is integer pence, times are UTC ISO-8601, periods are half-open [from, to). expected is development gold from explicit fields only (statuses, references, amounts, times): statuses lists every acceptable claim status and evidence the revision-pinned refs that decide it. Development and demo data, never holdout.",
+  "rfcs": [
+    {
+      "audience": "bank_a",
+      "expires_at": "2026-11-11T09:00:00Z",
+      "issued_at": "2026-11-04T09:00:00Z",
+      "issuer": "bank_a",
+      "questions": [
+        {
+          "question_id": "q1",
+          "text": "Please explain the source of the £2,160.00 credit received on 3 November 2026 (txn_9001). Which payment does it correspond to, and what records support that?"
+        }
+      ],
+      "request_id": "rfc_a_001",
+      "schema_version": "alibi.rfc.v1",
+      "subject_ref": "subj_maya",
+      "txn_ids": [
+        "txn_9001"
+      ]
+    },
+    {
+      "audience": "bank_b",
+      "expires_at": "2026-11-12T09:00:00Z",
+      "issued_at": "2026-11-05T09:00:00Z",
+      "issuer": "bank_b",
+      "period": {
+        "from": "2026-10-01T00:00:00Z",
+        "to": "2026-11-01T00:00:00Z"
+      },
+      "questions": [
+        {
+          "question_id": "q1",
+          "text": "What were your total documented marketplace sales from 1 to 31 October 2026?"
+        },
+        {
+          "question_id": "q2",
+          "text": "What refunds did you issue to buyers over the same period?"
+        }
+      ],
+      "request_id": "rfc_b_001",
+      "schema_version": "alibi.rfc.v1",
+      "subject_ref": "subj_maya"
+    }
+  ],
+  "schema": "alibi.fixture.v1",
+  "self_supplied": [],
+  "subject_ref": "subj_maya",
+  "variant": "pending_correction"
+}

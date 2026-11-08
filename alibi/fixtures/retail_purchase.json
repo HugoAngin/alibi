@@ -1,0 +1,102 @@
+{
+  "account_ref": "acc_maya_bank_a",
+  "bank_txns": [
+    {
+      "account_ref": "acc_maya_bank_a",
+      "amount_pence": -4599,
+      "booked_at": "2026-11-06T09:00:00Z",
+      "currency": "GBP",
+      "description": "NORTHGATE RETAIL CARD PAYMENT",
+      "provenance": {
+        "connection_id": "conn_bank_a_maya",
+        "connector": "bank_feed",
+        "retrieved_at": "2026-11-06T09:05:00Z",
+        "source_version": "bank_a_feed.v1"
+      },
+      "refs": [
+        "NGR-731942"
+      ],
+      "revision": 1,
+      "schema_version": "alibi.bank_txn.v1",
+      "source_trust": "bank_observed",
+      "subject_ref": "subj_maya",
+      "txn_id": "txn_9002"
+    }
+  ],
+  "corrections": [],
+  "expected": {
+    "claims": {},
+    "links": {
+      "txn_9002": {
+        "candidates": [
+          "self_rcpt_4001"
+        ],
+        "link_state": "linked",
+        "method": "reference",
+        "record_id": "self_rcpt_4001"
+      }
+    },
+    "reconciliation": {
+      "balanced": true,
+      "currency": "GBP",
+      "debit_pence": -4599,
+      "debit_txn_id": "txn_9002",
+      "difference_pence": 0,
+      "receipt_pence": 4599,
+      "receipt_record_id": "self_rcpt_4001",
+      "target_pence": -4599,
+      "target_ref": "txn:txn_9002@1",
+      "terms": [
+        {
+          "amount_pence": 4599,
+          "currency": "GBP",
+          "kind": "receipt",
+          "ref": "record:self_rcpt_4001@1",
+          "sign": -1
+        }
+      ],
+      "total_pence": -4599
+    },
+    "settlement_timing": [],
+    "source_trust": {
+      "record:self_rcpt_4001": "self_supplied",
+      "txn:txn_9002": "bank_observed"
+    }
+  },
+  "fixture": "retail_purchase",
+  "issuer_id": "northgate_retail",
+  "lookup_events": [],
+  "merchant_events": [],
+  "merchant_kid": null,
+  "notes": "Retail purchase through the same record model: a receipt Maya imports herself (self_supplied: issuer_id names the shop, but no shop key signs it, so it never becomes issuer_verified) and the matching Bank A card debit txn_9002 (-4599). The receipt's payment_ref NGR-731942 appears in the debit's refs. No RFC is attached; merchant_kid is null because nothing here is issuer-signed. The receipt documents an outflow, so expected.reconciliation counts it with sign -1 (total_pence -4599) against the signed debit (target_pence -4599), and difference_pence is total_pence - target_pence as in schemas.Calculation. alibi.core.reconcile reproduces it with its default signs, where a purchase receipt counts as -1. Synthetic, labelled data: no real people, merchants, accounts or money. Bodies are unsigned: sign merchant events at load time with alibi.fixtures.maya.sign_event and a DemoKeystore, and RFCs with sign_request. merchant_events are pushed by webhook before any RFC; lookup_events are reachable only by follow-up retrieval (settlement_lookup); corrections are pushed later; self_supplied items go through the self-supplied import. Money is integer pence, times are UTC ISO-8601, periods are half-open [from, to). expected is development gold from explicit fields only (statuses, references, amounts, times): statuses lists every acceptable claim status and evidence the revision-pinned refs that decide it. Development and demo data, never holdout.",
+  "rfcs": [],
+  "schema": "alibi.fixture.v1",
+  "self_supplied": [
+    {
+      "amount_pence": 4599,
+      "currency": "GBP",
+      "event_id": "evt_self_rcpt_4001_r1",
+      "issuer_id": "northgate_retail",
+      "items": [
+        {
+          "category": "homeware",
+          "description": "Rechargeable desk lamp, matte black",
+          "quantity": 1,
+          "unit_amount_pence": 4599
+        }
+      ],
+      "kind": "receipt",
+      "occurred_at": "2026-11-05T13:20:00Z",
+      "payment_ref": "NGR-731942",
+      "record_id": "self_rcpt_4001",
+      "related_record_ids": [],
+      "revision": 1,
+      "schema_version": "alibi.merchant_event.v1",
+      "status": "paid",
+      "subject_ref": "subj_maya",
+      "text": "Northgate Retail. Receipt NGR-731942. 1 x Rechargeable desk lamp, matte black: £45.99. Total £45.99, paid by card."
+    }
+  ],
+  "subject_ref": "subj_maya",
+  "variant": "retail_purchase"
+}

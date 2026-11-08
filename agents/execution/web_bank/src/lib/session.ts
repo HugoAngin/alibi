@@ -31,7 +31,8 @@ const ANALYST_RE = /^[A-Za-z0-9 ._-]{1,64}$/;
 
 export async function makeSession(secret: string, analyst: string, nowMs: number): Promise<string> {
   if (!secret || !ANALYST_RE.test(analyst)) throw new Error('cannot issue session');
-  const payload = `${encodeURIComponent(analyst)}.${nowMs + SESSION_TTL_MS}`;
+  // encodeURIComponent leaves '.', the token separator, unescaped ('J. Okafor'), so escape it too.
+  const payload = `${encodeURIComponent(analyst).replaceAll('.', '%2E')}.${nowMs + SESSION_TTL_MS}`;
   return `${payload}.${await hmacHex(secret, payload)}`;
 }
 

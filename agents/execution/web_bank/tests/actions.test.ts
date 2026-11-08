@@ -61,14 +61,15 @@ describe('no upstream call for attacks', () => {
   });
 
   it('refuses path tricks in IDs and unknown kinds or decisions', async () => {
-    for (const fields of [
+    const attempts: Record<string, string>[] = [
       { ...decision, package_id: '../../merchant/admin/seed' },
       { ...decision, package_id: 'pkg-1/../../x' },
       { ...decision, disposition: 'approve_everything' },
       { ...decision, note: '' },
       { kind: 'followup', parent_request_id: '%2e%2e', question: 'more please' },
       { kind: 'admin', package_id: 'pkg-1' },
-    ]) {
+    ];
+    for (const fields of attempts) {
       const { outcome, calls } = await act(fields);
       expect(outcome.kind).toBe('forbidden');
       expect(calls).toHaveLength(0);
@@ -104,6 +105,12 @@ describe('the allowed actions', () => {
 describe('analyst session', () => {
   const secret = 'test-session-secret';
   const now = Date.UTC(2026, 10, 8, 4, 30);
+
+  it('round-trips the demo analyst, whose name contains a dot', async () => {
+    const token = await makeSession(secret, 'J. Okafor', now);
+    expect(token.split('.')).toHaveLength(3);
+    expect(await verifySession(secret, token, now)).toBe('J. Okafor');
+  });
 
   it('round-trips and expires', async () => {
     const token = await makeSession(secret, 'J. Okafor', now);

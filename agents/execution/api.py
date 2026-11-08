@@ -138,3 +138,13 @@ def approval_gate():
     from agents.execution.approval_gate import ApprovalGate
 
     return ApprovalGate()
+
+
+def refusal_from_problems(problems) -> dict:
+    """alibi.core ApprovalError.problems -> {"code", "reason", "problems"} with a consent_matrix.md code.
+
+    See agents/execution/refusal_codes.py; the first problem in matrix check order sets the code.
+    """
+    from agents.execution.refusal_codes import refusal_from_problems as _map
+
+    return _map(problems)

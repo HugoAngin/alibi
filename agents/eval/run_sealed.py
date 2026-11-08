@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agents.data.api import load_case, load_cases
 from agents.eval.freeze_pack import _private_path
+from agents.eval.headline import summarize as headline_evidence
 from agents.eval.probe_capture import missing_demo_probe_kinds, probe_receipt, probe_receipt_path
 from agents.eval.score_capture import score_capture
 from agents.eval.sealed_worker import MODES, REPO, case_payload, run_case_worker, verify_adapter, verify_file_isolation
@@ -195,6 +196,7 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
     (output / "report.md").write_text(scorer.markdown_report(official), encoding="utf-8")
     common.write_json(output / "scores.json", {
         "mode": kind,
+        "headline": headline_evidence(official, attack_scores, independent, outcomes if probes else {}, kind),
         "probe_coverage": coverage,
         "official": {score.system.name: score.metrics for score in official}, "independent": independent,
         "adversarial": {score.system.name: score.metrics for score in attack_scores},

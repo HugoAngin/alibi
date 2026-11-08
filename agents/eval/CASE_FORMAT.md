@@ -107,3 +107,11 @@ python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \
 ```
 
 The runner verifies the seal before and after capture. It checks the probe receipt against the sealed commit and captured outcomes before starting the one allowed run, then retains the receipt with the predictions and probe JSONL. Both live modes deny workers access to that directory so later cases and systems cannot read earlier predictions. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.
+
+Render the aggregate deck handoff from the saved scores without launching workers:
+
+```bash
+uv run --frozen python -m agents.eval.headline "$ALIBI_FROZEN_OUT/scores.json"
+```
+
+This writes `HEADLINE.md` alongside the scores and prints one JSON object. If the frozen set has no `hidden_reference` family, pass `--public-scores` pointing to a public run's `scores.json` to add that separately labelled row. The exact sign test uses family-level net wins and losses. Zero-failure upper bounds use observed trials, with coverage shown separately.

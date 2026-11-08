@@ -116,6 +116,7 @@ SRC_ORDER = {
     "href": "/sources/ord_1001/1",
     "signature": {"present": True, "key_id": "resalehub-demo-2026", "verified": True},
     "superseded": False,
+    "via_lookup": False,
 }
 SRC_REFUND = {
     "record_id": "ref_2001",
@@ -130,6 +131,7 @@ SRC_REFUND = {
     "href": "/sources/ref_2001/1",
     "signature": {"present": True, "key_id": "resalehub-demo-2026", "verified": True},
     "superseded": False,
+    "via_lookup": False,
 }
 SRC_FEE = {
     "record_id": "fee_3001",
@@ -144,6 +146,7 @@ SRC_FEE = {
     "href": "/sources/fee_3001/1",
     "signature": {"present": True, "key_id": "resalehub-demo-2026", "verified": True},
     "superseded": False,
+    "via_lookup": False,
 }
 SRC_PAYOUT_R1 = {
     "record_id": "po_7781",
@@ -158,6 +161,7 @@ SRC_PAYOUT_R1 = {
     "href": "/sources/po_7781/1",
     "signature": {"present": True, "key_id": "resalehub-demo-2026", "verified": True},
     "superseded": True,
+    "via_lookup": False,
 }
 SRC_PAYOUT_R2 = {
     **SRC_PAYOUT_R1,
@@ -181,6 +185,7 @@ SRC_SETTLEMENT = {
     "href": "/sources/stl_9001/1",
     "signature": {"present": True, "key_id": "resalehub-demo-2026", "verified": True},
     "superseded": False,
+    "via_lookup": True,  # fetched by the scoped lookup merchant.get_settlement
 }
 SRC_RECEIPT = {
     "record_id": "rcpt_self_01",
@@ -195,6 +200,7 @@ SRC_RECEIPT = {
     "href": "/sources/rcpt_self_01/1",
     "signature": {"present": False, "key_id": None, "verified": None},
     "superseded": False,
+    "via_lookup": False,
 }
 
 TXN_CREDIT = {
@@ -290,7 +296,7 @@ RFC_A = {
     "subject_ref": HOLDER["subject_ref"],
     "received_at": "2026-11-06T10:00:00Z",
     "expires_at": "2026-11-13T10:00:00Z",
-    "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-07T00:00:00Z"},
+    "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-07T00:00:00Z"},  # None when transaction-scoped
     "txn_ids": ["txn_0001"],
     "questions": QUESTIONS,
     "status": "draft",
@@ -319,7 +325,8 @@ PACKAGE_A = {
     "recipient": BANK_A["name"],
     "case_id": "case_0001",
     "subject_ref_masked": "acct_****_001",
-    "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-07T00:00:00Z"},
+    "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-07T00:00:00Z"},  # None when transaction-scoped
+    "txn_ids": ["txn_0001"],
     "issued_at": "2026-11-07T21:52:00Z",
     "expires_at": "2026-11-14T21:52:00Z",
     "digest": APPROVAL["digest"],
@@ -767,6 +774,7 @@ def ctx_request_detail() -> dict:
             "request": RFC_A,
             "investigation": {
                 "status": "complete",  # not_started | running | complete | failed
+                "mode_label": "rules-only",
                 "can_run": True,
                 "run_action": "/requests/rfc_a_0001/investigate",
                 "started_at": "2026-11-07T21:40:00Z",
@@ -787,11 +795,11 @@ def ctx_request_detail() -> dict:
                     "question": QUESTIONS[0]["text"],
                     "claim": {"claim_id": "clm_q1", "text": "The credit is marketplace payout PO-7781.", "status": "supported"},
                     "sources": [
-                        {"record_id": "ord_1001", "revision": 1, "trust": "issuer_verified", "href": "/sources/ord_1001/1"},
-                        {"record_id": "ref_2001", "revision": 1, "trust": "issuer_verified", "href": "/sources/ref_2001/1"},
-                        {"record_id": "fee_3001", "revision": 1, "trust": "issuer_verified", "href": "/sources/fee_3001/1"},
-                        {"record_id": "po_7781", "revision": 2, "trust": "issuer_verified", "href": "/sources/po_7781/2"},
-                        {"record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "href": "/sources/stl_9001/1"},
+                        {"record_id": "ord_1001", "revision": 1, "trust": "issuer_verified", "href": "/sources/ord_1001/1", "via_lookup": None},
+                        {"record_id": "ref_2001", "revision": 1, "trust": "issuer_verified", "href": "/sources/ref_2001/1", "via_lookup": None},
+                        {"record_id": "fee_3001", "revision": 1, "trust": "issuer_verified", "href": "/sources/fee_3001/1", "via_lookup": None},
+                        {"record_id": "po_7781", "revision": 2, "trust": "issuer_verified", "href": "/sources/po_7781/2", "via_lookup": None},
+                        {"record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "href": "/sources/stl_9001/1", "via_lookup": 0},
                     ],
                     "lookups": [
                         {
@@ -806,6 +814,11 @@ def ctx_request_detail() -> dict:
                         "result": money(CREDIT),
                         "computed_by": "code",
                         "matches": True,
+                        "terms": [
+                            {"label": "Sales", "sign": "+", "amount": money(SALES), "source_ids": ["ord_1001 r1"]},
+                            {"label": "Refunds", "sign": "-", "amount": money(REFUNDS), "source_ids": ["ref_2001 r1"]},
+                            {"label": "Fees", "sign": "-", "amount": money(FEES), "source_ids": ["fee_3001 r1"]},
+                        ],
                     },
                     "status": "supported",
                     "status_reason": "Settlement time precedes booking time and cited amounts reconcile.",
@@ -817,8 +830,8 @@ def ctx_request_detail() -> dict:
                     "question": QUESTIONS[1]["text"],
                     "claim": {"claim_id": "clm_q2", "text": "Funds reached the bank on 2026-11-02.", "status": "contradicted"},
                     "sources": [
-                        {"record_id": "po_7781", "revision": 1, "trust": "issuer_verified", "href": "/sources/po_7781/1"},
-                        {"record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "href": "/sources/stl_9001/1"},
+                        {"record_id": "po_7781", "revision": 1, "trust": "issuer_verified", "href": "/sources/po_7781/1", "via_lookup": None},
+                        {"record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "href": "/sources/stl_9001/1", "via_lookup": None},
                     ],
                     "lookups": [],
                     "calculation": None,
@@ -986,6 +999,8 @@ def ctx_analyst_package() -> dict:
         {
             "recipient": {**BANK_A, "analyst_name": ANALYST_A["name"]},
             "package": PACKAGE_A,
+            "rejected": False,
+            "rejection": None,  # {"reasons": [str], "received_at", "package_digest"} when rejected
             "authentication": {
                 "status": "valid",  # valid | invalid | expired | wrong_audience | replayed
                 "received_at": "2026-11-07T21:53:02Z",
@@ -1003,10 +1018,10 @@ def ctx_analyst_package() -> dict:
                 "note": "Authentication shows the package is intact and from the Alibi demo key. It does not make any claim true.",
             },
             "source_trust": [
-                {"attachment_id": "att_01", "record_id": "po_7781", "revision": 2, "issuer": "ResaleHub (mock)", "trust": "issuer_verified", "signature_check": "pass", "detail": "Issuer key resalehub-demo-2026 pinned in demo registry."},
-                {"attachment_id": "att_02", "record_id": "stl_9001", "revision": 1, "issuer": "ResaleHub (mock)", "trust": "issuer_verified", "signature_check": "pass", "detail": "Issuer key resalehub-demo-2026 pinned in demo registry."},
-                {"attachment_id": "att_03", "record_id": "ext_recon_01", "revision": 1, "issuer": "Alibi redacted extract", "trust": "issuer_verified", "signature_check": "pass", "detail": "Extract attested by the package signer; underlying records issuer-signed."},
-                {"attachment_id": "att_04", "record_id": "rcpt_self_01", "revision": 1, "issuer": "Imported by holder", "trust": "self_supplied", "signature_check": "none", "detail": "Explicitly self-supplied. No issuer signature expected. Reviewable at lower trust."},
+                {"attachment_id": "att_01", "record_id": "po_7781", "revision": 2, "issuer": "ResaleHub (mock)", "trust": "issuer_verified", "attestation": "issuer_signature", "redacted": False, "signature_check": "pass", "detail": "Issuer key resalehub-demo-2026 pinned in demo registry."},
+                {"attachment_id": "att_02", "record_id": "stl_9001", "revision": 1, "issuer": "ResaleHub (mock)", "trust": "issuer_verified", "attestation": "issuer_signature", "redacted": False, "signature_check": "pass", "detail": "Issuer key resalehub-demo-2026 pinned in demo registry."},
+                {"attachment_id": "att_03", "record_id": "ext_recon_01", "revision": 1, "issuer": "Alibi redacted extract", "trust": "issuer_verified", "attestation": "package_signer", "redacted": True, "signature_check": "pass", "detail": "Extract attested by the package signer; underlying records issuer-signed."},
+                {"attachment_id": "att_04", "record_id": "rcpt_self_01", "revision": 1, "issuer": "Imported by holder", "trust": "self_supplied", "attestation": "none", "redacted": False, "signature_check": "none", "detail": "Explicitly self-supplied. No issuer signature expected. Reviewable at lower trust."},
             ],
             "claim_status": [
                 {"question_id": "q1", "status": "supported", "summary": "Source of credit: payout PO-7781, settled before booking."},
@@ -1019,12 +1034,19 @@ def ctx_analyst_package() -> dict:
                     "question": QUESTIONS[0]["text"],
                     "claim": {"status": "supported", "rationale": CLAIMS[0]["rationale"]},
                     "evidence": [
-                        {"attachment_id": "att_01", "record_id": "po_7781", "revision": 2, "trust": "issuer_verified", "summary": "Payout PO-7781 settled, STL-9001", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_01"},
-                        {"attachment_id": "att_02", "record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "summary": "Settlement at 2026-11-03T08:45:00Z", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_02"},
-                        {"attachment_id": "att_03", "record_id": "ext_recon_01", "revision": 1, "trust": "issuer_verified", "summary": "Totals extract", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_03"},
-                        {"attachment_id": "att_04", "record_id": "rcpt_self_01", "revision": 1, "trust": "self_supplied", "summary": "Seller export CSV", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_04"},
+                        {"attachment_id": "att_01", "record_id": "po_7781", "revision": 2, "trust": "issuer_verified", "attestation": "issuer_signature", "redacted": False, "summary": "Payout PO-7781 settled, STL-9001", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_01"},
+                        {"attachment_id": "att_02", "record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "attestation": "issuer_signature", "redacted": False, "summary": "Settlement at 2026-11-03T08:45:00Z", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_02"},
+                        {"attachment_id": "att_03", "record_id": "ext_recon_01", "revision": 1, "trust": "issuer_verified", "attestation": "package_signer", "redacted": True, "summary": "Totals extract", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_03"},
+                        {"attachment_id": "att_04", "record_id": "rcpt_self_01", "revision": 1, "trust": "self_supplied", "attestation": "none", "redacted": False, "summary": "Seller export CSV", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_04"},
                     ],
                     "calculation": {"expression": "240000 - 18000 - 6000 = 216000", "result": money(CREDIT), "computed_by": "verifier", "matches": True},
+                    "timing": {
+                        "payout_ref": "PO-7781",
+                        "released_to_balance_at": "2026-11-02T06:05:00Z",
+                        "bank_settled_at": "2026-11-03T08:45:00Z",
+                        "credit_booked_at": "2026-11-03T09:12:00Z",
+                        "settled_before_booking": True,  # None when unknown
+                    },
                     "gap": None,
                 },
                 {
@@ -1032,10 +1054,17 @@ def ctx_analyst_package() -> dict:
                     "question": QUESTIONS[1]["text"],
                     "claim": {"status": "contradicted", "rationale": CLAIMS[1]["rationale"]},
                     "evidence": [
-                        {"attachment_id": "att_01", "record_id": "po_7781", "revision": 1, "trust": "issuer_verified", "summary": "Revision 1: released_to_balance on 2026-11-02", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_01"},
-                        {"attachment_id": "att_02", "record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "summary": "Settlement on 2026-11-03", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_02"},
+                        {"attachment_id": "att_01", "record_id": "po_7781", "revision": 1, "trust": "issuer_verified", "attestation": "issuer_signature", "redacted": False, "summary": "Revision 1: released_to_balance on 2026-11-02", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_01"},
+                        {"attachment_id": "att_02", "record_id": "stl_9001", "revision": 1, "trust": "issuer_verified", "attestation": "issuer_signature", "redacted": False, "summary": "Settlement on 2026-11-03", "href": "/bank/bank_a/packages/pkg_a_0001/attachments/att_02"},
                     ],
                     "calculation": None,
+                    "timing": {
+                        "payout_ref": "PO-7781",
+                        "released_to_balance_at": "2026-11-02T06:05:00Z",
+                        "bank_settled_at": "2026-11-03T08:45:00Z",
+                        "credit_booked_at": "2026-11-03T09:12:00Z",
+                        "settled_before_booking": True,
+                    },
                     "gap": None,
                 },
                 {
@@ -1044,6 +1073,7 @@ def ctx_analyst_package() -> dict:
                     "claim": {"status": "unresolved", "rationale": CLAIMS[2]["rationale"]},
                     "evidence": [],
                     "calculation": None,
+                    "timing": None,
                     "gap": "No available record identifies buyers. Evidence unavailable, not withheld.",
                 },
             ],
@@ -1069,14 +1099,21 @@ def ctx_analyst_package() -> dict:
                     {"value": "escalate", "label": "Escalate"},
                     {"value": "request_more", "label": "Request more"},
                 ],
-                "analyst_name": ANALYST_A["name"],
-                "current": None,  # None | {"disposition", "analyst_name", "recorded_at", "note"}
+                "analyst": ANALYST_A["name"],  # from the authenticated session, read-only
+                "questions": [{"question_id": q["question_id"], "text": q["text"]} for q in QUESTIONS],
+                # None | {"decision", "analyst", "decided_at", "reason", "question_ids": [str], "requested_evidence": [str]}
+                "current": None,
+                "history": [],  # earlier dispositions, same shape as current
+                "final": False,  # True hides the form
             },
             "followup_form": {
                 "action": "/bank/bank_a/requests",
                 "parent_request_id": "rfc_a_0001",
+                "disposition_id": None,  # str | None; posted as hidden field (empty when None)
                 "subject_ref_masked": "acct_****_001",
-                "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-07T00:00:00Z"},
+                "scope": "txn_ids",  # "txn_ids" | "period"; the checked radio
+                "txn_ids": ["txn_0001"],
+                "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-07T00:00:00Z"},  # {from, to} | None
                 "question_prefill": "",
                 "consent_note": "A follow-up is a new request with its own ID. Any new disclosure needs the holder's separate approval.",
             },

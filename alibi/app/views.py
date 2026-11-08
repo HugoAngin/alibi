@@ -617,10 +617,27 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
         reasons = sorted({cl.invalidated_reason or "newer evidence arrived" for cl in stale})
         flashes = [*(flashes or []), {"kind": "info", "text": "The investigation is out of date: "
                                      + "; ".join(reasons) + ". Run it again before approving."}]
-    roles = [{"name": "rules", "status": "complete" if ran else "not_started",
-              "calls": meta.get("calls_used", 0) if ran else 0, "note": ROLE_NOTE}]
-    roles += [{"name": role, "status": "skipped", "calls": 0,
-               "note": "not wired in this build (rules-only)"} for role in AGENT_ROLES]
+    mode = last_run.get("mode") or rt.settings.mode
+    if mode == "agents":
+        actors = [ev.actor for ev in events]
+        stats = last_run.get("stats") or {}
+        replay_note = last_run.get("replay") or ""
+        roles = [{"name": role, "status": ("complete" if role in actors else "not_called") if ran else "not_started",
+                  "calls": actors.count(role) if ran else 0,
+                  "note": "Gemini role; the backend validated every reference and computed the verdict in code"}
+                 for role in AGENT_ROLES]
+        roles.append({"name": "code verdict", "status": "complete" if ran else "not_started",
+                      "calls": stats.get("model_calls", 0) if ran else 0,
+                      "note": (f"model calls {stats.get('model_calls', 0)}, lookups {stats.get('lookups', 0)}, "
+                               f"tokens {stats.get('tokens', 0)}" + (f"; {replay_note}" if replay_note else ""))
+                      if ran else ROLE_NOTE})
+        mode_label = "agents (Gemini)" + (" - replay" if "REPLAY" in str(replay_note) else "")
+    else:
+        roles = [{"name": "rules", "status": "complete" if ran else "not_started",
+                  "calls": meta.get("calls_used", 0) if ran else 0, "note": ROLE_NOTE}]
+        roles += [{"name": role, "status": "skipped", "calls": 0,
+                   "note": "not run in this mode (rules-only; start the app with ALIBI_MODE=agents)"} for role in AGENT_ROLES]
+        mode_label = "rules-only" if mode == "rules" else mode
     ctx = _holder_base(rt, f"Request {rfc.request_id}", "requests", flashes)
     ctx.update({
         "request": {"request_id": rfc.request_id, "parent_request_id": rfc.parent_request_id,
@@ -640,7 +657,7 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
                           "started_at": meta.get("started_at"), "completed_at": meta.get("completed_at"),
                           "budget": {"calls_used": meta.get("calls_used", 0), "calls_cap": DEFAULT_BUDGET},
                           "roles": roles, "failure_reason": last_run.get("failure_reason"),
-                          "mode": "rules", "mode_label": "rules-only", "run_id": meta.get("run_id")},
+                          "mode": mode, "mode_label": mode_label, "run_id": meta.get("run_id")},
         "trace": steps,
         "review": _review(rt, rfc, draft),
     })

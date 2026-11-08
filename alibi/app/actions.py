@@ -82,23 +82,57 @@ def run_investigation(rt: Runtime, request_id: str) -> dict[str, Any]:
                           f"run refused: request {request_id} was answered by package {answered[-1].package_id}. "
                           "A new disclosure needs a follow-up request from the bank; a rerun is allowed only "
                           "after a correction invalidates the delivered evidence.")
+        mode = rt.settings.mode
         try:
-            result = api.run_investigation(store, rfc.request_id, mode="rules",
+            client = _model_client(rt, mode, request_id) if mode != "rules" else None
+            result = api.run_investigation(store, rfc.request_id, audience=rfc.audience, mode=mode,
                                            settlement_lookup=rt.settlement_lookup,
-                                           registry=rt.registry, now=now)
+                                           registry=rt.registry, now=now, client=client)
             removed = sorted(set(rt.sidecar.get(f"removed:{request_id}") or []))
             draft = api.build_review(store, rfc.request_id, now=now, removed=removed)
         except (PackageError, StoreError, ValueError) as exc:
             rt.sidecar.set(f"run:{request_id}", {"failed": True, "failure_reason": str(exc)[:300],
                                                  "at": rt.now_text()})
             raise Refusal("investigation_failed", str(exc), status=409) from exc
+        stats = _run_stats(result) if mode == "agents" else {}
         rt.sidecar.set(f"run:{request_id}", {"failed": False, "run_id": result.run_id, "at": rt.now_text(),
-                                             "mode": "rules", "calls_used": result.calls_used,
-                                             "draft_id": draft.draft_id})
+                                             "mode": mode, "calls_used": result.calls_used,
+                                             "draft_id": draft.draft_id, "stats": stats,
+                                             "replay": _replay_label(client) if client is not None else None})
         rt.sidecar.set(f"draft:{request_id}", draft.draft_id)
-        return {"run_id": result.run_id, "mode": "rules", "calls_used": result.calls_used,
+        return {"run_id": result.run_id, "mode": mode, "calls_used": result.calls_used, "stats": stats,
                 "claims": {cl.question_id: cl.status.value for cl in result.claims},
                 "draft_id": draft.draft_id, "unavailable": list(result.unavailable)}
+
+
+def _model_client(rt: Runtime, mode: str, request_id: str):
+    """The Gemini client for a model mode: scoped to this case and run (``system`` alibi or
+    one_pass), wrapped by the recorder so ``ALIBI_REPLAY=1`` serves ``alibi/fixtures/replays/
+    case<n>_<mode>.json`` and a live run records there. The key comes from the environment or
+    the repo-root .env (``alibi.llm.client.load_api_key``); it is never logged."""
+    from alibi.agents.replay import make_client
+    from alibi.llm.client import GeminiClient, Scope
+
+    system = "alibi" if mode == "agents" else mode
+    live = GeminiClient(scope=Scope(case_number=rt.settings.case_number, system=system,
+                                    run_id=f"app-{request_id}"))
+    return make_client(f"case{rt.settings.case_number}", mode, live=live)
+
+
+def _run_stats(result) -> dict[str, Any]:
+    try:
+        from alibi.agents.runner import run_stats
+        return dict(run_stats(result))
+    except Exception:  # noqa: BLE001 - stats are display only
+        return {}
+
+
+def _replay_label(client) -> str | None:
+    try:
+        from alibi.agents.replay import replay_label
+        return replay_label(client)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def remove_item(rt: Runtime, request_id: str, ref_type: str, ref_id: str) -> dict[str, Any]:

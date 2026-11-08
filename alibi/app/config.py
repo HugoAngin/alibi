@@ -10,7 +10,9 @@ ALIBI_CASE          development case number the passport is loaded from (default
 ALIBI_DATA_DIR      root for generated files (default ``data/alibi/app``).
 ALIBI_KEY_DIR       demo keystore directory (default ``data/alibi/keys``).
 ALIBI_NOW           fixed UTC clock for the app, ISO-8601 (default: the wall clock).
-ALIBI_REPLAY        ``1`` shows the replay banner on every page.
+ALIBI_REPLAY        ``1`` shows the replay banner on every page and serves recorded Gemini answers.
+ALIBI_MODE          investigation mode: ``rules`` (default, no Gemini), ``agents`` (the four Gemini
+                    roles through alibi.agents.runner) or ``one_pass`` (the single-call baseline).
 ALIBI_BANK_URL      base URL of the mock bank service (``alibi.bank.service``, port 8102 under
                     ``alibi.demo_services``). Set: dispatch POSTs the signed package to
                     ``{url}/deliver``, the analyst console reads and writes that service, and
@@ -87,6 +89,7 @@ class Settings:
     key_dir: Path = Path(DEFAULT_KEY_DIR)
     fixed_now: datetime | None = None
     replay: bool = False
+    mode: str = "rules"              # investigation mode: rules | agents | one_pass (ALIBI_MODE)
     bank_url: str | None = None
     merchant_url: str | None = None
     holder_name: str = "Maya"
@@ -151,6 +154,7 @@ def settings_from_env(env: dict[str, str] | None = None, **overrides) -> Setting
         "key_dir": Path(env.get("ALIBI_KEY_DIR") or DEFAULT_KEY_DIR),
         "fixed_now": parse_utc(fixed) if fixed else None,
         "replay": env.get("ALIBI_REPLAY", "").strip() in ("1", "true", "yes"),
+        "mode": (env.get("ALIBI_MODE") or "rules").strip() or "rules",
         "bank_url": (env.get("ALIBI_BANK_URL") or "").strip().rstrip("/") or None,
         "merchant_url": (env.get("ALIBI_MERCHANT_URL") or "").strip().rstrip("/") or None,
         "holder_name": env.get("ALIBI_HOLDER_NAME", "").strip() or "Maya",

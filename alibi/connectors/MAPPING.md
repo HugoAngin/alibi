@@ -24,6 +24,7 @@ Case kind to core `kind`:
 | `balance_release` | `message` | A release to the platform balance is not a bank settlement and never a settlement candidate. The message text travels verbatim in `text`. |
 | `payout` | `payout` | The case payout carries its own settlement status and time, so it is one core payout with `status` and `effective_at`. There is no separate core `settlement` record: the store's record identity includes `kind`, so one record cannot be both. |
 | `notice`, `statement` | `message` | Free text, no amount. |
+| `order_completed`, `order_returned`, `service_charge`, `weekly_statement`, `earnings_update` (second platform, schema `sp-2.1`) | `order`, `refund`, `fee`, `payout`, `message` | `agents.data.api.to_contract` first maps the raw event onto the contract field names (`value_pence` → `amount_minor`, `transfer_ref` → `payout_reference`, `transfer_status` → `status`, `paid_at` → `settled_at`, `line_record_ids` → `covers_record_ids`); the rows above then apply. `extra.case_kind` keeps the raw kind. A reference such as `SPLAT W37 4588` keeps its spaces: the core `Ref` pattern allows internal spaces. |
 
 Field by field (case field, core field):
 

@@ -82,7 +82,11 @@ PositiveInt = Annotated[int, Strict(), Field(ge=1)]
 NonNegativeInt = Annotated[int, Strict(), Field(ge=0)]
 CurrencyCode = Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
 Ident = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$")]
-Ref = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_./:-]{0,63}$")]
+# A payment or settlement reference. Internal spaces are allowed because some issuers and banks
+# print references in groups ("SPLAT W37 4588", the second platform's format); it never starts or
+# ends with one.
+Ref = Annotated[str, StringConstraints(
+    pattern=r"^(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9_./: -]{0,62}[A-Za-z0-9_./:-])$")]
 Status = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,39}$")]
 FieldPath = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$")]
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]

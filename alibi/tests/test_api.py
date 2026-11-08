@@ -641,3 +641,20 @@ def test_rebuilding_an_identical_review_keeps_the_approval(ctx):
     assert ctx.store.get_approval(approval.approval_id).status == api.ApprovalStatus.PENDING
     assert api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore,
                                 now=ctx.now + timedelta(minutes=2)).package_id
+
+
+def test_rebuilding_a_body_that_was_invalidated_earlier_gets_a_fresh_pending_draft(ctx):
+    """Remove an item, then restore it at the same clock: the restored body equals the first
+    draft, which _supersede invalidated, so the rebuild must mint a new draft id instead of
+    overwriting an invalidated row (StoreError before the fix)."""
+    fx = load(ctx)
+    investigate(ctx, fx)
+    first = api.build_review(ctx.store, "rfc_a_001", now=ctx.now)
+    removed = api.build_review(ctx.store, "rfc_a_001", now=ctx.now, removed=["record:rfd_2001"])
+    assert removed.draft_id != first.draft_id
+    assert api.DraftStatus(ctx.store.get_draft(first.draft_id).status) == api.DraftStatus.INVALIDATED
+    restored = api.build_review(ctx.store, "rfc_a_001", now=ctx.now)
+    assert restored.draft_id not in {first.draft_id, removed.draft_id}
+    assert restored.body_sha256 == first.body_sha256
+    assert api.DraftStatus(restored.status) == api.DraftStatus.PENDING
+    assert api.DraftStatus(ctx.store.get_draft(removed.draft_id).status) == api.DraftStatus.INVALIDATED

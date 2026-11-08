@@ -853,13 +853,14 @@ def build_body(request: RequestForContext, claims: Iterable[Claim],
 
 def make_draft(request: RequestForContext, body: PackageBody, review: Review, *,
                policy_version: str, source_revisions: Iterable[EvidenceRef],
-               now: datetime | None = None) -> Draft:
+               now: datetime | None = None, sequence: int = 0) -> Draft:
     """A pending draft of ``body`` for the holder to review.
 
     ``source_revisions`` is required: pass ``cited_refs(claims)`` so a correction to any
     source the answers depend on, shared or withheld, invalidates the draft and its approval.
     It is merged with every ref the body cites. The draft id is deterministic in the request,
-    body digest, policy and time.
+    body digest, policy and time; ``sequence`` (0 by default) distinguishes a rebuilt draft of
+    the same body from an earlier, since-invalidated one at the same clock.
     """
     if not isinstance(request, RequestForContext) or not isinstance(body, PackageBody) \
             or not isinstance(review, Review):
@@ -876,7 +877,8 @@ def make_draft(request: RequestForContext, body: PackageBody, review: Review, *,
     try:
         return Draft(
             draft_id=canon.make_id("drf", request.request_id, request.audience, body_sha256,
-                                   policy_version, format_utc(now)),
+                                   policy_version, format_utc(now),
+                                   *([sequence] if sequence else [])),
             request_id=request.request_id, audience=request.audience, body=body,
             body_sha256=body_sha256, review=review, policy_version=policy_version,
             source_revisions=merge_refs(source_revisions, body_refs(body)), created_at=now)

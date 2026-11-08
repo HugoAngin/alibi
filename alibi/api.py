@@ -607,6 +607,14 @@ def build_review(store: Store, request_id: str, *, now: datetime | None = None,
                          and d.policy_version == draft.policy_version]
             if same_body:
                 return same_body[-1]   # built already (any clock): keep it and its status
+            taken = {d.draft_id for d in store.list_drafts(request_id=rfc.request_id)}
+            sequence = 0
+            while draft.draft_id in taken:   # the same body was built and invalidated before
+                sequence += 1
+                draft = core_package.make_draft(rfc, body, review,
+                                                policy_version=compiled.policy_version,
+                                                source_revisions=refs, now=at,
+                                                sequence=sequence)
             store.save_draft(draft)
             change = f" ({', '.join(sorted(str(r) for r in removed))} removed)" if removed else ""
             _supersede(store, rfc.request_id, draft, change=change)

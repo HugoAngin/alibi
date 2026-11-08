@@ -31,7 +31,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from agents.data.api import load_case, lookup, without_gold
+from agents.data.api import load_case, lookup, to_contract, without_gold
 from alibi.core.schemas import (
     SCHEMA_BANK_TXN,
     SCHEMA_MERCHANT_EVENT,
@@ -68,6 +68,13 @@ KIND_MAP = {
     "payout": "payout",
     "notice": "message",
     "statement": "message",
+    # second-platform raw kinds (schema sp-2.1); ``agents.data.api.to_contract`` maps them to the
+    # contract kinds above before the field mapping runs
+    "order_completed": "order",
+    "order_returned": "refund",
+    "service_charge": "fee",
+    "weekly_statement": "payout",
+    "earnings_update": "message",
 }
 
 # Case fields that become core identity or money fields. Everything else goes to ``extra``.
@@ -157,12 +164,18 @@ def map_merchant_event(case_event: dict[str, Any]) -> Mapped:
     """
     if not isinstance(case_event, dict):
         raise MappingError("a case event must be a JSON object")
-    source = copy.deepcopy(case_event)
-    what = f"event {source.get('event_id', '?')}"
-    kind = _require(source, "kind", what)
-    core_kind = KIND_MAP.get(kind)
+    raw = copy.deepcopy(case_event)
+    what = f"event {raw.get('event_id', '?')}"
+    raw_kind = _require(raw, "kind", what)
+    core_kind = KIND_MAP.get(raw_kind)
     if core_kind is None:
-        raise MappingError(f"{what} has an unknown case kind {kind!r}")
+        raise MappingError(f"{what} has an unknown case kind {raw_kind!r}")
+    # a second-platform event (schema sp-2.1) is first mapped onto the contract field names by
+    # the data layer's reference mapping; mock-marketplace events come back unchanged
+    source = to_contract(raw) if raw.get("issuer_id") is not None else raw
+    kind = source.get("kind", raw_kind)
+    if KIND_MAP.get(kind) != core_kind:
+        raise MappingError(f"{what}: contract kind {kind!r} does not agree with {raw_kind!r}")
     if kind == "receipt" and source.get("amount_minor") is None:
         core_kind = "message"   # a receipt with text and no amount is a document, not money
     body: dict[str, Any] = {
@@ -207,8 +220,8 @@ def map_merchant_event(case_event: dict[str, Any]) -> Mapped:
         body["corrects_revision"] = revision - 1 if isinstance(revision, int) else None
     body = {k: v for k, v in body.items() if v is not None}
     extra = {k: copy.deepcopy(v) for k, v in source.items() if k not in IDENTITY_FIELDS}
-    extra["case_kind"] = kind
-    return Mapped(body=_validate(MerchantEvent, body, what), extra=extra, source=source)
+    extra["case_kind"] = raw_kind
+    return Mapped(body=_validate(MerchantEvent, body, what), extra=extra, source=raw)
 
 
 def map_import(record: dict[str, Any]) -> Mapped:

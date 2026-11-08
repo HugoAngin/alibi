@@ -72,3 +72,18 @@ uv run --frozen python -m agents.eval.freeze_pack \
 ```
 
 The output contains `cases/` for the official seal and a separate `gold.jsonl` grouped by case. The latter includes the official string-ref answers, the independent per-request revision and privacy checks, and the adversarial step plan. A ref excluded by only one recipient stays in that request’s checks. The case-level field contains refs forbidden to every recipient. The seal commits the grouped file in full. Write the release manifest with the frozen candidate, using `alibi.eval.seal`.
+
+Rehearse the one-command runner on public data before freezing. `--case` selects a subset and can be repeated. The rehearsal uses independent rules drafts and a stubbed one-pass transport. It produces the same files as a frozen run, with typed `unavailable` outcomes for the missing live gate and app.
+
+```bash
+uv run --frozen python -m agents.eval.run_sealed --dry-run --out "$REHEARSAL_OUTPUT"
+```
+
+For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The current live isolation preflight uses macOS `sandbox-exec` to deny the worker access to the private root and repository data. The worker receives the allowlisted case over stdin and starts with separate scratch state for each case and system.
+
+```bash
+python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \
+  --command 'uv run --frozen python -m agents.eval.run_sealed'
+```
+
+The runner verifies the seal before and after capture. It binds the manifest to one run directory and retains the original predictions and probe JSONL. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.

@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro preview --port 4323",
     "check": "astro check",
-    "deploy": "BANK_ORIGIN=https://alibi-sim-bank.eliohaddad.workers.dev astro build && wrangler deploy"
+    "deploy": "BANK_ORIGIN=https://bank.alibi-app.workers.dev astro build && wrangler deploy"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",

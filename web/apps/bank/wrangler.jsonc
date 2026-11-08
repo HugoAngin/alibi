@@ -2,7 +2,7 @@
 // bank. Deploy with `pnpm --filter @alibi/bank deploy`.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "alibi-sim-bank",
+  "name": "bank",
   "compatibility_date": "2026-04-15",
   "assets": { "directory": "./dist", "not_found_handling": "404-page" },
 }

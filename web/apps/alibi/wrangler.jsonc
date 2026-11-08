@@ -6,7 +6,7 @@
 // `pnpm exec wrangler secret put CLERK_SECRET_KEY` (web/docs/hosting.md).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "alibi-site",
+  "name": "www",
   "compatibility_date": "2026-04-15",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },

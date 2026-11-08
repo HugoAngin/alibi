@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro build && wrangler dev --port 4321",
     "check": "astro check",
-    "deploy": "CLERK_SECRET_KEY= ALIBI_ORIGIN=https://alibi-site.eliohaddad.workers.dev astro build && wrangler deploy"
+    "deploy": "CLERK_SECRET_KEY= ALIBI_ORIGIN=https://www.alibi-app.workers.dev astro build && wrangler deploy"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",

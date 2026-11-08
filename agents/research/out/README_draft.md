@@ -4,8 +4,8 @@ README draft for judges. Owner: research. Lead replaces the root README with thi
 
 Sources copied verbatim: the data card from agents/data/out/data_card.md at d711686, and the
 controls table and limits from agents/execution/out/CONTROLS_SLIDE.md at 06d22b1. Research
-refreshes them before T-1h. {{PH-nn}} placeholders match the registry in
-agents/research/out/DECK.md and are filled only from records eval marks as passing.
+refreshes them before T-1h. All placeholders are filled; numbers come only from records eval
+marks as passing.
 Delete this comment before publishing.
 -->
 
@@ -213,7 +213,7 @@ uv run --frozen python -m pytest agents/data
 | Controls | Security probe catalogue, consent matrix, policy rules, analyst flow | `agents/execution/` |
 | Evaluation | Sealed cases, baselines, scorer, package verifier | `agents/eval/` |
 
-Gemini models: `gemini-3.8-flash` for routine calls and `gemini-4-argon` for the frontier role ({{PH-06}}).
+Gemini models: `gemini-3.8-flash` for routine calls and `gemini-4-argon` for the frontier role. Full cost is unknown. Partial logged usage: agents about $0.70 over 62 calls, one-pass about $0.06 over 14 calls, rules no model calls (`agents/eval/out/UNSEEN_RESULTS.md`).
 
 Each of the five of us ran one Claude Code agent that owned one folder. The agents coordinated on a pinned GitHub issue, a commit hook and a CI check stopped any agent writing outside its own folder, and every reported number was rerun by the evaluation agent from a clean checkout.
 
@@ -227,4 +227,4 @@ Each of the five of us ran one Claude Code agent that owned one folder. The agen
 | Mouaad | sirExile44 | execution: controls, policy, bank side |
 | Tamim | t7acct | evaluation: sealed set, baselines, scoring |
 
-Repo and demo: {{PH-01}}
+Live demo: https://www.alibi-app.workers.dev

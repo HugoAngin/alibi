@@ -22,15 +22,15 @@
       "github": "eliohd",
       "paths": [
         "agents/research/",
-        "alibi/app/templates/",
-        "web/"
+        "alibi/app/templates/"
       ]
     },
     {
       "role": "execution",
       "github": "sirExile44",
       "paths": [
-        "agents/execution/"
+        "agents/execution/",
+        "web/"
       ]
     },
     {

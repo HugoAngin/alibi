@@ -60,10 +60,11 @@ from alibi.agents.material import Material, record_view, rfc_view, shareable_ite
 from alibi.agents.models import OnePassClaim, OnePassOutput, parse_output, undeclared_fields, validate_refs
 from alibi.agents.roles import call_cost
 from alibi.core import investigate_rules as core_rules
+from alibi.core.answered import examined_refs
 from alibi.core import reconcile
 from alibi.core.canon import make_id
 from alibi.core.facts import answered_calculation, answered_refs, derive_facts
-from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES, classify_question
+from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES
 from alibi.core.package import PackageError, build_body
 from alibi.core.policy import CompiledPolicy, compile_policy
 from alibi.core.reconcile import FAILED_STATUSES, PENDING_STATUSES, SIGN_BY_KIND, ReconcileError
@@ -122,6 +123,10 @@ GAP_MODEL = "model_unavailable"
 _LABELS = {RecordKind.ORDER: "sales", RecordKind.REFUND: "refunds", RecordKind.FEE: "fees"}
 _RANK = {ClaimStatus.SUPPORTED: 0, ClaimStatus.UNRESOLVED: 1, ClaimStatus.CONTRADICTED: 2}
 _REF_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9_./:-]*")
+# A reference written in an issuer-verified message ("Withdrawal PO-0001-01 ..."): four or more
+# letters, digits and hyphens with at least one letter and one digit, so dates, amounts and
+# plain words never count.
+_TEXT_REF = re.compile(r"(?<![\w-])[A-Za-z0-9][A-Za-z0-9-]{3,}(?![\w-])")
 # An identifier in free text: letters, then an underscore or hyphen, and at least one digit.
 _ID_TOKEN = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9]*[_-][A-Za-z0-9_-]*\d[A-Za-z0-9_-]*(?![\w-])")
 _ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?Z?)?")
@@ -228,6 +233,7 @@ class _Run:
         self.events: list[dict[str, Any]] = []
         self.unavailable: list[str] = []
         self.links: dict[str, Link] = {}
+        self.source_outcome: _Outcome | None = None       # source_once's cached verdict
         self.question_id: str | None = None
         self.compiled: CompiledPolicy = compile_policy(store.latest_policy(rfc.subject_ref))
         self.shareable: list[EvidenceRecord | BankTxn] = []
@@ -324,6 +330,22 @@ class _Run:
             for token in _tokens(message.text or ""):
                 if token in by_norm:
                     named.setdefault(by_norm[token], []).append(message)
+        # A payout can be lookup-only (not yet in the passport): a reference the issuer's own
+        # message names is looked up as written, in message order, at most
+        # MAX_REFERENCE_LOOKUPS of them. The gateway still checks scope and signer, and nothing
+        # a lookup returns triggers a further lookup.
+        written: dict[str, list[EvidenceRecord]] = {}
+        for message in messages:
+            if message.source_trust != SourceTrust.ISSUER_VERIFIED:
+                continue
+            for token in _TEXT_REF.findall(message.text or ""):
+                if not (re.search(r"[A-Za-z]", token) and re.search(r"\d", token)) \
+                        or _norm(token) in by_norm:
+                    continue
+                if token in written or len(written) < core_rules.MAX_REFERENCE_LOOKUPS:
+                    if message not in written.setdefault(token, []):
+                        written[token].append(message)
+        named.update(written)
         if not named:
             self.note("note", tool="lookup_settlement",
                       reason=(f"Fixed retrieval: none of {len(messages)} balance_release message(s) "
@@ -456,11 +478,16 @@ class _Run:
 
     def answer(self, question: Question) -> Claim:
         self.question_id = question.question_id
-        found = classify_question(question.text, self.rfc)
-        self.note("note", reason=f"Question classified as {found.category} by keyword.",
-                  result={"category": found.category, "kinds": [k.value for k in found.kinds]})
+        # The rules engine's classification: the pinned question id first, then keywords, so
+        # q.breakdown is a breakdown and several documented totals are documented_totals.
+        found = core_rules.classify(question, self.rfc)
+        self.note("note", reason=f"Question classified as {found.category}.",
+                  result={"category": found.category, "kinds": [k.value for k in found.kinds],
+                          "keywords": list(found.keywords)})
         if found.category == core_rules.SOURCE_OF_FUNDS:
-            outcome = self.source_of_funds()
+            outcome = self.source_once()
+        elif found.category == core_rules.BREAKDOWN:
+            outcome = self.breakdown()
         elif found.category in (core_rules.UNMAPPED, core_rules.SEVERAL_TOTALS):
             gap = (core_rules.UNMAPPED_GAP if found.category == core_rules.UNMAPPED else
                    "The question names several totals without asking for a net figure.")
@@ -510,15 +537,45 @@ class _Run:
             request_id=self.rfc.request_id, audience=self.rfc.audience, question_id=question.question_id,
             statement=_clip(statement), status=outcome.status, rationale=_clip(outcome.rationale),
             evidence_refs=answered_refs(outcome.status, evidence),
+            examined_refs=examined_refs(outcome.status, evidence, outcome.calculation),
             calculation=answered_calculation(outcome.status, outcome.calculation),
             gap=_clip(outcome.gap) if outcome.gap else None, run_id=self.run_id,
             facts=derive_facts(self.store, self.rfc, question, outcome.status,
                                outcome.evidence, outcome.calculation),
             created_at=self.now)
-        self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
+        self.note("status_change", reason=outcome.reason, refs=[*claim.evidence_refs, *claim.examined_refs],
                   result={"claim_id": claim.claim_id, "status": claim.status.value,
                           "proposed_status": proposed.status if proposed else None})
         return claim
+
+    def source_once(self) -> _Outcome:
+        """The source-of-funds outcome, computed once per run, so a breakdown question that
+        follows it writes no second link or trace note."""
+        if self.source_outcome is None:
+            self.source_outcome = self.source_of_funds()
+        return self.source_outcome
+
+    def breakdown(self) -> _Outcome:
+        """Follows the source verdict, as the rules engine does: for one supported credit, the
+        reconciliation of the linked payout's components; otherwise unresolved with the source
+        gap, citing nothing."""
+        base = self.source_once()
+        calc = base.calculation
+        if base.status == ClaimStatus.SUPPORTED and len(self.rfc.txn_ids or []) == 1 and calc is not None:
+            sums = {label: sum(t.amount_pence for t in calc.terms if t.kind == kind.value)
+                    for kind, label in _LABELS.items()}
+            statement = (f"Credit {self.rfc.txn_ids[0]} is made up of sales {sums['sales']} less refunds "
+                         f"{sums['refunds']} and fees {sums['fees']} = {calc.total_pence} pence "
+                         f"{calc.currency}, reconciled in code against the credit.")
+            return _Outcome(ClaimStatus.SUPPORTED, statement, base.rationale,
+                            "The breakdown reconciles to the supported credit.",
+                            evidence=list(base.evidence), calculation=calc)
+        gap = base.gap or f"{GAP_SETTLEMENT_NOT_FOUND}: the credit's source is not established."
+        return _Outcome(ClaimStatus.UNRESOLVED,
+                        "The breakdown of the credit is not established from the available records.",
+                        f"The breakdown follows the source of funds ({base.status.value}): {base.rationale}",
+                        f"Breakdown follows the source of funds: {base.reason}",
+                        evidence=list(base.evidence), calculation=base.calculation, gap=gap)
 
     def source_of_funds(self) -> _Outcome:
         outcomes = [(txn_id, self.txn_outcome(txn_id)) for txn_id in self.rfc.txn_ids or []]
@@ -779,7 +836,8 @@ class _Run:
             gap = f"{GAP_NO_RECORDS}: no documented {label} records are in the passport for {span}."
             return _Outcome(ClaimStatus.UNRESOLVED, unknown, gap, f"No {label} records found.", gap=gap)
         net = found.category == core_rules.NET_TOTAL
-        signs = SIGN_BY_KIND if net else {found.kinds[0]: 1}
+        several = found.category == core_rules.DOCUMENTED_TOTALS   # one documented total per kind
+        signs = SIGN_BY_KIND if (net or several) else {found.kinds[0]: 1}
         try:
             calc = reconcile.sum_terms(counted, method=found.category, signs=signs)
         except ReconcileError as exc:
@@ -789,6 +847,10 @@ class _Run:
         total = _money(calc.total_pence, calc.currency)
         statement = (f"Documented {label} over {span} {'net to' if net else 'total'} {total} across "
                      f"{len(counted)} record{'s' if len(counted) != 1 else ''}.")
+        if several:
+            stated = [f"{_LABELS[k]} total {_money(sum(r.amount_pence or 0 for r in counted if r.kind == k), calc.currency)} "
+                      f"across {sum(r.kind == k for r in counted)} record(s)" for k in found.kinds]
+            statement = f"Documented {' and '.join(stated)} over {span}; each total is stated separately."
         rationale = ("Summed in code from the retrieved records dated in " + span + ": "
                      + "; ".join(f"{r.record_id} {r.amount_pence}" for r in counted) + f". Total {total}.")
         if skipped:

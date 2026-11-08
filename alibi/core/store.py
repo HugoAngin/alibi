@@ -253,14 +253,15 @@ def _body_refs(body: PackageBody) -> list[EvidenceRef]:
 def dependency_refs(obj: Link | Claim | Draft | Approval | ContextPackage) -> list[EvidenceRef]:
     """Revision-pinned refs a derived object depends on, sorted and de-duplicated.
 
-    Link: txn_ref, record_ref, candidates. Claim: evidence_refs plus every calculation ref.
+    Link: txn_ref, record_ref, candidates. Claim: evidence_refs, private examined_refs and
+    every calculation ref.
     Draft: source_revisions plus the body's refs. Approval: source_revisions. Package: the
     body's attachment refs and claim evidence/calculation refs.
     """
     if isinstance(obj, Link):
         refs = [obj.txn_ref, obj.record_ref, *obj.candidates]
     elif isinstance(obj, Claim):
-        refs = [*obj.evidence_refs, *_calc_refs(obj.calculation)]
+        refs = [*obj.evidence_refs, *obj.examined_refs, *_calc_refs(obj.calculation)]
     elif isinstance(obj, Draft):
         refs = [*obj.source_revisions, *_body_refs(obj.body)]
     elif isinstance(obj, Approval):

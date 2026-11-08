@@ -66,7 +66,7 @@ from alibi.core.reconcile import (
     SIGN_BY_KIND,
     ReconcileError,
 )
-from alibi.core.answered import answered_calculation, answered_refs
+from alibi.core.answered import answered_calculation, answered_refs, examined_refs
 from alibi.core.schemas import (
     BankTxn,
     Calculation,
@@ -189,6 +189,14 @@ _MONEY_WORDS = re.compile(
 _NOT_SOURCE = re.compile(
     r"\b(?:credit\s+(?:cards?|scores?|history|limits?|ratings?)|loans?|lenders?|mortgages?|"
     r"overdrafts?|borrow\w*)\b", re.IGNORECASE)
+# Cues that only ask for an explanation. With a breakdown word and no other source cue ("explain
+# how this credit was calculated", "why does the payment not reconcile") the question asks how
+# the amount is made up, not where it came from. "Arrive(d) at" is not one of these breakdown
+# words here: "why did the money arrive at your account" asks for a source.
+_EXPLAIN_ONLY = re.compile(r"\b(?:explain\w*|why)\b", re.IGNORECASE)
+_BREAKDOWN_ONLY = re.compile(
+    r"\b(?:calculat\w*|reconcil\w*|break\s*down|breakdown|made\s+up|composed|"
+    r"work(?:ed|ing)?\s+out|adds?\s+up|itemi[sz]\w*)\b", re.IGNORECASE)
 # Breakdown: how the amount was calculated, reconciles, breaks down or is made up.
 _BREAKDOWN_CUE = re.compile(
     r"\b(?:calculat\w*|reconcil\w*|break\s*down|breakdown|made\s+up|composed|arrived?\s+at|"
@@ -239,14 +247,18 @@ def classify_question(text: str, request: RequestForContext) -> Classification:
     With ``txn_ids``, a question that names a requested txn_id, or pairs a cue (source,
     origin, explain, where, why, who, come from, what ... for) with a word for the money
     (credit, payment, deposit, transfer, funds, received, arrived, paid, ...), is
-    ``source_of_funds``, unless it is about credit cards, loans, mortgages or borrowing.
+    ``source_of_funds``, unless it is about credit cards, loans, mortgages or borrowing, or
+    it asks how the amount was calculated or reconciles with no source cue other than
+    "explain" or "why" (``classify`` makes that a ``breakdown``).
     Otherwise, with a period: sales (orders, revenue, income, earnings, turnover, takings),
     refunds (returns) or fees (commission) give that total. Several categories give
     ``net_total`` only with a net cue ("net", "after refunds", "less fees"); without one, a
     sales word that is only the object ("refunds on orders") is ignored, and a question still
     naming several totals is ``several_totals``. Anything else is ``unmapped``.
     """
-    if request.txn_ids:
+    breakdown_only = bool(_BREAKDOWN_ONLY.search(text)) \
+        and not _CUE_WORDS.search(_EXPLAIN_ONLY.sub(" ", text))
+    if request.txn_ids and not breakdown_only:
         named = tuple(sorted({txn_id.lower() for txn_id in request.txn_ids
                               if _names(text, txn_id)}))
         if named:
@@ -469,12 +481,13 @@ class _Run:
             question_id=question.question_id,
             statement=_clip(outcome.statement), status=outcome.status,
             rationale=_clip(rationale), evidence_refs=answered_refs(outcome.status, outcome.evidence),
+            examined_refs=examined_refs(outcome.status, outcome.evidence, outcome.calculation),
             calculation=answered_calculation(outcome.status, outcome.calculation),
             gap=_clip(outcome.gap) if outcome.gap else None,
             gap_detail=_clip(outcome.detail) if outcome.detail else None,
             facts=dict(outcome.facts),
             run_id=self.run_id, created_at=self.now)
-        self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
+        self.note("status_change", reason=outcome.reason, refs=[*claim.evidence_refs, *claim.examined_refs],
                   result={"claim_id": claim.claim_id, "status": claim.status.value,
                           "gap": claim.gap or "none"})
         return claim
@@ -548,8 +561,7 @@ class _Run:
         return _Outcome(ClaimStatus.UNRESOLVED, statement, base.rationale,
                         f"Breakdown follows the source of funds: {base.reason}",
                         gap=base.gap or GAP_SETTLEMENT_NOT_FOUND, detail=detail,
-                        calculation=base.calculation if base.status != ClaimStatus.SUPPORTED
-                        else None)
+                        evidence=list(base.evidence), calculation=base.calculation)
 
     def credit_outcome(self, txn_id: str) -> _Outcome:
         """The source-of-funds outcome for one credit, after the one-payout-one-credit rule.

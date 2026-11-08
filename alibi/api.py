@@ -25,7 +25,7 @@ an audit event. Conventions:
 """
 
 import copy
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -102,6 +102,7 @@ from alibi.core.store import (
     RevisionConflict,
     Store,
     StoreError,
+    dependency_refs,
 )
 from alibi.fixtures import maya
 from alibi.gateway import (
@@ -399,13 +400,20 @@ def _regenerated_body(store: Store, rfc: RequestForContext, draft: Draft,
     run cannot be packaged (no claims, or claims invalidated by newer evidence)."""
     try:
         claims = _latest_claims(store, rfc)
-        refs = core_package.cited_refs(claims, request_id=rfc.request_id)
+        refs = _claim_dependencies(claims)
+        if refs != core_approval.merge_refs(draft.source_revisions):
+            return None  # the examined inputs changed, even if the recipient text did not
         evidence = [_load_ref(store, ref) for ref in refs]
         body, _ = core_package.build_body(rfc, claims, evidence, compiled, now=draft.created_at,
                                           removed=_removed_by_holder(draft))
     except (PackageError, NotFound):
         return None
     return body
+
+
+def _claim_dependencies(claims: Iterable[Claim]) -> list[EvidenceRef]:
+    """All private revision pins, including examined sources an unresolved answer withholds."""
+    return core_approval.merge_refs(*(dependency_refs(claim) for claim in claims))
 
 
 _VOLATILE_BODY_FIELDS = ("expires_at", "issued_at")
@@ -427,7 +435,8 @@ def _live_drafts(store: Store, request_id: str, audience: str) -> list[Draft]:
     live = (DraftStatus.PENDING, DraftStatus.APPROVED, DraftStatus.PACKAGED)
     drafts = [d for d in store.list_drafts(request_id=request_id, audience=audience)
               if DraftStatus(d.status) in live]
-    return sorted(drafts, key=lambda d: (d.created_at, d.draft_id))
+    # Store insertion order breaks equal-clock ties; a content hash is not chronology.
+    return sorted(drafts, key=lambda d: d.created_at)
 
 
 def _supersede(store: Store, request_id: str, audience: str, current: Draft, *,
@@ -442,7 +451,9 @@ def _supersede(store: Store, request_id: str, audience: str, current: Draft, *,
             approved12=old.body_sha256[:12], current12=current.body_sha256[:12]))
     for approval in store.list_approvals(request_id=request_id,
                                          status=ApprovalStatus.PENDING.value):
-        if approval.audience != audience or approval.body_sha256 == current.body_sha256:
+        if approval.audience != audience or (approval.body_sha256 == current.body_sha256
+                and core_approval.merge_refs(approval.source_revisions)
+                == core_approval.merge_refs(current.source_revisions)):
             continue
         store.update_approval(Approval.model_validate({
             **approval.to_json_dict(), "status": ApprovalStatus.INVALIDATED.value,
@@ -708,8 +719,7 @@ def build_review(store: Store, request_id: str, *, audience: str | None = None,
     try:
         with store.transaction():
             claims = _latest_claims(store, rfc)
-            refs = core_package.cited_refs(claims, request_id=rfc.request_id,
-                                           audience=rfc.audience)
+            refs = _claim_dependencies(claims)
             evidence = [_load_ref(store, ref) for ref in refs]
             _, compiled = _current_policy(store, rfc.subject_ref)
             body, review = core_package.build_body(rfc, claims, evidence, compiled, now=at,
@@ -720,7 +730,8 @@ def build_review(store: Store, request_id: str, *, audience: str | None = None,
             fingerprint = _body_fingerprint(draft.body)
             same_body = [d for d in _live_drafts(store, rfc.request_id, rfc.audience)
                          if _body_fingerprint(d.body) == fingerprint
-                         and d.policy_version == draft.policy_version]
+                         and d.policy_version == draft.policy_version
+                         and core_approval.merge_refs(d.source_revisions) == refs]
             if same_body:
                 return same_body[-1]   # built already (any clock): keep it and its status
             taken = {d.draft_id for d in store.list_drafts(request_id=rfc.request_id)}

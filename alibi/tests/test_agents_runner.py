@@ -262,7 +262,8 @@ def test_ambiguous_variant_resolves_by_lookup_without_a_reference_on_the_credit(
     (claim,) = result.claims
     assert result.links[0].link_state == LinkState.LINKED and result.links[0].method == "rule"
     assert claim.status == ClaimStatus.UNRESOLVED and "carries no reference" in claim.gap
-    assert claim.calculation is not None and claim.calculation.balanced is True
+    assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
+    assert [e.result for e in result.trace if e.step == "calculation"][-1]["balanced"] is True
 
 
 def test_rfc_b_period_totals_are_computed_in_code(make):
@@ -417,7 +418,8 @@ def test_challenger_contradicted_needs_an_explicit_field_conflict(make):
         assert claim.gap.startswith("challenger_unresolved:")
         assert "challenger_contradicted" not in claim_text(claim)
         assert any("without an explicit-field conflict" in (e.reason or "") for e in result.trace)
-        assert claim.calculation is not None and claim.calculation.balanced is True
+        assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
+        assert [e.result for e in result.trace if e.step == "calculation"][-1]["balanced"] is True
     # Without any validated conflicting ref the same proposal is treated the same way.
     ctx = make("supported")
     result = ctx.run(client_for(challenger_script=lookup_then(

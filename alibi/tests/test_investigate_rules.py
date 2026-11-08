@@ -489,7 +489,9 @@ def test_matching_amounts_alone_never_support_a_claim(passport, keystore, now):
 
     assert result.links[0].method == "amount_date"
     claim = claim_of(result)
-    assert claim.calculation.balanced is True and claim.calculation.timing.ok is True
+    assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
+    calc = [e.result for e in result.trace if e.step == "calculation"][-1]
+    assert calc["balanced"] is True and calc["timing_ok"] is True
     assert claim.status == UNRESOLVED
     assert "alone" in claim.gap_detail
 

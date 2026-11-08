@@ -41,7 +41,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -158,13 +158,19 @@ def _gap_code(text: str | None) -> str | None:
 class _World:
     """One fresh passport store and the two mock services wired to it in process."""
 
-    def __init__(self, case: dict[str, Any], root: Path):
+    def __init__(self, case: dict[str, Any], root: Path, *,
+                 trusted_issuers: Mapping[str, str] | None = None,
+                 synthetic_key_seed: str | None = None):
+        if synthetic_key_seed is not None and (not isinstance(synthetic_key_seed, str)
+                                                or not synthetic_key_seed):
+            raise ValueError("synthetic_key_seed must be a nonempty trusted setup secret")
         self.case = case
         self.number = int(case["case_number"])
         self.subject = case["subject_ref"]
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
-        self.keystore = keys.connector_keystore(root / "keys")
+        self.keystore = keys.connector_keystore(root / "keys", trusted_issuers=trusted_issuers,
+                                                seed=synthetic_key_seed)
         self.registry = self.keystore.registry()
         self.store = Store(root / "passport.db")
         # Fresh bearer tokens per world; they never leave the process and are never printed.
@@ -648,7 +654,9 @@ def _case_root(mode: str, number: int, root: Path | str | None) -> Path:
 
 def run_case(case: int | dict[str, Any], mode: str = "rules", as_of: datetime | str | None = None,
              *, client: Any = None, run_id: str | None = None, replay: bool | None = None,
-             root: Path | str | None = None) -> list[dict[str, Any]]:
+             root: Path | str | None = None,
+             trusted_issuers: Mapping[str, str] | None = None,
+             synthetic_key_seed: str | None = None) -> list[dict[str, Any]]:
     """Run one case in ``mode`` through the simulated services and return its predictions.
 
     ``case`` is a case number (``agents.data.api.load_case``) or a case dict; gold is stripped.
@@ -659,6 +667,11 @@ def run_case(case: int | dict[str, Any], mode: str = "rules", as_of: datetime | 
     recorder is used (``ALIBI_REPLAY=1`` serves the recording instead). ``replay=True`` wraps a
     given client in the recorder too. ``root`` moves the per-case store folder (default
     ``data/alibi/adapter/<mode>/case_<n>``); it is emptied first, so every run starts fresh.
+    ``trusted_issuers`` is an optional ``kid -> issuer_id`` mapping from trusted synthetic
+    service setup. It is shared by all modes and never read from the case or its events.
+    ``synthetic_key_seed`` optionally derives repeatable keys for every simulated service
+    across fresh workers. It is secret key material from trusted setup, never case data;
+    use a private high-entropy random value and bind the public-key pins before capture.
     """
     mode = normalise_mode(mode)
     case_dict = _load_case(case)
@@ -678,7 +691,8 @@ def run_case(case: int | dict[str, Any], mode: str = "rules", as_of: datetime | 
         return []
     start = fixed if fixed is not None else parse_time(rfcs[0]["issued_at"], "issued_at")
 
-    world = _World(case_dict, folder)
+    world = _World(case_dict, folder, trusted_issuers=trusted_issuers,
+                   synthetic_key_seed=synthetic_key_seed)
     predictions: list[dict[str, Any]] = []
     try:
         engine_client, live = _client_for(mode, number, client, run_id, replay)
@@ -751,12 +765,17 @@ def select_cases(numbers: Iterable[int] | None = None,
 
 def run_cases(cases: Iterable[dict[str, Any]], mode: str, *, out: Path, as_of: str | None = None,
               run_id: str | None = None, client: Any = None, log=None,
-              root: Path | str | None = None) -> dict[str, Any]:
+              root: Path | str | None = None,
+              trusted_issuers: Mapping[str, str] | None = None,
+              synthetic_key_seed: str | None = None) -> dict[str, Any]:
     """Run every case in ``mode``, write ``<out>/<mode>.jsonl`` (system line first) and return the
     summary ``{mode, cases, requests, failures, lookups, observed_inputs, model_calls, tokens}``.
     A case whose run raises (a seeding problem, not a model failure) is written as one typed
     ``error`` failure per RFC so the file stays complete. ``root`` is ``run_case``'s: the folder
-    the per-case stores go under (default ``data/alibi/adapter/<mode>/``)."""
+    the per-case stores go under (default ``data/alibi/adapter/<mode>/``).
+    ``trusted_issuers`` forwards the same explicit synthetic service pins to every case.
+    ``synthetic_key_seed`` forwards the same private synthetic key seed to every case.
+    """
     mode = normalise_mode(mode)
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"{mode}.jsonl"
@@ -775,7 +794,9 @@ def run_cases(cases: Iterable[dict[str, Any]], mode: str, *, out: Path, as_of: s
             started = time.perf_counter()
             try:
                 predictions = run_case(case, mode, as_of, client=live, run_id=run_id,
-                                       replay=(mode != "rules" and client is None), root=root)
+                                       replay=(mode != "rules" and client is None), root=root,
+                                       trusted_issuers=trusted_issuers,
+                                       synthetic_key_seed=synthetic_key_seed)
             except Exception as exc:  # noqa: BLE001 - reported as typed failures, never a crash
                 predictions = []
                 for rfc in sorted(case.get("rfcs", []), key=lambda r: r["issued_at"]):

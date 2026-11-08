@@ -11,8 +11,9 @@ case_loader=...)`` builds a FastAPI app that
   ``CaseClock.lookup``, so it serves exactly what the data layer defines, including lookup-only
   records that appear at their ``available_from`` and corrections made through
   ``POST /admin/correct``;
-* signs everything with ``keys.sign_merchant_event`` (kid ``merchant_mock``, issuer
-  ``mock-marketplace``). Pushes carry exactly ``{"event", "signature"}``; lookups return
+* signs everything with ``keys.sign_merchant_event`` using an already configured issuer pin
+  (by default ``merchant_mock`` for ``mock-marketplace``). Unknown issuers are refused.
+  Pushes carry exactly ``{"event", "signature"}``; lookups return
   ``{"event", "signature", "extra"}``, where ``extra`` holds the case fields the core type cannot
   hold (``payout_reference``, ``status_as_of``, ...) and never enters a signed payload.
 
@@ -51,7 +52,7 @@ from alibi.connectors.http import Refusal, admin_guard, install_refusals, resolv
 from alibi.connectors.plug import Sink
 from alibi.core import canon
 from alibi.core.schemas import format_utc
-from alibi.core.signing import DemoKeystore
+from alibi.core.signing import DemoKeystore, SignatureError
 
 __all__ = [
     "CORRECTION_IDENTITY_FIELDS", "MAX_RANGE_DAYS", "OUTCOMES", "SERVICE_NAME", "Delivery",
@@ -191,7 +192,13 @@ class MerchantState:
                                 f"mapping failed: {exc}", {}, "")
             self.pushed.append(delivery)
             return delivery
-        payload = keys.sign_merchant_event(body, self.keystore)
+        try:
+            payload = keys.sign_merchant_event(body, self.keystore)
+        except SignatureError:
+            delivery = Delivery(seq, body["event_id"], body["record_id"], body["revision"],
+                                received_at, "refused", "issuer has no configured signing key", {}, "")
+            self.pushed.append(delivery)
+            return delivery
         sha = canon.digest(payload)
         outcome = self.send(payload, received_at)
         delivery = Delivery(seq, body["event_id"], body["record_id"], body["revision"],
@@ -278,7 +285,10 @@ class MerchantState:
     def envelope(self, case_event: dict[str, Any]) -> dict[str, Any]:
         """``{"event", "signature", "extra"}`` for one case event."""
         mapped = map_merchant_event(case_event)
-        signed = keys.sign_merchant_event(mapped.body, self.keystore)
+        try:
+            signed = keys.sign_merchant_event(mapped.body, self.keystore)
+        except SignatureError:
+            raise Refusal("untrusted_issuer", "issuer has no configured signing key", status=422) from None
         return {**signed, "extra": mapped.extra}
 
     def current(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -457,7 +467,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
 
     ``sink`` receives every push; with ``passport_url`` instead, pushes go over HTTP
     (``http_sink``); with neither they are recorded ``not_delivered``. ``keystore`` must hold
-    ``merchant_mock`` (``keys.connector_keystore``). ``case_loader(n)`` returns a case without
+    each service issuer's record-signing key (``keys.connector_keystore``). ``case_loader(n)`` returns a case without
     gold or raises ``KeyError`` (``404 unknown_case``). The admin credential for ``/admin/*`` is
     ``admin_token``, else ``tokens["admin"]`` (the dict ``http.load_tokens`` returns, shared with
     the bank), else a fresh random token; it is kept as ``app.state.admin_token``, never logged.

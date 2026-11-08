@@ -2,8 +2,8 @@
 
 Minimum disclosure applied at the claim: a claim that is ``supported`` or ``contradicted``
 cites the records it rests on; an ``unresolved`` claim rests on nothing established, so it
-cites no evidence record. It keeps its calculation, and its gap code and gap sentence say what
-is missing; the investigation trace still records every read and check. Because
+cites no evidence record or calculation. Its private examined refs retain every source
+dependency for corrections and approval checks; the gap and trace explain what is missing. Because
 the package attaches only what claims cite, a request whose questions are all unresolved
 sends the bank no records at all.
 
@@ -17,7 +17,7 @@ from typing import Any
 
 from alibi.core.schemas import Calculation, ClaimStatus, EvidenceRef
 
-__all__ = ["answered_calculation", "answered_refs", "is_answered"]
+__all__ = ["answered_calculation", "answered_refs", "examined_refs", "is_answered"]
 
 
 def is_answered(status: Any) -> bool:
@@ -39,6 +39,22 @@ def answered_refs(status: Any, refs: Iterable[EvidenceRef]) -> list[EvidenceRef]
 
 
 def answered_calculation(status: Any, calculation: Calculation | None) -> Calculation | None:
-    """The calculation, kept for every claim so the arithmetic behind an unresolved answer
-    (for example amounts that do not reconcile) stays visible."""
-    return calculation
+    """Only an answered claim discloses a calculation; unresolved arithmetic stays in trace."""
+    return calculation if is_answered(status) else None
+
+
+def examined_refs(status: Any, refs: Iterable[EvidenceRef],
+                  calculation: Calculation | None) -> list[EvidenceRef]:
+    """Private dependencies captured before unresolved citations/calculations are removed."""
+    if is_answered(status):
+        return []
+    dependencies = list(refs)
+    if calculation is not None:
+        dependencies.extend(calculation.cited_refs)
+        dependencies.extend(term.ref for term in calculation.terms)
+        if calculation.target_ref is not None:
+            dependencies.append(calculation.target_ref)
+        if calculation.timing is not None:
+            dependencies.extend((calculation.timing.settlement_ref, calculation.timing.credit_ref))
+    unique = {ref.key(): ref for ref in dependencies}
+    return [unique[key] for key in sorted(unique)]

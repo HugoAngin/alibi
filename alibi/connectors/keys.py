@@ -21,11 +21,13 @@ rewrites that file with the core's keys only, dropping the app's two; pass this 
 its registry explicitly to every passport call (see ``alibi/NEEDS.md``).
 """
 
+from collections.abc import Mapping
 from pathlib import Path
+import re
 from typing import Any
 
 from alibi.core.schemas import KeyPurpose, SigningDomain
-from alibi.core.signing import DEFAULT_KEY_DIR, DEMO_KEYS, DemoKeystore, TrustRegistry
+from alibi.core.signing import DEFAULT_KEY_DIR, DEMO_KEYS, DemoKeystore, SignatureError, TrustRegistry
 
 __all__ = [
     "APP_ISSUER_KIDS", "BANK_KIDS", "CASE_ISSUER", "CONNECTOR_KEYS", "MERCHANT_KID", "connector_keystore", "kid_for_issuer",
@@ -47,11 +49,30 @@ CONNECTOR_KEYS: dict[str, tuple[KeyPurpose, str]] = {
 
 
 def connector_keystore(root: Path | str = DEFAULT_KEY_DIR, *, seed: str | None = None,
-                       ensure: bool = True) -> DemoKeystore:
+                       ensure: bool = True,
+                       trusted_issuers: Mapping[str, str] | None = None) -> DemoKeystore:
     """The keystore the simulated services sign with: ``CONNECTOR_KEYS`` (the core's demo keys,
     ``merchant_mock`` and the app's two issuer keys). ``seed`` derives keys deterministically
-    (tests only)."""
-    keystore = DemoKeystore(root, seed=seed, specs=CONNECTOR_KEYS)
+    (tests and disposable synthetic harnesses only). A private high-entropy seed allows
+    fresh isolated workers to share predeclared public-key pins. ``trusted_issuers`` adds
+    explicit ``kid -> issuer_id`` pins for synthetic
+    services. Only trusted harness setup may supply it; never derive it from case records.
+    New keys are record-signing only, cannot replace existing pins, and use safe filenames.
+    """
+    specs = dict(CONNECTOR_KEYS)
+    if trusted_issuers is not None:
+        if not isinstance(trusted_issuers, Mapping):
+            raise ValueError("trusted_issuers must map key ids to issuer ids")
+        for kid, issuer in trusted_issuers.items():
+            if not isinstance(kid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", kid):
+                raise ValueError("configured issuer key id must be a safe filename token")
+            if not isinstance(issuer, str) or not issuer or issuer != issuer.strip() \
+                    or any(ord(char) < 32 or ord(char) == 127 for char in issuer):
+                raise ValueError("configured issuer id must be a nonempty string without control characters")
+            if kid in specs or any(pin == issuer for _, pin in specs.values()):
+                raise ValueError("configured issuer key or issuer collides with an existing pin")
+            specs[kid] = (KeyPurpose.RECORD_SIGNING, issuer)
+    keystore = DemoKeystore(root, seed=seed, specs=specs)
     return keystore.ensure() if ensure else keystore
 
 
@@ -67,9 +88,20 @@ def kid_for_issuer(issuer_id: Any) -> str:
 def sign_merchant_event(body: dict[str, Any], keystore: DemoKeystore,
                         kid: str | None = None) -> dict[str, Any]:
     """The wire shape the passport ingests: ``{"event": body, "signature": envelope}``, signed
-    in the record domain. ``body`` is a core ``MerchantEvent`` as JSON (see case_source)."""
-    if kid is None:   # the issuer's own key: a second-platform event is signed with second_platform
-        kid = kid_for_issuer(body.get("issuer_id") if isinstance(body, dict) else None)
+    in the record domain. ``body`` is a core ``MerchantEvent`` as JSON (see case_source).
+    An event selects among already configured pins; it never creates or changes a pin.
+    Unknown issuers and explicitly mismatched keys fail closed before signing.
+    """
+    issuer = body.get("issuer_id") if isinstance(body, dict) else None
+    if not isinstance(issuer, str) or not issuer:
+        raise SignatureError("merchant issuer has no configured record-signing key")
+    if kid is None:
+        matches = sorted(key for key, spec in keystore.specs.items()
+                         if spec == (KeyPurpose.RECORD_SIGNING, issuer))
+        preferred = kid_for_issuer(issuer)
+        kid = preferred if preferred in matches else next(iter(matches), None)
+    if kid is None or keystore.specs.get(kid) != (KeyPurpose.RECORD_SIGNING, issuer):
+        raise SignatureError("merchant issuer has no matching configured record-signing key")
     envelope = keystore.sign(body, kid=kid, domain=SigningDomain.RECORD)
     return {"event": body, "signature": envelope.to_json_dict()}
 

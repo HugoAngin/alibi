@@ -211,6 +211,8 @@ def test_build_apps_wires_the_rfc_forwarder_when_asked(tmp_path):
 
 def _port_free(port: int) -> bool:
     with socket.socket() as probe:
+        if os.name != "nt":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("127.0.0.1", port))
         except OSError:

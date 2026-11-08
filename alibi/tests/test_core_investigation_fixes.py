@@ -111,8 +111,9 @@ def test_a_settlement_more_than_five_days_before_the_credit_cannot_support_it(pa
     assert result.links[0].link_state == LinkState.LINKED      # the reference still links it
     assert claim.status == UNRESOLVED and claim.gap == "settlement_not_found"
     assert "more than 5 days before the booking" in claim.gap_detail
-    assert claim.calculation.balanced is True and claim.calculation.timing.ok is False
-    assert "more than 5 days before" in claim.calculation.timing.reason
+    assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
+    calc = [e.result for e in result.trace if e.step == "calculation"][-1]
+    assert calc["balanced"] is True and calc["timing_ok"] is False
     assert claim.facts == {}
 
 

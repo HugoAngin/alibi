@@ -282,9 +282,6 @@ def test_expired_request_is_refused_and_an_expired_package_is_rejected(client, b
 # --------------------------------------------------------------------------- delivery
 
 
-@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
-                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
-                   "no record) it carries no attachments; rebuild the fixture on the supported path")
 def test_delivery_verifies_and_is_idempotent_on_identical_bytes(client, built):
     issue_both(client)
     p1 = built.p1
@@ -299,8 +296,10 @@ def test_delivery_verifies_and_is_idempotent_on_identical_bytes(client, built):
     assert receipt["received_at"] == AS_OF
     assert out["authentication"]["valid"] is True
     assert isinstance(out["sources"], list) and isinstance(out["claims"], list)
-    assert out["sources"] and all({"claimed_trust", "attestation"} <= set(s) for s in out["sources"])
+    # Without the lookup-only settlement both answers are unresolved, so P1 shares nothing.
+    assert out["sources"] == [] and p1["body"]["attachments"] == []
     assert {c["question_id"] for c in out["claims"]} == {"q.source_of_funds", "q.breakdown"}
+    assert all(c["status"] == "unresolved" and not c.get("evidence_refs") for c in p1["body"]["claims"])
 
     retry = client.post("/deliver", json=p1, headers=auth("bank_a"))
     assert retry.status_code == 200 and retry.json()["receipt"]["receipt_id"] == receipt["receipt_id"]
@@ -355,15 +354,13 @@ def _package_texts(package):
     return found
 
 
-@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
-                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
-                   "no record) it carries no attachments; rebuild the fixture on the supported path")
 def test_tampered_package_is_rejected_and_keeps_no_contents(built, tmp_path):
     state_path = tmp_path / "state.json"
     client = make_app(built, state_path=state_path)
     issue_both(client)
-    tampered = copy.deepcopy(built.p1)
-    tampered["body"]["attachments"][0]["content"]["amount_pence"] += 1
+    tampered = copy.deepcopy(built.p1)   # P1 shares nothing, so tamper with its claim text
+    changed = "TAMPERED-CLAIM-TEXT"
+    tampered["body"]["claims"][0]["statement"] += f" {changed}"
     rejected = client.post("/deliver", json=tampered, headers=auth("bank_a"))
     assert rejected.status_code == 422 and rejected.json()["code"] == "package_rejected"
     assert rejected.json()["receipt"]["package_sha256"] == canon.digest(tampered)
@@ -373,11 +370,11 @@ def test_tampered_package_is_rejected_and_keeps_no_contents(built, tmp_path):
     assert [(p["package_id"], p["status"]) for p in inbox] == [(pid, "rejected")]
     view = client.get(f"/packages/{pid}", headers=auth("bank_a")).json()
     assert view["status"] == "rejected" and "package" not in view
-    assert "216001" not in json.dumps(view) and "amount_pence" not in json.dumps(view)
+    assert changed not in json.dumps(view) and "amount_pence" not in json.dumps(view)
     for suffix in ("/attachments", "/raw"):
         response = client.get(f"/packages/{pid}{suffix}", headers=auth("bank_a"))
         assert response.status_code == 409 and response.json()["code"] == "package_rejected"
-    assert "216001" not in json.dumps(client.get("/audit", headers=auth("bank_a")).json())
+    assert changed not in json.dumps(client.get("/audit", headers=auth("bank_a")).json())
 
     # The replay of a rejected delivery returns the stored receipt and the same 422.
     replay = client.post("/deliver", json=tampered, headers=auth("bank_a"))
@@ -398,7 +395,7 @@ def test_tampered_package_is_rejected_and_keeps_no_contents(built, tmp_path):
     assert texts, "the fixture package carries claim text to check against"
     for sample in texts:
         assert sample not in text
-    assert "216001" not in text and "q.source_of_funds" not in json.dumps(entry)
+    assert changed not in text and "q.source_of_funds" not in json.dumps(entry)
 
     # Another recipient's genuine package is kept the same way after an audience mismatch.
     other = client.post("/deliver", json=built.p3, headers=auth("bank_a"))
@@ -545,32 +542,31 @@ def test_recipients_never_see_each_others_packages_or_requests(client, built):
 # --------------------------------------------------------------------------- views
 
 
-@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
-                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
-                   "no record) it carries no attachments; rebuild the fixture on the supported path")
 def test_verified_package_view_attachments_and_raw(client, built):
     issue_both(client)
-    p1 = built.p1
-    assert client.post("/deliver", json=p1, headers=auth("bank_a")).status_code == 200
-    view = client.get(f"/packages/{p1['package_id']}", headers=auth("bank_a")).json()
+    p3 = built.p3   # P1's answers are unresolved and share nothing; P3 carries the records
+    assert client.post("/deliver", json=p3, headers=auth("bank_b")).status_code == 200
+    view = client.get(f"/packages/{p3['package_id']}", headers=auth("bank_b")).json()
     assert view["status"] == "verified" and view["receipt"]["accepted"] is True
     assert view["authentication"]["valid"] is True
     assert view["sources"] and view["claims"]
+    assert all({"claimed_trust", "attestation"} <= set(s) for s in view["sources"])
     package = view["package"]
-    assert package["package_id"] == p1["package_id"] and package["body_sha256"] == p1["body_sha256"]
-    assert package["issued_at"] == p1["issued_at"]
-    assert package["body"]["scope"] == {"txn_ids": ["txn-0001-004"]}
-    assert package["body"]["request_id"] == RFC_A and package["body"]["audience"] == "bank_a"
+    assert package["package_id"] == p3["package_id"] and package["body_sha256"] == p3["body_sha256"]
+    assert package["issued_at"] == p3["issued_at"]
+    assert package["body"]["scope"] == {"period": {"from": "2026-10-01T00:00:00Z",
+                                                   "to": "2026-11-01T00:00:00Z"}}
+    assert package["body"]["request_id"] == RFC_B and package["body"]["audience"] == "bank_b"
     assert package["body"]["attachments"]
     for attachment in package["body"]["attachments"]:
         assert "content" not in attachment and "issuer_signature" not in attachment
         assert {"attachment_id", "ref", "form", "source_trust"} <= set(attachment)
     assert view["dispositions"] == [] and view["follow_ups"] == []
-    full = client.get(f"/packages/{p1['package_id']}/attachments", headers=auth("bank_a")).json()
-    assert full["package_id"] == p1["package_id"]
-    assert full["attachments"] == p1["body"]["attachments"]
-    assert full["attachments"][0]["content"]["amount_pence"] == 216000
-    assert client.get(f"/packages/{p1['package_id']}/raw", headers=auth("bank_a")).json() == p1
+    full = client.get(f"/packages/{p3['package_id']}/attachments", headers=auth("bank_b")).json()
+    assert full["package_id"] == p3["package_id"]
+    assert full["attachments"] == p3["body"]["attachments"]
+    assert full["attachments"][0]["content"]["amount_pence"] == 30000   # rec-0001-001, a sale
+    assert client.get(f"/packages/{p3['package_id']}/raw", headers=auth("bank_b")).json() == p3
 
 
 # --------------------------------------------------------------------------- dispositions

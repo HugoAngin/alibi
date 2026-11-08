@@ -246,13 +246,13 @@ def test_signed_case_events_ingest_as_issuer_verified(tmp_path, case1):
 
 def test_the_core_demo_key_cannot_sign_for_the_case_issuer(tmp_path, case1):
     keystore = keys.connector_keystore(tmp_path / "keys", seed="s2")
-    payload = keys.sign_merchant_event(map_merchant_event(_event(case1, "rec-0001-001")).body,
-                                       keystore, kid="merchant_demo")
-    from alibi.core.ingest import IngestError
-    with Store(tmp_path / "p.db") as store, pytest.raises(IngestError) as info:
-        ingest_merchant_event(store, keystore.registry(), payload, subject_ref="maya-001",
-                              now=datetime(2026, 10, 5, 10, 5, tzinfo=timezone.utc))
-    assert "issuer" in info.value.reason
+    from alibi.core.signing import SignatureError
+    # Refused before signing: the demo key is not the case issuer's configured key, so no
+    # payload signed with it for that issuer can exist to reach ingest.
+    with pytest.raises(SignatureError) as info:
+        keys.sign_merchant_event(map_merchant_event(_event(case1, "rec-0001-001")).body,
+                                 keystore, kid="merchant_demo")
+    assert "issuer" in str(info.value)
 
 
 # --------------------------------------------------------------------------- the clock

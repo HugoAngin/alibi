@@ -219,8 +219,8 @@ def cited_refs(claims: Iterable[Claim], *, request_id: str | None = None,
     """Every ref the active claims cite (evidence and calculation refs), sorted by key.
 
     ``request_id`` and ``audience`` (both, since request ids are per bank) keep only one
-    request's claims. Pass the result to ``make_draft(source_revisions=...)`` so a correction to
-    any cited source, shared or not, invalidates the draft and its approval.
+    request's claims. This is the disclosure set, not the complete dependency set: a draft
+    must also retain each claim's private ``examined_refs`` through ``store.dependency_refs``.
     """
     refs: list[EvidenceRef] = []
     for claim in claims:
@@ -880,7 +880,8 @@ def make_draft(request: RequestForContext, body: PackageBody, review: Review, *,
                now: datetime | None = None, sequence: int = 0) -> Draft:
     """A pending draft of ``body`` for the holder to review.
 
-    ``source_revisions`` is required: pass ``cited_refs(claims)`` so a correction to any
+    ``source_revisions`` is required: merge ``store.dependency_refs(claim)`` for all claims,
+    including private examined refs, so a correction to any
     source the answers depend on, shared or withheld, invalidates the draft and its approval.
     It is merged with every ref the body cites. The draft id is deterministic in the request,
     body digest, policy and time; ``sequence`` (0 by default) distinguishes a rebuilt draft of

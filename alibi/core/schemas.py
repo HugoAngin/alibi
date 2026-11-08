@@ -558,6 +558,9 @@ class Claim(AlibiModel):
     status: ClaimStatus
     rationale: LongText
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
+    # Passport-only dependencies: persisted for correction/consent invalidation, never
+    # copied to PackageClaim or treated as disclosure citations.
+    examined_refs: list[EvidenceRef] = Field(default_factory=list)
     calculation: Calculation | None = None
     gap: LongText | None = None
     gap_detail: LongText | None = None

@@ -1,0 +1,82 @@
+{
+  "candidate_commit": "3c5047639aade89f1916163ae2ad3a00050d1143",
+  "scope": "Supplemental public Case 1 checks on fresh disposable candidate stacks.",
+  "second_look_probe_receipt_changed": false,
+  "observations": {
+    "SP-33": {
+      "outcome": "blocked",
+      "http_statuses": [
+        409,
+        200,
+        404
+      ]
+    },
+    "SP-34": {
+      "outcome": "blocked",
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        409,
+        200,
+        200
+      ]
+    },
+    "SP-35": {
+      "outcome": "blocked",
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    "SP-37": {
+      "outcome": "blocked",
+      "http_statuses": [
+        409,
+        200,
+        404
+      ]
+    },
+    "SP-39": {
+      "outcome": "blocked",
+      "verified_parent": true,
+      "http_statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    "SP-47": {
+      "probe_id": "SP-47",
+      "scope": "standalone bank persistence",
+      "outcome": "not_blocked",
+      "findings": [
+        {
+          "recipient": "bank_a",
+          "signature_and_receipts_verified": true,
+          "plaintext_attachments": 20
+        },
+        {
+          "recipient": "bank_b",
+          "signature_and_receipts_verified": true,
+          "plaintext_attachments": 10
+        }
+      ]
+    }
+  }
+}

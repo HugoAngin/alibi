@@ -44,6 +44,31 @@ TARGETS = {"category", "merchant", "field", "record_kind", "all"}
 
 # --------------------------------------------------------------------------- parsers
 
+FIELD_ALIASES = {"item_name": "item", "item_title": "item", "items": "item", "account": "account_ref",
+                 "account_number": "account_ref", "reference": "payment_reference", "counterparty": "counterparty_name",
+                 "amount": "amount_minor"}
+
+
+def lead_rule_to_fixture(rule: dict) -> list[dict]:
+    """alibi.core.schemas PolicyRule (type deny|generalise|age|recipient, kinds, fields) -> fixture rules."""
+    kinds = rule.get("kinds") or []
+    fields = [FIELD_ALIASES.get(f.split(".")[-1], f.split(".")[-1]) for f in rule.get("fields") or []]
+    t = rule.get("type")
+    if t == "age":
+        return [{"kind": "age_limit", "target": "all", "value": "", "params": {"max_age_days": rule["max_age_days"]}}]
+    if t == "recipient":
+        targets = [("record_kind", k) for k in kinds] or [("all", "")]
+        return [{"kind": "recipient_restrict", "target": tg, "value": v, "params": {"recipients": list(rule["allow"])}}
+                for tg, v in targets]
+    if t == "generalise":
+        return [{"kind": "generalise", "target": "field", "value": f, "params": {}} for f in fields]
+    if t == "deny":
+        if fields:
+            return [{"kind": "deny", "target": "field", "value": f, "params": {}} for f in fields]
+        return [{"kind": "deny", "target": "record_kind", "value": k, "params": {}} for k in kinds]
+    return []
+
+
 def rules_parser() -> Callable | None:
     try:
         from agents.lead.api import parse_rule_text
@@ -51,10 +76,11 @@ def rules_parser() -> Callable | None:
         return None
 
     def parse(text: str, material: dict):
-        try:
-            return parse_rule_text(text, material)
-        except TypeError:
-            return parse_rule_text(text)
+        r = parse_rule_text(text)
+        if r.status != "resolved" or r.rule is None:
+            return {"rules": [], "clarifications": [{"source_text": text, "question": r.reason or ""}]}
+        return {"rules": [dict(x, confidence=0.95) for x in lead_rule_to_fixture(r.rule.model_dump())],
+                "clarifications": []}
 
     return parse
 

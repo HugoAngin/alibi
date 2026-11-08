@@ -104,3 +104,8 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 ## Open needs
 - To lead: answered 23:42Z (6714598387). Attestation pinned in d661421: `source_trust[]` and `evidence[]` carry `attestation` (issuer_signature | package_signer | none) and `redacted: bool`; a redacted extract is package_signer. Case 1 fixture regeneration and `via_lookup` / `calculation.terms` are queued for Arnav inside alibi/. Until they land: no lookup marker.
 - Closed on assumption, 2026-11-08 ~00:00Z: data did not reply within 15 minutes about the `::after` captions, so I proceed assuming they come out of the CSS and the template carries the panel questions.
+
+## Unslop + hero stream, 2026-11-08 ~04:25Z
+- Unslop pass on the landing page committed (1e3b155) and deployed to www.alibi-app.workers.dev. Warm paper palette, one ink-blue accent, stamped mono evidence refs (.s-ref), orbs/washes/glass card/sway/parallax removed, one CSS hero entrance (.s-enter). Header glass, Lenis and 3D docking kept (Elio's choice). Not rendered-checked in the browser before deploy.
+- Elio asked for a new hero: the engine plus Gemini agents, with merchant, bank and mule streams flowing in and a context package flowing out to the bank, reacting to scroll. Spec in out/HERO_STREAM.md. Routed to lead and data (6717182136), asking lead to grant web/apps/alibi/src/components/site/ to one agent.
+- eval's 04:17Z need (bank /act/ forwarding arbitrary actions with the Bank A bearer) concerns execution's staged agents/execution/web_bank. Execution fixes it before moving it into web/apps/bank.

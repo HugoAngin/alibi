@@ -27,7 +27,16 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
   --results data/alibi/probes.jsonl
 ```
 
-Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. For SP-47, set `storage_layout` to `configured` or `default` only after confirming the matching layout for the target. The runner labels that result as an isolated local core probe. It cannot inspect a remote host’s raw store.
+Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. For SP-47, set `storage_layout` to `configured` or `default` only after confirming the matching layout for the target. That result covers the isolated passport core store. Check the actual app and bank state files separately before claiming evidence is encrypted throughout the demo.
+
+For the app and bank check, use public Case 1 with a disposable master key and
+signing keys outside the data directories. Run, approve and dispatch Bank A's
+request, then verify the receipt against the package in the bank view. Inspect
+the scratch S4 `case_1.state.json` entry
+`["bank:bank_a:packages"][package_id]["raw"]` and the S2 `state.json` entry for
+that package under `recipients.bank_a.inbox`. A plaintext signed envelope whose
+canonical digest matches its accepted receipt proves exposure even when the
+passport database is encrypted. Record the finding without retaining the package.
 
 For native bank checks SP-25 to SP-32, issue a real Bank A request and approve and dispatch a public case package that includes a full issuer-signed record. Put its ID in `fixtures.native_verifier_package_id` to select the native handlers. Supply the matching throwaway package and record signing key paths as `fixtures.native_verifier_package_pem` and `fixtures.native_verifier_record_pem`, outside Git. Configure `bank_a` and `bank_b` tokens and a disposable loopback `bank` origin. A second bank service can be selected with `fixtures.native_verifier_service` if it handles both recipient identities. The default routes are `/deliver`, `/inbox` and `/packages/{package_id}`; override them as `native_verifier_deliver`, `native_verifier_inbox` and `native_verifier_package` if the runbook uses a prefix. These checks write signed synthetic variants and rejected receipts. Run them on an isolated probe inbox, away from demo and sealed case state.
 

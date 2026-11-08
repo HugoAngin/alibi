@@ -50,5 +50,63 @@
       "mode": "agents",
       "recording": "case1_agents.json"
     }
-  ]
+  ],
+  "staged_runs": {
+    "script_commit": "82770ea",
+    "scope": "Two independent automated API rehearsals. Timings cover the driver and backend, excluding browser interaction and presentation.",
+    "checks": [
+      "Clean reset; connector seed with 19 pushed records, three transactions, no alerts or RFCs",
+      "D1 released rec-0001-020, added the credit and raised an alert before RFC intake",
+      "D2 advanced the connector clocks, issued a transaction-scoped Bank A RFC, required separate approve and send, and read back Clear",
+      "D3 issued the period-scoped Bank B RFC, required a separate approval, and verified both signed receipts and both cross-bank denials"
+    ],
+    "runs": [
+      {
+        "run": 1,
+        "passed": true,
+        "seconds": {
+          "startup": 1.15,
+          "d1_release_credit_alert": 0.38,
+          "d2_bank_a_investigate_send_and_disposition": 0.84,
+          "d3_bank_b_investigate_send": 0.45,
+          "elapsed_with_startup": 2.85
+        },
+        "bank_a": {
+          "attachments": 20,
+          "receipt_verified": true,
+          "foreign_status": 404
+        },
+        "bank_b": {
+          "attachments": 10,
+          "receipt_verified": true,
+          "foreign_status": 404
+        },
+        "bank_a_disposition": "clear",
+        "mode": "keyless replay, live mock connectors"
+      },
+      {
+        "run": 2,
+        "passed": true,
+        "seconds": {
+          "startup": 0.84,
+          "d1_release_credit_alert": 0.39,
+          "d2_bank_a_investigate_send_and_disposition": 0.85,
+          "d3_bank_b_investigate_send": 0.41,
+          "elapsed_with_startup": 2.51
+        },
+        "bank_a": {
+          "attachments": 20,
+          "receipt_verified": true,
+          "foreign_status": 404
+        },
+        "bank_b": {
+          "attachments": 10,
+          "receipt_verified": true,
+          "foreign_status": 404
+        },
+        "bank_a_disposition": "clear",
+        "mode": "keyless replay, live mock connectors"
+      }
+    ]
+  }
 }

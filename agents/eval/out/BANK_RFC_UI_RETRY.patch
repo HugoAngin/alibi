@@ -66,7 +66,7 @@
  
  NOW = datetime(2026, 11, 5, 15, 0, tzinfo=timezone.utc)      # the holder app clock: 25 h after the feed as_of, so the unexplained-credit alert is due
  AS_OF = "2026-11-04T14:00:00Z"                                # the services' clock: both case RFCs visible
-@@ -151,6 +154,8 @@
+@@ -624,6 +627,8 @@
      assert issued.json()["forwarded"]["status"] == "refused"
      assert issued.json()["forwarded"]["code"] == "rfc_refused"
      assert stack.client.get(f"/requests/{RID}", headers=JSON).status_code == 404
@@ -75,7 +75,7 @@
  
      state_path = stack.root / "bank" / "state.json"
      if legacy:
-@@ -181,12 +186,19 @@
+@@ -654,12 +659,19 @@
      stack.sync()
      monkeypatch.setattr(keys, "sign_request", reject_resigning)
      client = restart_bank()
@@ -97,7 +97,7 @@
      assert again.status_code == 200 and again.json() == retried.json()
 --- a/alibi/tests/test_bank_service.py
 +++ b/alibi/tests/test_bank_service.py
-@@ -864,6 +864,7 @@
+@@ -882,6 +882,7 @@
      state_path.write_text(json.dumps(state))
  
      restarted = make_app(built, state_path=state_path, sink=sink, seed=False)
@@ -164,7 +164,7 @@
    if (pkg)
      return {
        kind: 'received',
-@@ -30,11 +35,15 @@
+@@ -30,9 +35,13 @@
        href: pkg.href,
        receivedAt: pkg.received_at,
      };
@@ -172,15 +172,13 @@
 +  if (unconfirmed) return { kind: 'delivery_unconfirmed' };
    if (sent) return { kind: 'requested', requestId: id, sentAt: sent.sent_at };
    return { kind: 'not_requested' };
- }
- 
-+export function canSendAlibiRequest(s: AlibiState | undefined): boolean {
-+  return s?.kind === 'not_requested' || s?.kind === 'delivery_unconfirmed';
 +}
 +
++export function canSendAlibiRequest(s: AlibiState | undefined): boolean {
++  return s?.kind === 'not_requested' || s?.kind === 'delivery_unconfirmed';
+ }
+ 
  /** The status column's words; never colour alone. */
- export function statusLabel(c: FraudCase, s: AlibiState): string {
-   if (s.kind === 'received') return 'Alibi received';
 --- a/web/apps/bank/src/components/CaseQueue.astro
 +++ b/web/apps/bank/src/components/CaseQueue.astro
 @@ -12,7 +12,7 @@

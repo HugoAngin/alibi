@@ -41,7 +41,7 @@ Check declared issuer and audience in `BankService.issue_request` before filling
 
 On a disposable checkout including the new demo director (`a1f834a`), 95 focused tests passed. A separate test over real HTTP got `400 txn_out_of_feed` and `403 issuer_mismatch` with no bank or holder records. After a synthetic relay timeout, the same Bank A request returned `201/error`, then `200/accepted` with an identical signed envelope and exactly one sent record. The holder readback moved from 404 to 200. The intake worker also checked that all 94 stock RFCs across the 80 public cases still issue at their own clocks.
 
-The patch now targets `1b5c21a`. Its bank delivery fixture builds a supported Case 1 package using the real settlement lookup, checks the payout by record ID, and tests expiry at the later of request and package expiry. That restores the three delivery tests marked as expected failures in candidate 4. A combined scratch run with the issuer, one-pass, draft order, and port probe patches passed all 167 targeted tests.
+The patch now targets `3c50476` and retains the app owner's candidate 5 bank fixtures. The earlier five-patch rehearsal on `1b5c21a` passed all 167 targeted tests. On candidate 5 the refreshed hardening and retry patches apply in order, followed by `SP07_POLICY_REFUSAL.patch`. That combination passed 89 focused native tests and 50 Worker tests. A separate HTTP run verified both typed RFC intake refusals and recovered a timed-out relay with the identical signed envelope and exactly one sent record.
 
 The application owner can apply and verify the patch from the repo root.
 

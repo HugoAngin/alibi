@@ -6,11 +6,12 @@
  to the passport app's ``POST /connect/bank/rfc`` with the body ``{rfc, recipient, account_refs,
 -now}`` and the recipient's own bearer token (``http_rfc_sink``). The outcome is recorded as
 -``forwarded`` either way.
-+now}`` and the recipient's own bearer token (``http_rfc_sink``). An identical re-issue uses the
-+stored signature and retries delivery until the holder confirms acceptance.
- 
+-
 -The recipient and analyst come from the token only; posted ``recipient``, ``analyst`` or
 -``analyst_name`` fields are ignored. The ``/admin/*`` routes take the shared admin bearer
++now}`` and the recipient's own bearer token (``http_rfc_sink``). An identical re-issue uses the
++stored signature and retries delivery until the holder confirms acceptance.
++
 +The recipient and analyst come from the token only. An RFC's declared identity must match
 +that recipient. The ``/admin/*`` routes take the shared admin bearer
  (``alibi.connectors.http.admin_guard``: ``ALIBI_ADMIN_TOKEN``, else the ``admin`` entry of the
@@ -183,63 +184,7 @@
  | `POST /deliver` body = signed Context Package JSON | recipient | 1. Strict JSON object with `package_id` (`400 invalid_package`). 2. `digest = canon.digest(raw)`. Same `package_id` already in this inbox: same digest returns the stored receipt and status (200 or 422 as first time); different digest `409 package_id_reused`, nothing stored. 3. `body.audience != recipient`: `409 audience_mismatch`. 4. `body.request_id` not issued by this recipient: `409 unknown_request`. 5. `alibi.api.verify_package(raw, expected_audience=recipient, registry, now=clock, expected_subject=rfc.subject_ref, expected_request_id=rfc.request_id)`. Receipt bound to `package_id` and digest: `Receipt(receipt_id = make_id("rcp", recipient, package_id, digest), package_id, package_sha256 = digest, recipient, received_at = clock, accepted, reasons)`. Rejections (steps 3 to 5) store an inbox entry with status `rejected`, the receipt and reasons, no bytes. Audit every outcome. | accepted: `200 {status: "verified", receipt, authentication, sources, claims}`; rejected: `422 package_rejected` (or `409 audience_mismatch` / `409 unknown_request`) with `{code, reason, receipt, rejection: {authentication, errors}}` |
 --- a/alibi/tests/test_bank_service.py
 +++ b/alibi/tests/test_bank_service.py
-@@ -12,16 +12,11 @@
- from fastapi.testclient import TestClient
- 
- from alibi import api
-+from alibi.app import cases
- from alibi.bank.service import create_bank_app, load_tokens
- from alibi.bank.state import BankState
- from alibi.connectors import keys
--from alibi.connectors.case_source import (
--    CaseClock,
--    load_case_without_gold,
--    map_bank_row,
--    map_merchant_event,
--)
--from alibi.connectors.plug import webhook_sink
-+from alibi.connectors.case_source import CaseClock, load_case_without_gold
- from alibi.core import canon
- from alibi.core.schemas import format_utc, parse_utc
- from alibi.core.signing import verify
-@@ -65,28 +60,16 @@
-     keystore = keys.connector_keystore(root / "keys", seed="bank-tests")
-     registry = keystore.registry()
-     case = load_case_without_gold(1)
--    clock = CaseClock(case)
--    assert clock.as_of_text == DEFAULT_AS_OF
--    app = create_bank_app(keystore=keystore, registry=registry, tokens=TOKENS)
--    client = TestClient(app)
--    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": AS_OF}).status_code == 200
-+    clock = CaseClock(case, as_of=AS_OF)
-+    settlement_lookup = cases.settlement_lookup_for(case, keystore, lambda: clock.as_of)
-     packages = {}
-     with Store(root / "passport.db") as store:
--        sink = webhook_sink(store, registry, subject_ref=SUBJECT)
--        for d in clock.visible_merchant_deliveries():
--            payload = keys.sign_merchant_event(map_merchant_event(d["event"]).body, keystore)
--            assert sink(payload, d["received_at"])["status"] == "inserted"
--        rows = [map_bank_row(d["row"], subject_ref=SUBJECT, connection_id=CONNECTION,
--                             retrieved_at=d["received_at"]).body for d in clock.visible_bank_rows()]
--        api.ingest_bank_txns(store, rows, subject_ref=SUBJECT, connection_id=CONNECTION,
--                             now=clock.as_of)
--        for recipient, request_id, accounts in (("bank_a", RFC_A, [ACCOUNT]), ("bank_b", RFC_B, None)):
--            issued = client.post("/rfc", json={"request_id": request_id}, headers=auth(recipient))
--            assert issued.status_code == 201, issued.json()
--            rfc = issued.json()["rfc"]
--            api.receive_rfc(store, rfc, authenticated_issuer=recipient, registry=registry,
--                            account_refs=accounts, now=clock.as_of)
--            api.run_investigation(store, request_id, registry=registry, now=clock.as_of)
-+        loaded = cases.load_case(store, case, keystore, up_to=clock.as_of)
-+        assert loaded["requests"] == [RFC_A, RFC_B]
-+        for recipient, request_id in (("bank_a", RFC_A), ("bank_b", RFC_B)):
-+            result = api.run_investigation(store, request_id, settlement_lookup=settlement_lookup,
-+                                           registry=registry, now=clock.as_of)
-+            assert all(claim.status.value == "supported" for claim in result.claims)
-             draft = api.build_review(store, request_id, now=clock.as_of)
-             approval = api.approve(store, draft.draft_id, holder_id="holder_maya", now=clock.as_of)
-             package = api.sign_and_package(store, approval.approval_id, keystore=keystore,
-@@ -172,6 +155,7 @@
+@@ -172,6 +172,7 @@
  
      again = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
      assert again.status_code == 200 and again.json()["rfc"] == out["rfc"]
@@ -247,7 +192,7 @@
      assert len(sink.calls) == 1
  
      wrong = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_b"))
-@@ -188,15 +172,15 @@
+@@ -188,15 +189,15 @@
      none_left = client.post("/rfc", json={}, headers=auth("bank_b"))
      assert none_left.status_code == 404 and none_left.json()["code"] == "unknown_request"
  
@@ -270,7 +215,7 @@
      other_subject = client.post("/rfc", json={"request": {**custom, "subject_ref": "someone-else"}},
                                  headers=auth("bank_a"))
      assert other_subject.status_code == 400 and other_subject.json()["code"] == "invalid_request"
-@@ -214,8 +198,57 @@
+@@ -214,6 +215,55 @@
      assert one.status_code == 200 and one.json()["rfc"] == out["rfc"]
      assert client.get(f"/rfc/{RFC_B}", headers=auth("bank_a")).json()["code"] == "not_found"
      assert len(sink.calls) == 3
@@ -318,76 +263,15 @@
 +        assert audit["outcome"] == "refused" and audit["detail"] == f"{code}: {response.json()['reason']}"
 +        assert client.get("/rfc", headers=auth(recipient)).json() == {"requests": []}
 +    assert sink.calls == []
- 
++
 +    monkeypatch.undo()
 +    control = client.post("/rfc", json={"request": {**base, "issuer": "bank_b", "audience": "bank_b"}},
 +                          headers=auth("bank_b"))
 +    assert control.status_code == 201 and control.json()["forwarded"]["status"] == "accepted"
  
-+
+ 
  def test_case_requests_are_issuable_only_once_their_issued_at_has_passed(built):
-     sink = SinkStub()
-     client = make_app(built, sink=sink, seed=False)
-@@ -264,7 +297,10 @@
-     assert backwards.status_code == 409 and backwards.json()["code"] == "clock_backwards"
-     bad_time = client.post("/admin/advance", headers=auth("admin"), params={"as_of": "yesterday"})
-     assert bad_time.status_code == 400 and bad_time.json()["code"] == "invalid_time"
--    assert client.post("/admin/advance", headers=auth("admin"), params={"as_of": EXPIRED_AT}).json() == {"as_of": EXPIRED_AT}
-+    expired_at = max(EXPIRED_AT, built.p1["body"]["expires_at"])
-+    assert client.post("/admin/advance", headers=auth("admin"), params={"as_of": expired_at}).json() == {
-+        "as_of": expired_at,
-+    }
-     expired = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
-     assert expired.status_code == 409 and expired.json()["code"] == "request_expired"
-     late = client.post("/deliver", json=built.p1, headers=auth("bank_a"))
-@@ -276,15 +312,12 @@
-     assert body["rejection"]["authentication"]["valid"] is False
-     inbox = client.get("/inbox", headers=auth("bank_a")).json()
-     assert [p["status"] for p in inbox["packages"]] == ["rejected"]
--    assert inbox["as_of"] == EXPIRED_AT
-+    assert inbox["as_of"] == expired_at
- 
- 
- # --------------------------------------------------------------------------- delivery
- 
- 
--@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
--                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
--                   "no record) it carries no attachments; rebuild the fixture on the supported path")
- def test_delivery_verifies_and_is_idempotent_on_identical_bytes(client, built):
-     issue_both(client)
-     p1 = built.p1
-@@ -355,9 +388,6 @@
-     return found
- 
- 
--@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
--                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
--                   "no record) it carries no attachments; rebuild the fixture on the supported path")
- def test_tampered_package_is_rejected_and_keeps_no_contents(built, tmp_path):
-     state_path = tmp_path / "state.json"
-     client = make_app(built, state_path=state_path)
-@@ -545,9 +575,6 @@
- # --------------------------------------------------------------------------- views
- 
- 
--@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
--                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
--                   "no record) it carries no attachments; rebuild the fixture on the supported path")
- def test_verified_package_view_attachments_and_raw(client, built):
-     issue_both(client)
-     p1 = built.p1
-@@ -569,7 +596,8 @@
-     full = client.get(f"/packages/{p1['package_id']}/attachments", headers=auth("bank_a")).json()
-     assert full["package_id"] == p1["package_id"]
-     assert full["attachments"] == p1["body"]["attachments"]
--    assert full["attachments"][0]["content"]["amount_pence"] == 216000
-+    payout = next(item for item in full["attachments"] if item["ref"]["ref_id"] == "rec-0001-021")
-+    assert payout["content"]["amount_pence"] == 216000
-     assert client.get(f"/packages/{p1['package_id']}/raw", headers=auth("bank_a")).json() == p1
- 
- 
-@@ -798,8 +826,13 @@
+@@ -794,8 +844,13 @@
  
  
  def test_a_failing_rfc_sink_is_reported_and_audited(built):
@@ -402,20 +286,19 @@
  
      client = make_app(built, sink=exploding_sink)
      issued = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
-@@ -810,11 +843,32 @@
-     audit = client.get("/audit", headers=auth("bank_a")).json()["entries"]
+@@ -807,8 +862,29 @@
      assert audit[-1]["action"] == "issue_request" and audit[-1]["outcome"] == "ok"
      assert "forwarded error" in audit[-1]["detail"]
-+
+ 
 +    retried = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
 +    assert retried.status_code == 200
 +    assert retried.json()["forwarded"] == {"status": "accepted", "request_id": RFC_A}
 +    assert signed_calls == [canon.canonical_bytes(issued.json()["rfc"])] * 2
- 
++
  
  # --------------------------------------------------------------------------- persistence
- 
- 
++
++
 +def test_legacy_audit_preserves_an_already_accepted_forward(built, tmp_path):
 +    state_path = tmp_path / "state.json"
 +    sink = SinkStub()
@@ -430,11 +313,9 @@
 +    repeat = restarted.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
 +    assert repeat.status_code == 200 and repeat.json() == issued.json()
 +    assert len(sink.calls) == 1
-+
-+
+ 
+ 
  def test_state_persists_across_apps_and_never_holds_tokens(built, tmp_path):
-     state_path = tmp_path / "bank" / "state.json"
-     first = make_app(built, state_path=state_path)
 --- a/alibi/tests/test_app_integration.py
 +++ b/alibi/tests/test_app_integration.py
 @@ -24,6 +24,7 @@
@@ -445,10 +326,10 @@
  from alibi.core.schemas import SigningDomain
  from alibi.core.signing import DemoKeystore, TrustRegistry, verify
  
-@@ -139,8 +140,59 @@
- 
- 
- # --------------------------------------------------------------------------- the whole path
+@@ -612,3 +613,54 @@
+                    stack.client.get("/bank/bank_a/audit", headers={**JSON, **TOKEN_A}).json()["entries"])
+     # the passport still holds exactly the one request the bank forwarded
+     assert [r["request_id"] for r in stack.client.get("/requests", headers=JSON).json()["requests"]] == [RID]
 +
 +
 +@pytest.mark.parametrize("legacy", [False, True])
@@ -476,9 +357,9 @@
 +            self.signed.append(canon.canonical_bytes(json["rfc"]))
 +            assert headers["Authorization"] == TOKEN_A["authorization"]
 +            return super().post(url, json=json, headers=headers)
- 
++
 +    forward = RecordingForward(stack)
- 
++
 +    def restart_bank():
 +        return TestClient(create_bank_app(
 +            keystore=stack.keystore, registry=stack.keystore.registry(), tokens=TOKENS,
@@ -500,8 +381,3 @@
 +    again = restart_bank().post("/rfc", json={"request_id": RID}, headers=TOKEN_A)
 +    assert again.status_code == 200 and again.json() == retried.json()
 +    assert len(forward.signed) == 1
-+
-+
- def test_case_one_travels_through_the_connect_routes(stack: Stack):
-     health = stack.client.get("/health").json()
-     assert health["seed"] == "connectors" and health["bank_url"] == BANK_URL and health["merchant_url"] == MERCHANT_URL

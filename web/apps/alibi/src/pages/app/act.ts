@@ -7,7 +7,7 @@
 import type { APIRoute } from 'astro';
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
-import { forwardAction } from '@/lib/api/client';
+import { forwardAction } from '@alibi/ui/api';
 import { backendHeaders, safeReturn, setFlash } from '@/lib/screens';
 
 export const prerender = false;

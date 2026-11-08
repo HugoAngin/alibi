@@ -186,8 +186,4 @@ export interface RequestDetail {
   };
 }
 
-/** A backend refusal (shared/CONTRACTS.md, Refusals): shown verbatim, never reworded. */
-export interface Refusal {
-  code: string;
-  reason: string;
-}
+export type { Refusal } from '@alibi/ui/api';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { forwardAction, isBackendPath, loadContext } from '../src/lib/api/client';
+import { forwardAction, isBackendPath, loadContext } from '../src/api';
 
 type Shape = { ok: true };
 const isShape = (v: unknown): v is Shape => (v as Shape)?.ok === true;

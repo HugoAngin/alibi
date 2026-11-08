@@ -6,7 +6,9 @@
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
 import { passportFixture } from '@/data/fixtures';
-import { isPassportHome, loadContext } from './api/client';
+import { loadContext } from '@alibi/ui/api';
+
+import { isPassportHome } from './api/guards';
 import { ROUTES, backendHeaders } from './screens';
 
 export function loadPassport() {

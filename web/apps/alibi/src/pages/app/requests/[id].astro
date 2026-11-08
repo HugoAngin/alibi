@@ -10,7 +10,8 @@ import BaseLayout from '@/layouts/BaseLayout.astro';
 import AppFrame from '@/components/app/AppFrame.astro';
 import RequestView from '@/components/app/RequestView.astro';
 import { requestFixture } from '@/data/fixtures';
-import { isRequestDetail, loadContext } from '@/lib/api/client';
+import { loadContext } from '@alibi/ui/api';
+import { isRequestDetail } from '@/lib/api/guards';
 import { ROUTES, backendHeaders, takeFlash } from '@/lib/screens';
 
 export const prerender = false;

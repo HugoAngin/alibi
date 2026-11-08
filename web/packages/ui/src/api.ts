@@ -1,11 +1,12 @@
 /**
- * Server-side client for the Python backend (web/docs/backend-integration.md).
+ * Server-side client for the Python backend (web/docs/backend-integration.md),
+ * shared by the Alibi site and the bank console.
  * Runs in the Worker or dev server, never the browser, so the backend needs no
  * CORS. Pure apart from the injected `fetch`, so it is unit tested with a fake.
  *
  * Screens: `loadContext` asks for a route's context as JSON. If the backend is
  * not configured, unreachable, or answers with something that is not the
- * expected shape, it falls back to the built-in case 1 fixture and says why,
+ * expected shape, it falls back to the site's built-in case 1 fixture and says why,
  * so the screen can show that it is not live.
  *
  * Actions: `forwardAction` posts to the action URL the context itself gave.
@@ -14,7 +15,11 @@
  * separately and is never dressed up as a refusal.
  */
 
-import type { PassportHome, Refusal, RequestDetail } from './types';
+/** A backend refusal (shared/CONTRACTS.md, Refusals): shown verbatim, never reworded. */
+export interface Refusal {
+  code: string;
+  reason: string;
+}
 
 export type Loaded<T> =
   | { source: 'live'; data: T }
@@ -139,33 +144,5 @@ function isRefusal(value: unknown): value is Refusal {
     value !== null &&
     typeof (value as Refusal).code === 'string' &&
     typeof (value as Refusal).reason === 'string'
-  );
-}
-
-// Minimal shape checks: enough to know the route returned the screen's context
-// and not something else. Full shapes are pinned by the TypeScript types.
-
-export function isPassportHome(v: unknown): v is PassportHome {
-  const o = v as Record<string, unknown>;
-  return (
-    typeof o === 'object' &&
-    o !== null &&
-    typeof o.holder === 'object' &&
-    Array.isArray(o.transactions) &&
-    Array.isArray(o.alerts) &&
-    Array.isArray(o.requests)
-  );
-}
-
-export function isRequestDetail(v: unknown): v is RequestDetail {
-  const o = v as Record<string, unknown>;
-  return (
-    typeof o === 'object' &&
-    o !== null &&
-    typeof o.request === 'object' &&
-    Array.isArray(o.trace) &&
-    typeof o.review === 'object' &&
-    o.review !== null &&
-    typeof (o.review as Record<string, unknown>).approval === 'object'
   );
 }

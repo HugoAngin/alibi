@@ -1,0 +1,8 @@
+// Static Cloudflare Worker (assets only, no server code) for the simulated
+// merchant. Deploy with `pnpm --filter @alibi/merchant deploy`.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "alibi-sim-merchant",
+  "compatibility_date": "2026-04-15",
+  "assets": { "directory": "./dist", "not_found_handling": "404-page" },
+}

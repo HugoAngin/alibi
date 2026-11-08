@@ -1,0 +1,50 @@
+---
+import ShopLayout from '@/layouts/ShopLayout.astro';
+import { formatGBP, listings, shop } from '@/data/shop';
+---
+
+<ShopLayout>
+  <h1>{shop.tagline}</h1>
+  <ul class="grid">
+    {listings.map((l) => (
+      <li>
+        <div class="photo" aria-hidden="true" />
+        <h2>{l.title}</h2>
+        <p>{formatGBP(l.priceMinor)}</p>
+      </li>
+    ))}
+  </ul>
+</ShopLayout>
+
+<style>
+  h1 {
+    font-size: var(--t-lg);
+  }
+
+  .grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-sm);
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  }
+
+  li {
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    padding: var(--space-sm);
+  }
+
+  .photo {
+    aspect-ratio: 4 / 3;
+    background: var(--c-line);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-xs);
+  }
+
+  h2 {
+    font-size: var(--t-base);
+  }
+</style>

@@ -1,0 +1,56 @@
+---
+/**
+ * "Request customer's Alibi". The button a bank's fraud analyst presses on a
+ * case to ask the customer for context. It opens the bank's own request
+ * screen, where the analyst picks the questions; the request then travels
+ * through the bank connection, and the customer decides what to share.
+ */
+import Logomark from './Logomark.astro';
+
+interface Props {
+  /** The bank system's own "compose request" screen for this case. */
+  href: string;
+  /** Set when a request is already open, so the analyst cannot send another. */
+  disabledReason?: string;
+}
+
+const { href, disabledReason } = Astro.props;
+---
+
+{disabledReason ? (
+  <span class="alibi-request" aria-disabled="true" title={disabledReason}>
+    <span>Request customer's</span>
+    <Logomark height="1.1em" />
+  </span>
+) : (
+  <a class="alibi-request" href={href}>
+    <span>Request customer's</span>
+    <Logomark height="1.1em" />
+  </a>
+)}
+
+<style>
+  .alibi-request {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    min-height: 40px;
+    padding: var(--space-2xs) var(--space-sm);
+    border: 2px solid var(--c-alibi);
+    border-radius: var(--radius-sm);
+    background: var(--c-surface);
+    color: var(--c-alibi);
+    font: 600 var(--t-sm) / 1 var(--font-sans);
+    text-decoration: none;
+  }
+
+  a.alibi-request:hover {
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+  }
+
+  [aria-disabled='true'].alibi-request {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+</style>

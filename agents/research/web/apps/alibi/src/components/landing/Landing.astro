@@ -1,0 +1,94 @@
+---
+/**
+ * The product landing page: what Alibi is, what it does, and how it differs.
+ * Composition only; the copy is in src/data/product.ts.
+ */
+import Logomark from '@alibi/ui/Logomark.astro';
+
+import Hero from './Hero.astro';
+import FeatureGrid from './FeatureGrid.astro';
+import Comparison from './Comparison.astro';
+import Audiences from './Audiences.astro';
+
+interface Props {
+  /** The visitor is on a phone but chose the website; offer the way back. */
+  offerApp?: boolean;
+}
+
+const { offerApp = false } = Astro.props;
+---
+
+{offerApp && (
+  <p class="back-to-app">
+    <a href="/?view=app">Back to the Alibi app</a>
+  </p>
+)}
+
+<header class="site-header">
+  <a class="brand" href="/">
+    <Logomark height="1.6rem" />
+  </a>
+  <nav aria-label="Main">
+    <a href="#features">Features</a>
+    <a href="#why">Why Alibi</a>
+    <a href="/app/">Open the app</a>
+  </nav>
+</header>
+
+<main id="main">
+  <Hero />
+  <FeatureGrid />
+  <Comparison />
+  <Audiences />
+</main>
+
+<footer class="site-footer">
+  <p>
+    Alibi is a hackathon prototype for AgentVerse 2026, Finance Track. Both connections are
+    simulated services; no real bank or marketplace is involved.
+  </p>
+</footer>
+
+<style>
+  .site-header,
+  .site-footer,
+  main {
+    max-width: var(--page-max);
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+  }
+
+  .site-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding-block: var(--space-sm);
+  }
+
+  .brand {
+    color: var(--c-alibi);
+  }
+
+  .back-to-app {
+    margin: 0;
+    padding: var(--space-2xs) var(--gutter);
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    text-align: center;
+    font-weight: 600;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    font-size: var(--t-sm);
+  }
+
+  .site-footer {
+    padding-block: var(--space-xl);
+    color: var(--c-ink-faint);
+    font-size: var(--t-sm);
+  }
+</style>

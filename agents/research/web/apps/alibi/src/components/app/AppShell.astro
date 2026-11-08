@@ -1,0 +1,104 @@
+---
+/**
+ * The Alibi app as a phone sees it: a header, one screen at a time, and a tab
+ * bar. Screens switch with plain anchors and CSS `:target`, so the shell works
+ * with no client-side JavaScript; the passport screen shows when no other
+ * screen is targeted. On a desktop the shell stays phone-width and centred.
+ */
+import Logomark from '@alibi/ui/Logomark.astro';
+
+import PassportScreen from './PassportScreen.astro';
+import RequestsScreen from './RequestsScreen.astro';
+import SharingScreen from './SharingScreen.astro';
+import SettingsScreen from './SettingsScreen.astro';
+import { holder } from '@/data/demo';
+
+const tabs = [
+  { id: 'passport', label: 'Passport' },
+  { id: 'requests', label: 'Requests' },
+  { id: 'sharing', label: 'Shared' },
+  { id: 'settings', label: 'Settings' },
+] as const;
+---
+
+<div class="app">
+  <header class="app-header">
+    <Logomark height="1.4rem" />
+    <span class="who">{holder.name}</span>
+  </header>
+
+  <main id="main" class="screens">
+    <PassportScreen />
+    <RequestsScreen />
+    <SharingScreen />
+    <SettingsScreen />
+  </main>
+
+  <nav class="tabs" aria-label="App">
+    {tabs.map((t) => (
+      <a href={`#${t.id}`}>{t.label}</a>
+    ))}
+  </nav>
+</div>
+
+<style>
+  .app {
+    max-width: var(--app-max);
+    min-height: 100dvh;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--c-bg);
+  }
+
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-xs) var(--gutter);
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+  }
+
+  .who {
+    font-size: var(--t-sm);
+  }
+
+  .screens {
+    flex: 1;
+    padding: var(--space-sm) var(--gutter) var(--space-xl);
+  }
+
+  /* One screen at a time: the targeted one, else the passport. */
+  .screens :global(.screen) {
+    display: none;
+    scroll-margin-top: 4rem;
+  }
+
+  :global(.screens .screen:target),
+  :global(.screens:not(:has(.screen:target)) #passport) {
+    display: block;
+  }
+
+  .tabs {
+    position: sticky;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--c-line);
+    background: var(--c-surface);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tabs a {
+    min-height: 48px;
+    display: grid;
+    place-items: center;
+    font-size: var(--t-xs);
+    text-decoration: none;
+    color: var(--c-ink-soft);
+  }
+</style>

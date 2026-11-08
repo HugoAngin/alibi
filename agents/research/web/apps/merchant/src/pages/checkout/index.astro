@@ -1,0 +1,79 @@
+---
+/** Checkout, the second place a merchant can offer "Connect to my Alibi". */
+import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
+import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
+
+import ShopLayout from '@/layouts/ShopLayout.astro';
+import ConnectionStatus from '@/components/ConnectionStatus.astro';
+import { formatGBP, listings, shop } from '@/data/shop';
+
+const basket = listings.slice(0, 2);
+const total = basket.reduce((sum, l) => sum + l.priceMinor, 0);
+const returnTo = new URL('/checkout/', Astro.site).toString();
+---
+
+<ShopLayout title="Checkout">
+  <h1>Checkout</h1>
+
+  <section class="panel" aria-labelledby="basket-title">
+    <h2 id="basket-title">Your basket</h2>
+    <table>
+      <tbody>
+        {basket.map((l) => (
+          <tr>
+            <td>{l.title}</td>
+            <td class="num">{formatGBP(l.priceMinor)}</td>
+          </tr>
+        ))}
+        <tr class="total">
+          <th scope="row">Total</th>
+          <td class="num">{formatGBP(total)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <button type="button" disabled>
+      Pay (simulated, not wired)
+    </button>
+  </section>
+
+  <section class="panel" aria-labelledby="alibi-title">
+    <h2 id="alibi-title">Keep this purchase in your passport</h2>
+    <p>Connect {shop.name} so this order and its receipt are ready if anyone asks.</p>
+    <ConnectionStatus />
+    <ConnectAlibiButton
+      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
+      merchantId={shop.merchantId}
+      returnTo={returnTo}
+      context="checkout"
+    />
+  </section>
+</ShopLayout>
+
+<style>
+  .panel {
+    margin-block: var(--space-md);
+    padding: var(--space-md);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    max-width: var(--measure);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+
+  .num {
+    text-align: right;
+  }
+
+  .total td {
+    font-weight: 700;
+  }
+
+  button {
+    margin-top: var(--space-sm);
+    min-height: 44px;
+    padding-inline: var(--space-md);
+  }
+</style>

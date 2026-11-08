@@ -1,0 +1,46 @@
+---
+/**
+ * The Alibi wordmark. A placeholder: it is drawn from the system font until
+ * the real mark is designed, and swapping it here updates every site and
+ * both embedded buttons. Inherits colour from its parent (currentColor).
+ */
+interface Props {
+  /** Rendered height. The width follows the wordmark's proportions. */
+  height?: string;
+  /** Set when the mark sits inside text that already says "Alibi". */
+  decorative?: boolean;
+}
+
+const { height = '1em', decorative = false } = Astro.props;
+---
+
+<svg
+  class="logomark"
+  viewBox="0 0 40 20"
+  style={`height:${height}`}
+  role={decorative ? undefined : 'img'}
+  aria-label={decorative ? undefined : 'Alibi'}
+  aria-hidden={decorative ? 'true' : undefined}
+  focusable="false"
+>
+  <text
+    x="0"
+    y="16"
+    fill="currentColor"
+    font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    font-size="19"
+    font-weight="700"
+    letter-spacing="-0.5"
+  >
+    alibi
+  </text>
+</svg>
+
+<style>
+  .logomark {
+    display: inline-block;
+    width: auto;
+    vertical-align: -0.18em;
+    overflow: visible;
+  }
+</style>

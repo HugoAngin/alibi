@@ -1,0 +1,49 @@
+---
+/**
+ * The HTML shell for every Alibi page, landing or app. Head, stylesheet and
+ * the synthetic-data banner are declared once here.
+ */
+import '@alibi/ui/base.css';
+
+import { product } from '@/data/product';
+
+interface Props {
+  /** Page title without the product suffix. Omit on the landing page. */
+  title?: string;
+  description?: string;
+  /** `app` tunes the page for a phone home screen. */
+  view?: 'site' | 'app';
+}
+
+const { title, description = product.lede, view = 'site' } = Astro.props;
+const pageTitle = title ? `${title} · ${product.name}` : `${product.name} — ${product.tagline}`;
+---
+
+<!doctype html>
+<html lang="en-GB" data-view={view}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {view === 'app' && (
+      <>
+        <meta name="theme-color" content="#1f3a5f" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content={product.name} />
+      </>
+    )}
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main">
+      Skip to content
+    </a>
+    <p class="simulated">
+      Hackathon prototype. Every person, account and record here is synthetic.
+    </p>
+    <slot />
+  </body>
+</html>

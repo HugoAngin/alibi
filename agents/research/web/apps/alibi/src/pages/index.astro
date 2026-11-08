@@ -1,0 +1,49 @@
+---
+/**
+ * `/`: the landing page on a desktop, the app on a phone. Rendered per
+ * request by the Worker; see src/lib/view.ts for the rule and its tests.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import Landing from '@/components/landing/Landing.astro';
+import AppShell from '@/components/app/AppShell.astro';
+import { VARY_HEADERS, VIEW_COOKIE, chooseView } from '@/lib/view';
+
+export const prerender = false;
+
+const headers = Astro.request.headers;
+const signals = {
+  chUaMobile: headers.get('sec-ch-ua-mobile'),
+  userAgent: headers.get('user-agent'),
+};
+const decision = chooseView({
+  query: Astro.url.searchParams.get('view'),
+  cookie: Astro.cookies.get(VIEW_COOKIE)?.value ?? null,
+  ...signals,
+});
+const isPhone = chooseView({ query: null, cookie: null, ...signals }).view === 'app';
+
+if (decision.remember) {
+  Astro.cookies.set(VIEW_COOKIE, decision.remember, {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: 'lax',
+    secure: Astro.url.protocol === 'https:',
+  });
+}
+
+// One URL, two documents: caches must key on what the decision read.
+Astro.response.headers.set('Vary', VARY_HEADERS.join(', '));
+Astro.response.headers.set('Accept-CH', 'Sec-CH-UA-Mobile');
+Astro.response.headers.set('Cache-Control', 'private, no-cache');
+Astro.response.headers.set('X-Alibi-View', `${decision.view}; reason=${decision.reason}`);
+---
+
+{decision.view === 'app' ? (
+  <BaseLayout title="Passport" view="app">
+    <AppShell />
+  </BaseLayout>
+) : (
+  <BaseLayout>
+    <Landing offerApp={isPhone} />
+  </BaseLayout>
+)}

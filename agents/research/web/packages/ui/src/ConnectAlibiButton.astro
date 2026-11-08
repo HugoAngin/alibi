@@ -1,0 +1,44 @@
+---
+/**
+ * "Connect to my Alibi". The button a merchant places in a customer's account
+ * settings, or at checkout, to link their records to the customer's Alibi
+ * passport. It is a plain link to Alibi's consent page: the merchant never
+ * sees the passport, and nothing connects until the holder approves there.
+ */
+import Logomark from './Logomark.astro';
+import { connectUrl, type ConnectContext } from './links';
+
+interface Props {
+  alibiOrigin: string;
+  merchantId: string;
+  /** Absolute URL to come back to after the holder decides. */
+  returnTo: string;
+  context: ConnectContext;
+}
+
+const href = connectUrl(Astro.props);
+---
+
+<a class="alibi-connect" href={href}>
+  <span>Connect to my</span>
+  <Logomark height="1.15em" />
+</a>
+
+<style>
+  .alibi-connect {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    min-height: 44px;
+    padding: var(--space-2xs) var(--space-sm);
+    border-radius: var(--radius-pill);
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    font: 600 var(--t-base) / 1 var(--font-sans);
+    text-decoration: none;
+  }
+
+  .alibi-connect:hover {
+    filter: brightness(1.15);
+  }
+</style>

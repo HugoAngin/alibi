@@ -1,0 +1,12 @@
+{
+  "name": "@alibi/ui",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./*": "./src/*"
+  },
+  "devDependencies": {
+    "astro": "^6.4.8"
+  }
+}

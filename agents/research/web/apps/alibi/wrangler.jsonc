@@ -1,0 +1,10 @@
+// Cloudflare Worker for the Alibi site. `main` and the static-assets binding
+// are filled in by @astrojs/cloudflare at build time. Deploy with
+// `pnpm --filter @alibi/site deploy` once a Cloudflare account is configured.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "alibi-site",
+  "compatibility_date": "2026-04-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+}

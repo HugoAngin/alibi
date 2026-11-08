@@ -1,0 +1,106 @@
+---
+/**
+ * `/connect`: where "Connect to my Alibi" lands. Shows the holder which
+ * merchant is asking and what it will share, then sends them back with the
+ * outcome. Foundation only: nothing is stored yet, and the holder is not
+ * signed in. Approving here will create the merchant connection once the
+ * passport backend is wired.
+ */
+import Logomark from '@alibi/ui/Logomark.astro';
+import { parseConnect, returnUrl } from '@alibi/ui/links';
+
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import { merchants } from '@/data/merchants';
+
+export const prerender = false;
+
+const { merchantId, context, returnTo } = parseConnect(Astro.url.searchParams);
+const merchant = merchantId ? merchants[merchantId] : undefined;
+const where = context === 'checkout' ? 'at checkout' : 'from your account settings';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<BaseLayout title="Connect" view="app">
+  <main id="main" class="connect">
+    <p class="mark">
+      <Logomark height="2rem" />
+    </p>
+
+    {merchant ? (
+      <>
+        <h1>Connect {merchant.name} to your Alibi?</h1>
+        <p>
+          You started this {where} on {merchant.name}. Once connected, {merchant.name} sends these
+          records to your passport:
+        </p>
+        <ul>
+          {merchant.shares.map((s) => (
+            <li>{s}</li>
+          ))}
+        </ul>
+        <p class="note">
+          {merchant.name} cannot see your passport, and nothing is shared with any bank until you
+          approve it.
+        </p>
+      </>
+    ) : (
+      <>
+        <h1>Unverified merchant</h1>
+        <p>
+          Alibi does not recognise <code>{merchantId ?? 'this merchant'}</code>. Do not connect
+          unless you trust where this link came from.
+        </p>
+      </>
+    )}
+
+    {returnTo ? (
+      <p class="actions">
+        {merchant && (
+          <a class="primary" href={returnUrl(returnTo, 'connected')}>
+            Connect
+          </a>
+        )}
+        <a href={returnUrl(returnTo, 'declined')}>Not now</a>
+      </p>
+    ) : (
+      <p class="note">This link has no valid return address, so there is nowhere to go back to.</p>
+    )}
+  </main>
+</BaseLayout>
+
+<style>
+  .connect {
+    max-width: var(--app-max);
+    margin-inline: auto;
+    padding: var(--space-lg) var(--gutter);
+  }
+
+  .mark {
+    color: var(--c-alibi);
+  }
+
+  h1 {
+    font-size: var(--t-lg);
+  }
+
+  .note {
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .primary {
+    padding: var(--space-2xs) var(--space-lg);
+    border-radius: var(--radius-pill);
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    text-decoration: none;
+    font-weight: 600;
+  }
+</style>

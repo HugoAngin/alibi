@@ -1,0 +1,114 @@
+---
+/** One case, with the "Request customer's Alibi" action. */
+import type { GetStaticPaths } from 'astro';
+import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
+
+import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
+import { cases, formatGBP, type FraudCase } from '@/data/cases';
+
+export const getStaticPaths = (() =>
+  cases.map((c) => ({ params: { id: c.id }, props: { fraudCase: c } }))) satisfies GetStaticPaths;
+
+interface Props {
+  fraudCase: FraudCase;
+}
+
+const { fraudCase: c } = Astro.props;
+const closed = c.status === 'closed';
+---
+
+<ConsoleLayout title={`Case ${c.id}`}>
+  <p>
+    <a href="/">← Case queue</a>
+  </p>
+  <h1>Case {c.id}</h1>
+
+  <div class="layout">
+    <section class="panel" aria-labelledby="case-title">
+      <h2 id="case-title">Summary</h2>
+      <dl>
+        <dt>Customer</dt>
+        <dd>
+          {c.customer} · <code>{c.accountRef}</code>
+        </dd>
+        <dt>Reason</dt>
+        <dd>{c.reason}</dd>
+        <dt>Status</dt>
+        <dd>{c.status.replace('_', ' ')}</dd>
+        <dt>Restriction</dt>
+        <dd>{c.restriction}</dd>
+        <dt>Opened</dt>
+        <dd>
+          <code>{c.openedAt}</code>
+        </dd>
+      </dl>
+    </section>
+
+    <section class="panel" aria-labelledby="txn-title">
+      <h2 id="txn-title">Transaction under review</h2>
+      <dl>
+        <dt>Transaction</dt>
+        <dd>
+          <code>{c.txn.id}</code>
+        </dd>
+        <dt>Booked</dt>
+        <dd>
+          <code>{c.txn.bookedAt}</code>
+        </dd>
+        <dt>Amount</dt>
+        <dd>{formatGBP(c.txn.amountMinor)}</dd>
+        <dt>Description</dt>
+        <dd>{c.txn.description}</dd>
+      </dl>
+    </section>
+
+    <section class="panel actions" aria-labelledby="actions-title">
+      <h2 id="actions-title">Actions</h2>
+      <p>
+        Ask the customer to explain this transaction through Alibi. They choose what to share, and
+        you receive a signed package you can verify.
+      </p>
+      <RequestAlibiButton
+        href={`/cases/${c.id}/request/`}
+        disabledReason={closed ? 'This case is closed.' : undefined}
+      />
+    </section>
+  </div>
+</ConsoleLayout>
+
+<style>
+  h1 {
+    font-size: var(--t-lg);
+  }
+
+  .layout {
+    display: grid;
+    gap: var(--space-sm);
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  }
+
+  .panel {
+    padding: var(--space-sm);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-3xs) var(--space-sm);
+    margin: 0;
+  }
+
+  dt {
+    color: var(--c-ink-faint);
+  }
+
+  dd {
+    margin: 0;
+  }
+</style>

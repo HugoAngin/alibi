@@ -1,0 +1,45 @@
+---
+/** Requests for context from banks. Review and approval will live here. */
+import { request } from '@/data/demo';
+---
+
+<section id="requests" class="screen" aria-labelledby="requests-title">
+  <h1 id="requests-title">Requests</h1>
+  <article class="card">
+    <p class="label">
+      {request.from} · {request.issuedAt.slice(0, 10)}
+    </p>
+    <h2>{request.from} asks about your £2,160 credit</h2>
+    <ol>
+      {request.questions.map((q) => (
+        <li>{q}</li>
+      ))}
+    </ol>
+    <p class="note">
+      Placeholder. Investigation, the private review and approval for {request.from} come next.
+    </p>
+  </article>
+</section>
+
+<style>
+  h1 {
+    font-size: var(--t-lg);
+  }
+
+  .card {
+    padding: var(--space-sm);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+  }
+
+  .card h2 {
+    font-size: var(--t-md);
+  }
+
+  .label,
+  .note {
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+  }
+</style>

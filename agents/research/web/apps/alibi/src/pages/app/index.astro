@@ -1,0 +1,12 @@
+---
+/**
+ * `/app/`: the app view at a fixed URL, for any device. Prerendered, so it is
+ * served straight from Cloudflare's static assets.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppShell from '@/components/app/AppShell.astro';
+---
+
+<BaseLayout title="Passport" view="app">
+  <AppShell />
+</BaseLayout>

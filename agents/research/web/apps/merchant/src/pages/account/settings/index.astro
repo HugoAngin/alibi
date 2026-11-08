@@ -1,0 +1,52 @@
+---
+/** The customer's account settings, where "Connect to my Alibi" lives. */
+import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
+import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
+
+import ShopLayout from '@/layouts/ShopLayout.astro';
+import ConnectionStatus from '@/components/ConnectionStatus.astro';
+import { customer, shop } from '@/data/shop';
+
+const returnTo = new URL('/account/settings/', Astro.site).toString();
+---
+
+<ShopLayout title="Account settings">
+  <h1>Account settings</h1>
+
+  <section class="panel" aria-labelledby="profile-title">
+    <h2 id="profile-title">Profile</h2>
+    <p>
+      {customer.name} · {customer.email}
+    </p>
+  </section>
+
+  <section class="panel" aria-labelledby="connected-title">
+    <h2 id="connected-title">Connected services</h2>
+    <p>
+      Keep a verified copy of your {shop.name} sales, refunds, fees and payouts in your Alibi
+      passport, so you can explain payments to your bank.
+    </p>
+    <ConnectionStatus />
+    <ConnectAlibiButton
+      alibiOrigin={PUBLIC_ALIBI_ORIGIN}
+      merchantId={shop.merchantId}
+      returnTo={returnTo}
+      context="account"
+    />
+  </section>
+</ShopLayout>
+
+<style>
+  .panel {
+    margin-block: var(--space-md);
+    padding: var(--space-md);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    max-width: var(--measure);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+</style>

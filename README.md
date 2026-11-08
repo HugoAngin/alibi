@@ -23,7 +23,17 @@ The Finance Track asks teams to help a specific person make a better financial d
 
 ## Results
 
-**The sealed result is negative.** On 44 sealed synthetic cases, authored by our evaluator independently of app development and scored once on frozen commit `58bf0d4`, none of the three systems (our agents, a one-pass Gemini baseline and a rules baseline) produced a safe-complete answer. There is no demonstrated advantage over either baseline.
+**Post-fix second look on the same 44 sealed cases** (candidate 5, `3c50476`, run once with the evaluator's trusted issuer setup):
+
+| System | Main safe-complete | Adversarial safe-complete | Jobs completed |
+| --- | ---: | ---: | ---: |
+| Alibi agents | 6 of 32 | 0 of 12 | 38 of 44 |
+| One-pass Gemini | 5 of 32 | 0 of 12 | 44 of 44 |
+| Rules baseline | 9 of 32 | 2 of 12 | 44 of 44 |
+
+Records: pinned replay `2187aa7c34`, aggregate `78ffecd2c2`, original integrity `752f72f28a`. This run came after the frozen run below and reuses its inputs, so it is a second look, not fresh held-out evidence. On the 80 public development cases the rules engine reaches 75 of 80 (record `d2cea158fa`).
+
+**The frozen sealed run, scored first, was negative.** On 44 sealed synthetic cases, authored by our evaluator independently of app development and scored once on frozen commit `58bf0d4`, none of the three systems (our agents, a one-pass Gemini baseline and a rules baseline) produced a safe-complete answer. There is no demonstrated advantage over either baseline.
 
 | System | Cases | Returned without a worker failure | Failed | Main safe-complete (both scorers) | Adversarial safe-complete |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -39,7 +49,7 @@ The Finance Track asks teams to help a specific person make a better financial d
 - **Variants:** 3 frozen variants were tried before this freeze.
 - **Cost:** full cost is unknown. Partial logged cost is about $0.70 over 62 model calls for the agents and about $0.06 over 14 calls for the one-pass baseline; the rules baseline makes no model calls.
 
-### Later looks on the same 44 inputs (post-fix, labelled, never replacing the result above)
+### Later looks on the same 44 inputs (post-fix, details)
 
 - **Second look, candidate 5 (`3c50476`)**, authorised by Arnav at 12:16 after the frozen result, run once with the evaluator's trusted issuer setup: main safe-complete agents 6 of 32, one-pass 5 of 32, rules 9 of 32; adversarial 0, 0 and 2 of 12. Runtime completion was 38, 44 and 44 of 44; the six agent timeouts count in the scores, and the benchmark shows no agent advantage. Records: pinned replay `2187aa7c34`, aggregate `78ffecd2c2`, original integrity `752f72f28a`.
 - **Development rules diagnostic on the merged generalisation fixes (`2453eb6` plus eval's patches):** 44 of 44 ran with no failures and no model calls; main 10 of 32, adversarial 0 of 12. Records `7c6dc607e1` (runtime) and `33e46f1720` (score). This is not an overall improvement on candidate 5's rules row.

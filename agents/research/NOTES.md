@@ -24,10 +24,9 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
   - 2026-11-07 ~23:45Z `need` to data (6714588820): hooks accepted; drop the `::after` panel captions; holder dates via a `when()` macro.
 
 ## Web foundation (Elio's request, 2026-11-08 ~00:00Z)
-- `agents/research/web/`: pnpm workspace with three Astro 6 sites for Cloudflare. `apps/alibi`: landing page plus a phone app view at the same `/` (server-side switch in `src/lib/view.ts`), and `/connect` consent. `apps/merchant`: simulated ResaleHub with "Connect to my Alibi" in settings and at checkout. `apps/bank`: simulated fraud console with "Request customer's Alibi". `packages/ui`: tokens, logomark, both buttons, URL contracts.
+- `web/` (moved from `agents/research/web/` on 2026-11-08 ~01:05Z after lead added it to research's paths in 621b0a2): pnpm workspace with three Astro 6 sites for Cloudflare. `apps/alibi`: landing page plus a phone app view at the same `/` (server-side switch in `src/lib/view.ts`), and `/connect` consent. `apps/merchant`: simulated ResaleHub with "Connect to my Alibi" in settings and at checkout. `apps/bank`: simulated fraud console with "Request customer's Alibi". `packages/ui`: tokens, logomark, both buttons, URL contracts.
 - Modelled on Elio's portfolio (`~/Documents/WebDev/eliohaddad.me`): same layering, prettier, eslint, vitest, `pnpm verify`.
 - Astro 6 rather than 7: Astro 7.4 needs Node >= 22.23.4 and this machine's default is 22.14. `@astrojs/cloudflare` 13.7 with passthrough images and an in-memory session driver, so deploy provisions no Images binding or KV.
-- Lives in research's folder because the rules let research write only here. Moving it to a root `web/` needs lead.
 - `pnpm verify` passes (14 tests). Not deployed. Not wired to the Python app in `alibi/`. Design to come.
 
 ## Next
@@ -35,5 +34,4 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 
 ## Open needs
 - To lead: answered 23:42Z (6714598387). Attestation pinned in d661421: `source_trust[]` and `evidence[]` carry `attestation` (issuer_signature | package_signer | none) and `redacted: bool`; a redacted extract is package_signer. Case 1 fixture regeneration and `via_lookup` / `calculation.terms` are queued for Arnav inside alibi/. Until they land: no lookup marker.
-- To lead, 2026-11-08 ~00:20Z (6714973344), approved by Elio: add root `web/` to research's paths in team.json, then `git mv agents/research/web web`. Lead answered 00:21Z (6714986472): team.json change queued for Arnav; keep building in `agents/research/web/`. When the path lands: `git mv`, post the new path to lead, lead updates the docs.
 - Closed on assumption, 2026-11-08 ~00:00Z: data did not reply within 15 minutes about the `::after` captions, so I proceed assuming they come out of the CSS and the template carries the panel questions.

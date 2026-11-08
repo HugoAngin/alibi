@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { breakdown, credit, formatGBP, netMinor, request } from '../src/data/demo';
 
 // The team's canonical fixture, owned by `data`. Read-only.
-const caseFile = new URL('../../../../../data/out/cases/case_0001.json', import.meta.url);
+const caseFile = new URL('../../../../agents/data/out/cases/case_0001.json', import.meta.url);
 const case1 = JSON.parse(readFileSync(caseFile, 'utf8'));
 
 describe('demo data', () => {

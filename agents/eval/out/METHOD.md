@@ -22,3 +22,7 @@ The rehearsal covered 80 public cases and 94 requests, plus 44 private cases and
 | Rerun cherry-picking | Bind a manifest to one capture directory, hash the retained predictions, and replay the scorer. Try altering a prediction and starting the same capture in a second directory. | Public replay returned identical metrics without starting workers. Both the altered capture and second directory were rejected. A frozen interruption stays in the run record. |
 
 The public rehearsal exercised the runners and scorers with drafts and a stubbed Gemini transport. Benchmark figures and live security outcomes will come from the frozen candidate.
+
+## Clean checkout rehearsal
+
+A fresh depth-one clone from GitHub at `306559d` on the evaluator Mac had no local `.env` and used the frozen Python dependencies. Clone took 1.72 seconds. The combined Python suite took 24.65 seconds wall time, with 1,455 passes, two skips, 26 expected failures, and two `google-genai` syntax warnings. The public runner took 12.19 seconds wall time for 80 cases and 94 requests. The clone stayed clean. This run used the Mac's installed `uv` and package cache. The second-laptop and live-stack rehearsals remain open.

@@ -1,0 +1,30 @@
+# Alibi replay deployment on Modal
+
+The judged demo stays local. The optional Modal deployment gives judges a separately labelled replay of the same public synthetic flow. Start from a clean checkout of the S5 handoff commit after the local replay and consent checks pass.
+
+## Topology
+
+| Service | Bind address | Purpose |
+| --- | --- | --- |
+| App | `0.0.0.0:8100` | The only externally routed port. Serve the published console and judge replay actions. |
+| Mock merchant | `127.0.0.1:8101` | Synthetic events, settlement lookup, and the internal seed action. |
+| Mock bank | `127.0.0.1:8102` | RFC intake, package verification, recipient inboxes, and analyst actions. |
+
+Run the three services in one CPU-only Modal container. Publish port 8100 with `@modal.web_server(8100, startup_timeout=60)`. Use the S5 runbook's process commands and readiness checks. The wrapper starts the loopback services before the app, exits if either fails, and checks the app before announcing readiness. Pin one container and leave request concurrency at its default for the first replay. Warm one container only for the review window. Each startup seeds a fresh local SQLite store from the same public replay inputs. The single store is reused between requests during that container's life. [Web server decorator](https://modal.com/docs/sdk/py/latest/web_server) · [Container limits](https://modal.com/docs/sdk/py/latest/App#function) · [Input concurrency](https://modal.com/docs/guide/concurrent-inputs)
+
+Use container-local storage for the writable passport and bank inbox. A replacement container starts from the signed replay seed and the labelled initial state. Shared Volume storage is unnecessary for this replay. Modal Volumes require explicit consistency handling and do not provide distributed file locking for concurrent writers. [Modal Volume consistency](https://modal.com/docs/guide/volumes)
+
+## Build and access
+
+1. Use the repository's Python version and `Image.uv_sync(frozen=True)` with the pinned lockfile. Add the specific source trees, templates, static assets, and public synthetic replay fixtures required by the published commands. Stage them from tracked paths in the clean checkout. Inspect the staged file list before upload. Sealed inputs, gold, local databases, scratch directories, environment files, private keys, and model logs stay outside the build context. [Modal Images](https://modal.com/docs/sdk/py/latest/Image#uv_sync)
+2. Store the replay master key and synthetic service credentials in a Modal Secret. Place signing keys and the master key outside the passport data directory. Start the app in the S5 replay mode, with Gemini credentials absent. Replay startup fails if a required capture is missing. [Modal Secrets](https://modal.com/docs/guide/secrets)
+3. Start with proxy authentication for team verification. The judge-facing version serves a public read-only replay view, or uses the app's server-side judge session for the scripted actions. All holder, analyst, connector, and reset credentials stay server-side. The seed and reset routes remain loopback-only. Check the actual public route list before enabling anonymous access. [Modal proxy authentication](https://modal.com/docs/guide/webhook-proxy-auth)
+
+## Release checks
+
+- Follow the pinned S5 start and seed commands in a clean checkout. Verify cold startup, a second request through the same warm container, and a fresh reset after restart.
+- Rehearse the public Cases 1 and 2. Case 1 must show the £2,160 credit with its signed proof, refuse a modified draft under stale consent, then accept a new approval. Case 2 must show the unresolved pending settlement. Confirm Bank B reuses the source store with fresh consent and receives only its own package.
+- Fetch both recipient exports and verify their original JSON using the independent verifier with separately pinned public keys. Confirm credential scope, replay labelling, and absence of live model calls. Review the public asset list and response captures for credentials and private file paths.
+- Record the tested Git commit, replay artifact identifier, cold and warm timings, and deployed URL on the Message Board. Label the URL as replay in the deck. Deploy with `modal deploy` after the local checks pass. Stop the optional app with `modal app stop` after review. [Deploying Web Functions](https://modal.com/docs/guide/webhooks) · [App CLI](https://modal.com/docs/cli/latest/app)
+
+The service entry points, replay flag, and exact readiness checks come from the S5 runbook. Deployment status is planned.

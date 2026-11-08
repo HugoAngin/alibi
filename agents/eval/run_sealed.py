@@ -10,6 +10,7 @@ from pathlib import Path
 
 from agents.data.api import load_case, load_cases
 from agents.eval.freeze_pack import _private_path
+from agents.eval.probe_capture import probe_receipt, probe_receipt_path
 from agents.eval.score_capture import score_capture
 from agents.eval.sealed_worker import MODES, REPO, case_payload, run_case_worker, verify_file_isolation
 from agents.execution.api import probe_ids
@@ -19,6 +20,7 @@ from tools.lockbox import is_open
 
 PREDICTION_FILES = {mode: f"{mode}.jsonl" for mode in MODES}
 PROBE_FILE = "probes.jsonl"
+PROBE_RECEIPT = probe_receipt_path(Path(PROBE_FILE)).name
 REPORT_HEADINGS = {
     "public_rehearsal": "Public rehearsal, stubbed model and drafts only",
     "public_live": "Public live adapter check",
@@ -45,6 +47,9 @@ def _probe_rows(path: Path | None) -> list[dict]:
 def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool, timeout: float,
                   blocked: tuple[Path, ...], probes: Path | None, lock: Path | None = None) -> None:
     files = (*PREDICTION_FILES.values(), PROBE_FILE)
+    frozen = not dry and lock is not None
+    if frozen:
+        files += (PROBE_RECEIPT,)
     marker = output / "run.json"
     if output.exists():
         if lock is not None and (not lock.is_file() or common.load_json(lock) != {"run": str(output)}):
@@ -57,8 +62,12 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         return
 
     probe_rows = _probe_rows(probes)
-    if not dry and lock is not None and not probe_rows:
-        raise ValueError("capture the full probe catalogue before the frozen run")
+    if frozen:
+        if probes is None or not probe_rows or not probe_receipt_path(probes).is_file():
+            raise ValueError("capture the full probe catalogue with --candidate-evidence before the frozen run")
+        receipt = common.load_json(probe_receipt_path(probes))
+        if receipt != probe_receipt(signature["commit"], probe_rows):
+            raise ValueError("probe evidence does not match the frozen candidate or recorded outcomes")
     if not dry and find_spec("alibi.adapter") is None:
         raise RuntimeError("the candidate does not contain alibi.adapter.run_case")
     if not dry:
@@ -74,6 +83,8 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         lock.chmod(0o600)
     output.mkdir(mode=0o700)
     common.write_jsonl(output / PROBE_FILE, probe_rows)
+    if frozen:
+        common.write_json(output / PROBE_RECEIPT, receipt)
     for mode, filename in PREDICTION_FILES.items():
         with (output / filename).open("x", encoding="utf-8") as destination:
             for case in cases:

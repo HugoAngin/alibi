@@ -6,7 +6,17 @@ import pytest
 
 from agents.data.api import canonical_case
 from agents.eval import run_sealed
+from agents.eval.probe_capture import probe_receipt, probe_receipt_path
 from alibi.eval import common, rules_reference
+
+
+@pytest.fixture
+def candidate_probes(tmp_path):
+    path = tmp_path / "candidate-probes.jsonl"
+    rows = [{"probe_id": probe_id, "outcome": "not_run"} for probe_id in run_sealed.probe_ids()]
+    common.write_jsonl(path, rows)
+    common.write_json(probe_receipt_path(path), probe_receipt("candidate", rows))
+    return path
 
 
 def test_public_dry_run_replays_without_launching_workers(tmp_path, capsys, monkeypatch):
@@ -89,19 +99,55 @@ def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(
     assert (output / "deck-table.md").read_text().startswith("# Public live adapter check")
 
 
-def test_missing_provider_key_does_not_start_a_capture(tmp_path, monkeypatch):
+def test_missing_provider_key_does_not_start_a_capture(tmp_path, monkeypatch, candidate_probes):
     output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
     monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
-    monkeypatch.setattr(run_sealed, "_probe_rows", lambda _: [{"probe_id": "SP-01"}])
 
     def missing_key():
         raise run_sealed.client.MissingApiKey("credential unavailable")
 
     monkeypatch.setattr(run_sealed.client, "load_api_key", missing_key)
     with pytest.raises(run_sealed.client.MissingApiKey, match="credential unavailable"):
-        run_sealed._capture_once(output, [canonical_case()], {}, dry=False, timeout=15,
-                                 blocked=(tmp_path,), probes=None, lock=lock)
+        run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
+                                 blocked=(tmp_path,), probes=candidate_probes, lock=lock)
     assert not lock.exists() and not output.exists()
+
+
+@pytest.mark.parametrize("problem", ["missing receipt", "wrong commit", "changed outcome"])
+def test_frozen_capture_rejects_unbound_probes_before_lock(tmp_path, candidate_probes, problem):
+    output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
+    receipt = probe_receipt_path(candidate_probes)
+    if problem == "missing receipt":
+        receipt.unlink()
+    elif problem == "wrong commit":
+        common.write_json(receipt, probe_receipt("earlier", common.read_jsonl(candidate_probes)))
+    else:
+        rows = common.read_jsonl(candidate_probes)
+        rows[0]["outcome"] = "blocked"
+        common.write_jsonl(candidate_probes, rows)
+    with pytest.raises(ValueError, match="probe evidence|--candidate-evidence"):
+        run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
+                                 blocked=(), probes=candidate_probes, lock=lock)
+    assert not lock.exists() and not output.exists()
+
+
+def test_frozen_replay_validates_retained_receipt_without_original(tmp_path, monkeypatch, candidate_probes):
+    output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
+    monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
+    monkeypatch.setattr(run_sealed.client, "load_api_key", lambda: "synthetic-credential")
+    monkeypatch.setattr(run_sealed, "run_case_worker",
+                        lambda case, *args, **kwargs: rules_reference.predictions_for([case]))
+    signature = {"commit": "candidate"}
+    options = {"dry": False, "timeout": 15, "blocked": (), "probes": candidate_probes, "lock": lock}
+    run_sealed._capture_once(output, [canonical_case()], signature, **options)
+    retained = output / run_sealed.PROBE_RECEIPT
+    assert common.load_json(retained) == common.load_json(probe_receipt_path(candidate_probes))
+    candidate_probes.unlink()
+    probe_receipt_path(candidate_probes).unlink()
+    run_sealed._capture_once(output, [canonical_case()], signature, **options)
+    retained.write_text("{}", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="retained capture or its inputs changed"):
+        run_sealed._capture_once(output, [canonical_case()], signature, **options)
 
 
 def test_closed_lockbox_stops_before_private_paths_are_read(tmp_path, monkeypatch, capsys):

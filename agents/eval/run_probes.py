@@ -9,6 +9,8 @@ import sys
 from tempfile import TemporaryDirectory
 
 from agents.eval.http_probe_runtime import attempt
+from agents.eval.probe_capture import probe_receipt, probe_receipt_path
+from alibi.eval import common, seal
 from alibi.eval.probes import Harness, ProbeResult
 
 
@@ -86,11 +88,31 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", type=Path, help="git-ignored config for a disposable synthetic stack")
     parser.add_argument("--ids", nargs="+", help="exercise only these catalogue IDs")
     parser.add_argument("--results", type=Path, required=True, help="official scorer input JSONL")
+    parser.add_argument("--candidate-evidence", action="store_true",
+                        help="record a full probe run against a disposable stack started from this checkout")
     args = parser.parse_args(argv)
+    receipt = probe_receipt_path(args.results)
+    if receipt.exists():
+        parser.error("use a new results path to preserve the candidate capture")
+    if args.candidate_evidence:
+        if not args.config or args.ids or args.results.exists():
+            parser.error("candidate evidence requires a config, the full catalogue and a new results path")
+        commit, dirty = seal.git_commit("HEAD")
+        if dirty:
+            parser.error("record candidate evidence from a clean checkout")
     config = json.loads(args.config.read_text(encoding="utf-8")) if args.config else {}
     harness = build_probe_harness(config, args.ids)
     results = harness.run()
+    if args.candidate_evidence and seal.git_commit("HEAD") != (commit, False):
+        parser.error("candidate checkout changed during probe capture")
+    if args.candidate_evidence:
+        args.results.parent.mkdir(parents=True, exist_ok=True)
+        args.results.touch(exist_ok=False)
     harness.write_results(results, args.results)
+    if args.candidate_evidence:
+        metadata = probe_receipt(commit, common.read_jsonl(args.results))
+        with receipt.open("x", encoding="utf-8") as handle:
+            json.dump(metadata, handle)
     print(harness.table(results))
     print(json.dumps(harness.summary(results), sort_keys=True))
 

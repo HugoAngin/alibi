@@ -29,6 +29,15 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
 
 Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. For SP-47, set `storage_layout` to `configured` or `default` only after confirming the matching layout for the target. The runner labels that result as an isolated local core probe. It cannot inspect a remote host’s raw store.
 
+For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
+
+```bash
+uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes.json \
+  --candidate-evidence --results "$ALIBI_FROZEN_PROBES"
+```
+
+Keep the adjacent `<results filename>.receipt.json` with that capture. It records the probe checkout commit and a digest of the outcomes. Review the observed coverage and allowed controls before opening the lockbox, since a receipt can also describe a capture with zero observed outcomes. The evaluator confirms that the configured services run that candidate. The receipt itself records the checkout and output, with no service attestation.
+
 `score_capture` takes normalized records extracted from actual application output. Include `case_number`, `request_id`, `audience`, `answers` keyed by question and `disclosed_refs` for every reference in the delivered body. Each answer has `status`, `facts`, `gap` and `evidence_refs`. The scorer counts a case as complete only when every request passes, so a missing second-bank response stays in the denominator. The probe file is a JSON object keyed by probe ID, or the `observed` report printed by `uv run --frozen python -m pytest -q -s agents/eval/test_sharing_flow.py` for the local reference. Use separate probe captures for each system. The final output line contains numeric metrics, with unexercised probes listed separately above it.
 
 For the supported source question, capture `payout_references` and `settled_at` as parallel arrays ordered by payout record ID. For a computed breakdown, capture `breakdown_minor` with `sales`, `refunds`, `fees` and `net`. A contradiction supported by a cited payout status can instead carry `cited_payout_status`. For the period answer, capture `sales_minor`, `refunds_minor`, `sale_count` and `refund_count`. Use an empty facts object when no facts are asserted. These fields describe the actual answer and its evidence. The adapter must never populate them from gold.
@@ -93,4 +102,4 @@ python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \
   --command 'uv run --frozen python -m agents.eval.run_sealed'
 ```
 
-The runner verifies the seal before and after capture. It binds the manifest to one run directory and retains the original predictions and probe JSONL. Both live modes deny workers access to that directory so later cases and systems cannot read earlier predictions. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.
+The runner verifies the seal before and after capture. It checks the probe receipt against the sealed commit and captured outcomes before starting the one allowed run, then retains the receipt with the predictions and probe JSONL. Both live modes deny workers access to that directory so later cases and systems cannot read earlier predictions. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.

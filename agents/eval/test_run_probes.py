@@ -1,6 +1,10 @@
 """Check the bridge from raw eval observations to official scorer outcomes."""
 
+import pytest
+
 from agents.eval import run_probes
+from agents.eval.probe_capture import probe_receipt_path
+from alibi.eval import common
 from alibi.eval.scorer import load_probe_results, probe_metrics
 
 
@@ -43,3 +47,32 @@ def test_unconfigured_runner_is_all_not_run():
     results = harness.run()
     assert len(results) == 47
     assert all(result.outcome == "not_run" and result.detail for result in results)
+
+
+def test_candidate_capture_records_catalogue_commit_and_digest(tmp_path, monkeypatch):
+    config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
+    common.write_json(config, {})
+    monkeypatch.setattr(run_probes.seal, "git_commit", lambda _: ("candidate", False))
+    monkeypatch.setattr(run_probes, "attempt", lambda *_: {"outcome": "blocked", "exchanges": []})
+    args = ["--config", str(config), "--results", str(path), "--candidate-evidence"]
+    run_probes.main(args)
+    rows = common.read_jsonl(path)
+    assert len(rows) == 47
+    assert load_probe_results(path)["SP-01"] == "refused"
+    assert common.load_json(probe_receipt_path(path)) == {
+        "candidate_commit": "candidate", "outcomes_sha256": common.canonical_sha256(rows),
+    }
+    with pytest.raises(SystemExit):
+        run_probes.main(args)
+    with pytest.raises(SystemExit):
+        run_probes.main(args[:-1])
+
+
+def test_candidate_capture_does_not_publish_after_checkout_moves(tmp_path, monkeypatch):
+    config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
+    common.write_json(config, {})
+    revisions = iter([("candidate", False), ("different", False)])
+    monkeypatch.setattr(run_probes.seal, "git_commit", lambda _: next(revisions))
+    with pytest.raises(SystemExit):
+        run_probes.main(["--config", str(config), "--results", str(path), "--candidate-evidence"])
+    assert not path.exists() and not probe_receipt_path(path).exists()

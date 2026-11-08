@@ -354,8 +354,10 @@ def _run(world: _World, mode: str, rfc: Any, now: datetime, client: Any) -> tupl
     """Run the investigation in ``mode`` and return ``(InvestigationResult, OnePassRun | None)``."""
     common = dict(registry=world.registry, now=now, **world.connectors())
     if mode == "rules":
+        # The holder's explanation goes in as an untrusted claim to check, never as evidence.
         return api.run_investigation(world.store, rfc.request_id, audience=rfc.audience,
-                                     mode="rules", **common), None
+                                     mode="rules", holder_claim=world.case.get("holder_claim"),
+                                     **common), None
     if mode == "agents":
         return api.run_investigation(world.store, rfc.request_id, audience=rfc.audience,
                                      mode="agents", client=client, **common), None
@@ -363,7 +365,8 @@ def _run(world: _World, mode: str, rfc: Any, now: datetime, client: Any) -> tupl
     # gets the same audit row api.run_investigation(mode="one_pass") would write, so the holder's
     # passport records every investigation whatever the mode.
     from alibi.baselines import one_pass
-    run = one_pass.run_one_pass(world.store, rfc, client=client, **common)
+    run = one_pass.run_one_pass(world.store, rfc, client=client,
+                                holder_claim=world.case.get("holder_claim"), **common)
     _audit_model_run(world.store, rfc, run.result, actor=one_pass.ACTOR, at=now)
     return run.result, run
 

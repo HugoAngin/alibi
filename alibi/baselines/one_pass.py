@@ -49,7 +49,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -195,13 +195,14 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
                  gateway: Any | None = None, settlement_lookup: Callable | None = None,
                  txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
                  registry: Any | None = None, now: datetime | None = None,
-                 model: str | None = None) -> OnePassRun:
+                 model: str | None = None, holder_claim: Any = None) -> OnePassRun:
     """Run the baseline and return the result with its proposal and counts.
 
     Without ``gateway`` one is built for the request's subject under the next single_call run
     id, with the connector callables, budget and registry given. The model is called at most
     once (a ``CallBudget`` of 1). Never raises for a model or connector failure: those become
-    unresolved claims and typed trace events.
+    unresolved claims and typed trace events. ``holder_claim`` is the holder's own untrusted
+    account of a credit (``{txn_id, stated_minor}``): checked against the records, never evidence.
     """
     rfc = request if isinstance(request, RequestForContext) else store.get_request(request)
     at = _clock(now)
@@ -217,7 +218,7 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
         raise ValueError("the gateway is scoped to a different subject than the request")
     run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id, audience=rfc.audience)
     run = _Run(rfc, store, gateway, client, run_id=run_id, now=at,
-               model=model or config.FLASH)
+               model=model or config.FLASH, holder_claim=holder_claim)
     return run.execute()
 
 
@@ -226,8 +227,9 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
 
 class _Run:
     def __init__(self, rfc: RequestForContext, store: Store, gateway: Any, client: Any, *,
-                 run_id: str, now: datetime, model: str):
+                 run_id: str, now: datetime, model: str, holder_claim: Any = None):
         self.rfc, self.store, self.gateway, self.client = rfc, store, gateway, client
+        self.stated = core_rules._stated_breakdowns(holder_claim)   # noqa: SLF001 - shared parser
         self.run_id, self.now, self.model = run_id, now, model
         self.material = Material(rfc.subject_ref)
         self.events: list[dict[str, Any]] = []
@@ -567,6 +569,20 @@ class _Run:
             statement = (f"Credit {self.rfc.txn_ids[0]} is made up of sales {sums['sales']} less refunds "
                          f"{sums['refunds']} and fees {sums['fees']} = {calc.total_pence} pence "
                          f"{calc.currency}, reconciled in code against the credit.")
+            minor = {**sums, "net": calc.total_pence}
+            stated = self.stated.get(self.rfc.txn_ids[0])
+            if stated is not None and stated != minor:
+                differs = [k for k in ("sales", "refunds", "fees", "net") if stated[k] != minor[k]]
+                said = ", ".join(f"{k} {stated[k]}" for k in differs)
+                found = ", ".join(f"{k} {minor[k]}" for k in differs)
+                return _Outcome(ClaimStatus.CONTRADICTED,
+                                statement + f" The account holder's stated breakdown ({said}) is "
+                                f"contradicted by these records ({found}).",
+                                base.rationale + " The holder's stated figures are an unverified "
+                                "assertion, checked against the issuer records and not used as "
+                                "evidence.",
+                                "The records contradict the holder's stated breakdown.",
+                                evidence=list(base.evidence), calculation=calc)
             return _Outcome(ClaimStatus.SUPPORTED, statement, base.rationale,
                             "The breakdown reconciles to the supported credit.",
                             evidence=list(base.evidence), calculation=calc)
@@ -666,7 +682,12 @@ class _Run:
                             "No settlement record for the candidate payout.", gap=gap,
                             evidence=[txn.ref(), *pool_refs])
         if found.conflicts:
-            return self.contradicted(txn, found.conflicts[0], found)
+            conflict = found.conflicts[0]
+            if _conflict_code(conflict, txn) == GAP_SETTLEMENT_AFTER:
+                # A settlement that takes effect only after the booking cannot have funded the
+                # credit, nor shows the source wrong at booking: unresolved, settlement_after_credit.
+                return self.undecided(txn, replace(conflict, code=GAP_SETTLEMENT_AFTER), found)
+            return self.contradicted(txn, conflict, found)
         if found.coded:
             return self.undecided(txn, found.coded[0], found)
         if not any(r.kind == RecordKind.PAYOUT for r in records) and self.records_err:

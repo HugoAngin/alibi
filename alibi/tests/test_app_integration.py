@@ -141,6 +141,53 @@ def stack(tmp_path):
 # --------------------------------------------------------------------------- the whole path
 
 
+@pytest.mark.parametrize(("change", "code"), [
+    ("policy", "policy_version_changed"),
+    ("draft", "approval_digest_mismatch"),
+])
+def test_dispatch_refuses_a_stale_approval_until_reapproval(stack: Stack, monkeypatch, change, code):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    stack.seed()
+    stack.sync()
+    assert stack.issue("bank_a", RID)["forwarded"]["status"] == "accepted"
+    before = stack.run_approve(RID)["review"]
+    stack.advance_bank()
+
+    if change == "policy":
+        interpreted = stack.client.post("/rules/interpret", headers=JSON,
+                                        json={"text": "Never share item descriptions."})
+        assert interpreted.status_code == 200 and interpreted.json()["status"] == "resolved"
+        rule_id = interpreted.json()["rule_id"]
+        confirmed = stack.client.post(f"/rules/{rule_id}/confirm", headers=JSON, json={})
+        assert confirmed.status_code == 200 and RID in confirmed.json()["rebuilt"]
+    else:
+        item = next(item for item in before["included"] if item["removable"])
+        removed = stack.client.post(item["remove_action"], headers=JSON, json={})
+        assert removed.status_code == 200
+
+    path = f"/requests/{RID}"
+    current = stack.client.get(path, headers=JSON).json()["review"]["approval"]
+    assert current["digest"] != before["approval"]["digest"]
+    assert (current["policy_version"] != before["approval"]["policy_version"]) == (change == "policy")
+    for _ in range(2):
+        refused = stack.client.post(f"{path}/dispatch", headers=JSON, json={})
+        assert refused.status_code == 409 and refused.json()["code"] == code
+        assert refused.json()["expected_digest"] == before["approval"]["digest"]
+        assert refused.json()["actual_digest"] == current["digest"]
+    assert stack.rt.store.list_packages(request_id=RID) == []
+    assert stack.bank_client.get("/inbox", headers=TOKEN_A).json()["packages"] == []
+
+    reapproved = stack.client.post(f"{path}/approve", headers=JSON, json={
+        "digest": current["digest"], "audience": current["audience"],
+        "policy_version": current["policy_version"],
+    })
+    assert reapproved.status_code == 200 and reapproved.json()["digest"] == current["digest"]
+    sent = stack.dispatch(RID)
+    assert sent["outcome"] == "success" and sent["receipt"]["status"] == "accepted"
+    packages = stack.bank_client.get("/inbox", headers=TOKEN_A).json()["packages"]
+    assert [(entry["package_id"], entry["status"]) for entry in packages] == [(sent["package_id"], "verified")]
+
+
 def test_case_one_travels_through_the_connect_routes(stack: Stack):
     health = stack.client.get("/health").json()
     assert health["seed"] == "connectors" and health["bank_url"] == BANK_URL and health["merchant_url"] == MERCHANT_URL

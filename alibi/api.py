@@ -577,8 +577,12 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                       settlement_lookup: SettlementLookup | None = None,
                       txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
                       registry: TrustRegistry | None = None,
-                      now: datetime | None = None, client: Any = None) -> InvestigationResult:
+                      now: datetime | None = None, client: Any = None,
+                      holder_claim: Any = None) -> InvestigationResult:
     """Investigate a stored request and save its links, claims and trace.
+
+    ``holder_claim`` (rules mode) is the holder's own untrusted account of a credit,
+    ``{txn_id, stated_minor}``; it is checked against the records and never used as evidence.
 
     ``request`` is a request_id together with ``audience`` (the bank that sent it; without it a
     bare id must be one bank's alone, else ``AmbiguousRequest``), or the stored
@@ -636,7 +640,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                                                         audience=rfc.audience),
                           registry=registry, budget=budget, settlement_lookup=settlement_lookup,
                           txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
-    result = core_rules.run_investigation(rfc, store, gateway, mode, now=now)
+    result = core_rules.run_investigation(rfc, store, gateway, mode, now=now,
+                                          holder_claim=holder_claim)
     answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
                         for claim in result.claims)
     _audit(store, action="run_investigation", actor=core_rules.ACTOR, outcome="ok", at=at,

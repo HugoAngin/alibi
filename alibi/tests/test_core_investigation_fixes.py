@@ -132,13 +132,13 @@ def test_exactly_five_days_before_the_credit_still_supports_it(passport, keystor
 @pytest.mark.parametrize("name, edit, status, code, words", [
     ("contradiction", None, CONTRADICTED, "settlement_pending_at_booking", "still pending"),
     ("ambiguous", None, UNRESOLVED, "ambiguous_candidates", "cannot choose"),
-    ("supported", lambda fx: fx["lookup_events"].clear(), UNRESOLVED, "settlement_not_found",
+    ("supported", lambda fx: fx["lookup_events"].clear(), UNRESOLVED, "settlement_pending_at_booking",
      "No settlement record for payout PO-5001"),
     ("supported", lambda fx: fx["lookup_events"][0].update(status="reversed"), CONTRADICTED,
      "settlement_failed", "status reversed"),
     ("supported", settlement_at("2026-11-03T11:00:00Z", "2026-11-03T11:30:00Z"), CONTRADICTED,
      "settlement_after_credit", "after the credit was booked"),
-    ("supported", lambda fx: fx["lookup_events"][0].update(amount_pence=200000), CONTRADICTED,
+    ("supported", lambda fx: fx["lookup_events"][0].update(amount_pence=200000), UNRESOLVED,
      "amount_mismatch", "200000 pence GBP, but the credit is 216000"),
     ("supported", lambda fx: record_of(fx, "po_5001")["related_record_ids"].append("ord_1099"),
      UNRESOLVED, "missing_cited_record", "ord_1099"),
@@ -222,7 +222,7 @@ def test_another_issuers_settlement_cannot_prove_the_payout_on_either_path(tmp_p
     ingest.ingest_merchant_event(store, two_issuers.registry, signed_foreign, now=now)
     result, _ = real_run(store, RFC_A, two_issuers.registry, now, lambda _: None)
     claim = claim_of(result)
-    assert claim.status == UNRESOLVED and claim.gap == "settlement_not_found"
+    assert claim.status == UNRESOLVED and claim.gap == "settlement_pending_at_booking"
     assert "record:stl_foreign@1" not in keys(claim.evidence_refs)
     # Nor through the lookup, now that the gateway's scope admits the other issuer's record.
     result, _ = real_run(store, RFC_A, two_issuers.registry, now, lambda _: signed_foreign)
@@ -445,7 +445,7 @@ def test_a_payout_carrying_its_settlement_status_is_its_own_settlement_evidence(
 @pytest.mark.parametrize("status, extra, expected, code", [
     ("failed", {}, CONTRADICTED, "settlement_failed"),
     ("settled", {"effective_at": "2026-11-03T11:00:00Z"}, CONTRADICTED, "settlement_after_credit"),
-    ("initiated", {}, UNRESOLVED, "settlement_not_found"),   # pending before booking: no evidence
+    ("initiated", {}, UNRESOLVED, "settlement_pending_at_booking"),  # known pending, no later settlement
 ], ids=["failed", "settled-late", "pending-before"])
 def test_a_payouts_own_status_contradicts_or_leaves_open(passport, keystore, now, status, extra,
                                                         expected, code):

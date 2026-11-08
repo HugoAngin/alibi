@@ -49,14 +49,21 @@ _BREAKDOWN_KINDS = {"sales": RecordKind.ORDER, "refunds": RecordKind.REFUND, "fe
 
 def derive_facts(store: Any, request: RequestForContext, question: Question, status: Any,
                  evidence: Iterable[EvidenceRef], calculation: Calculation | None) -> dict[str, Any]:
-    """The typed facts a ``supported`` claim asserts; ``{}`` for any other status."""
+    """The typed facts a ``supported`` claim asserts; ``{}`` for any other status, except a
+    ``contradicted`` breakdown, which states the record-derived breakdown that contradicts the
+    holder's figures."""
     try:
-        if ClaimStatus(status) != ClaimStatus.SUPPORTED:
-            return {}
+        claimed = ClaimStatus(status)
     except ValueError:
         return {}
+    if claimed not in (ClaimStatus.SUPPORTED, ClaimStatus.CONTRADICTED):
+        return {}
+    if claimed == ClaimStatus.CONTRADICTED and calculation is None:
+        return {}   # a contradiction with no reconciled records states nothing
     found = rules.classify(question, request)
     credits = len(request.txn_ids or [])
+    if claimed == ClaimStatus.CONTRADICTED and found.category != rules.BREAKDOWN:
+        return {}
     if found.category == rules.SOURCE_OF_FUNDS:
         return _source_facts(store, list(evidence), calculation, credits)
     if found.category == rules.BREAKDOWN:
@@ -64,7 +71,7 @@ def derive_facts(store: Any, request: RequestForContext, question: Question, sta
             return {}
         return {"breakdown_minor": _breakdown(calculation)}
     if found.category in _PERIOD and calculation is not None:
-        return _period_facts(found, calculation)
+        return _period_facts(found, calculation, store)
     return {}
 
 
@@ -112,7 +119,7 @@ def _breakdown(calc: Calculation) -> dict[str, int]:
     return {**sums, "net": calc.total_pence}
 
 
-def _period_facts(found: Any, calc: Calculation) -> dict[str, Any]:
+def _period_facts(found: Any, calc: Calculation, store: Any = None) -> dict[str, Any]:
     facts: dict[str, Any] = {}
     for kind in found.kinds:
         keys = rules._FACT_KEYS.get(kind)
@@ -121,6 +128,43 @@ def _period_facts(found: Any, calc: Calculation) -> dict[str, Any]:
         rows = [t for t in calc.terms if t.kind == kind.value]
         facts[keys[0]] = sum(t.amount_pence for t in rows)
         facts[keys[1]] = len(rows)
+    by_issuer = _issuer_shares(found, calc, store)
+    if by_issuer is not None:
+        facts["by_issuer"] = by_issuer
     if found.category == rules.NET_TOTAL:
         facts["net_minor"] = calc.total_pence
     return facts
+
+
+def _issuer_shares(found: Any, calc: Calculation, store: Any) -> dict[str, dict[str, int]] | None:
+    """Each issuer's share of a period total's counted terms when they come from more than one
+    issuer, read from the stored records the terms cite; ``None`` for a single issuer or when
+    any term's issuer cannot be read, so a partial split is never stated."""
+    if store is None:
+        return None
+    issuer_of: dict[int, str] = {}
+    for index, term in enumerate(calc.terms):
+        try:
+            record = store.get_source(term.ref.ref_id, term.ref.revision)
+        except Exception:   # noqa: BLE001 - an unreadable term means no split, not a crash
+            return None
+        issuer = getattr(record, "issuer_id", None)
+        if not isinstance(issuer, str) or not issuer:
+            return None
+        issuer_of[index] = issuer
+    issuers = sorted(set(issuer_of.values()))
+    if len(issuers) < 2:
+        return None
+    shares: dict[str, dict[str, int]] = {}
+    for issuer in issuers:
+        share: dict[str, int] = {}
+        for kind in found.kinds:
+            keys = rules._FACT_KEYS.get(kind)
+            if keys is None:
+                continue
+            rows = [t for i, t in enumerate(calc.terms)
+                    if t.kind == kind.value and issuer_of[i] == issuer]
+            share[keys[0]] = sum(t.amount_pence for t in rows)
+            share[keys[1]] = len(rows)
+        shares[issuer] = share
+    return shares

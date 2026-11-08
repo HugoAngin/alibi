@@ -50,7 +50,7 @@ saved to the store. No network, no LLM.
 """
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
@@ -330,7 +330,8 @@ def next_run_id(store: Store, request_id: str, *, audience: str) -> str:
 
 def run_investigation(request: RequestForContext, store: Store, gateway: Any, mode: str = "rules",
                       *, now: datetime | None = None,
-                      window: timedelta = DEFAULT_WINDOW) -> InvestigationResult:
+                      window: timedelta = DEFAULT_WINDOW,
+                      holder_claim: Mapping[str, Any] | None = None) -> InvestigationResult:
     """Answer every question in ``request`` with one rules-based claim and save the results.
 
     Reads go through ``gateway`` (``alibi.gateway.Gateway`` or anything with its interface).
@@ -342,6 +343,10 @@ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mo
     run with ``run_id=next_run_id(...)``), raises ``ValueError`` before any call. ``window``
     is both the payout search window around the booking and the settlement window (a
     settlement supports the credit only when effective at most ``window`` before it).
+    ``holder_claim`` is the account holder's own, untrusted account of a credit
+    (``{txn_id, stated_minor: {sales, refunds, fees, net}}``). It is never evidence and never
+    cited: it is only the specific claim a derived breakdown is checked against, so a breakdown
+    the issuer records contradict is ``contradicted``. Without it the answer is unchanged.
     """
     if mode != MODE:
         raise NotImplementedError(f"mode {mode!r} is not implemented here; the rules "
@@ -359,7 +364,8 @@ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mo
         raise ValueError("the gateway records its calls under another run id; build a new "
                          "gateway for each run with run_id=next_run_id(store, request_id, "
                          "audience=...)")
-    run = _Run(request, store, gateway, run_id=run_id, now=now or utc_now(), window=window)
+    run = _Run(request, store, gateway, run_id=run_id, now=now or utc_now(), window=window,
+               holder_claim=holder_claim)
     claims = [run.answer(question) for question in request.questions]
     return run.finish(claims)
 
@@ -397,14 +403,17 @@ class _Match:
     excluded: list[EvidenceRecord]     # payouts the decision ruled out explicitly
     signals: list[str]
     summary: str
+    batch: list[EvidenceRecord] = field(default_factory=list)  # every payout of a settlement batch
 
 
 class _Run:
     """One rules run: gateway reads, rules trace events and the per-transaction cache."""
 
     def __init__(self, request: RequestForContext, store: Store, gateway: Any, *, run_id: str,
-                 now: datetime, window: timedelta):
+                 now: datetime, window: timedelta,
+                 holder_claim: Mapping[str, Any] | None = None):
         self.request, self.store, self.gateway = request, store, gateway
+        self.stated = _stated_breakdowns(holder_claim)
         self.run_id, self.now, self.window = run_id, now, window
         self.events: list[dict[str, Any]] = []
         self.unavailable: list[str] = []
@@ -547,6 +556,24 @@ class _Run:
                          f"{payout.payment_ref or 'none'}): sales {minor['sales']} less refunds "
                          f"{minor['refunds']} and fees {minor['fees']} = {minor['net']} pence "
                          f"{calc.currency}, reconciled in code against the credit.")
+            stated = self.stated.get(txn_id)
+            if stated is not None and stated != minor:
+                differs = [k for k in ("sales", "refunds", "fees", "net") if stated[k] != minor[k]]
+                said = ", ".join(f"{k} {stated[k]}" for k in differs)
+                found = ", ".join(f"{k} {minor[k]}" for k in differs)
+                self.note("note", reason=_clip(f"Holder-stated breakdown ({said}) differs from "
+                                               f"the issuer records ({found}).", 300),
+                          result={"holder_stated": "contradicted", "fields": ",".join(differs)})
+                return _Outcome(
+                    ClaimStatus.CONTRADICTED,
+                    statement + f" The account holder's stated breakdown ({said}) is "
+                    f"contradicted by these records ({found}).",
+                    base.rationale + " The holder's stated figures are an unverified assertion, "
+                    "checked against the issuer records and not used as evidence.",
+                    "The records contradict the holder's stated breakdown.",
+                    evidence=list(base.evidence), calculation=calc,
+                    facts={"breakdown_minor": minor}, components=base.components,
+                    payout=payout, settlement=base.settlement)
             return _Outcome(ClaimStatus.SUPPORTED, statement, base.rationale,
                             "The breakdown reconciles to the supported credit.",
                             evidence=list(base.evidence), calculation=calc,
@@ -585,10 +612,12 @@ class _Run:
         link = self.links.get(txn_id)
         if outcome.status != ClaimStatus.SUPPORTED or link is None or link.record_ref is None:
             return outcome
-        payout = link.record_ref.ref_id
+        payouts = _allocated_payouts(link)
         others = [other for other, seen in self.links.items() if other != txn_id
-                  and seen.record_ref is not None and seen.record_ref.ref_id == payout]
-        stored = self.competing_links(payout, exclude={txn_id, *self.links})
+                  and payouts.intersection(_allocated_payouts(seen))]
+        stored = sorted({other for payout in payouts
+                         for other in self.competing_links(payout, exclude={txn_id, *self.links})})
+        payout = ", ".join(sorted(payouts))
         if not others and not stored:
             return outcome
         where = []
@@ -603,7 +632,7 @@ class _Run:
         detail = (f"Payout {payout} is also matched to {' and to '.join(where)}; one payout "
                   f"cannot fund more than one credit, so it does not establish the source of "
                   f"{txn_id}.")
-        self.note("validation", reason=_clip(detail, 300), refs=[link.txn_ref, link.record_ref],
+        self.note("validation", reason=_clip(detail, 300), refs=[link.txn_ref, link.record_ref, *link.candidates],
                   result={"record_id": payout, "other_txn_ids": others,
                           "earlier_links": len(stored)})
         return replace(outcome, status=ClaimStatus.UNRESOLVED,
@@ -621,7 +650,7 @@ class _Run:
         except StoreError:
             return []
         return sorted({l.txn_ref.ref_id for l in links
-                       if l.record_ref is not None and l.record_ref.ref_id == record_id
+                       if record_id in _allocated_payouts(l)
                        and l.txn_ref.ref_id not in exclude})
 
     # ----------------------------------------------------------------------- source of funds
@@ -676,6 +705,8 @@ class _Run:
                           "candidates": [p.record_id for p in match.candidates]})
         if match.payout is None:
             return self.unlinked(txn, match)
+        if len(match.batch) > 1:
+            return self.linked_batch(txn, match)
         return self.linked(txn, match)
 
     def fetch_by_credit_reference(self, txn: BankTxn, found: list[EvidenceRecord]
@@ -799,8 +830,9 @@ class _Run:
             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), problem,
                             gap=problem_code, detail=" ".join(gaps + [problem]), **base)
         if settlement is None:
-            code = GAP_BALANCE_RELEASE if payout.status == RELEASED_STATUS \
-                else GAP_SETTLEMENT_NOT_FOUND
+            code = (GAP_BALANCE_RELEASE if payout.status == RELEASED_STATUS else
+                    GAP_PENDING_AT_BOOKING if payout.status in PENDING_STATUSES else
+                    GAP_SETTLEMENT_NOT_FOUND)
             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts),
                             "No settlement record for the linked payout.", gap=code,
                             detail=" ".join(gaps), **base)
@@ -827,6 +859,112 @@ class _Run:
                      "settled_at": [format_utc(effective)] if effective is not None else []}
         return _Outcome(status, statement + ".", " ".join(parts), reason, gap=code, detail=gap,
                         facts=facts, **base)
+
+    def linked_batch(self, txn: BankTxn, match: _Match) -> _Outcome:
+        """A credit matched to an issuer's settlement batch: several issuer-verified payouts of
+        the same issuer whose settlement reference the credit carries and whose amounts sum to
+        it. Each member must show its own settlement (``settlement_for``), have no explicit
+        conflict and reconcile to its own component records; the union of components must
+        then reconcile to the credit, with every member's settlement timing ok. Any member
+        failing makes the credit unresolved (or contradicted for an explicit conflict)."""
+        members = match.batch
+        primary = members[0]
+        batch_ref = primary.settlement_ref
+        statement = (f"Credit {txn.txn_id} of {_money(txn.amount_pence, txn.currency)} is "
+                     f"settlement batch {batch_ref} of {len(members)} payouts "
+                     f"({_ids(members)}; references "
+                     f"{', '.join(p.payment_ref or 'none' for p in members)})")
+        parts = [match.summary]
+        evidence: list[EvidenceRef] = [txn.ref(), *(p.ref() for p in members)]
+        settlements: list[EvidenceRecord] = []
+        components: list[EvidenceRecord] = []
+        problems: list[tuple[str, str]] = []
+        for payout in members:
+            settlement, path, notes = self.settlement_for(payout, txn)
+            parts += notes
+            self.note("note", tool="lookup_settlement",
+                      reason=f"Settlement path for batch member {payout.record_id}: {path}.",
+                      refs=[payout.ref(), *([settlement.ref()] if settlement else [])],
+                      result={"path": path, "payment_ref": payout.payment_ref or "none",
+                              "settlement": settlement.ref().key() if settlement else "none"})
+            if settlement is not None and settlement.record_id != payout.record_id:
+                evidence.append(settlement.ref())
+            conflict = _conflict(txn, payout, settlement)
+            if conflict is not None:
+                reason, code, gap = conflict
+                return _Outcome(ClaimStatus.CONTRADICTED, statement + ".", " ".join(parts),
+                                reason, gap=code, detail=gap, evidence=evidence, payout=primary,
+                                settlement=settlement)
+            if settlement is None:
+                problems.append((GAP_SETTLEMENT_NOT_FOUND, _no_settlement_gap(payout, notes)))
+                continue
+            settlements.append(settlement)
+            own, code, problem = self.components(payout, examined=evidence)
+            if own is None:
+                problems.append((code or GAP_MISSING_CITED, problem))
+                continue
+            try:
+                part = reconcile.sum_terms(own, method=reconcile.METHOD_NET_PAYOUT, currency=txn.currency)
+            except ReconcileError as exc:
+                problems.append((GAP_AMOUNT_MISMATCH,
+                                 f"The components of payout {payout.record_id} could not be "
+                                 f"summed: {exc}"))
+                continue
+            if part.total_pence != payout.amount_pence:
+                problems.append((GAP_AMOUNT_MISMATCH,
+                                 f"The components of payout {payout.record_id} total "
+                                 f"{part.total_pence} pence, not its amount "
+                                 f"{payout.amount_pence}."))
+                continue
+            for record in own:
+                if all(record.record_id != held.record_id for held in components):
+                    components.append(record)
+        evidence += [record.ref() for record in components]
+        base = dict(evidence=evidence, payout=primary)
+        if problems:
+            code, problem = problems[0]
+            parts += [text for _, text in problems]
+            return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts),
+                            "A payout of the settlement batch is not established.", gap=code,
+                            detail=" ".join(text for _, text in problems), **base)
+        try:
+            calc = reconcile.reconcile_credit(txn, components=components, window=self.window)
+        except ReconcileError as exc:
+            gap = f"The batch amounts could not be reconciled: {exc}"
+            return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts + [gap]),
+                            gap, gap=GAP_AMOUNT_MISMATCH, detail=gap, **base)
+        timings = [reconcile.check_settlement_timing(s, txn, window=self.window)
+                   for s in settlements]
+        latest = max(range(len(timings)), key=lambda i: (
+            timings[i].settlement_effective_at or txn.booked_at, i))
+        data = {name: getattr(calc, name) for name in type(calc).model_fields}
+        data.update(timing=timings[latest] if all(t.ok for t in timings)
+                    else next(t for t in timings if not t.ok),
+                    cited_refs=_unique([*calc.cited_refs[:-1], *(p.ref() for p in members),
+                                        *(s.ref() for s in settlements), txn.ref()]))
+        calc = type(calc).model_validate(data)
+        parts.append(f"Batch reconciliation: the {len(components)} component records of the "
+                     f"{len(members)} payouts net to {calc.total_pence} pence against the credit "
+                     f"of {calc.target_pence} (difference {calc.difference_pence}).")
+        parts += [_timing_text(s, txn, self.window) for s in settlements]
+        self.note("calculation", reason=_clip(parts[-len(settlements) - 1], 300),
+                  refs=calc.cited_refs, result=_calc_summary(calc))
+        base.update(calculation=calc, components=components, settlement=settlements[latest])
+        if calc.balanced is not True or not reconcile.credit_supported(calc, window=self.window):
+            gap = ("The batch's components do not reconcile to the credit, or a member's "
+                   "settlement timing does not support it.")
+            return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), gap,
+                            gap=GAP_AMOUNT_MISMATCH if calc.balanced is not True
+                            else GAP_SETTLEMENT_NOT_FOUND, detail=gap, **base)
+        effective = [t.settlement_effective_at for t in timings]
+        statement += f", every payout settled before the credit was booked"
+        return _Outcome(ClaimStatus.SUPPORTED, statement + ".", " ".join(parts),
+                        f"Every payout of batch {batch_ref} settled by the booking and the batch "
+                        "reconciles to the credit.",
+                        facts={"payout_references": [p.payment_ref for p in members
+                                                     if p.payment_ref],
+                               "settled_at": [format_utc(t) for t in effective if t is not None]},
+                        **base)
 
     def settlement_for(self, payout: EvidenceRecord, txn: BankTxn
                        ) -> tuple[EvidenceRecord | None, str, list[str]]:
@@ -937,7 +1075,7 @@ class _Run:
                   result={"returned": record.ref().key(), "active": active.ref().key()})
         return active
 
-    def components(self, payout: EvidenceRecord
+    def components(self, payout: EvidenceRecord, *, examined: list[EvidenceRef] | None = None
                    ) -> tuple[list[EvidenceRecord] | None, str | None, str]:
         """The payout's component records (its ``related_record_ids``), picked from one
         listing of the subject's active orders, refunds and fees, so a bundled payout costs
@@ -953,6 +1091,10 @@ class _Run:
                 f"The component records of payout {payout.record_id} could not be listed ({err}).")
         held = {r.record_id: r for r in records
                 if r.kind in COMPONENT_KINDS and r.subject_ref == self.request.subject_ref}
+        # Keep relevant reads even when a missing member or failed sum prevents disclosure.
+        # These are revision dependencies, not permission to attach the component records.
+        if examined is not None:
+            examined.extend(held[record_id].ref() for record_id in wanted if record_id in held)
         missing = [record_id for record_id in wanted if record_id not in held]
         if missing:
             return None, GAP_MISSING_CITED, (
@@ -1051,6 +1193,20 @@ class _Run:
             amount_key, count_key = _FACT_KEYS[kind]
             facts[amount_key] = sum(r.amount_pence for r in rows)
             facts[count_key] = len(rows)
+        issuers = sorted({r.issuer_id for r in counted})
+        if len(issuers) > 1:
+            # Records from more than one issuer: state each issuer's share of the same counted
+            # records, so the combined total can be traced to the platform that documented it.
+            by_issuer: dict[str, dict[str, int]] = {}
+            for issuer in issuers:
+                share: dict[str, int] = {}
+                for kind, rows in groups:
+                    amount_key, count_key = _FACT_KEYS[kind]
+                    mine = [r for r in rows if r.issuer_id == issuer]
+                    share[amount_key] = sum(r.amount_pence for r in mine)
+                    share[count_key] = len(mine)
+                by_issuer[issuer] = share
+            facts["by_issuer"] = by_issuer
         if net:
             formula = " ".join(f"{'+' if signs[kind] > 0 else '-'} {_LABELS[kind]} "
                                f"{sum(r.amount_pence for r in rows)}" for kind, rows in groups)
@@ -1129,6 +1285,18 @@ _RANK = {ClaimStatus.SUPPORTED: 0, ClaimStatus.UNRESOLVED: 1, ClaimStatus.CONTRA
 # --------------------------------------------------------------------------- matching
 
 
+def _allocated_payouts(link: Link) -> set[str]:
+    """Every member of a linked batch, or the sole payout of an ordinary linked credit.
+
+    Rules reference links store batch members in candidates. Agent links may retain unchosen
+    alternatives there, so their candidates must not be treated as allocated payouts.
+    """
+    if link.link_state != LinkState.LINKED or link.record_ref is None:
+        return set()
+    refs = link.candidates if link.method == METHOD_REFERENCE else []
+    return {link.record_ref.ref_id, *(ref.ref_id for ref in refs)}
+
+
 def _match(txn: BankTxn, found: Iterable[EvidenceRecord], window: timedelta,
            settlements: Iterable[EvidenceRecord] = ()) -> _Match:
     """Match a credit to payouts: by a reference it carries, else by amount and date.
@@ -1156,6 +1324,18 @@ def _match(txn: BankTxn, found: Iterable[EvidenceRecord], window: timedelta,
                     carried.setdefault(p.record_id, (
                         f"{s.settlement_ref}, the settlement reference of {s.ref().key()} for "
                         f"{p.payment_ref}, the payment reference of"))
+    if not carried:
+        batch = _settlement_batch(txn, payouts, tokens)
+        if batch:
+            listed = "; ".join(f"{p.ref().key()} ({p.payment_ref or 'no reference'}, "
+                               f"{_money(p.amount_pence, p.currency)})" for p in batch)
+            summary = (f"Matched by settlement batch: the credit carries {batch[0].settlement_ref}, "
+                       f"the settlement reference {batch[0].issuer_id} gave {len(batch)} "
+                       f"issuer-verified payouts ({listed}), which together total {amount}.")
+            signals = [f"The credit carries {batch[0].settlement_ref}, the settlement reference "
+                       f"of {p.ref().key()}." for p in batch]
+            return _Match(METHOD_REFERENCE, LinkState.LINKED, METHOD_REFERENCE, batch[0], batch,
+                          [], signals, summary, batch=batch)
     named = [p for p in payouts if p.record_id in carried]
     if named:
         fits = [p for p in named if _compatible(p, txn)]
@@ -1212,6 +1392,35 @@ def _match(txn: BankTxn, found: Iterable[EvidenceRecord], window: timedelta,
     return _Match(METHOD_AMOUNT_DATE, LinkState.UNMATCHED, None, None, [], late, signals, summary)
 
 
+def _settlement_batch(txn: BankTxn, payouts: list[EvidenceRecord],
+                      tokens: frozenset[str]) -> list[EvidenceRecord]:
+    """The payouts of the one settlement batch the credit names, else ``[]``. A batch is the
+    issuer-verified payouts of one issuer that carry the same settlement reference, which the
+    credit carries; it counts only when there are at least two, all compatible with the credit
+    (same currency, at or before the booking) with distinct payment references, and their
+    amounts sum exactly to the credit. Self-supplied records never join a batch, and a credit
+    naming two batches matches none."""
+    groups: dict[tuple[str, str], dict[str, EvidenceRecord]] = {}
+    for p in payouts:
+        if p.source_trust != SourceTrust.ISSUER_VERIFIED or not p.settlement_ref \
+                or p.settlement_ref.upper() not in tokens:
+            continue
+        group = groups.setdefault((p.issuer_id, p.settlement_ref.upper()), {})
+        held = group.get(p.record_id)
+        if held is None or p.revision > held.revision:
+            group[p.record_id] = p
+    if len(groups) != 1:
+        return []
+    members = sorted(next(iter(groups.values())).values(),
+                     key=lambda r: (r.occurred_at, r.record_id))
+    refs = [p.payment_ref for p in members]
+    if len(members) < 2 or not all(refs) or len(set(refs)) != len(refs) \
+            or not all(_compatible(p, txn) for p in members) \
+            or sum(p.amount_pence or 0 for p in members) != txn.amount_pence:
+        return []
+    return members
+
+
 def _compatible(payout: EvidenceRecord, txn: BankTxn) -> bool:
     return payout.currency == txn.currency and payout.occurred_at <= txn.booked_at
 
@@ -1224,6 +1433,20 @@ def _incompatible(payout: EvidenceRecord, txn: BankTxn) -> str:
 
 
 # --------------------------------------------------------------------------- verdict
+
+
+def _stated_breakdowns(holder_claim: Mapping[str, Any] | None) -> dict[str, dict[str, int]]:
+    """The holder's stated breakdown per credit, kept only when it names a credit and all four
+    figures are integers; anything else is ignored, so a malformed claim changes nothing."""
+    if not isinstance(holder_claim, Mapping):
+        return {}
+    txn_id, stated = holder_claim.get("txn_id"), holder_claim.get("stated_minor")
+    if not isinstance(txn_id, str) or not txn_id or not isinstance(stated, Mapping):
+        return {}
+    keys = ("sales", "refunds", "fees", "net")
+    if not all(type(stated.get(k)) is int for k in keys):
+        return {}
+    return {txn_id: {k: stated[k] for k in keys}}
 
 
 def _conflict(txn: BankTxn, payout: EvidenceRecord,
@@ -1297,8 +1520,11 @@ def _verdict(txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
                    "not show that the funds reached the bank.")
         return ClaimStatus.UNRESOLVED, reason, code, gap, None
     if calc.balanced is not True:
+        # A different amount leaves part of the credit unexplained; it does not conflict with
+        # a specific claim about where the credit came from (CONTRACTS ClaimStatus), so the
+        # source stays unresolved with the amount_mismatch gap rather than contradicted.
         if (settlement.amount_pence, settlement.currency) != (txn.amount_pence, txn.currency):
-            return (ClaimStatus.CONTRADICTED, f"Settlement {stl} amount differs from the credit.",
+            return (ClaimStatus.UNRESOLVED, f"Settlement {stl} amount differs from the credit.",
                     GAP_AMOUNT_MISMATCH,
                     f"Settlement {stl} for payout {ref} is for "
                     f"{_money(settlement.amount_pence, settlement.currency)}, but the credit is "

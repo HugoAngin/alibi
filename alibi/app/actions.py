@@ -40,9 +40,10 @@ class Refusal(Exception):
 
 def _code_for(problems: list[str]) -> str:
     text = " ".join(problems).lower()
+    policy_changed = "disclosure policy changed" in text
     if "no holder approval" in text:
         return "approval_missing"
-    if "changed after it was approved" in text:
+    if "changed after it was approved" in text and not policy_changed:
         return "approval_digest_mismatch"
     if "the approval expired" in text:
         return "approval_expired"
@@ -50,7 +51,7 @@ def _code_for(problems: list[str]) -> str:
         return "request_expired"
     if "for recipient" in text or "addressed to" in text:
         return "approval_audience_mismatch"
-    if "disclosure policy changed" in text:
+    if policy_changed:
         return "policy_version_changed"
     if "changed after approval" in text or "superseded by revision" in text or "is missing (approved" in text:
         return "source_revision_changed"

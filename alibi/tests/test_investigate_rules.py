@@ -498,7 +498,8 @@ def test_matching_amounts_alone_never_support_a_claim(passport, keystore, now):
 
 @pytest.mark.parametrize("change, expected", [
     ({"status": "reversed"}, CONTRADICTED),
-    ({"amount_pence": 200000}, CONTRADICTED),
+    # A different amount leaves part of the credit unexplained, not a conflicting claim.
+    ({"amount_pence": 200000}, UNRESOLVED),
     ({"effective_at": "2026-11-03T11:00:00Z", "occurred_at": "2026-11-03T11:30:00Z"},
      CONTRADICTED),
     ({"status": "pending", "effective_at": None, "occurred_at": "2026-11-03T08:00:00Z"},

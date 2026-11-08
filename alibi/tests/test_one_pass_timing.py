@@ -1,0 +1,44 @@
+"""One-pass: a settlement that takes effect only after the bank booking neither supports nor
+contradicts the source at booking; it is unresolved with ``settlement_after_credit``
+(agents/data/README.md answers rule). Public cases only, FakeClient, no network."""
+
+from __future__ import annotations
+
+import copy
+
+from agents.data.api import load_case, without_gold
+from alibi.adapter import run_case
+from alibi.llm.fake import FakeClient
+
+NO_PROPOSAL = {"claims": [], "disclosures": [], "rationale": "x"}
+RFC = "rfc-0019-01"
+
+
+def _run(case, tmp_path, name):
+    preds = run_case(case, "one_pass", client=FakeClient({"*": NO_PROPOSAL}), root=tmp_path / name)
+    return {p["request_id"]: p for p in preds}
+
+
+def test_public_case19_settlement_after_booking_is_unresolved_not_contradicted(tmp_path):
+    a = _run(19, tmp_path, "c19")[RFC]
+    assert a["failure"] is None
+    for qid in ("q.source_of_funds", "q.breakdown"):
+        claim = a["claims"][qid]
+        assert (claim["status"], claim["gap"]) == ("unresolved", "settlement_after_credit"), qid
+        assert claim["facts"] == {}
+    assert "after the booking" in a["claims"]["q.source_of_funds"]["rationale"]
+
+
+def test_holder_uploaded_message_naming_a_reference_triggers_no_new_lookup(tmp_path):
+    base = _run(19, tmp_path, "base")[RFC]
+    case = without_gold(load_case(19))
+    release = copy.deepcopy(next(d for d in case["merchant_deliveries"]
+                                 if d["event"]["record_id"] == "rec-0019-010"))
+    record = {**release["event"], "record_id": "rec-0019-090", "event_id": "evt-0019-090",
+              "message": "Withdrawal PO-0019-77 to your linked bank account has been requested."}
+    case["imports"] = [*case["imports"], {"received_at": release["received_at"], "record": record}]
+    holder = _run(case, tmp_path, "holder")[RFC]
+    assert holder["failure"] is None
+    assert holder["retrieval"]["lookups"] == base["retrieval"]["lookups"]
+    assert {q: (c["status"], c["gap"]) for q, c in holder["claims"].items()} == \
+        {q: (c["status"], c["gap"]) for q, c in base["claims"].items()}

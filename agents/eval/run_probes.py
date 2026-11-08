@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from urllib.parse import urlsplit
 
 from agents.eval.http_probe_runtime import attempt
 from agents.eval.probe_capture import missing_demo_probe_kinds, probe_receipt, probe_receipt_path
@@ -83,6 +84,28 @@ def build_probe_harness(config: dict, ids: list[str] | None = None) -> Harness:
     return harness
 
 
+def _validate_candidate_origins(config: dict, probe_ids) -> None:
+    """Candidate captures can exercise writes only against disposable loopback services."""
+    for probe_id in probe_ids:
+        try:
+            base, _ = _target(config, probe_id)
+        except (AttributeError, TypeError):
+            raise ValueError(f"{probe_id} has an invalid service configuration") from None
+        for service, value in base.items():
+            if service in {"routes", "fixtures"}:
+                continue
+            try:
+                parsed = urlsplit(value) if isinstance(value, str) else urlsplit("")
+                valid = (parsed.scheme in {"http", "https"}
+                         and parsed.hostname in {"127.0.0.1", "::1", "localhost"}
+                         and parsed.username is None and parsed.password is None
+                         and parsed.port != 0 and not parsed.query and not parsed.fragment)
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError(f"{probe_id} needs loopback service origins for candidate evidence")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, help="git-ignored config for a disposable synthetic stack")
@@ -102,7 +125,14 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("record candidate evidence from a clean checkout")
     config = json.loads(args.config.read_text(encoding="utf-8")) if args.config else {}
     harness = build_probe_harness(config, args.ids)
+    if args.candidate_evidence:
+        try:
+            _validate_candidate_origins(config, harness.probes)
+        except ValueError as exc:
+            parser.error(str(exc))
     results = harness.run()
+    print(harness.table(results))
+    print(json.dumps(harness.summary(results), sort_keys=True))
     if args.candidate_evidence and seal.git_commit("HEAD") != (commit, False):
         parser.error("candidate checkout changed during probe capture")
     if args.candidate_evidence:
@@ -116,8 +146,6 @@ def main(argv: list[str] | None = None) -> None:
         metadata = probe_receipt(commit, common.read_jsonl(args.results))
         with receipt.open("x", encoding="utf-8") as handle:
             json.dump(metadata, handle)
-    print(harness.table(results))
-    print(json.dumps(harness.summary(results), sort_keys=True))
 
 
 if __name__ == "__main__":

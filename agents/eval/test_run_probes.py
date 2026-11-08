@@ -51,7 +51,7 @@ def test_unconfigured_runner_is_all_not_run():
 
 def test_candidate_capture_records_catalogue_commit_and_digest(tmp_path, monkeypatch):
     config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
-    common.write_json(config, {})
+    common.write_json(config, {"base_urls": {"app": "http://127.0.0.1:8100"}})
     monkeypatch.setattr(run_probes.seal, "git_commit", lambda _: ("candidate", False))
     monkeypatch.setattr(run_probes, "attempt", lambda *_: {"outcome": "blocked", "exchanges": []})
     args = ["--config", str(config), "--results", str(path), "--candidate-evidence"]
@@ -74,7 +74,25 @@ def test_unconfigured_candidate_capture_writes_no_evidence(tmp_path, monkeypatch
     monkeypatch.setattr(run_probes.seal, "git_commit", lambda _: ("candidate", False))
     with pytest.raises(SystemExit):
         run_probes.main(["--config", str(config), "--results", str(path), "--candidate-evidence"])
-    assert "definite demo outcomes for control, refusal" in capsys.readouterr().err
+    output = capsys.readouterr()
+    assert "definite demo outcomes for control, refusal" in output.err
+    assert "SP-32" in output.out and '"not_run"' in output.out
+    assert not path.exists() and not probe_receipt_path(path).exists()
+
+
+@pytest.mark.parametrize("config_content", [
+    {"base_urls": {"app": "https://app.example.invalid"}},
+    {"base_urls": {"app": "http://127.0.0.1:8100"},
+     "probes": {"SP-02": {"base_urls": {"bank": "https://bank.example.invalid"}}}},
+])
+def test_candidate_capture_rejects_remote_origins_before_any_probe(tmp_path, monkeypatch, capsys, config_content):
+    config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
+    common.write_json(config, config_content)
+    monkeypatch.setattr(run_probes.seal, "git_commit", lambda _: ("candidate", False))
+    monkeypatch.setattr(run_probes, "attempt", lambda *_: pytest.fail("sent a probe before validating origins"))
+    with pytest.raises(SystemExit):
+        run_probes.main(["--config", str(config), "--results", str(path), "--candidate-evidence"])
+    assert "needs loopback service origins" in capsys.readouterr().err
     assert not path.exists() and not probe_receipt_path(path).exists()
 
 

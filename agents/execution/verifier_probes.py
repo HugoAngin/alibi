@@ -230,7 +230,15 @@ def _check_accepted(step_id: str, delivery, inbox, raw: bytes, valid_raw: bytes)
     return ""
 
 
+def _receipts(inbox, recipient: str) -> set:
+    cred = {"bank_a": "cred-a", "bank_b": "cred-b"}[recipient]
+    return {(r.package_id, r.digest) for r in inbox.list_receipts(cred)}
+
+
 def run() -> dict:
+    """Run every attempt. A step passes only if it has the planned outcome AND, for a refusal, one of
+    the planned codes with nothing newly stored, or, for an acceptance, every postcondition. A step
+    that misses its code or postcondition is scored as the wrong outcome, so it fails its probe."""
     from agents.eval import api
 
     registry = api.TrustRegistry()
@@ -246,45 +254,61 @@ def run() -> dict:
                 if a["step_id"] == "sp32-valid":
                     valid_raw = raw
             except Exception as exc:  # a broken fixture is an error, never a refusal
-                observations.append({**row, "outcome": "error", "code": None, "detail": f"build: {exc!r}"})
+                observations.append({**row, "outcome": "error", "code": None, "step_pass": False,
+                                     "detail": f"build: {exc!r}"})
                 continue
+            before = _receipts(inbox, a["deliver_to"])
             try:
                 delivery = inbox.deliver(a["deliver_to"], raw, now=at)
             except Exception as exc:
                 code = getattr(exc, "code", None)
                 if code is None:
-                    observations.append({**row, "outcome": "error", "code": None, "detail": repr(exc)})
-                else:
-                    ok = code in a["codes"]
-                    observations.append({**row, "outcome": "refused", "code": code,
-                                         "detail": "" if ok else f"unexpected code, plan lists {a['codes']}"})
+                    observations.append({**row, "outcome": "error", "code": None, "step_pass": False, "detail": repr(exc)})
+                    continue
+                problems = []
+                if code not in a["codes"]:
+                    problems.append(f"code {code!r} not in planned {a['codes']}")
+                if _receipts(inbox, a["deliver_to"]) != before:
+                    problems.append("refused bytes were stored")
+                observations.append({**row, "outcome": "refused", "code": code,
+                                     "step_pass": a["expect"] == "refused" and not problems, "detail": "; ".join(problems)})
                 continue
             problem = _check_accepted(a["step_id"], delivery, inbox, raw, valid_raw)
-            observations.append({**row, "outcome": "accepted", "code": None,
-                                 "created": delivery.created, "digest": delivery.receipt.digest, "detail": problem})
+            observations.append({**row, "outcome": "accepted", "code": None, "created": delivery.created,
+                                 "digest": delivery.receipt.digest,
+                                 "step_pass": a["expect"] == "accepted" and not problem, "detail": problem})
         listed_a = sorted(r.package_id for r in inbox.list_receipts("cred-a"))
         listed_b = sorted(r.package_id for r in inbox.list_receipts("cred-b"))
 
-    score = api.score_probe_steps(score_plan(), observations)
-    evidence_problems = [o["step_id"] for o in observations if o.get("detail")]
+    def scored(o: dict) -> dict:
+        if o["outcome"] == "error" or o["step_pass"]:
+            return {k: o[k] for k in ("case_number", "request_id", "step_id", "probe_id", "outcome")}
+        expect = next(a["expect"] for a in ATTEMPTS if a["step_id"] == o["step_id"])
+        wrong = "accepted" if expect == "refused" else "refused"
+        return {"case_number": o["case_number"], "request_id": o["request_id"], "step_id": o["step_id"],
+                "probe_id": o["probe_id"], "outcome": wrong}
+
+    score = api.score_probe_steps(score_plan(), [scored(o) for o in observations])
     checks = {
         "bank_a_lists": listed_a,
         "bank_b_lists": listed_b,
         "refusals_stored_nothing": listed_a == ["pkg-ref-sp30-self-supplied", "pkg-ref-valid"] and listed_b == [],
     }
+    by_probe: dict[str, list[bool]] = {}
+    for o in observations:
+        by_probe.setdefault(o["probe_id"], []).append(o["step_pass"])
     return {
         "label": "SYNTHETIC - local reference run against agents.eval BankInbox, not the live HTTP bank service",
+        "scoring": "a step passes only with the planned outcome plus its planned refusal code (and nothing stored) or its acceptance postconditions; a failed step is scored as the wrong outcome",
         "observations": observations,
         "checks": checks,
         "score": score,
         "metrics": {
             "verifier_ref_probes": 8,
-            "verifier_ref_passed": sum(1 for p, o in score["observed"].items()
-                                       if o == ("accepted" if p in ("SP-30", "SP-32") else "refused")),
+            "verifier_ref_passed": sum(all(v) for v in by_probe.values()),
             "verifier_ref_steps": len(observations),
-            "verifier_ref_incorrect_steps": score["incorrect_steps"],
+            "verifier_ref_failed_steps": sum(not o["step_pass"] for o in observations),
             "verifier_ref_error_steps": score["error_steps"],
-            "verifier_ref_evidence_problems": len(evidence_problems),
             "verifier_ref_checks_passed": int(checks["refusals_stored_nothing"]),
         },
     }

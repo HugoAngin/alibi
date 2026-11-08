@@ -1,5 +1,6 @@
 {
   "label": "SYNTHETIC - local reference run against agents.eval BankInbox, not the live HTTP bank service",
+  "scoring": "a step passes only with the planned outcome plus its planned refusal code (and nothing stored) or its acceptance postconditions; a failed step is scored as the wrong outcome",
   "observations": [
     {
       "case_number": 1,
@@ -10,6 +11,7 @@
       "code": null,
       "created": true,
       "digest": "sha256:a5f84606a6ef0b8db3e1c3ee1ebb795421a9e11827d14c8777bb6ddd128046de",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -21,6 +23,7 @@
       "code": null,
       "created": false,
       "digest": "sha256:a5f84606a6ef0b8db3e1c3ee1ebb795421a9e11827d14c8777bb6ddd128046de",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -30,6 +33,7 @@
       "probe_id": "SP-31",
       "outcome": "refused",
       "code": "package_id_conflict",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -39,6 +43,7 @@
       "probe_id": "SP-25",
       "outcome": "refused",
       "code": "bad_signature",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -48,6 +53,7 @@
       "probe_id": "SP-25",
       "outcome": "refused",
       "code": "bad_signature",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -57,6 +63,7 @@
       "probe_id": "SP-26",
       "outcome": "refused",
       "code": "wrong_recipient",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -66,6 +73,7 @@
       "probe_id": "SP-27",
       "outcome": "refused",
       "code": "expired",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -75,6 +83,7 @@
       "probe_id": "SP-28",
       "outcome": "refused",
       "code": "unknown_key",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -84,6 +93,7 @@
       "probe_id": "SP-28",
       "outcome": "refused",
       "code": "wrong_key_purpose",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -93,6 +103,7 @@
       "probe_id": "SP-29",
       "outcome": "refused",
       "code": "source_signature_invalid",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -102,6 +113,7 @@
       "probe_id": "SP-29",
       "outcome": "refused",
       "code": "source_signature_missing",
+      "step_pass": true,
       "detail": ""
     },
     {
@@ -113,6 +125,7 @@
       "code": null,
       "created": true,
       "digest": "sha256:b2dd23066875dfc382dea2cc7858d4a7c967ddc8288557565ee7ee93f81f6410",
+      "step_pass": true,
       "detail": ""
     }
   ],
@@ -144,9 +157,8 @@
     "verifier_ref_probes": 8,
     "verifier_ref_passed": 8,
     "verifier_ref_steps": 12,
-    "verifier_ref_incorrect_steps": 0,
+    "verifier_ref_failed_steps": 0,
     "verifier_ref_error_steps": 0,
-    "verifier_ref_evidence_problems": 0,
     "verifier_ref_checks_passed": 1
   }
 }

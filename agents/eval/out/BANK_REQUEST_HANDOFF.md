@@ -59,6 +59,8 @@ Apply `BANK_RFC_UI_RETRY.patch` after `BANK_RFC_HARDENING.patch`. Native bank re
 
 The retry companion passed 50 Worker tests and the Bank Astro check. A separate combined run passed all 40 native bank, holder and director tests, including the director's live socket walkthrough. That run checked the patch together with the current bank hardening and candidate 4 changes. Lead owns the native service and director. Execution owns the bank Worker.
 
+A signed-in local Bank Worker check used the real director, bank service and holder routes with synthetic credentials. Before feed sync, the first send left the holder at 404 and the bank case offered Retry. After sync, the second form submission relayed the same signed RFC, the holder returned 200, the director moved to requested, and the review redirected without Retry. This check ran only on loopback.
+
 ## Recovering an already-recorded request
 
 On a disposable `58bf0d4` stack, an injected first Bank A forwarding refusal returned 201 and left Maya's request page at 404. Running the existing driver on that same signed request returned `reissued: true` and `forwarded.status: accepted` via its direct relay fallback. The holder readback then returned 200 for the same request ID.

@@ -38,6 +38,28 @@ imports, attachment / receipt / source / active-record reads) carry **no default
 and must be supplied explicitly; an unconfigured one yields NOT_RUN rather than a
 guessed path.
 
+Native shapes. Every configured template may use any placeholder whose fixture the
+handler knows, not only the endpoint's own id, so the real backends can be
+targeted without a compatibility shim:
+
+* SP-19 on the S2 mock bank (``alibi/bank/service.py``, recipient from the token):
+  ``attachment_download = "/packages/{package_id}/attachments"`` and
+  ``receipt_download = "/packages/{package_id}"``. When an endpoint's own id is not
+  in its path it is *package-bound*: the owner control must show that id (the
+  Bank B attachment or receipt) in its JSON body, and both reads send
+  ``Accept: application/json``. The mock bank has no PDF route, so leave
+  ``package_pdf`` unset; that boundary stays NOT_RUN instead of being assumed.
+* SP-21 on the S4 app (``alibi/app/main.py``): ``source_record =
+  "/sources/{record_id}/{revision}"`` with ``source_record_revision``. The holder
+  control must return that exact record revision as JSON. S4 renders HTML unless
+  ``Accept`` starts with ``application/json``, so every SP-21 read sends it.
+* SP-22..SP-24 on ``POST /rfc``: an optional ``<fixture>_control`` body that
+  differs from the attack only in ``request_id`` and the probed fields is posted
+  first as a positive control, against a loopback bank only (it issues a real
+  request). Once that control is accepted, the native refusal for the probed field
+  also counts (SP-22 ``invalid_request`` naming ``subject_ref``; SP-23
+  ``scope_wider_than_parent``). Without a control only the documented codes count.
+
 Config contract (all synthetic). ``base_urls`` holds service origins ``"bank"``,
 ``"merchant"`` and ``"app"`` (holder console), plus ``"routes"`` and ``"fixtures"``
 dicts. ``tokens`` holds the ``"bank_a"``, ``"bank_b"``, ``"holder"``,
@@ -45,6 +67,9 @@ dicts. ``tokens`` holds the ``"bank_a"``, ``"bank_b"``, ``"holder"``,
 beside each handler below.
 """
 from __future__ import annotations
+
+from string import Formatter
+from urllib.parse import urlsplit
 
 from agents.eval.http_probe_runtime import (
     BLOCKED,
@@ -81,6 +106,8 @@ R_ACTIVE_RECORD = ("active_record", None)
 # malformed request, not an authorisation boundary.
 ISOLATION_REFUSALS = (401, 403, 404, 410)
 NOT_FOUND = (404, 410)
+JSON_HEADERS = {"Accept": "application/json"}
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
 
 def _is_success(response) -> bool:
@@ -90,6 +117,26 @@ def _is_success(response) -> bool:
 def _route(session: ProbeSession, spec, **values) -> str:
     key, default = spec
     return session.route(key, default, **values)
+
+
+def _placeholders(session: ProbeSession, spec) -> set[str]:
+    """Placeholder names in the configured (or default) template for ``spec``."""
+    key, default = spec
+    template = session.routes.get(key, default)
+    if not isinstance(template, str):
+        return set()
+    try:
+        return {name for _, name, _, _ in Formatter().parse(template) if name}
+    except ValueError:
+        return set()  # malformed template: ProbeSession.route reports it
+
+
+def _loopback(session: ProbeSession, service: str) -> bool:
+    origin = session.base_urls.get(service)
+    try:
+        return isinstance(origin, str) and urlsplit(origin).hostname in LOOPBACK
+    except ValueError:
+        return False
 
 
 def _recipient(session: ProbeSession, actor: str) -> str:
@@ -113,15 +160,19 @@ def _identity(session: ProbeSession, response):
     return response.text
 
 
-def _isolation_read(session: ProbeSession, path: str, owner: str, attacker: str) -> str:
+def _isolation_read(session: ProbeSession, path: str, owner: str, attacker: str, *,
+                    marker: str | None = None, headers=None) -> str:
     """Owner positive control, then the cross-tenant GET.
 
     The owner's 2xx proves the resource exists in the owner's scope, so an opaque
-    refusal to the attacker is genuine isolation and not a missing route.
+    refusal to the attacker is genuine isolation and not a missing route. For a
+    package-bound read (``marker`` set) the owner must also show that resource id.
     """
-    control = session.http("GET", SVC_BANK, path, actor=owner)
+    control = session.http("GET", SVC_BANK, path, actor=owner, headers=headers)
     session.require_success(control)
-    attacker_resp = session.http("GET", SVC_BANK, path, actor=attacker)
+    if marker is not None and marker not in control.text:
+        raise ProbeUnavailable("owner control did not show the bound resource")
+    attacker_resp = session.http("GET", SVC_BANK, path, actor=attacker, headers=headers)
     if _is_success(attacker_resp):
         return NOT_BLOCKED
     if attacker_resp.status_code in ISOLATION_REFUSALS:
@@ -216,51 +267,79 @@ def sp18(session: ProbeSession) -> str:
     return BLOCKED if observed == unknown else NOT_BLOCKED
 
 
+SP19_IDS = {"package_id": "bank_b_package_id", "attachment_id": "bank_b_attachment_id",
+            "receipt_id": "bank_b_receipt_id"}
+# (route, the endpoint's own id, whether a package-bound read is JSON).
+SP19_ENDPOINTS = ((R_ATTACHMENT, "attachment_id", True), (R_PACKAGE_PDF, "package_id", False),
+                  (R_RECEIPT, "receipt_id", True))
+
+
 def sp19(session: ProbeSession) -> str:
     """SP-19 bank_a downloads a bank_b attachment, PDF or receipt: refused on every one.
 
     Fixtures: ``bank_b_attachment_id``, ``bank_b_package_id``, ``bank_b_receipt_id``.
-    Routes (unpublished, explicit): ``attachment_download`` ({recipient},{attachment_id}),
-    ``package_pdf`` ({recipient},{package_id}), ``receipt_download`` ({recipient},{receipt_id}).
+    Routes (unpublished, explicit): ``attachment_download``, ``package_pdf`` and
+    ``receipt_download``. Each may use ``{recipient}``, ``{package_id}``,
+    ``{attachment_id}`` and ``{receipt_id}``; an endpoint always needs its own id
+    fixture. Without its own id in the path the read is package-bound (e.g. the
+    mock bank's ``/packages/{package_id}/attachments``) and the owner control must
+    show that id. A missing endpoint stays NOT_RUN; a leak on any endpoint fails.
     """
     target = _recipient(session, "bank_b")
-    endpoints = (
-        (R_ATTACHMENT, "bank_b_attachment_id", "attachment_id"),
-        (R_PACKAGE_PDF, "bank_b_package_id", "package_id"),
-        (R_RECEIPT, "bank_b_receipt_id", "receipt_id"),
-    )
     results, missing = [], []
-    for spec, id_fixture, param in endpoints:
+    for spec, own, json_read in SP19_ENDPOINTS:
         try:
-            rid = session.require(id_fixture)
-            path = _route(session, spec, recipient=target, **{param: rid})
-            results.append(_isolation_read(session, path, owner="bank_b", attacker="bank_a"))
+            values = {"recipient": target, own: session.require(SP19_IDS[own])}
+            names = _placeholders(session, spec)
+            for name in sorted(names & SP19_IDS.keys() - values.keys()):
+                values[name] = session.require(SP19_IDS[name])
+            path = _route(session, spec, **values)
+            bound = own not in names
+            results.append(_isolation_read(
+                session, path, owner="bank_b", attacker="bank_a",
+                marker=str(values[own]) if bound else None,
+                headers=JSON_HEADERS if bound and json_read else None))
         except ProbeUnavailable as exc:
             missing.append(str(exc))
     return _all_boundaries(results, missing)
+
+
+def _holder_source_control(control, record_id, revision) -> None:
+    """The native source read must return exactly the requested record revision."""
+    record = ProbeSession.payload(control).get("record")
+    if (not isinstance(record, dict) or record.get("record_id") != record_id
+            or str(record.get("revision")) != str(revision)):
+        raise ProbeUnavailable("holder control did not return the requested source revision")
 
 
 def sp21(session: ProbeSession) -> str:
     """SP-21 a bank credential calls a holder-only endpoint directly: refused.
 
     The holder is the positive control: it reaches each endpoint (route exists),
-    then bank_b must be refused. Fixtures: ``holder_request_id`` (holder review),
-    ``source_record_id``. Routes: ``passport``, ``request_detail`` (published),
-    ``source_record`` ({record_id}, unpublished).
+    then bank_b must be refused. Every read sends ``Accept: application/json``
+    (S4 renders HTML otherwise). Fixtures: ``holder_request_id`` (holder review),
+    ``source_record_id``, and ``source_record_revision`` when the source template
+    has ``{revision}`` (S4's ``/sources/{record_id}/{revision}``; the holder must
+    then read back that exact revision). Routes: ``passport``, ``request_detail``
+    (published), ``source_record`` (unpublished).
     """
     results, missing = [], []
     probes = (
-        (R_PASSPORT, None, None),
-        (R_REQUEST_DETAIL, "holder_request_id", "request_id"),
-        (R_SOURCE_RECORD, "source_record_id", "record_id"),
+        (R_PASSPORT, {}),
+        (R_REQUEST_DETAIL, {"request_id": "holder_request_id"}),
+        (R_SOURCE_RECORD, {"record_id": "source_record_id", "revision": "source_record_revision"}),
     )
-    for spec, id_fixture, param in probes:
+    for spec, fixtures in probes:
         try:
-            values = {param: session.require(id_fixture)} if id_fixture else {}
+            names = _placeholders(session, spec)
+            values = {param: session.require(fixture) for param, fixture in fixtures.items()
+                      if param != "revision" or param in names}
             path = _route(session, spec, **values)
-            control = session.http("GET", SVC_APP, path, actor="holder")
+            control = session.http("GET", SVC_APP, path, actor="holder", headers=JSON_HEADERS)
             session.require_success(control)  # holder reaches it -> route exists
-            attacker = session.http("GET", SVC_APP, path, actor="bank_b")
+            if "revision" in values:
+                _holder_source_control(control, values["record_id"], values["revision"])
+            attacker = session.http("GET", SVC_APP, path, actor="bank_b", headers=JSON_HEADERS)
             if _is_success(attacker):
                 results.append(NOT_BLOCKED)
             elif attacker.status_code in ISOLATION_REFUSALS:
@@ -274,40 +353,108 @@ def sp21(session: ProbeSession) -> str:
 
 # --- RFC intake ------------------------------------------------------------
 
+def _rfc_fields(body: dict) -> dict:
+    """The request object: the mock bank wraps it as ``{"request": {...}}``."""
+    inner = body.get("request")
+    return inner if isinstance(inner, dict) else body
+
+
+def _rfc_control(session: ProbeSession, path: str, actor: str, control, attack,
+                 varied: tuple[str, ...]) -> None:
+    """Post a differential positive control and require the intake to issue it.
+
+    The control may differ from the attack only in ``request_id`` and ``varied``, so
+    a later refusal of the attack is attributable to the probed field. It issues a
+    real request, so it runs only against a disposable loopback bank.
+    """
+    if not _loopback(session, SVC_BANK):
+        raise ProbeUnavailable("RFC intake controls need a disposable loopback bank")
+    if not isinstance(control, dict) or not isinstance(attack, dict):
+        raise ProbeUnavailable("RFC intake control and attack must be JSON objects")
+    fields, probe = _rfc_fields(control), _rfc_fields(attack)
+    ignored = {"request_id", *varied}
+
+    def rest(wrapper: dict, inner: dict):
+        outer = {k: v for k, v in wrapper.items() if k != "request"} if inner is not wrapper else None
+        return outer, {k: v for k, v in inner.items() if k not in ignored}
+
+    if rest(control, fields) != rest(attack, probe):
+        raise ProbeUnavailable(
+            f"RFC control must differ from the attack only in request_id and {', '.join(varied)}")
+    control_id, attack_id = fields.get("request_id"), probe.get("request_id")
+    if not (isinstance(control_id, str) and control_id and isinstance(attack_id, str)
+            and attack_id and control_id != attack_id):
+        raise ProbeUnavailable("RFC control and attack need distinct request IDs")
+    if all(fields.get(name) == probe.get(name) for name in varied):
+        raise ProbeUnavailable(f"RFC control does not change {', '.join(varied)}")
+    resp = session.http("POST", SVC_BANK, path, actor=actor, json=control)
+    session.require_success(resp)
+    if ProbeSession.payload(resp).get("request_id") != control_id:
+        raise ProbeUnavailable("RFC intake control did not issue the control request")
+
+
+def _native_refusal(response, refusals) -> bool:
+    """A coded refusal from the native intake, optionally naming the probed field."""
+    if response.status_code not in (400, 403, 409, 422):
+        return False
+    code = ProbeSession.code(response)
+    reason = ProbeSession.payload(response).get("reason")
+    return any(code == want and (fragment is None or (isinstance(reason, str) and fragment in reason))
+               for want, fragment in refusals)
+
+
+def _rfc_probe(session: ProbeSession, tag: str, fixture: str, actor: str, documented,
+               varied: tuple[str, ...], native=()) -> str:
+    """POST an RFC intake attack. With ``<fixture>_control`` set, a differential
+    positive control runs first and the native refusals in ``native`` also count."""
+    body = session.require(fixture)
+    path = _route(session, R_RFC_INTAKE)
+    control = session.fixtures.get(f"{fixture}_control")
+    if control is not None:
+        _rfc_control(session, path, actor, control, body, varied)
+    resp = session.http("POST", SVC_BANK, path, actor=actor, json=body)
+    outcome = ProbeSession.denial(resp, _codes(session, tag, documented))
+    if outcome == NOT_RUN and control is not None and _native_refusal(resp, native):
+        return BLOCKED
+    return outcome
+
+
 def sp22(session: ProbeSession) -> str:
     """SP-22 bank_a RFC for a subject not linked to it: rejected with foreign_subject.
 
-    Fixtures: ``rfc_foreign_subject`` (RFC body). Routes: ``rfc_intake`` (unpublished).
+    Fixtures: ``rfc_foreign_subject`` (RFC body), optional
+    ``rfc_foreign_subject_control`` (same body, own subject, new request_id). With
+    the control accepted, the mock bank's ``invalid_request`` naming ``subject_ref``
+    also counts. Routes: ``rfc_intake`` (unpublished; mock bank ``/rfc``).
     """
-    body = session.require("rfc_foreign_subject")
-    path = _route(session, R_RFC_INTAKE)
-    resp = session.http("POST", SVC_BANK, path, actor="bank_a", json=body)
-    return ProbeSession.denial(resp, _codes(session, "sp22", ("foreign_subject",)))
+    return _rfc_probe(session, "sp22", "rfc_foreign_subject", "bank_a", ("foreign_subject",),
+                      ("subject_ref",), native=(("invalid_request", "subject_ref"),))
 
 
 def sp23(session: ProbeSession) -> str:
     """SP-23 bank_a RFC listing txn_ids outside its feed: out-of-scope refs rejected.
 
     The fixture lists only foreign txn_ids, so a 2xx acceptance is unambiguous.
-    Fixtures: ``rfc_out_of_scope_txns`` (RFC body). Routes: ``rfc_intake``.
+    Fixtures: ``rfc_out_of_scope_txns`` (RFC body), optional
+    ``rfc_out_of_scope_txns_control`` (same body with in-scope txn_ids or period and
+    a new request_id). With the control accepted, the mock bank's
+    ``scope_wider_than_parent`` also counts. Routes: ``rfc_intake``.
     """
-    body = session.require("rfc_out_of_scope_txns")
-    path = _route(session, R_RFC_INTAKE)
-    resp = session.http("POST", SVC_BANK, path, actor="bank_a", json=body)
-    return ProbeSession.denial(
-        resp, _codes(session, "sp23", ("txn_out_of_scope", "scope_rejected", "out_of_scope")))
+    return _rfc_probe(session, "sp23", "rfc_out_of_scope_txns", "bank_a",
+                      ("txn_out_of_scope", "scope_rejected", "out_of_scope"), ("txn_ids", "period"),
+                      native=(("scope_wider_than_parent", None),))
 
 
 def sp24(session: ProbeSession) -> str:
     """SP-24 bank_b RFC claiming issuer/audience bank_a: rejected with issuer_mismatch.
 
-    Fixtures: ``rfc_claims_bank_a`` (RFC body).
+    A server that silently rewrites issuer/audience and accepts still fails: the
+    probe requires rejection. Fixtures: ``rfc_claims_bank_a`` (RFC body), optional
+    ``rfc_claims_bank_a_control`` (same body without the spoof, new request_id).
     Routes: ``rfc_intake``.
     """
-    body = session.require("rfc_claims_bank_a")
-    path = _route(session, R_RFC_INTAKE)
-    resp = session.http("POST", SVC_BANK, path, actor="bank_b", json=body)
-    return session.denial(resp, _codes(session, "sp24", ("issuer_mismatch",)))
+    return _rfc_probe(session, "sp24", "rfc_claims_bank_a", "bank_b", ("issuer_mismatch",),
+                      ("issuer", "audience"))
 
 
 # --- Ingest ----------------------------------------------------------------

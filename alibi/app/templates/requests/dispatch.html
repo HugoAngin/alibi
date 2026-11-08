@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {#
   Dispatch result (holder). Context from preview_render.ctx_dispatch:
-    dispatch  {outcome: "success"|"refused", package_id, request_id, recipient, attempted_at,
+    dispatch  {outcome: "success"|"refused"|"not_attempted", package_id, request_id, recipient, attempted_at,
                receipt{receipt_id, package_digest, received_at, status, signer_key_id, expires_at}|None,
                refusal{code, reason, checked_at, expected_digest, actual_digest}|None,
                retry_action|None, review_href, history_href}
@@ -44,6 +44,26 @@
   <div class="btn-row">
     <a class="btn" href="{{ dispatch.history_href }}">Sharing history</a>
     <a class="btn btn--ghost" href="{{ dispatch.review_href }}">Back to the review</a>
+  </div>
+</div>
+
+{% elif dispatch.outcome == "not_attempted" %}
+<div class="result section-anchor" id="not-sent">
+  <h2>Not yet sent</h2>
+  <dl class="kv">
+    <dt>Request ID</dt>
+    <dd><code>{{ dispatch.request_id }}</code></dd>
+    <dt>Recipient</dt>
+    <dd>{{ dispatch.recipient }}</dd>
+  </dl>
+  <p>No dispatch has been attempted for this request. {% if dispatch.retry_action %}An approval is recorded: sending revalidates it against the current body, signs the exact approved bytes and delivers them to {{ dispatch.recipient }}.{% else %}Review and approve the package first.{% endif %}</p>
+  <div class="btn-row">
+    <a class="btn" href="{{ dispatch.review_href }}">Back to the review</a>
+    {% if dispatch.retry_action %}
+    <form method="post" action="{{ dispatch.retry_action }}" class="inline">
+      <button type="submit" class="btn btn--primary">Send to {{ dispatch.recipient }}</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 

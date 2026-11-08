@@ -5,11 +5,12 @@
  * upstream and the Bank A credential is never used. Refusals from the backend are shown verbatim.
  */
 import type { APIRoute } from 'astro';
-import { ALIBI_API_ORIGIN, BANK_A_TOKEN, BANK_SESSION_SECRET } from 'astro:env/server';
+import { ALIBI_API_ORIGIN, BANK_API_ORIGIN, BANK_A_TOKEN, BANK_SESSION_SECRET } from 'astro:env/server';
 
 import { forwardAction } from '@alibi/ui/api';
 
-import { handleAct } from '@/lib/actions';
+import { handleAct, type Forward } from '@/lib/actions';
+import { bankTarget } from '@/lib/bankApi';
 import { backendHeaders, safeReturn, setFlash } from '@/lib/screens';
 import { SESSION_COOKIE, verifySession } from '@/lib/session';
 
@@ -22,9 +23,12 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
   const returnTo = safeReturn(fields.return_to ?? null);
 
   const analyst = await verifySession(BANK_SESSION_SECRET, cookies.get(SESSION_COOKIE)?.value, Date.now());
+  // forwardAction only JSON-serialises the body; its type says string values, but the bank needs
+  // `requested_evidence` as a list, so the planned body passes through as is.
+  const forward: Forward = (o) => forwardAction({ ...o, body: o.body as unknown as Record<string, string> });
   const outcome = await handleAct(
     { fields, requestOrigin: request.headers.get('origin'), siteOrigin: url.origin, analyst },
-    { origin: ALIBI_API_ORIGIN, headers: backendHeaders(BANK_A_TOKEN), forward: forwardAction },
+    { target: bankTarget(BANK_API_ORIGIN, ALIBI_API_ORIGIN), headers: backendHeaders(BANK_A_TOKEN), forward },
   );
 
   if (outcome.kind === 'forbidden') {

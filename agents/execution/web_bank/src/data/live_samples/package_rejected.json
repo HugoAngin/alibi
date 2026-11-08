@@ -1,0 +1,21 @@
+{
+  "receipt": {
+    "accepted": false,
+    "package_id": "pkg_985a1a74e6072250ac3d0afd-tampered",
+    "package_sha256": "2d841ca980707dd07534f9f3c6e7a9fdd6eb315b4e722f4347bf9f24fb9c4d80",
+    "reasons": [
+      "body_sha256 does not match the package body",
+      "Alibi package signature: signature does not verify"
+    ],
+    "receipt_id": "rcp_44a8bb8c7b32e82317191216",
+    "received_at": "2026-11-04T14:00:00Z",
+    "recipient": "bank_a"
+  },
+  "rejection": {
+    "reasons": [
+      "body_sha256 does not match the package body",
+      "Alibi package signature: signature does not verify"
+    ]
+  },
+  "status": "rejected"
+}

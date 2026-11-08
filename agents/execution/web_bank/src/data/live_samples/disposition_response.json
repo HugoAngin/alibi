@@ -1,0 +1,52 @@
+{
+  "disposition": {
+    "analyst": "analyst_a1",
+    "decided_at": "2026-11-04T14:00:00Z",
+    "decision": "request_more",
+    "disposition_id": "dsp_c0d9cd7981d7c4dda4ed8168",
+    "package_digest": "9b8c322230d51b39b1f7b0fa8e21b4b480c5660bffdfa2df5af899ed30633f67",
+    "package_id": "pkg_985a1a74e6072250ac3d0afd",
+    "question_ids": [],
+    "reason": "Need the settlement record",
+    "recipient": "bank_a",
+    "request_id": "rfc-0001-01",
+    "requested_evidence": [
+      "Settlement record for payout PO-0001-01"
+    ],
+    "supersedes": null
+  },
+  "follow_up": {
+    "account_refs": [
+      "acct-maya-001"
+    ],
+    "forwarded": null,
+    "request_id": "rfc-0001-01-f1",
+    "rfc": {
+      "request": {
+        "audience": "bank_a",
+        "expires_at": "2026-11-11T14:00:00Z",
+        "issued_at": "2026-11-04T14:00:00Z",
+        "issuer": "bank_a",
+        "parent_request_id": "rfc-0001-01",
+        "questions": [
+          {
+            "question_id": "q.followup_1",
+            "text": "Settlement record for payout PO-0001-01"
+          }
+        ],
+        "request_id": "rfc-0001-01-f1",
+        "schema_version": "alibi.rfc.v1",
+        "subject_ref": "maya-001",
+        "txn_ids": [
+          "txn-0001-004"
+        ]
+      },
+      "signature": {
+        "alg": "Ed25519",
+        "domain": "alibi:request:v1",
+        "kid": "bank_a",
+        "sig": "507dc7f575327ac10f51d9fa474f1ff98756853d4f8de2203199bbd7356a8e824d854a8d8f045dfb003b499d29b1a9a81881e97fd384055e14874aeedd6f1208"
+      }
+    }
+  }
+}

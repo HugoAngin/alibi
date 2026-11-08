@@ -63,7 +63,7 @@ const scope = followupScope(pkg);
           Analyst: <strong>{form.analyst_name}</strong> <span class="small">(from your sign-in)</span>
         </p>
         <label for="decision-reason">Reason (required)</label>
-        <textarea id="decision-reason" name="note" required minlength="3" rows="3"></textarea>
+        <textarea id="decision-reason" name="note" required minlength="3" maxlength="300" rows="3"></textarea>
         <p class="human">This records a human decision. It does not change the customer's account.</p>
         <button type="submit">Record decision</button>
       </fieldset>
@@ -79,7 +79,7 @@ const scope = followupScope(pkg);
     <form method="post" action="/act/">
       <input type="hidden" name="kind" value="followup" />
       <input type="hidden" name="return_to" value={returnTo} />
-      <input type="hidden" name="parent_request_id" value={follow.parent_request_id} />
+      <input type="hidden" name="package_id" value={pkg.package.package_id} />
       <fieldset disabled={!canFollow}>
         <legend>Follow-up</legend>
         <p>

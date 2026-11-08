@@ -11,10 +11,6 @@ import type { AnalystInbox, AnalystPackage, Refusal } from './types';
 /** This console is Bank A. Scope comes from the credential on the backend, never from a field. */
 export const RECIPIENT = 'bank_a';
 
-export const ROUTES = {
-  inbox: () => `/bank/${RECIPIENT}/inbox`,
-  package: (id: string) => `/bank/${RECIPIENT}/packages/${encodeURIComponent(id)}`,
-};
 
 /**
  * The bank credential, read server-side from a Worker secret and forwarded as a bearer token. Its

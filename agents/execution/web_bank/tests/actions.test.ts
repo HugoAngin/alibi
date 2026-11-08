@@ -6,13 +6,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { handleAct, planAction, type Forward } from '../src/lib/actions';
+import { bankTarget } from '../src/lib/bankApi';
 import { backendHeaders } from '../src/lib/screens';
 import { makeSession, verifySession } from '../src/lib/session';
 
 const SITE = 'https://bank.example.test';
 const ORIGIN = 'https://backend.example.test';
 
-type Call = { origin: string | undefined; path: string; body: Record<string, string>; headers: Record<string, string> };
+type Call = Parameters<Forward>[0];
 
 function recorder() {
   const calls: Call[] = [];
@@ -34,7 +35,7 @@ async function act(fields: Record<string, string>, opts: { origin?: string | nul
       siteOrigin: SITE,
       analyst: opts.analyst === undefined ? 'J. Okafor' : opts.analyst,
     },
-    { origin: ORIGIN, headers: backendHeaders('bank-a-token'), forward: rec.forward },
+    { target: bankTarget(ORIGIN, undefined), headers: backendHeaders('bank-a-token'), forward: rec.forward },
   );
   return { outcome, calls: rec.calls };
 }
@@ -66,7 +67,8 @@ describe('no upstream call for attacks', () => {
       { ...decision, package_id: 'pkg-1/../../x' },
       { ...decision, disposition: 'approve_everything' },
       { ...decision, note: '' },
-      { kind: 'followup', parent_request_id: '%2e%2e', question: 'more please' },
+      { kind: 'followup', package_id: '%2e%2e', question: 'more please' },
+      { ...decision, note: 'x'.repeat(301) },
       { kind: 'admin', package_id: 'pkg-1' },
     ];
     for (const fields of attempts) {
@@ -82,23 +84,32 @@ describe('the allowed actions', () => {
     const { outcome, calls } = await act({ ...decision, action: '/merchant/admin/seed', analyst_name: 'Someone Else' });
     expect(outcome.kind).toBe('sent');
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.path).toBe('/bank/bank_a/packages/pkg-1/disposition');
-    expect(calls[0]!.body).toEqual({ disposition: 'request_more', note: 'Need the settlement record' });
+    expect(calls[0]!.origin).toBe(ORIGIN);
+    expect(calls[0]!.path).toBe('/packages/pkg-1/disposition');
+    expect(calls[0]!.body).toEqual({ decision: 'request_more', reason: 'Need the settlement record' });
     expect(calls[0]!.headers).toEqual({ Authorization: 'Bearer bank-a-token' });
   });
 
-  it('sends a follow-up that names only its parent and question', async () => {
-    const { calls } = await act({ kind: 'followup', parent_request_id: 'rfc-0001-01', question: 'Settlement record please' });
+  it('sends a follow-up as request_more with the question as requested evidence', async () => {
+    const { calls } = await act({ kind: 'followup', package_id: 'pkg-1', question: 'Settlement record please' });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.path).toBe('/bank/bank_a/requests');
+    expect(calls[0]!.path).toBe('/packages/pkg-1/disposition');
     expect(calls[0]!.body).toEqual({
-      parent_request_id: 'rfc-0001-01',
-      question: 'Settlement record please',
+      decision: 'request_more',
+      reason: 'Follow-up requested: Settlement record please',
+      requested_evidence: ['Settlement record please'],
+    });
+  });
+
+  it('goes through the public router prefix when no direct bank origin is set', () => {
+    expect(planAction(decision, bankTarget(undefined, 'https://router.example.test'))).toMatchObject({
+      ok: true,
+      path: '/bank/packages/pkg-1/disposition',
     });
   });
 
   it('plans paths without trusting the form', () => {
-    expect(planAction({ ...decision, action: '/x' })).toMatchObject({ ok: true, path: '/bank/bank_a/packages/pkg-1/disposition' });
+    expect(planAction({ ...decision, action: '/x' })).toMatchObject({ ok: true, path: '/packages/pkg-1/disposition' });
   });
 });
 

@@ -41,7 +41,8 @@ export interface InboxPackage {
   expires_at: string;
   subject_ref_masked: string;
   authentication: AuthStatus;
-  claim_counts: { supported: number; contradicted: number; unresolved: number };
+  /** Absent when the backend's inbox does not carry per-package claims; open the package instead. */
+  claim_counts?: { supported: number; contradicted: number; unresolved: number };
   disposition: Decision | null;
   href: string;
 }

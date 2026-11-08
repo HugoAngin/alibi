@@ -43,6 +43,12 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 4. Final README from out/README_draft.md at T-1h (~11:30).
 - Merchant sim renamed ResaleHub -> Mock Marketplace (`mock-marketplace`) to match case 1.
 
+## Lead's 01:57Z decision (6715891739)
+- web/ is the product face IF it runs the full demo path against the live backend by 10:00: passport, request with trace and review, approve, dispatch refusal and re-approve, analyst view for bank_a, then bank_b reuse. Otherwise Jinja (verified fallback) is used.
+- Backend: every route serves its context as JSON on Accept: application/json; actions answer JSON, 4xx {code, reason}. RFC creation: POST /rfc on the bank service (8102, bearer token). Merchant connect: POST /admin/seed on 8101. Route table lands in alibi/RUNBOOK.md from S5 ~03:30.
+- Demo runs locally on the presenter's laptop (Astro dev server + three services). Public URL is Tamim's Modal stretch, not a dependency.
+- Bank tokens stay server-side behind the action proxy, never in the browser bundle.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

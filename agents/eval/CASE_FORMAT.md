@@ -110,9 +110,25 @@ uv run --frozen python -m agents.eval.ingest_probe_profile --config "$ALIBI_BASE
 ```
 
 SP-39 dispatches a real package through the S4 app's in-process bank and
-checks the retained transaction scope and bank-visible response. SP-33
-through SP-37 also need the app owner's webhook and import submission routes
-and the corresponding attack bodies. Readback alone does not give them an outcome.
+checks the retained transaction scope and bank-visible response. For S5's
+local-only merchant webhook, start a fresh public stack and provide its
+throwaway signing keys and the shared UTC clock. The public router refuses
+this route.
+
+```bash
+uv run --frozen python -m agents.eval.ingest_probe_profile --config "$ALIBI_BASE_PROBES" \
+  --webhook-key-dir "$ALIBI_DEMO_KEYS" --received-at "$ALIBI_FIXTURE_NOW" \
+  --out "$ALIBI_INGEST_PROBES"
+uv run --frozen python -m agents.eval.run_probes --config "$ALIBI_INGEST_PROBES" \
+  --ids SP-33 SP-34 SP-35 SP-37 --results "$ALIBI_INGEST_RESULTS"
+```
+
+SP-33 and SP-37 require a probe-specific refusal reason and an absent record.
+SP-34 requires the identical retry to report a duplicate and the conflicting
+event to leave the active record unchanged. SP-35 requires the older revision
+to report stale and leave the newer one active. SP-36 still needs an import
+submission route. This supplemental lane runs from the eval harness on
+`main` against the clean S5 backend and preserves the original candidate receipt.
 
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 

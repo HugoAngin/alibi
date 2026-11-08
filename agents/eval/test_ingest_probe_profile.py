@@ -100,6 +100,21 @@ def test_forged_webhook_absence_needs_an_active_control(monkeypatch, change, out
     assert (result["outcome"], result.get("reason")) == (outcome, reason)
 
 
+@pytest.mark.parametrize(("reason", "outcome"), [
+    ("issuer signature rejected: signature does not verify", "blocked"),
+    ("the event's subject is not this connection's subject", "not_run"),
+])
+def test_s5_generic_webhook_refusal_requires_the_probe_specific_reason(monkeypatch, reason, outcome):
+    records = {("rec-c", 1): ({}, "issuer_verified"),
+               "_post": lambda _: httpx.Response(409, json={"code": "ingest_refused", "reason": reason})}
+    result = _attempt(monkeypatch, "SP-33", _sources(records), SOURCE, {
+        **CONTROL, "sp33_ingest_reason": "issuer signature rejected:",
+        "event_bad_signature_record_id": "rec-f",
+        "event_bad_signature": {"event": {"record_id": "rec-f", "revision": 1}, "signature": {"sig": "AA"}},
+    })
+    assert result["outcome"] == outcome
+
+
 @pytest.mark.parametrize(("probe_id", "route"), [("SP-33", "merchant_events"), ("SP-34", "merchant_events"),
                                                  ("SP-35", "merchant_events"), ("SP-36", "import_ingest"),
                                                  ("SP-37", "merchant_events")])

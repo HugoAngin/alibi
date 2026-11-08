@@ -465,12 +465,13 @@ def sp24(session: ProbeSession) -> str:
 # ``known_active_record_revision`` must read back as itself and unsuperseded (positive
 # control); the target is then read at the probed revision, and its ``revisions``
 # history decides which revision is active. Fields, trust and history are flattened so
-# the handlers below compare the stored state. S4 has no passport webhook or import
-# route yet, so ``merchant_events`` and ``import_ingest`` stay unset there (NOT_RUN).
+# the handlers below compare the stored state. S5 exposes a local-only signed
+# merchant webhook. Earlier stacks and unavailable import routes stay NOT_RUN.
 
 def _ingest(session: ProbeSession, actor: str, body) -> "object":
-    return session.http("POST", SVC_MERCHANT, _route(session, R_MERCHANT_EVENTS), actor=actor,
-                        json=body)
+    # S5 authenticates the signed event at the loopback route.
+    return session.http("POST", SVC_MERCHANT, _route(session, R_MERCHANT_EVENTS),
+                        actor=None if session.fixtures.get("s5_webhook") else actor, json=body)
 
 
 def _revision_of(body) -> int:
@@ -532,6 +533,17 @@ def _field(state, name: str):
     return state.get(name) if isinstance(state, dict) else None
 
 
+def _ingest_denial(session: ProbeSession, response, probe: str, codes) -> str:
+    outcome = session.denial(response, _codes(session, probe, codes))
+    reason_marker = session.fixtures.get(f"{probe}_ingest_reason")
+    reason = session.payload(response).get("reason")
+    if (outcome == NOT_RUN and response.status_code == 409 and session.code(response) == "ingest_refused"
+            and isinstance(reason_marker, str) and reason_marker
+            and isinstance(reason, str) and reason_marker in reason):
+        return BLOCKED
+    return outcome
+
+
 def sp33(session: ProbeSession) -> str:
     """SP-33 webhook claims issuer provenance with a bad/missing signature: nothing ingested.
 
@@ -549,8 +561,7 @@ def sp33(session: ProbeSession) -> str:
     if found:
         return NOT_BLOCKED  # the forged record became active
     # Record absent: a coded signature refusal passes; a 2xx accept is a regression.
-    return ProbeSession.denial(
-        resp, _codes(session, "sp33", ("signature_invalid", "bad_signature", "signature_missing")))
+    return _ingest_denial(session, resp, "sp33", ("signature_invalid", "bad_signature", "signature_missing"))
 
 
 def sp34(session: ProbeSession) -> str:
@@ -573,6 +584,8 @@ def sp34(session: ProbeSession) -> str:
 
     retry = _ingest(session, "merchant", original)
     session.require_success(retry)
+    if session.fixtures.get("s5_webhook") and session.payload(retry).get("status") != "duplicate":
+        raise ProbeUnavailable("webhook did not report the identical retry as a duplicate")
     found, after_retry = _active(session, record_id, revision)
     if not found:
         raise ProbeUnavailable("active-state unreadable after identical retry")
@@ -580,7 +593,7 @@ def sp34(session: ProbeSession) -> str:
         return NOT_BLOCKED
 
     resp = _ingest(session, "merchant", conflicting)
-    reuse = ProbeSession.denial(resp, _codes(session, "sp34", ("event_id_reused",)))
+    reuse = _ingest_denial(session, resp, "sp34", ("event_id_reused",))
     found, after = _active(session, record_id, revision)
     if not found:
         raise ProbeUnavailable("active-state unreadable after reuse attempt")
@@ -614,7 +627,7 @@ def sp35(session: ProbeSession) -> str:
     if not found or _field(before, field) != expected:
         raise ProbeUnavailable("newer revision is not active; cannot test staleness")
 
-    _ingest(session, "merchant", stale)
+    stale_response = _ingest(session, "merchant", stale)
     found, after = _active(session, record_id, _revision_of(newer))
     if not found:  # the newer revision vanished: read the history through the stale one
         found, after = _active(session, record_id, _revision_of(stale))
@@ -622,6 +635,8 @@ def sp35(session: ProbeSession) -> str:
         raise ProbeUnavailable("active-state unreadable after stale attempt")
     active_revision = _field(after, field)
     if active_revision == expected:
+        if session.fixtures.get("s5_webhook") and session.payload(stale_response).get("status") != "stale":
+            raise ProbeUnavailable("webhook did not report the older revision as stale")
         return BLOCKED        # stale stored as history at most; active stays newer
     if active_revision is None:
         return NOT_RUN
@@ -668,7 +683,7 @@ def sp37(session: ProbeSession) -> str:
     found, _ = _active(session, record_id, _revision_of(body))
     if found:
         return NOT_BLOCKED
-    return ProbeSession.denial(resp, _codes(session, "sp37", ("subject_out_of_scope",)))
+    return _ingest_denial(session, resp, "sp37", ("subject_out_of_scope",))
 
 
 # --- Injection / structural scope -----------------------------------------

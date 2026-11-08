@@ -1,0 +1,782 @@
+"""Alibi public API: the functions teammates call, wired over the core modules.
+
+Import it as ``from alibi.api import ...`` or, per RULES.md, ``from agents.lead.api import ...``
+(the same names). ``alibi/CONTRACTS.md`` documents every function with JSON examples.
+
+This module only wires. Each function loads what a step needs from the passport, calls the core
+function that owns the logic (``alibi.core`` and ``alibi.gateway``), saves the result and writes
+an audit event. Conventions:
+
+* Money is integer pence with an ISO currency code. Times are timezone-aware UTC (``Z`` on the
+  wire). Periods are half-open ``[from, to)``.
+* The store comes first. Every function that depends on the clock takes ``now`` (default: the
+  current UTC time; ``load_fixture`` defaults to the fixture clock ``FIXTURE_NOW``), so tests
+  and replays are deterministic.
+* Signing takes an optional ``keystore`` and ingest an optional ``registry``. The default is
+  the demo keystore under ``data/alibi/keys`` (created on first use). ``verify_package`` only
+  reads the pinned ``trust_registry.json`` there. Tests always pass their own.
+* Errors are the core's typed exceptions, and their messages are safe to show.
+"""
+
+import copy
+from collections.abc import Collection, Mapping
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, TypeAdapter, ValidationError
+
+from alibi.core import approval as core_approval
+from alibi.core import canon
+from alibi.core import ingest as core_ingest
+from alibi.core import investigate_rules as core_rules
+from alibi.core import package as core_package
+from alibi.core.approval import ApprovalError
+from alibi.core.ingest import IngestError
+from alibi.core.package import PackageError
+from alibi.core.policy import (
+    CompiledPolicy,
+    PolicyError,
+    RuleParse,
+    compile_policy,
+    parse_rule_text,
+)
+from alibi.core.schemas import (
+    AgeRule,
+    Alert,
+    Approval,
+    ApprovalStatus,
+    AuditEvent,
+    AuthResult,
+    BankTxn,
+    Claim,
+    ClaimStatus,
+    ContextPackage,
+    Delivery,
+    DenyRule,
+    DerivedState,
+    Draft,
+    DraftStatus,
+    EvidenceRecord,
+    EvidenceRef,
+    GeneraliseRule,
+    Ident,
+    InvestigationResult,
+    Link,
+    LinkState,
+    PackageBody,
+    Period,
+    Policy,
+    RecipientRule,
+    RecordKind,
+    RequestForContext,
+    Review,
+    SourceTrust,
+    TraceEvent,
+    VerificationResult,
+    format_utc,
+    parse_utc,
+    utc_now,
+)
+from alibi.core.signing import (
+    DEFAULT_KEY_DIR,
+    REGISTRY_FILE,
+    DemoKeystore,
+    SignatureError,
+    TrustRegistry,
+    load_registry,
+)
+from alibi.core.store import (
+    DEFAULT_DB_PATH,
+    IdempotencyConflict,
+    NamespaceError,
+    NotFound,
+    PutResult,
+    RevisionConflict,
+    Store,
+    StoreError,
+)
+from alibi.fixtures import maya
+from alibi.gateway import (
+    DEFAULT_BUDGET,
+    BudgetExceeded,
+    Gateway,
+    GatewayError,
+    NotFoundError,
+    ScopeError,
+    SettlementLookup,
+    TxnRefresh,
+    Unavailable,
+)
+
+__all__ = [
+    # functions
+    "approve", "build_review", "default_keystore", "import_self_supplied", "ingest_bank_txns",
+    "ingest_merchant_event", "load_fixture", "open_store", "parse_rule_text", "receive_rfc",
+    "record_policy", "run_investigation", "sign_and_package", "verify_package",
+    # store, keys and gateway
+    "DEFAULT_DB_PATH", "DEFAULT_KEY_DIR", "DemoKeystore", "Gateway", "PutResult", "RuleParse",
+    "Store", "TrustRegistry",
+    # schema models and enums
+    "AgeRule", "Alert", "Approval", "ApprovalStatus", "AuditEvent", "BankTxn", "Claim",
+    "ClaimStatus", "ContextPackage", "Delivery", "DenyRule", "Draft", "DraftStatus",
+    "EvidenceRecord", "EvidenceRef", "GeneraliseRule", "InvestigationResult", "Link",
+    "LinkState", "PackageBody", "Period", "Policy", "RecipientRule", "RecordKind",
+    "RequestForContext", "Review", "SourceTrust", "TraceEvent", "VerificationResult",
+    # errors
+    "ApprovalError", "BudgetExceeded", "GatewayError", "IdempotencyConflict", "IngestError",
+    "NamespaceError", "NotFound", "NotFoundError", "PackageError", "PolicyError",
+    "RevisionConflict", "RuleClarificationError", "ScopeError", "SignatureError",
+    "StoreError", "Unavailable",
+]
+
+SYSTEM = "alibi"            # audit actor for backend steps (review, dispatch)
+HOLDER = "holder"           # audit actor for a holder step when no valid holder id is known
+FIXTURE_ACCOUNT_BANK = "bank_a"   # the fixture account acc_maya_bank_a is held at Bank A
+# load_fixture's default clock: inside every fixture RFC's window (RFC A expires 2026-11-11T09:00Z).
+FIXTURE_NOW = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)
+_IDENT = TypeAdapter(Ident)
+
+
+class RuleClarificationError(PolicyError):
+    """Some plain-English rules could not be turned into typed rules, so nothing was saved.
+
+    ``interpretations`` lists every rule as given, in order, as ``{"text", "status",
+    "interpretation", "reason", "rule"}`` (``rule`` is the typed rule as JSON when resolved).
+    Show it to the holder, ask them to rephrase the unresolved ones, then record again.
+    """
+
+    def __init__(self, interpretations: list[dict[str, Any]]):
+        self.interpretations = interpretations
+        unresolved = [item for item in interpretations if item["status"] != "resolved"]
+        reasons = "; ".join(f"{_clip(item['text'], 80)!r}: {item['reason']}" for item in unresolved)
+        super().__init__(f"{len(unresolved)} rule(s) need clarification: {reasons}")
+
+
+# --------------------------------------------------------------------------- helpers
+
+
+def _clock(now: datetime | None) -> datetime:
+    if now is None:
+        return utc_now()
+    if not isinstance(now, datetime) or now.utcoffset() is None:
+        raise ValueError("now must be a timezone-aware datetime")
+    return now.astimezone(timezone.utc)
+
+
+def _is_ident(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        _IDENT.validate_python(value)
+    except ValidationError:
+        return False
+    return True
+
+
+def _clip(text: Any, limit: int = 300) -> str:
+    """One line, at most ``limit`` characters."""
+    text = " ".join(str(text).split()) or "-"
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _audit(store: Store, *, action: str, actor: str, outcome: str, at: datetime,
+           target_id: Any = None, detail: str | None = None) -> None:
+    """Append one audit event. Its id is derived from every field, so an identical event is a
+    no-op and two different events never share an id. Details hold ids and reasons only."""
+    target = target_id if _is_ident(target_id) else None
+    text = _clip(detail) if detail else None
+    audit_id = canon.make_id("aud", action, actor, target, outcome, text, format_utc(at))
+    store.append_audit(AuditEvent(audit_id=audit_id, at=at, actor=actor, action=action,
+                                  target_id=target, outcome=outcome, detail=text))
+
+
+def _keystore(keystore: DemoKeystore | None) -> DemoKeystore:
+    return keystore if keystore is not None else default_keystore()
+
+
+def _registry(registry: TrustRegistry | None) -> TrustRegistry:
+    return registry if registry is not None else default_keystore().registry()
+
+
+def _stored_request(store: Store, request: str | RequestForContext) -> RequestForContext:
+    """The stored request for a request_id, or for a model that must equal the stored one."""
+    if isinstance(request, RequestForContext):
+        stored = store.get_request(request.request_id)
+        if canon.digest(stored) != canon.digest(request):
+            raise IdempotencyConflict(
+                f"request {request.request_id!r} differs from the stored request")
+        return stored
+    if isinstance(request, str):
+        return store.get_request(request)
+    raise StoreError("request must be a request_id or a RequestForContext")
+
+
+def _current_policy(store: Store, subject_ref: str) -> tuple[Policy | None, CompiledPolicy]:
+    """The subject's latest policy (or None) and its compiled form. With no policy the version
+    is the compiled empty policy's digest, so adding a first policy changes it too."""
+    policy = store.latest_policy(subject_ref)
+    return policy, compile_policy(policy)
+
+
+def _latest_claims(store: Store, request_id: str) -> list[Claim]:
+    """The claims of the request's investigation run recorded last, which must all be active.
+
+    "Last" is storage order (``list_claims`` returns rows as inserted, and every run inserts
+    new claims), not ``created_at``: a rerun on an earlier clock is still the latest run.
+    """
+    claims = store.list_claims(request_id=request_id, state=None)
+    if not claims:
+        raise PackageError(f"request {request_id} has no investigation results yet; "
+                           "call run_investigation first")
+    latest = claims[-1].run_id
+    run = [claim for claim in claims if claim.run_id == latest]
+    stale = [claim for claim in run if claim.state != DerivedState.ACTIVE]
+    if stale:
+        raise PackageError(f"the latest investigation of {request_id} is out of date: "
+                           f"{len(stale)} claim(s) were invalidated by newer evidence; run the "
+                           "investigation again")
+    return run
+
+
+def _load_ref(store: Store, ref: EvidenceRef) -> EvidenceRecord | BankTxn:
+    if ref.ref_type == "record":
+        return store.get_source(ref.ref_id, ref.revision)
+    return store.get_bank_txn(ref.ref_id, ref.revision)
+
+
+def _get(load, obj_id: Any, what: str):
+    """``load(obj_id)``, with a missing object reported as an ApprovalError."""
+    try:
+        return load(obj_id)
+    except NotFound:
+        raise ApprovalError([f"no {what} {_clip(obj_id, 80)!r}"]) from None
+
+
+def _default_policy_id(subject_ref: str) -> str:
+    candidate = f"pol_{subject_ref}"
+    return candidate if _is_ident(candidate) else canon.make_id("pol", subject_ref)
+
+
+def _policy_refusal(exc: PolicyError) -> str:
+    """Audit detail for a refused policy: counts for rule texts, never the texts themselves."""
+    if isinstance(exc, RuleClarificationError):
+        unresolved = sum(item["status"] != "resolved" for item in exc.interpretations)
+        return (f"refused: {unresolved} of {len(exc.interpretations)} rule text(s) need "
+                "clarification; nothing was saved")
+    return f"refused: {exc}"
+
+
+def _existing_approval(store: Store, draft: Draft, holder_id: Any) -> Approval | None:
+    """The holder's approval of a draft that is already approved or packaged: the last pending
+    or consumed approval naming this draft, holder, recipient and body digest."""
+    if DraftStatus(draft.status) not in (DraftStatus.APPROVED, DraftStatus.PACKAGED):
+        return None
+    usable = (ApprovalStatus.PENDING, ApprovalStatus.CONSUMED)
+    matches = [approval for approval in store.list_approvals(request_id=draft.request_id)
+               if approval.draft_id == draft.draft_id and approval.holder_id == holder_id
+               and approval.audience == draft.audience
+               and approval.body_sha256 == draft.body_sha256
+               and ApprovalStatus(approval.status) in usable]
+    return matches[-1] if matches else None
+
+
+def _typed_rules(rules: Any) -> list[Any]:
+    """Typed rules from rule models, dicts or plain-English strings (parsed with
+    ``parse_rule_text``). Any unresolved string raises RuleClarificationError."""
+    if isinstance(rules, (str, dict, BaseModel)):
+        rules = [rules]
+    if not isinstance(rules, (list, tuple)):
+        raise PolicyError("rules must be a list of rules or plain-English rule texts")
+    typed, parses = [], []
+    for item in rules:
+        if not isinstance(item, str):
+            typed.append(item)
+            continue
+        parsed = parse_rule_text(item)
+        parses.append({"text": item, "status": parsed.status,
+                       "interpretation": parsed.interpretation, "reason": parsed.reason,
+                       "rule": parsed.rule.to_json_dict() if parsed.rule is not None else None})
+        if parsed.rule is not None:
+            typed.append(parsed.rule)
+    if any(item["status"] != "resolved" for item in parses):
+        raise RuleClarificationError(parses)
+    return typed
+
+
+def _invalidate_for_policy(store: Store, subject_ref: str, version_tag: str,
+                           at: datetime) -> tuple[list[str], list[str]]:
+    """Invalidate the subject's pending/approved drafts and pending approvals made under any
+    other policy version. Returns (draft ids, approval ids)."""
+    reason = f"the disclosure policy changed to {version_tag}"
+    drafts, approvals = [], []
+    for rfc in store.list_requests(subject_ref=subject_ref):
+        for draft in store.list_drafts(request_id=rfc.request_id):
+            if draft.status in (DraftStatus.PENDING, DraftStatus.APPROVED) \
+                    and draft.policy_version != version_tag:
+                store.update_draft_status(draft.draft_id, DraftStatus.INVALIDATED, reason)
+                drafts.append(draft.draft_id)
+        for approval in store.list_approvals(request_id=rfc.request_id,
+                                             status=ApprovalStatus.PENDING.value):
+            if approval.policy_version != version_tag:
+                store.update_approval(Approval.model_validate({
+                    **approval.to_json_dict(), "status": ApprovalStatus.INVALIDATED.value,
+                    "invalidated_reason": reason}))
+                approvals.append(approval.approval_id)
+    return drafts, approvals
+
+
+def _draft_problems(draft: Draft, approval: Approval) -> list[str]:
+    problems = []
+    status = DraftStatus(draft.status)
+    if status != DraftStatus.APPROVED:
+        why = f" ({draft.invalidated_reason})" if draft.invalidated_reason else ""
+        problems.append(f"the draft is {status.value}{why}, not approved")
+    if draft.request_id != approval.request_id:
+        problems.append(f"the draft answers request {draft.request_id}, not the approved "
+                        f"request {approval.request_id}")
+    if draft.audience != approval.audience:
+        problems.append(f"the draft is addressed to {draft.audience}, not the approved "
+                        f"recipient {approval.audience}")
+    return problems
+
+
+def _stored_package(store: Store, approval: Approval) -> ContextPackage | None:
+    """The package an approval was already consumed by, if it is stored."""
+    if ApprovalStatus(approval.status) != ApprovalStatus.CONSUMED or not approval.package_id:
+        return None
+    try:
+        return store.get_package(approval.package_id)
+    except NotFound:
+        return None
+
+
+def _on_connection(txn: dict[str, Any], connection_id: str) -> dict[str, Any]:
+    """A fixture txn as delivered by ``connection_id``."""
+    if txn.get("provenance", {}).get("connection_id") == connection_id:
+        return txn
+    moved = copy.deepcopy(txn)
+    moved["provenance"]["connection_id"] = connection_id
+    return moved
+
+
+# --------------------------------------------------------------------------- store and keys
+
+
+def open_store(path: Path | str | None = None, *, master_key: bytes | str | None = None) -> Store:
+    """Open (or create) the encrypted passport database, by default ``data/alibi/passport.db``.
+
+    The master key is ``master_key``, else ``ALIBI_MASTER_KEY``, else ``master.key`` beside the
+    database (created with mode 0600 on first use). Close the store, or use it as a context
+    manager.
+    """
+    return Store(DEFAULT_DB_PATH if path is None else path, master_key=master_key)
+
+
+def default_keystore(key_dir: Path | str | None = None) -> DemoKeystore:
+    """The demo keystore (``data/alibi/keys`` by default), with any missing keys and
+    ``trust_registry.json`` created."""
+    return DemoKeystore(DEFAULT_KEY_DIR if key_dir is None else key_dir).ensure()
+
+
+# --------------------------------------------------------------------------- ingest
+
+
+def ingest_merchant_event(store: Store, payload: Any, *, registry: TrustRegistry | None = None,
+                          connector: str = core_ingest.CONNECTOR_WEBHOOK,
+                          subject_ref: str | None = None,
+                          now: datetime | None = None) -> PutResult:
+    """Verify and store one issuer-signed merchant event (``{"event", "signature"}``).
+
+    Replaying identical bytes is a ``duplicate``; a higher revision is a ``corrected`` record
+    that invalidates what depended on the old one. Raises ``IngestError``.
+    """
+    return core_ingest.ingest_merchant_event(store, _registry(registry), payload,
+                                             connector=connector, subject_ref=subject_ref,
+                                             now=_clock(now))
+
+
+def ingest_bank_txns(store: Store, txns: Any, *, subject_ref: str, connection_id: str,
+                     cursor: str | None = None, now: datetime | None = None) -> list[PutResult]:
+    """Store one bank-feed batch (and its cursor) atomically. Raises ``IngestError``."""
+    return core_ingest.ingest_bank_txns(store, txns, subject_ref=subject_ref,
+                                        connection_id=connection_id, cursor=cursor,
+                                        now=_clock(now))
+
+
+def import_self_supplied(store: Store, payload: Any, *, subject_ref: str,
+                         now: datetime | None = None) -> PutResult:
+    """Import the holder's own receipt or export at ``self_supplied`` trust, under a ``self_``
+    record id. Trust claims in the payload are dropped. Raises ``IngestError``."""
+    return core_ingest.import_self_supplied(store, payload, subject_ref=subject_ref,
+                                            now=_clock(now))
+
+
+def receive_rfc(store: Store, payload: Any, *, authenticated_issuer: str,
+                registry: TrustRegistry | None = None,
+                account_refs: Collection[str] | None = None,
+                now: datetime | None = None) -> RequestForContext:
+    """Accept a bank's Request for Context (signed ``{"request", "signature"}`` or bare).
+
+    The authenticated bank must be the request's issuer and audience. A request naming
+    ``txn_ids`` also needs ``account_refs``, the bank's own accounts (fail closed). Raises
+    ``IngestError``.
+    """
+    return core_ingest.receive_rfc(store, _registry(registry), payload,
+                                   authenticated_issuer=authenticated_issuer,
+                                   account_refs=account_refs, now=_clock(now))
+
+
+# --------------------------------------------------------------------------- investigation
+
+
+def run_investigation(store: Store, request: str | RequestForContext, *, mode: str = "rules",
+                      gateway: Gateway | None = None,
+                      settlement_lookup: SettlementLookup | None = None,
+                      txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
+                      registry: TrustRegistry | None = None,
+                      now: datetime | None = None) -> InvestigationResult:
+    """Investigate a stored request and save its links, claims and trace.
+
+    ``request`` is a request_id or the stored ``RequestForContext``. Without ``gateway`` a
+    ``Gateway`` is built for the request's subject and the next run id, with the connector
+    callables, budget and registry given (the registry verifies settlement lookups). Only
+    ``mode="rules"`` is built; other modes raise ``NotImplementedError``.
+    """
+    if mode != core_rules.MODE:
+        raise NotImplementedError(f"mode {mode!r} is not built yet; this build runs mode "
+                                  "'rules' only (agents and single_call arrive later)")
+    at = _clock(now)
+    rfc = _stored_request(store, request)
+    if gateway is None:
+        if registry is None and settlement_lookup is not None:
+            registry = default_keystore().registry()
+        gateway = Gateway(store, subject_ref=rfc.subject_ref,
+                          run_id=core_rules.next_run_id(store, rfc.request_id),
+                          registry=registry, budget=budget, settlement_lookup=settlement_lookup,
+                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
+    result = core_rules.run_investigation(rfc, store, gateway, mode, now=now)
+    answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
+                        for claim in result.claims)
+    _audit(store, action="run_investigation", actor=core_rules.ACTOR, outcome="ok", at=at,
+           target_id=rfc.request_id,
+           detail=f"run {result.run_id}: {answers}; {result.calls_used} gateway calls")
+    return result
+
+
+# --------------------------------------------------------------------------- policy
+
+
+def record_policy(store: Store, subject_ref: str, rules: Any, *, policy_id: str | None = None,
+                  confirmed: bool = False, now: datetime | None = None) -> Policy:
+    """Save the subject's disclosure rules as the next policy version.
+
+    ``rules`` is a list of ``PolicyRule`` models or dicts, or plain-English texts (a single
+    rule may be given bare). Each text goes through ``parse_rule_text``; if any is unresolved,
+    nothing is saved and ``RuleClarificationError`` lists every interpretation. ``policy_id``
+    defaults to the subject's current policy, else ``pol_<subject_ref>``. Saving invalidates the
+    subject's pending/approved drafts and pending approvals made under another policy version.
+    Recording rules identical to the policy in force (the subject's latest version, under the
+    same ``policy_id``) returns it unchanged; naming an older ``policy_id`` saves a new version
+    of it, which then takes effect. A ``PolicyError`` refusal is audited (counts, never texts).
+    """
+    at = _clock(now)
+    try:
+        compiled = compile_policy(_typed_rules(rules))
+        with store.transaction():
+            latest = store.latest_policy(subject_ref)
+            pid = policy_id or (latest.policy_id if latest is not None else
+                                _default_policy_id(subject_ref))
+            meaning = [rule.to_json_dict() for rule in compiled.rules]
+            if latest is not None and latest.policy_id == pid \
+                    and latest.confirmed == confirmed \
+                    and [rule.to_json_dict() for rule in latest.rules] == meaning:
+                return latest           # already the policy in force
+            try:
+                current = store.get_policy(pid)
+            except NotFound:
+                current = None
+            try:
+                policy = Policy(policy_id=pid,
+                                version=1 if current is None else current.version + 1,
+                                subject_ref=subject_ref, rules=compiled.rules,
+                                confirmed=confirmed, created_at=at)
+            except ValidationError as exc:
+                raise PolicyError(f"invalid policy: {exc.errors()[0]['msg']}") from None
+            store.save_policy(policy)
+            tag = policy.version_tag()
+            drafts, approvals = _invalidate_for_policy(store, subject_ref, tag, at)
+            _audit(store, action="record_policy", actor=HOLDER, outcome="ok", at=at,
+                   target_id=pid,
+                   detail=f"{tag}: {len(policy.rules)} rule(s), confirmed={confirmed}; "
+                          f"invalidated {len(drafts)} draft(s) and {len(approvals)} approval(s)")
+    except PolicyError as exc:
+        _audit(store, action="record_policy", actor=HOLDER, outcome="refused", at=at,
+               target_id=policy_id or subject_ref, detail=_policy_refusal(exc))
+        raise
+    return store.get_policy(policy.policy_id, policy.version)
+
+
+# --------------------------------------------------------------------------- review, approval, dispatch
+
+
+def build_review(store: Store, request_id: str, *, now: datetime | None = None,
+                 removed: Collection[str] = ()) -> Draft:
+    """Build and save the draft the holder reviews for a request.
+
+    Uses the active claims of the request's investigation run recorded last, every source and
+    txn they cite (the cited revisions, which are the active ones while the claims are active),
+    and the subject's latest policy (or none). ``removed`` names sources the holder took out.
+    Returns the stored draft: the recipient-facing ``body`` plus the private ``review``.
+    Raises ``PackageError`` (and audits the refusal) when there is no current investigation to
+    package.
+    """
+    at = _clock(now)
+    rfc = _stored_request(store, request_id)
+    try:
+        with store.transaction():
+            claims = _latest_claims(store, rfc.request_id)
+            refs = core_package.cited_refs(claims, request_id=rfc.request_id)
+            evidence = [_load_ref(store, ref) for ref in refs]
+            _, compiled = _current_policy(store, rfc.subject_ref)
+            body, review = core_package.build_body(rfc, claims, evidence, compiled, now=at,
+                                                   removed=removed)
+            draft = core_package.make_draft(rfc, body, review,
+                                            policy_version=compiled.policy_version,
+                                            source_revisions=refs, now=at)
+            try:
+                return store.get_draft(draft.draft_id)   # built already: keep its status
+            except NotFound:
+                pass
+            store.save_draft(draft)
+            _audit(store, action="build_review", actor=SYSTEM, outcome="ok", at=at,
+                   target_id=draft.draft_id,
+                   detail=f"draft for {rfc.request_id} to {rfc.audience}: "
+                          f"{len(body.attachments)} attached, {len(review.excluded)} excluded, "
+                          f"{len(review.withheld_fields)} withheld field entries; policy "
+                          f"{compiled.policy_version}")
+            return store.get_draft(draft.draft_id)
+    except PackageError as exc:
+        _audit(store, action="build_review", actor=SYSTEM, outcome="refused", at=at,
+               target_id=rfc.request_id, detail=f"refused: {exc}")
+        raise
+
+
+def approve(store: Store, draft_id: str, *, holder_id: str,
+            now: datetime | None = None) -> Approval:
+    """Record the holder's approval of one exact pending draft for its named recipient.
+
+    The approval binds the body digest, audience, request, policy version and source revisions
+    for 15 minutes. The draft becomes ``approved``. Approving again a draft this holder already
+    approved (now ``approved`` or ``packaged``) returns that same approval, so a retried or
+    replayed flow reaches the stored package through ``sign_and_package``; an expired approval
+    is not renewed (build the review again). Raises ``ApprovalError`` (and audits the refusal)
+    when the draft is not pending, its policy or sources changed, or it expired.
+    """
+    at = _clock(now)
+    actor = holder_id if _is_ident(holder_id) else HOLDER
+    try:
+        with store.transaction():
+            draft = _get(store.get_draft, draft_id, "draft")
+            existing = _existing_approval(store, draft, holder_id)
+            if existing is not None:
+                _audit(store, action="approve", actor=actor, outcome="duplicate", at=at,
+                       target_id=existing.approval_id,
+                       detail=f"retry for draft {draft.draft_id}: returned the existing "
+                              f"{ApprovalStatus(existing.status).value} approval")
+                return existing
+            rfc = _get(store.get_request, draft.request_id, "request")
+            _, compiled = _current_policy(store, rfc.subject_ref)
+            if DraftStatus(draft.status) == DraftStatus.PENDING \
+                    and compiled.policy_version != draft.policy_version:
+                raise ApprovalError([f"the disclosure policy changed since this draft was built "
+                                     f"({draft.policy_version}, now {compiled.policy_version}); "
+                                     "build the review again"])
+            approval = core_approval.approve(draft, holder_id=holder_id, now=at)
+            store.save_approval(approval)
+            stored = store.get_approval(approval.approval_id)
+            if ApprovalStatus(stored.status) != ApprovalStatus.PENDING:
+                raise ApprovalError([stored.invalidated_reason
+                                     or "the approval could not be stored as pending"])
+            store.update_draft_status(draft.draft_id, DraftStatus.APPROVED)
+            _audit(store, action="approve", actor=actor, outcome="ok", at=at,
+                   target_id=stored.approval_id,
+                   detail=f"approved draft {draft.draft_id} for {stored.audience} (request "
+                          f"{stored.request_id}) until {format_utc(stored.expires_at)}")
+        return stored
+    except ApprovalError as exc:
+        _audit(store, action="approve", actor=actor, outcome="refused", at=at,
+               target_id=draft_id, detail="refused: " + "; ".join(exc.problems))
+        raise
+
+
+def sign_and_package(store: Store, approval_id: str, *, keystore: DemoKeystore | None = None,
+                     now: datetime | None = None) -> ContextPackage:
+    """Revalidate an approval against current state, sign its draft and deliver the package.
+
+    In one store transaction: reload the approval, its draft, the request, the current policy
+    version and the current source revisions; refuse unless the approval is still valid for
+    exactly that body; sign; save the package; mark the approval consumed and the draft
+    packaged; record a ``sent`` delivery to the audience. A retry for an approval already
+    consumed by a stored package returns that identical package with no second delivery. Any
+    validation failure raises ``ApprovalError`` and writes a refused audit event.
+    """
+    at = _clock(now)
+    try:
+        with store.transaction():
+            approval = _get(store.get_approval, approval_id, "approval")
+            stored = _stored_package(store, approval)
+            if stored is not None:
+                _audit(store, action="sign_and_package", actor=SYSTEM, outcome="duplicate",
+                       at=at, target_id=stored.package_id,
+                       detail=f"retry for approval {approval.approval_id}: returned the stored "
+                              "package; no new delivery")
+                return stored
+            if not approval.draft_id:
+                raise ApprovalError(["the approval names no draft"])
+            draft = _get(store.get_draft, approval.draft_id, "draft")
+            rfc = _get(store.get_request, approval.request_id, "request")
+            _, compiled = _current_policy(store, rfc.subject_ref)
+            refs = core_approval.merge_refs(approval.source_revisions, draft.source_revisions,
+                                            core_approval.body_refs(draft.body))
+            revisions = core_approval.current_revisions(store, refs)
+            problems = _draft_problems(draft, approval)
+            if at >= rfc.expires_at:
+                problems.append(f"the request expired at {format_utc(rfc.expires_at)}")
+            problems += core_approval.check_approval(
+                approval, body=draft.body, audience=approval.audience,
+                request_id=approval.request_id, policy_version=compiled.policy_version,
+                revisions=revisions, now=at)
+            if problems:
+                raise ApprovalError(problems)
+            package = core_package.sign_package(draft.body, approval, _keystore(keystore),
+                                                policy_version=compiled.policy_version,
+                                                revisions=revisions, now=at)
+            store.save_package(package, approval_id=approval.approval_id)
+            store.update_approval(core_approval.consume(approval, package_id=package.package_id))
+            store.update_draft_status(draft.draft_id, DraftStatus.PACKAGED)
+            store.save_delivery(Delivery(
+                delivery_id=canon.make_id("dlv", package.package_id, package.body.audience),
+                package_id=package.package_id, request_id=package.body.request_id,
+                audience=package.body.audience, package_sha256=canon.digest(package),
+                delivered_at=at))
+            _audit(store, action="sign_and_package", actor=SYSTEM, outcome="ok", at=at,
+                   target_id=package.package_id,
+                   detail=f"signed under approval {approval.approval_id} and sent to "
+                          f"{package.body.audience} for request {package.body.request_id}")
+        return package
+    except ApprovalError as exc:
+        _audit(store, action="sign_and_package", actor=SYSTEM, outcome="refused", at=at,
+               target_id=approval_id, detail="refused: " + "; ".join(exc.problems))
+        raise
+
+
+def verify_package(package: Mapping[str, Any] | str | bytes | ContextPackage, *,
+                   expected_audience: str, registry: TrustRegistry | None = None,
+                   now: datetime | None = None, expected_subject: str | None = None,
+                   expected_request_id: str | None = None) -> VerificationResult:
+    """Recipient-side verification against the pinned registry. Never raises, never writes.
+
+    Without ``registry`` it reads the pinned ``data/alibi/keys/trust_registry.json`` read-only
+    (no key is created and the file is never rewritten); a missing or unreadable file rejects
+    the package, and so does a ``now`` that is not timezone-aware. Three separate answers:
+    ``authentication`` (schema, body digest, recipient binding, expiry, Alibi signature),
+    ``sources`` (per-attachment trust; a failed claimed issuer signature rejects the package)
+    and ``claims`` (status per question, arithmetic rechecked).
+    """
+    if registry is None:
+        path = DEFAULT_KEY_DIR / REGISTRY_FILE
+        try:
+            registry = load_registry(path)
+        except Exception as exc:  # noqa: BLE001 - verification reports, it never raises
+            reason = _clip(f"no usable pinned trust registry at {path.as_posix()} "
+                           f"({type(exc).__name__}); pass the registry to verify against", 300)
+            return VerificationResult(accepted=False,
+                                      authentication=AuthResult(valid=False, reasons=[reason]),
+                                      errors=[reason])
+    return core_package.verify_package(package, registry, expected_audience=expected_audience,
+                                       now=now, expected_subject=expected_subject,
+                                       expected_request_id=expected_request_id)
+
+
+# --------------------------------------------------------------------------- fixtures
+
+
+def load_fixture(store: Store, variant: str = "supported", *,
+                 keystore: DemoKeystore | None = None,
+                 connection_id: str = maya.CONNECTION_ID, include_rfcs: bool = True,
+                 now: datetime | None = None) -> dict[str, Any]:
+    """Load a committed Maya fixture (or ``retail_purchase``) through the real ingest paths.
+
+    Merchant events are signed with the keystore's merchant key and ingested by webhook, bank
+    txns go through the feed for ``connection_id``, self-supplied items through the import, and
+    the RFCs (signed with the bank keys) through ``receive_rfc``. Lookup events stay outside
+    the passport until an investigation retrieves them. Replaying is idempotent.
+
+    ``now`` defaults to the fixture clock ``FIXTURE_NOW`` (2026-11-07T12:00:00Z), not the wall
+    clock, because the fixture RFCs expire (RFC A at 2026-11-11T09:00:00Z). A ``now`` at or past
+    an RFC's expiry raises ``IngestError`` before anything is loaded.
+
+    Returns ``{variant, subject_ref, record_ids, txn_ids, request_ids, settlement_lookup,
+    txn_refresh, corrections, statuses, expected, now}``: ``corrections`` are signed payloads
+    ready for ``ingest_merchant_event``, ``statuses`` maps each record and txn id to its put
+    status, ``expected`` is the fixture's development gold, and ``now`` is the clock used (pass
+    it to the later steps).
+    """
+    at = FIXTURE_NOW if now is None else _clock(now)
+    fixture = maya.load_variant(variant)
+    if include_rfcs:
+        expired = [raw["request_id"] for raw in fixture["rfcs"]
+                   if at >= parse_utc(raw["expires_at"])]
+        if expired:
+            first = min(parse_utc(raw["expires_at"]) for raw in fixture["rfcs"])
+            raise IngestError(f"fixture request(s) {', '.join(expired)} expired by "
+                              f"{format_utc(at)}; nothing was loaded. Pass a now before "
+                              f"{format_utc(first)}, such as the fixture clock "
+                              f"{format_utc(FIXTURE_NOW)}")
+    keys = _keystore(keystore)
+    registry = keys.registry()
+    subject = fixture["subject_ref"]
+    kid = fixture.get("merchant_kid") or maya.MERCHANT_KID
+    record_ids: list[str] = []
+    txn_ids: list[str] = []
+    request_ids: list[str] = []
+    statuses: dict[str, str] = {}
+
+    def note(put: PutResult, ids: list[str]) -> None:
+        ident = put.record.record_id if isinstance(put.record, EvidenceRecord) \
+            else put.record.txn_id
+        ids.append(ident)
+        statuses[ident] = put.status
+
+    for raw in fixture["merchant_events"]:
+        note(ingest_merchant_event(store, maya.sign_event(raw, keys, kid), registry=registry,
+                                   subject_ref=subject, now=at), record_ids)
+    txns = [_on_connection(txn, connection_id) for txn in fixture["bank_txns"]]
+    if txns:
+        for put in ingest_bank_txns(store, txns, subject_ref=subject,
+                                    connection_id=connection_id, now=at):
+            note(put, txn_ids)
+    for raw in fixture["self_supplied"]:
+        note(import_self_supplied(store, raw, subject_ref=subject, now=at), record_ids)
+    if include_rfcs:
+        accounts = {FIXTURE_ACCOUNT_BANK: [fixture["account_ref"]]}
+        for raw in fixture["rfcs"]:
+            rfc = receive_rfc(store, maya.sign_request(raw, keys),
+                              authenticated_issuer=raw["issuer"], registry=registry,
+                              account_refs=accounts.get(raw["issuer"]) if raw.get("txn_ids")
+                              else None, now=at)
+            request_ids.append(rfc.request_id)
+    return {
+        "variant": variant,
+        "subject_ref": subject,
+        "record_ids": record_ids,
+        "txn_ids": txn_ids,
+        "request_ids": request_ids,
+        "settlement_lookup": maya.settlement_lookup(fixture, keys),
+        "txn_refresh": maya.txn_refresh(fixture),
+        "corrections": [maya.sign_event(raw, keys, kid) for raw in fixture["corrections"]],
+        "statuses": statuses,
+        "expected": fixture["expected"],
+        "now": at,
+    }

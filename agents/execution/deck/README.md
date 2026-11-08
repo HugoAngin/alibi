@@ -18,7 +18,7 @@ Not built on this machine yet: npm packages are not installed here (waiting on t
 | 9 Live refusal | Fourth card: six bytes changed in a signed package, rejected by the bank verifier; bank-verifier reference run 8 of 8, labelled reference, not live | `out/TAMPER_DEMO.md`, results record `fdd4570242` |
 | 10 Oversight | Bank A console package view when captured (`bank_package`), else the s4a preview captioned as sample data | `agents/execution/web_bank` |
 | 15 What could fool us | Eval's six rows replace the four drafted threats | `agents/eval/out/METHOD.md` |
-| 17 Limits | Encryption at rest only holds with the key outside the data folder (SP-47) | `out/at_rest_probe.py`, record `dfb59fcdbf` |
+| 17 Limits | At rest covers the passport store only (ciphertext, key outside the data folder, SP-47); the demo state files `case_N.state.json` and the mock bank's `state.json` are plaintext, a stated limit (CONTRACTS At rest, eval cd71c90) | `out/at_rest_probe.py`, record `dfb59fcdbf` |
 
 `assets/landing.png` was retaken from https://www.alibi-app.workers.dev on 2026-11-08 04:35Z (new design; retake once data's hero lands).
 

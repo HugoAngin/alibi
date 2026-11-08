@@ -51,7 +51,7 @@ The Finance Track asks teams to help a specific person make a better financial d
 - **Calibration:** the sealed pack received rules-based calibration while eval authored it privately, so it was not untouched by every evaluated system. We disclose this.
 - **Security probes:** of 17 exercised refusal probes, 15 held and SP-23 and SP-24 failed (see Limits); both acceptance controls passed, and 28 probes were not exercised. The protections held where we tested them: separate approval per bank, signed packages the bank verifies independently, and cross-bank reads refused.
 
-Records: `1b235c16e9` (interrupted capture), `e16afeeac5` (continuation) and `f8dc5763b6` (aggregate export), rerun by `eval` with `python3 tools/results.py verify`. Source: `agents/eval/out/UNSEEN_RESULTS.md`; per-system error counts in `agents/eval/out/UNSEEN_ERROR_CLASSES.json`.
+Records: `1b235c16e9` (interrupted capture), `e16afeeac5` (continuation) and `f8dc5763b6` (aggregate export), plus the later development diagnostic `09a90f6cd0`, all verified by `eval` with `python3 tools/results.py verify`. Source: `agents/eval/out/UNSEEN_RESULTS.md`; per-system error counts in `agents/eval/out/UNSEEN_ERROR_CLASSES.json`.
 
 **Development results.** Everything else we show, the 80 public cases, the case 1 demo and the probes, is development work on public data and labelled as development. None of it is a held-out result.
 

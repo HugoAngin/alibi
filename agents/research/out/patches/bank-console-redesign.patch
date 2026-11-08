@@ -1,0 +1,2605 @@
+diff --git a/web/apps/bank/src/components/CaseQueue.astro b/web/apps/bank/src/components/CaseQueue.astro
+new file mode 100644
+index 0000000..42e4395
+--- /dev/null
++++ b/web/apps/bank/src/components/CaseQueue.astro
+@@ -0,0 +1,1270 @@
++---
++/**
++ * The case queue with its slide-over case panel. Clicking a case slides a panel in from the
++ * right with everything the bank knows, which is not much: one credit, a reason it was flagged,
++ * and the gaps. The panel's footer carries "Request customer's Alibi". Pressing it turns the panel
++ * into a one-screen review of exactly what will be asked, then a single Send.
++ *
++ * Every state is a real URL, rendered on the server: / (queue), /cases/<id>/ (panel open),
++ * /cases/<id>/request/ (review step). With JavaScript the same screens switch in place without a
++ * reload; without it, every link and form still works.
++ */
++import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
++
++import { cases, day, formatGBP, when, type FraudCase } from '@/data/cases';
++import { statusLabel } from '@/lib/caseState';
++import type { Queue } from '@/lib/queue';
++
++interface Props {
++  queue: Queue;
++  openId?: string;
++  step?: 'case' | 'request';
++}
++
++const { queue, openId, step = 'case' } = Astro.props;
++const counts = {
++  all: cases.length,
++  open: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Open').length,
++  awaiting: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Awaiting customer').length,
++  received: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Alibi received').length,
++  closed: cases.filter((c) => c.status === 'closed').length,
++};
++const filters = [
++  { id: 'all', label: 'All', n: counts.all },
++  { id: 'Open', label: 'Open', n: counts.open },
++  { id: 'Awaiting customer', label: 'Awaiting customer', n: counts.awaiting },
++  { id: 'Alibi received', label: 'Alibi received', n: counts.received },
++  { id: 'Closed', label: 'Closed', n: counts.closed },
++].filter((f) => f.id === 'all' || f.n > 0);
++
++const amount = (c: FraudCase) =>
++  c.txn.amountMinor < 0 ? `−${formatGBP(-c.txn.amountMinor)}` : formatGBP(c.txn.amountMinor);
++const direction = (c: FraudCase) =>
++  c.txn.amountMinor < 0 ? 'Outgoing payment' : 'Incoming credit';
++const statusKey = (label: string) => label.toLowerCase().replace(/\s+/g, '-');
++const flash = queue.flash;
++---
++
++<div class="queue" data-queue>
++  <header class="queue-head">
++    <div>
++      <h1>Cases</h1>
++      <p class="sub">
++        {counts.open} open · {counts.awaiting} awaiting customer
++        {counts.received > 0 && ` · ${counts.received} with an Alibi package`}
++      </p>
++    </div>
++    {!queue.live && (
++      <p class="preview-note">
++        <span class="dot" aria-hidden="true"></span>
++        Preview. {queue.previewReason}
++      </p>
++    )}
++  </header>
++
++  <div class="tabs" role="toolbar" aria-label="Filter cases">
++    {filters.map((f, i) => (
++      <button
++        type="button"
++        class="tab"
++        data-filter={f.id}
++        aria-pressed={i === 0 ? 'true' : 'false'}
++      >
++        {f.label}
++        <span class="tab-n">{f.n}</span>
++      </button>
++    ))}
++  </div>
++
++  <div class="table-card">
++    <table>
++      <thead>
++        <tr>
++          <th scope="col">Case</th>
++          <th scope="col">Customer</th>
++          <th scope="col" class="col-reason">
++            Reason flagged
++          </th>
++          <th scope="col" class="num">
++            Amount
++          </th>
++          <th scope="col" class="col-priority">
++            Priority
++          </th>
++          <th scope="col">Status</th>
++          <th scope="col" class="col-opened">
++            Opened
++          </th>
++        </tr>
++      </thead>
++      <tbody>
++        {cases.map((c) => {
++          const label = statusLabel(c, queue.states[c.id]!);
++          return (
++            <tr
++              data-row={c.id}
++              data-status={label}
++              aria-selected={openId === c.id ? 'true' : undefined}
++            >
++              <td>
++                <a class="row-link" href={`/cases/${c.id}/`} data-open={c.id}>
++                  <code>{c.id}</code>
++                </a>
++              </td>
++              <td>
++                <span class="customer">{c.customer}</span>
++                <code class="meta">{c.accountRef}</code>
++              </td>
++              <td class="col-reason">{c.reason}</td>
++              <td class="num">{amount(c)}</td>
++              <td class="col-priority">
++                <span class={`prio prio--${c.priority}`}>
++                  <span class="prio-bar" aria-hidden="true"></span>
++                  {c.priority[0]!.toUpperCase() + c.priority.slice(1)}
++                </span>
++              </td>
++              <td>
++                <span class={`status status--${statusKey(label)}`}>{label}</span>
++              </td>
++              <td class="col-opened">{day(c.openedAt)}</td>
++            </tr>
++          );
++        })}
++      </tbody>
++    </table>
++  </div>
++</div>
++
++<div class="scrim" data-scrim hidden={!openId}></div>
++
++{cases.map((c) => {
++  const s = queue.states[c.id]!;
++  const isOpen = openId === c.id;
++  const label = statusLabel(c, s);
++  const canRequest = s.kind === 'not_requested';
++  return (
++    <aside
++      class="drawer"
++      class:list={{ 'is-open': isOpen }}
++      id={`case-${c.id}`}
++      data-drawer={c.id}
++      data-step={isOpen ? step : 'case'}
++      role="dialog"
++      aria-modal="true"
++      aria-labelledby={`case-${c.id}-title`}
++      hidden={!isOpen}
++    >
++      {/* ---------------------------------------------------------------- the case */}
++      <section
++        class="pane pane--case"
++        aria-hidden={isOpen && step === 'request' ? 'true' : undefined}
++      >
++        <header class="drawer-head">
++          <div class="head-top">
++            <code class="case-id">{c.id}</code>
++            <span class={`status status--${statusKey(label)}`}>{label}</span>
++            <a class="close" href="/" data-close aria-label="Close case">
++              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
++                <path
++                  d="M4 4l8 8M12 4l-8 8"
++                  stroke="currentColor"
++                  stroke-width="1.5"
++                  stroke-linecap="round"
++                />
++              </svg>
++            </a>
++          </div>
++          <h2 id={`case-${c.id}-title`} tabindex="-1">
++            {c.customer}
++          </h2>
++          <p class="meta-line">
++            <code>{c.accountRef}</code> · Opened {when(c.openedAt)}
++          </p>
++        </header>
++
++        <div class="drawer-body">
++          {isOpen && flash && step === 'case' && (
++            <div class={`flash flash--${flash.kind}`} role="status">
++              {flash.kind === 'refused' ? (
++                <>
++                  <strong>Refused by the bank service</strong>
++                  <code>{flash.refusal.code}</code>
++                  <span>{flash.refusal.reason}</span>
++                </>
++              ) : (
++                <span>{flash.message}</span>
++              )}
++            </div>
++          )}
++
++          {(s.kind === 'requested' || s.kind === 'received') && (
++            <section class="progress" aria-labelledby={`p-${c.id}`}>
++              <h3 id={`p-${c.id}`}>Alibi request</h3>
++              <ol class="steps">
++                <li class="done">
++                  <span class="step-dot" aria-hidden="true"></span>
++                  <span>
++                    Request sent <code>{s.requestId}</code>
++                  </span>
++                  <span class="step-when">{s.kind === 'requested' ? when(s.sentAt) : ''}</span>
++                </li>
++                <li class:list={{ done: s.kind === 'received', now: s.kind === 'requested' }}>
++                  <span class="step-dot" aria-hidden="true"></span>
++                  <span>{c.customer} reviews what to share</span>
++                </li>
++                <li class:list={{ done: s.kind === 'received' }}>
++                  <span class="step-dot" aria-hidden="true"></span>
++                  <span>Signed package received</span>
++                  <span class="step-when">{s.kind === 'received' ? when(s.receivedAt) : ''}</span>
++                </li>
++              </ol>
++              {s.kind === 'requested' && c.request && (
++                <p class="hint">
++                  Reply due by {when(c.request.expiresAt)}. Nothing changes on the account
++                  automatically.
++                </p>
++              )}
++            </section>
++          )}
++
++          <div class="amount-card">
++            <p class="amount-label">{direction(c)} under review</p>
++            <p class="amount">{amount(c)}</p>
++            <dl class="facts">
++              <div>
++                <dt>Booked</dt>
++                <dd>{when(c.txn.bookedAt)}</dd>
++              </div>
++              <div>
++                <dt>Payer reference</dt>
++                <dd>
++                  <code>{c.txn.description}</code>
++                </dd>
++              </div>
++              <div>
++                <dt>Transaction</dt>
++                <dd>
++                  <code>{c.txn.id}</code>
++                </dd>
++              </div>
++            </dl>
++          </div>
++
++          <dl class="rows">
++            <div>
++              <dt>Why it was flagged</dt>
++              <dd>{c.reason}</dd>
++            </div>
++            <div>
++              <dt>Priority</dt>
++              <dd>
++                <span class={`prio prio--${c.priority}`}>
++                  <span class="prio-bar" aria-hidden="true"></span>
++                  {c.priority[0]!.toUpperCase() + c.priority.slice(1)}
++                </span>
++              </dd>
++            </div>
++            <div>
++              <dt>Restriction</dt>
++              <dd class:list={{ restricted: c.restriction !== 'None' }}>{c.restriction}</dd>
++            </div>
++          </dl>
++
++          <div class="knowns">
++            <section aria-labelledby={`k-${c.id}`}>
++              <h3 id={`k-${c.id}`}>What the bank can see</h3>
++              <ul>
++                {c.known.map((k) => (
++                  <li>{k}</li>
++                ))}
++              </ul>
++            </section>
++            {c.unknown.length > 0 && (
++              <section class="unknowns" aria-labelledby={`u-${c.id}`}>
++                <h3 id={`u-${c.id}`}>What it cannot see</h3>
++                <ul>
++                  {c.unknown.map((u) => (
++                    <li>{u}</li>
++                  ))}
++                </ul>
++              </section>
++            )}
++          </div>
++        </div>
++
++        <footer class="drawer-foot">
++          {canRequest && c.request && (
++            <>
++              <RequestAlibiButton
++                href={`/cases/${c.id}/request/`}
++                variant="solid"
++                block
++                data-request={c.id}
++              />
++              <p class="foot-note">
++                {c.customer} chooses what to share. You receive a signed package you can verify.
++              </p>
++            </>
++          )}
++          {s.kind === 'received' && (
++            <a class="btn btn--primary btn--block" href={s.href}>
++              Open the Alibi package
++            </a>
++          )}
++          {s.kind === 'requested' && (
++            <p class="foot-note">
++              Waiting for {c.customer}. The package will appear in the Alibi inbox.
++            </p>
++          )}
++          {s.kind === 'unavailable' && (
++            <>
++              <RequestAlibiButton
++                href="#"
++                variant="solid"
++                block
++                disabledReason="This customer has not connected Alibi."
++              />
++              <p class="foot-note">
++                This customer has not connected Alibi. Contact them through the usual channels.
++              </p>
++            </>
++          )}
++          {s.kind === 'closed' && <p class="foot-note">This case is closed.</p>}
++        </footer>
++      </section>
++
++      {/* -------------------------------------------------------- the request step */}
++      {c.request && canRequest && (
++        <section class="pane pane--request" aria-labelledby={`r-${c.id}-title`}>
++          <header class="drawer-head">
++            <div class="head-top">
++              <a class="back" href={`/cases/${c.id}/`} data-back={c.id}>
++                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
++                  <path
++                    d="M10 3L5 8l5 5"
++                    fill="none"
++                    stroke="currentColor"
++                    stroke-width="1.5"
++                    stroke-linecap="round"
++                    stroke-linejoin="round"
++                  />
++                </svg>
++                Case <code>{c.id}</code>
++              </a>
++              <a class="close" href="/" data-close aria-label="Close case">
++                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
++                  <path
++                    d="M4 4l8 8M12 4l-8 8"
++                    stroke="currentColor"
++                    stroke-width="1.5"
++                    stroke-linecap="round"
++                  />
++                </svg>
++              </a>
++            </div>
++            <h2 id={`r-${c.id}-title`} tabindex="-1">
++              Request {c.customer}’s Alibi
++            </h2>
++            <p class="meta-line">Review what will be asked, then send.</p>
++          </header>
++
++          <div class="drawer-body">
++            {isOpen && flash && step === 'request' && (
++              <div class={`flash flash--${flash.kind}`} role="alert">
++                {flash.kind === 'refused' ? (
++                  <>
++                    <strong>Refused by the bank service</strong>
++                    <code>{flash.refusal.code}</code>
++                    <span>{flash.refusal.reason}</span>
++                  </>
++                ) : (
++                  <span>{flash.message}</span>
++                )}
++              </div>
++            )}
++
++            <section class="ask" aria-labelledby={`q-${c.id}`}>
++              <h3 id={`q-${c.id}`}>Alibi will ask</h3>
++              <ol class="questions">
++                {c.request.questions.map((q, i) => (
++                  <li>
++                    <span class="q-n" aria-hidden="true">
++                      {i + 1}
++                    </span>
++                    <span>
++                      {q.text}
++                      <code class="meta">{q.id}</code>
++                    </span>
++                  </li>
++                ))}
++              </ol>
++            </section>
++
++            <dl class="rows">
++              <div>
++                <dt>About</dt>
++                <dd>
++                  <span class="chip">
++                    <code>{c.txn.id}</code> · {amount(c)} · {day(c.txn.bookedAt)}
++                  </span>
++                </dd>
++              </div>
++              <div>
++                <dt>Reply by</dt>
++                <dd>{when(c.request.expiresAt)}</dd>
++              </div>
++              <div>
++                <dt>Who sees it</dt>
++                <dd>
++                  Only Bank A. {c.customer} picks what to share and approves it before anything is
++                  sent.
++                </dd>
++              </div>
++            </dl>
++          </div>
++
++          <footer class="drawer-foot">
++            <form method="post" action="/act/" class="send">
++              <input type="hidden" name="kind" value="request" />
++              <input type="hidden" name="case_id" value={c.id} />
++              <input type="hidden" name="return_to" value={`/cases/${c.id}/`} />
++              <button type="submit" class="btn btn--alibi btn--block" disabled={!queue.live}>
++                Send request
++              </button>
++            </form>
++            <p class="foot-note">
++              {queue.live
++                ? `Sent through Bank A’s Alibi connection as ${c.request.id}.`
++                : 'Preview: the bank service is not connected here, so sending is off.'}
++            </p>
++          </footer>
++        </section>
++      )}
++    </aside>
++  );
++})}
++
++<style>
++  /* ------------------------------------------------------------------ queue */
++  .queue-head {
++    display: flex;
++    align-items: flex-end;
++    justify-content: space-between;
++    gap: 16px;
++    flex-wrap: wrap;
++    margin-bottom: 20px;
++  }
++
++  h1 {
++    font-size: 1.75rem;
++    font-weight: 600;
++    letter-spacing: -0.02em;
++    margin: 0 0 4px;
++  }
++
++  .sub {
++    margin: 0;
++    color: var(--c-ink-soft);
++    font-size: var(--t-sm);
++  }
++
++  .preview-note {
++    display: inline-flex;
++    align-items: center;
++    gap: 8px;
++    margin: 0;
++    padding: 6px 12px;
++    border: 1px solid var(--c-line);
++    border-radius: 999px;
++    background: var(--c-surface);
++    color: var(--c-ink-soft);
++    font-size: 0.8125rem;
++  }
++
++  .preview-note .dot {
++    width: 6px;
++    height: 6px;
++    border-radius: 50%;
++    background: var(--c-warn);
++  }
++
++  .tabs {
++    display: flex;
++    gap: 4px;
++    flex-wrap: wrap;
++    margin-bottom: 12px;
++  }
++
++  .tab {
++    display: inline-flex;
++    align-items: center;
++    gap: 8px;
++    height: 32px;
++    padding: 0 12px;
++    border: 1px solid transparent;
++    border-radius: 8px;
++    background: transparent;
++    color: var(--c-ink-soft);
++    font: 500 var(--t-sm) / 1 var(--font-sans);
++    cursor: pointer;
++    transition: background-color 140ms var(--ease);
++  }
++
++  .tab:hover {
++    background: var(--c-raised);
++  }
++
++  .tab[aria-pressed='true'] {
++    background: var(--c-surface);
++    border-color: var(--c-line);
++    color: var(--c-ink);
++    box-shadow: 0 1px 2px rgb(17 24 39 / 0.05);
++  }
++
++  .tab-n {
++    font: 500 0.75rem / 1 var(--font-mono);
++    color: var(--c-ink-faint);
++  }
++
++  .table-card {
++    overflow-x: auto;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++    background: var(--c-surface);
++    box-shadow: 0 1px 2px rgb(17 24 39 / 0.04);
++  }
++
++  th {
++    padding: 10px 16px;
++    background: #fafbfc;
++    color: var(--c-ink-faint);
++    font-size: 0.75rem;
++    font-weight: 500;
++    white-space: nowrap;
++  }
++
++  td {
++    padding: 0 16px;
++    height: 56px;
++    vertical-align: middle;
++    font-size: var(--t-sm);
++  }
++
++  tbody tr {
++    position: relative;
++    transition: background-color 140ms var(--ease);
++  }
++
++  tbody tr:last-child td {
++    border-bottom: 0;
++  }
++
++  tbody tr:hover {
++    background: #f9fafb;
++  }
++
++  tbody tr[aria-selected='true'] {
++    background: var(--c-bank-soft);
++    box-shadow: inset 3px 0 0 var(--c-bank);
++  }
++
++  tbody tr[hidden] {
++    display: none;
++  }
++
++  /* The whole row is the case link. */
++  .row-link {
++    text-decoration: none;
++    font-weight: 500;
++  }
++
++  .row-link::after {
++    content: '';
++    position: absolute;
++    inset: 0;
++  }
++
++  .row-link code {
++    font-size: 0.8125rem;
++    white-space: nowrap;
++  }
++
++  .customer {
++    display: block;
++    font-weight: 500;
++  }
++
++  .meta {
++    display: block;
++    color: var(--c-ink-faint);
++    font-size: 0.75rem;
++  }
++
++  .col-reason {
++    color: var(--c-ink-soft);
++  }
++
++  .num {
++    text-align: right;
++    font-variant-numeric: tabular-nums;
++    white-space: nowrap;
++    font-weight: 500;
++  }
++
++  .col-opened {
++    color: var(--c-ink-faint);
++    white-space: nowrap;
++  }
++
++  .prio {
++    display: inline-flex;
++    align-items: center;
++    gap: 8px;
++    color: var(--c-ink-soft);
++  }
++
++  .prio-bar {
++    width: 18px;
++    height: 6px;
++    border-radius: 3px;
++    background: linear-gradient(90deg, currentColor 33%, transparent 33%) var(--c-raised);
++  }
++
++  .prio--high .prio-bar {
++    background: var(--c-bad);
++  }
++
++  .prio--medium .prio-bar {
++    background: linear-gradient(90deg, var(--c-warn) 60%, var(--c-raised) 60%);
++  }
++
++  .prio--low .prio-bar {
++    background: linear-gradient(90deg, var(--c-ink-faint) 30%, var(--c-raised) 30%);
++  }
++
++  .status {
++    display: inline-flex;
++    align-items: center;
++    gap: 6px;
++    height: 24px;
++    padding: 0 10px;
++    border-radius: 999px;
++    background: var(--c-raised);
++    color: var(--c-ink-soft);
++    font-size: 0.75rem;
++    font-weight: 500;
++    white-space: nowrap;
++  }
++
++  .status::before {
++    content: '';
++    width: 6px;
++    height: 6px;
++    border-radius: 50%;
++    background: currentColor;
++  }
++
++  .status--open {
++    background: #fef3e2;
++    color: #92400e;
++  }
++
++  .status--awaiting-customer {
++    background: var(--c-bank-soft);
++    color: var(--c-bank);
++  }
++
++  .status--alibi-received {
++    background: #e7f5ec;
++    color: var(--c-ok);
++  }
++
++  .status--closed {
++    color: var(--c-ink-faint);
++  }
++
++  /* ----------------------------------------------------------------- drawer */
++  .scrim {
++    position: fixed;
++    inset: 0;
++    z-index: 30;
++    background: rgb(17 24 39 / 0.28);
++    opacity: 1;
++    transition: opacity 260ms var(--ease);
++  }
++
++  .scrim.is-hiding {
++    opacity: 0;
++  }
++
++  .drawer {
++    position: fixed;
++    top: 0;
++    right: 0;
++    bottom: 0;
++    z-index: 40;
++    width: min(560px, 100vw);
++    background: var(--c-surface);
++    box-shadow: var(--shadow-float);
++    transform: translateX(0);
++    transition: transform 320ms var(--ease);
++    overflow: hidden;
++  }
++
++  .drawer.is-entering,
++  .drawer.is-leaving {
++    transform: translateX(100%);
++  }
++
++  .drawer[hidden] {
++    display: none;
++  }
++
++  .pane {
++    position: absolute;
++    inset: 0;
++    display: grid;
++    grid-template-rows: auto 1fr auto;
++    background: var(--c-surface);
++    transition:
++      transform 300ms var(--ease),
++      opacity 200ms var(--ease);
++  }
++
++  /* The request step slides in over the case, inside the same panel. */
++  .drawer[data-step='case'] .pane--request {
++    transform: translateX(24px);
++    opacity: 0;
++    visibility: hidden;
++  }
++
++  .drawer[data-step='request'] .pane--case {
++    transform: translateX(-24px);
++    opacity: 0;
++    visibility: hidden;
++  }
++
++  .drawer-head {
++    padding: 20px 24px 16px;
++    border-bottom: 1px solid var(--c-line);
++  }
++
++  .head-top {
++    display: flex;
++    align-items: center;
++    gap: 12px;
++    margin-bottom: 12px;
++  }
++
++  .case-id {
++    font-size: 0.8125rem;
++    color: var(--c-ink-soft);
++  }
++
++  .close {
++    display: grid;
++    place-items: center;
++    width: 32px;
++    height: 32px;
++    margin-left: auto;
++    border-radius: 8px;
++    color: var(--c-ink-soft);
++    transition: background-color 140ms var(--ease);
++  }
++
++  .close:hover,
++  .back:hover {
++    background: var(--c-raised);
++  }
++
++  .back {
++    display: inline-flex;
++    align-items: center;
++    gap: 6px;
++    height: 32px;
++    margin-left: -8px;
++    padding: 0 8px;
++    border-radius: 8px;
++    color: var(--c-ink-soft);
++    font-size: var(--t-sm);
++    text-decoration: none;
++  }
++
++  .drawer-head h2 {
++    font-size: 1.375rem;
++    font-weight: 600;
++    letter-spacing: -0.01em;
++    margin: 0 0 4px;
++    outline: none;
++  }
++
++  .meta-line {
++    margin: 0;
++    color: var(--c-ink-faint);
++    font-size: 0.8125rem;
++  }
++
++  .drawer-body {
++    overflow-y: auto;
++    overscroll-behavior: contain;
++    padding: 20px 24px 24px;
++    display: grid;
++    align-content: start;
++    gap: 20px;
++  }
++
++  .amount-card {
++    padding: 20px;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++    background: #fafbfc;
++  }
++
++  .amount-label {
++    margin: 0 0 4px;
++    color: var(--c-ink-soft);
++    font-size: 0.8125rem;
++  }
++
++  .amount {
++    margin: 0 0 16px;
++    font-size: 2rem;
++    font-weight: 600;
++    letter-spacing: -0.02em;
++    line-height: 1;
++    font-variant-numeric: tabular-nums;
++  }
++
++  .facts {
++    display: grid;
++    gap: 8px;
++    margin: 0;
++  }
++
++  .facts div,
++  .rows div {
++    display: grid;
++    grid-template-columns: 9rem minmax(0, 1fr);
++    gap: 12px;
++    align-items: baseline;
++  }
++
++  dt {
++    color: var(--c-ink-faint);
++    font-size: 0.8125rem;
++  }
++
++  dd {
++    margin: 0;
++    font-size: var(--t-sm);
++    overflow-wrap: anywhere;
++  }
++
++  .rows {
++    display: grid;
++    gap: 12px;
++    margin: 0;
++  }
++
++  .restricted {
++    color: var(--c-bad);
++    font-weight: 500;
++  }
++
++  .knowns {
++    display: grid;
++    grid-template-columns: 1fr 1fr;
++    gap: 12px;
++  }
++
++  .knowns section {
++    padding: 16px;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++  }
++
++  .knowns .unknowns {
++    border-style: dashed;
++    border-color: var(--c-line-strong);
++    background: repeating-linear-gradient(-45deg, transparent 0 8px, rgb(17 24 39 / 0.02) 8px 16px);
++  }
++
++  h3 {
++    font-size: 0.8125rem;
++    font-weight: 600;
++    margin: 0 0 8px;
++  }
++
++  .knowns ul {
++    margin: 0;
++    padding-left: 18px;
++    display: grid;
++    gap: 6px;
++    font-size: var(--t-sm);
++    color: var(--c-ink-soft);
++  }
++
++  .unknowns li::marker {
++    content: '? ';
++    color: var(--c-ink-faint);
++    font-family: var(--font-mono);
++  }
++
++  .progress {
++    padding: 16px;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++  }
++
++  .steps {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++    display: grid;
++    gap: 12px;
++    font-size: var(--t-sm);
++  }
++
++  .steps li {
++    display: grid;
++    grid-template-columns: 12px 1fr auto;
++    gap: 12px;
++    align-items: center;
++    color: var(--c-ink-faint);
++  }
++
++  .steps li.done,
++  .steps li.now {
++    color: var(--c-ink);
++  }
++
++  .step-dot {
++    width: 10px;
++    height: 10px;
++    border-radius: 50%;
++    border: 2px solid var(--c-line-strong);
++  }
++
++  .done .step-dot {
++    background: var(--c-ok);
++    border-color: var(--c-ok);
++  }
++
++  .now .step-dot {
++    border-color: var(--c-bank);
++    box-shadow: 0 0 0 3px var(--c-bank-soft);
++  }
++
++  .step-when {
++    color: var(--c-ink-faint);
++    font-size: 0.75rem;
++  }
++
++  .hint {
++    margin: 12px 0 0;
++    color: var(--c-ink-faint);
++    font-size: 0.8125rem;
++  }
++
++  .drawer-foot {
++    padding: 16px 24px 20px;
++    border-top: 1px solid var(--c-line);
++    background: var(--c-surface);
++  }
++
++  .foot-note {
++    margin: 10px 0 0;
++    color: var(--c-ink-faint);
++    font-size: 0.8125rem;
++    text-align: center;
++  }
++
++  .flash {
++    display: grid;
++    gap: 4px;
++    padding: 12px 14px;
++    border-radius: var(--radius-sm);
++    border: 1px solid var(--c-line);
++    font-size: var(--t-sm);
++  }
++
++  .flash--ok {
++    background: #e7f5ec;
++    border-color: rgb(21 128 61 / 0.25);
++  }
++
++  .flash--refused,
++  .flash--unavailable {
++    background: #fdecec;
++    border-color: rgb(185 28 28 / 0.25);
++  }
++
++  /* ---------------------------------------------------------- request step */
++  .questions {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++    display: grid;
++    gap: 8px;
++  }
++
++  .questions li {
++    display: grid;
++    grid-template-columns: 24px 1fr;
++    gap: 12px;
++    padding: 14px 16px;
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++    font-size: 0.9375rem;
++    line-height: 1.45;
++  }
++
++  .questions .meta {
++    margin-top: 6px;
++  }
++
++  .q-n {
++    display: grid;
++    place-items: center;
++    width: 24px;
++    height: 24px;
++    border-radius: 50%;
++    background: var(--c-alibi);
++    color: var(--c-alibi-ink);
++    font: 500 0.75rem / 1 var(--font-mono);
++  }
++
++  .chip {
++    display: inline-flex;
++    align-items: center;
++    gap: 6px;
++    padding: 4px 10px;
++    border-radius: 6px;
++    background: var(--c-raised);
++    font-size: 0.8125rem;
++  }
++
++  .btn {
++    display: inline-flex;
++    align-items: center;
++    justify-content: center;
++    height: 48px;
++    padding: 0 20px;
++    border: 0;
++    border-radius: 10px;
++    font: 600 0.9375rem / 1 var(--font-sans);
++    text-decoration: none;
++    cursor: pointer;
++    transition:
++      background-color 140ms var(--ease),
++      transform 120ms var(--ease);
++  }
++
++  .btn:active:not(:disabled) {
++    transform: scale(0.98);
++  }
++
++  .btn--block {
++    width: 100%;
++  }
++
++  .btn--alibi {
++    background: var(--c-alibi);
++    color: var(--c-alibi-ink);
++    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
++  }
++
++  .btn--alibi:hover:not(:disabled) {
++    background: #262a33;
++  }
++
++  .btn--primary {
++    background: var(--c-bank);
++    color: #fff;
++  }
++
++  .btn:disabled {
++    opacity: 0.45;
++    cursor: not-allowed;
++  }
++
++  .send {
++    margin: 0;
++  }
++
++  @media (max-width: 860px) {
++    .col-reason,
++    .col-opened,
++    .col-priority {
++      display: none;
++    }
++  }
++
++  @media (max-width: 560px) {
++    .knowns {
++      grid-template-columns: 1fr;
++    }
++    .facts div,
++    .rows div {
++      grid-template-columns: 1fr;
++      gap: 2px;
++    }
++    .drawer-head,
++    .drawer-body,
++    .drawer-foot {
++      padding-inline: 16px;
++    }
++  }
++
++  @media (prefers-reduced-motion: reduce) {
++    .drawer,
++    .pane,
++    .scrim {
++      transition: none;
++    }
++  }
++</style>
++
++<script>
++  /*
++   * In-place navigation for the queue: open a case, step into the request, go back, close. Each
++   * state keeps its real URL, so reload, back/forward and sharing a link all land on the same
++   * screen the server renders.
++   */
++  const queue = document.querySelector<HTMLElement>('[data-queue]');
++  const scrim = document.querySelector<HTMLElement>('[data-scrim]');
++  const drawers = new Map(
++    [...document.querySelectorAll<HTMLElement>('[data-drawer]')].map((d) => [d.dataset.drawer!, d]),
++  );
++  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
++  let current: HTMLElement | null =
++    [...drawers.values()].find((d) => d.classList.contains('is-open')) ?? null;
++  let lastRow: HTMLElement | null = null;
++
++  function parse(path: string): { id?: string; step: 'case' | 'request' } {
++    const m = path.match(/^\/cases\/([^/]+)\/(request\/)?$/);
++    return m
++      ? { id: decodeURIComponent(m[1]!), step: m[2] ? 'request' : 'case' }
++      : { step: 'case' };
++  }
++
++  function select(id?: string) {
++    for (const row of document.querySelectorAll<HTMLElement>('[data-row]')) {
++      if (row.dataset.row === id) row.setAttribute('aria-selected', 'true');
++      else row.removeAttribute('aria-selected');
++    }
++  }
++
++  function focusHeading(d: HTMLElement) {
++    const pane = d.querySelector<HTMLElement>(
++      d.dataset.step === 'request' ? '.pane--request h2' : '.pane--case h2',
++    );
++    pane?.focus({ preventScroll: true });
++  }
++
++  function open(id: string, step: 'case' | 'request') {
++    const d = drawers.get(id);
++    if (!d) return;
++    if (step === 'request' && !d.querySelector('.pane--request')) step = 'case';
++    if (current && current !== d) {
++      current.hidden = true;
++      current.classList.remove('is-open');
++    }
++    d.dataset.step = step;
++    if (current !== d) {
++      d.hidden = false;
++      d.classList.add('is-open');
++      if (!reduced) {
++        d.classList.add('is-entering');
++        requestAnimationFrame(() => requestAnimationFrame(() => d.classList.remove('is-entering')));
++      }
++    }
++    if (scrim) {
++      scrim.hidden = false;
++      scrim.classList.remove('is-hiding');
++    }
++    queue?.setAttribute('inert', '');
++    document.documentElement.style.overflow = 'hidden';
++    current = d;
++    select(id);
++    focusHeading(d);
++  }
++
++  function close() {
++    const d = current;
++    if (!d) return;
++    current = null;
++    select(undefined);
++    queue?.removeAttribute('inert');
++    document.documentElement.style.overflow = '';
++    const done = () => {
++      d.hidden = true;
++      d.classList.remove('is-open', 'is-leaving');
++      if (scrim) scrim.hidden = true;
++      lastRow?.querySelector<HTMLElement>('.row-link')?.focus({ preventScroll: true });
++    };
++    if (reduced) return done();
++    d.classList.add('is-leaving');
++    scrim?.classList.add('is-hiding');
++    d.addEventListener('transitionend', done, { once: true });
++  }
++
++  function go(path: string) {
++    if (location.pathname !== path) history.pushState(null, '', path);
++    const { id, step } = parse(path);
++    if (id) open(id, step);
++    else close();
++  }
++
++  document.addEventListener('click', (e) => {
++    const me = e as MouseEvent;
++    if (me.metaKey || me.ctrlKey || me.shiftKey || me.button !== 0) return;
++    const t = e.target as HTMLElement;
++    const openLink = t.closest<HTMLAnchorElement>('[data-open]');
++    if (openLink) {
++      e.preventDefault();
++      lastRow = openLink.closest('tr');
++      return go(`/cases/${openLink.dataset.open}/`);
++    }
++    const req = t.closest<HTMLAnchorElement>('[data-request]');
++    if (req) {
++      e.preventDefault();
++      return go(`/cases/${req.dataset.request}/request/`);
++    }
++    const back = t.closest<HTMLAnchorElement>('[data-back]');
++    if (back) {
++      e.preventDefault();
++      return go(`/cases/${back.dataset.back}/`);
++    }
++    if (t.closest('[data-close]') || t.closest('[data-scrim]')) {
++      e.preventDefault();
++      return go('/');
++    }
++  });
++
++  document.addEventListener('keydown', (e) => {
++    if (e.key === 'Escape' && current) go('/');
++  });
++
++  window.addEventListener('popstate', () => {
++    const { id, step } = parse(location.pathname);
++    if (id) open(id, step);
++    else close();
++  });
++
++  // Filters: show only the rows with that status.
++  const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-filter]')];
++  for (const tab of tabs) {
++    tab.addEventListener('click', () => {
++      for (const t of tabs) t.setAttribute('aria-pressed', String(t === tab));
++      const f = tab.dataset.filter;
++      for (const row of document.querySelectorAll<HTMLElement>('[data-row]'))
++        row.hidden = f !== 'all' && row.dataset.status !== f;
++    });
++  }
++
++  if (current) {
++    queue?.setAttribute('inert', '');
++    document.documentElement.style.overflow = 'hidden';
++  }
++</script>
+diff --git a/web/apps/bank/src/data/cases.ts b/web/apps/bank/src/data/cases.ts
+index 1580c23..2f6b4bb 100644
+--- a/web/apps/bank/src/data/cases.ts
++++ b/web/apps/bank/src/data/cases.ts
+@@ -2,7 +2,8 @@
+  * The simulated bank's fraud-review queue. SYNTHETIC: fictional customers and
+  * cases. The first case is Maya's £2,160 credit from the team's canonical
+  * fixture (development case 1). The others only fill the queue: their IDs use
+- * a `txn-q-` prefix so they can never be mistaken for data's case records.
++ * a `txn-q-` prefix so they can never be mistaken for data's case records,
++ * and they carry no Alibi request, so the console cannot send one for them.
+  */
+ 
+ export const bank = { id: 'bank_a', name: 'Bank A', unit: 'Financial Crime Operations' } as const;
+@@ -10,6 +11,16 @@ export const bank = { id: 'bank_a', name: 'Bank A', unit: 'Financial Crime Opera
+ export const analyst = { name: 'J. Okafor' } as const;
+ 
+ export type CaseStatus = 'open' | 'awaiting_customer' | 'closed';
++export type Priority = 'high' | 'medium' | 'low';
++
++/** The Alibi request a case can send: the bank service issues it by ID (POST /rfc). */
++export interface CaseRequest {
++  /** The bank service's request ID for this case, from data's case file. */
++  id: string;
++  questions: { id: string; text: string }[];
++  /** The customer's reply window, as the request carries it. */
++  expiresAt: string;
++}
+ 
+ export interface FraudCase {
+   id: string;
+@@ -17,10 +28,16 @@ export interface FraudCase {
+   /** Masked: analysts see a reference, not the full account number. */
+   accountRef: string;
+   reason: string;
++  priority: Priority;
+   status: CaseStatus;
+   openedAt: string;
+   restriction: string;
+   txn: { id: string; bookedAt: string; amountMinor: number; description: string };
++  /** What the bank's own systems show about the transaction. */
++  known: string[];
++  /** What the bank cannot see, and so has to ask about. */
++  unknown: string[];
++  request?: CaseRequest;
+ }
+ 
+ export const cases: FraudCase[] = [
+@@ -29,6 +46,7 @@ export const cases: FraudCase[] = [
+     customer: 'Maya',
+     accountRef: 'acct_****_001',
+     reason: 'Unexplained incoming credit above usual activity',
++    priority: 'high',
+     status: 'open',
+     openedAt: '2026-11-01T15:20:00Z',
+     restriction: 'Outgoing payments paused pending review',
+@@ -38,12 +56,31 @@ export const cases: FraudCase[] = [
+       amountMinor: 216000,
+       description: 'MOCK MARKETPLACE PAYOUT PO-0001-01',
+     },
++    known: [
++      'One credit, larger than this account usually receives',
++      'Payer reference names a marketplace payout',
++      'No earlier credits from this payer',
++    ],
++    unknown: ['Where the money came from', 'How the amount is made up'],
++    // Bank A's request in data's case 1 (agents/data/out/cases/case_0001.json, rfc-0001-01).
++    request: {
++      id: 'rfc-0001-01',
++      questions: [
++        {
++          id: 'q.source_of_funds',
++          text: 'What is the origin of the incoming payment of £2,160.00 booked on 2026-10-28?',
++        },
++        { id: 'q.breakdown', text: 'Please show how this amount was calculated.' },
++      ],
++      expiresAt: '2026-11-09T09:00:00Z',
++    },
+   },
+   {
+     id: 'FC-0152',
+     customer: 'D. Mensah',
+     accountRef: 'acct_****_014',
+     reason: 'Several credits from a new counterparty',
++    priority: 'medium',
+     status: 'open',
+     openedAt: '2026-11-03T10:05:00Z',
+     restriction: 'None',
+@@ -53,12 +90,51 @@ export const cases: FraudCase[] = [
+       amountMinor: 84000,
+       description: 'FASTER PAYMENT',
+     },
++    known: ['Four credits in six days', 'Payer first seen this month'],
++    unknown: ['Relationship to the payer'],
++  },
++  {
++    id: 'FC-0155',
++    customer: 'S. Varga',
++    accountRef: 'acct_****_031',
++    reason: 'Credit followed by an immediate outgoing transfer',
++    priority: 'high',
++    status: 'open',
++    openedAt: '2026-11-04T09:12:00Z',
++    restriction: 'Outgoing payments paused pending review',
++    txn: {
++      id: 'txn-q-0155',
++      bookedAt: '2026-11-04T08:41:00Z',
++      amountMinor: 450000,
++      description: 'FASTER PAYMENT',
++    },
++    known: ['Funds left the account within an hour', 'Receiving account opened recently'],
++    unknown: ['Purpose of both payments'],
++  },
++  {
++    id: 'FC-0144',
++    customer: 'L. Brennan',
++    accountRef: 'acct_****_022',
++    reason: 'Cash deposits split across branches',
++    priority: 'medium',
++    status: 'awaiting_customer',
++    openedAt: '2026-10-30T13:30:00Z',
++    restriction: 'None',
++    txn: {
++      id: 'txn-q-0144',
++      bookedAt: '2026-10-29T11:02:00Z',
++      amountMinor: 95000,
++      description: 'CASH DEPOSIT',
++    },
++    known: ['Three deposits on one day'],
++    unknown: ['Source of the cash'],
+   },
+   {
+     id: 'FC-0139',
+     customer: 'R. Ilic',
+     accountRef: 'acct_****_027',
+     reason: 'Card-not-present purchase pattern',
++    priority: 'low',
+     status: 'closed',
+     openedAt: '2026-10-25T08:40:00Z',
+     restriction: 'None',
+@@ -68,9 +144,15 @@ export const cases: FraudCase[] = [
+       amountMinor: -12999,
+       description: 'CARD PURCHASE',
+     },
++    known: ['Confirmed by the customer by phone'],
++    unknown: [],
+   },
+ ];
+ 
++export function findCase(id: string | undefined): FraudCase | undefined {
++  return cases.find((c) => c.id === id);
++}
++
+ /** The questions an RFC can carry. IDs match shared/CONTRACTS.md. */
+ export const questions = [
+   { id: 'q.source_of_funds', text: 'What is the source of this credit?' },
+@@ -86,3 +168,26 @@ const gbp = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP'
+ export function formatGBP(minor: number): string {
+   return gbp.format(minor / 100);
+ }
++
++const dayFmt = new Intl.DateTimeFormat('en-GB', {
++  day: 'numeric',
++  month: 'short',
++  timeZone: 'UTC',
++});
++const timeFmt = new Intl.DateTimeFormat('en-GB', {
++  hour: '2-digit',
++  minute: '2-digit',
++  hour12: false,
++  timeZone: 'UTC',
++});
++
++/** "28 Oct" in UTC. */
++export function day(iso: string): string {
++  return dayFmt.format(new Date(iso));
++}
++
++/** "28 Oct, 06:30 UTC". */
++export function when(iso: string): string {
++  const d = new Date(iso);
++  return `${dayFmt.format(d)}, ${timeFmt.format(d)} UTC`;
++}
+diff --git a/web/apps/bank/src/layouts/ConsoleLayout.astro b/web/apps/bank/src/layouts/ConsoleLayout.astro
+index cbb830c..1b666ee 100644
+--- a/web/apps/bank/src/layouts/ConsoleLayout.astro
++++ b/web/apps/bank/src/layouts/ConsoleLayout.astro
+@@ -1,8 +1,10 @@
+ ---
+ /**
+- * Shell for the simulated bank console: dense, internal-tool styling that
+- * overrides the shared tokens. The Alibi button keeps Alibi's colours, as an
+- * integrated third-party action would.
++ * Shell for the simulated bank console: a quiet, dense internal tool. The
++ * bank's chrome stays graphite with one steel-teal accent for selection and
++ * focus; the Alibi buttons keep Alibi's own black, as an integrated
++ * third-party action would, so they are the one bold thing on the screen.
++ * The shared tokens are overridden here, so every console page follows.
+  */
+ import '@alibi/ui/base.css';
+ 
+@@ -10,11 +12,20 @@ import { analyst, bank } from '@/data/cases';
+ 
+ interface Props {
+   title?: string;
++  /** Which top-level section is current, for the nav. */
++  section?: 'cases' | 'inbox' | 'sign-in';
++  /** Wider main column for the case queue. */
++  wide?: boolean;
+ }
+ 
+-const { title } = Astro.props;
++const { title, section, wide = false } = Astro.props;
+ const pageTitle = title ? `${title} · ${bank.name} ${bank.unit}` : `${bank.name} ${bank.unit}`;
+-import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
++const fonts =
++  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
++const nav = [
++  { href: '/', label: 'Cases', id: 'cases' },
++  { href: '/inbox/', label: 'Alibi inbox', id: 'inbox' },
++] as const;
+ ---
+ 
+ <!doctype html>
+@@ -25,25 +36,48 @@ import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
+     <meta name="robots" content="noindex" />
+     <title>{pageTitle}</title>
+     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
++    <link rel="preconnect" href="https://fonts.googleapis.com" />
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++    <link rel="stylesheet" href={fonts} />
+   </head>
+   <body>
+-    <ReplayBanner />
+     <a class="skip-link" href="#main">
+       Skip to content
+     </a>
+     <p class="simulated">Simulated bank system for the Alibi demo. Synthetic data only.</p>
+     <header class="console-header">
+-      <a class="console-name" href="/">
+-        {bank.name} · {bank.unit}
+-      </a>
+-      <nav aria-label="Console">
+-        <a href="/">Cases</a>
+-        <a href="/inbox/">Alibi inbox</a>
+-        <a href="/sign-in/">Sign in</a>
+-      </nav>
+-      <span>Signed in as {analyst.name}</span>
++      <div class="console-inner" class:list={{ wide }}>
++        <a class="console-name" href="/">
++          <span class="mark" aria-hidden="true">
++            A
++          </span>
++          <span>
++            <strong>{bank.name}</strong>
++            <span class="unit">{bank.unit}</span>
++          </span>
++        </a>
++        <nav aria-label="Console">
++          {nav.map((n) => (
++            <a href={n.href} aria-current={section === n.id ? 'page' : undefined}>
++              {n.label}
++            </a>
++          ))}
++        </nav>
++        <div class="who">
++          <span class="avatar" aria-hidden="true">
++            {analyst.name
++              .split(' ')
++              .map((p) => p[0])
++              .join('')}
++          </span>
++          <span class="who-name">{analyst.name}</span>
++          <a href="/sign-in/" aria-current={section === 'sign-in' ? 'page' : undefined}>
++            Sign in
++          </a>
++        </div>
++      </div>
+     </header>
+-    <main id="main" class="console-main">
++    <main id="main" class="console-main" class:list={{ wide }}>
+       <slot />
+     </main>
+   </body>
+@@ -51,38 +85,179 @@ import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
+ 
+ <style is:global>
+   :root {
+-    --c-bg: #eef0f3;
+-    --c-console: #2b3440;
++    /* Cool graphite ramp: an operations tool people sit in all day. */
++    --c-bg: #f5f6f8;
++    --c-surface: #ffffff;
++    --c-raised: #eef0f3;
++    --c-line: rgb(17 24 39 / 0.09);
++    --c-line-strong: rgb(17 24 39 / 0.16);
++    --c-ink: #111827;
++    --c-ink-soft: #4b5565;
++    --c-ink-faint: #6b7487;
++    --c-console: #111827;
++    /* The bank's own accent: selection, focus and the current nav item. */
++    --c-bank: #0f6e7d;
++    --c-bank-soft: #e6f2f4;
++    --c-ok: #15803d;
++    --c-warn: #a16207;
++    --c-bad: #b91c1c;
++    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
++    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+     --t-base: 0.9375rem;
++    --radius-sm: 8px;
++    --radius-md: 12px;
++    --ease: cubic-bezier(0.22, 1, 0.36, 1);
++    --shadow-float: 0 12px 32px rgb(17 24 39 / 0.12), 0 1px 2px rgb(17 24 39 / 0.06);
++  }
++
++  body {
++    -webkit-font-smoothing: antialiased;
++    font-feature-settings: 'cv11', 'ss01';
++  }
++
++  :focus-visible {
++    outline: 2px solid var(--c-bank);
++    outline-offset: 2px;
++  }
++
++  .simulated {
++    font-size: var(--t-xs);
+   }
+ </style>
+ 
+ <style>
+   .console-header {
++    position: sticky;
++    top: 0;
++    z-index: 20;
++    background: var(--c-console);
++    color: #e5e7eb;
++  }
++
++  .console-inner {
+     display: flex;
+-    justify-content: space-between;
+     align-items: center;
+-    flex-wrap: wrap;
+-    gap: var(--space-xs);
+-    padding: var(--space-xs) var(--gutter);
+-    background: var(--c-console);
+-    color: var(--c-surface);
+-    font-size: var(--t-sm);
++    gap: 24px;
++    max-width: var(--page-max);
++    height: 56px;
++    margin-inline: auto;
++    padding-inline: 24px;
++  }
++
++  .console-inner.wide,
++  .console-main.wide {
++    max-width: 88rem;
+   }
+ 
+   .console-name {
+-    font-weight: 700;
++    display: flex;
++    align-items: center;
++    gap: 12px;
+     text-decoration: none;
++    font-size: var(--t-sm);
++    line-height: 1.2;
++  }
++
++  .console-name strong {
++    display: block;
++    font-weight: 600;
++    color: #fff;
++  }
++
++  .unit {
++    color: #9ca3af;
++    font-size: 0.75rem;
+   }
+ 
+-  .console-header nav {
++  .mark {
++    display: grid;
++    place-items: center;
++    width: 28px;
++    height: 28px;
++    border-radius: 8px;
++    background: var(--c-bank);
++    color: #fff;
++    font-weight: 600;
++    font-size: 0.875rem;
++  }
++
++  nav {
+     display: flex;
+-    gap: var(--space-sm);
++    gap: 4px;
++    margin-left: 16px;
++  }
++
++  nav a,
++  .who a {
++    padding: 6px 12px;
++    border-radius: 8px;
++    color: #cbd5e1;
++    font-size: var(--t-sm);
++    font-weight: 500;
++    text-decoration: none;
++    transition: background-color 140ms var(--ease);
++  }
++
++  nav a:hover,
++  .who a:hover {
++    background: rgb(255 255 255 / 0.08);
++  }
++
++  nav a[aria-current='page'] {
++    background: rgb(255 255 255 / 0.1);
++    color: #fff;
++  }
++
++  .who {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    margin-left: auto;
++    font-size: var(--t-sm);
++  }
++
++  .avatar {
++    display: grid;
++    place-items: center;
++    width: 28px;
++    height: 28px;
++    border-radius: 50%;
++    background: #374151;
++    color: #fff;
++    font-size: 0.6875rem;
++    font-weight: 600;
+   }
+ 
+   .console-main {
+     max-width: var(--page-max);
+     margin-inline: auto;
+-    padding: var(--space-md) var(--gutter) var(--space-2xl);
++    padding: 32px 24px 80px;
++  }
++
++  @media (max-width: 720px) {
++    .console-inner {
++      gap: 12px;
++      padding-inline: 16px;
++    }
++    .unit,
++    .who-name {
++      display: none;
++    }
++    nav {
++      margin-left: 0;
++    }
++    nav a,
++    .who a {
++      padding: 6px 8px;
++    }
++    .console-main {
++      padding: 20px 16px 64px;
++    }
++  }
++
++  @media (max-width: 480px) {
++    .console-name > span:not(.mark) {
++      display: none;
++    }
+   }
+ </style>
+diff --git a/web/apps/bank/src/lib/actions.ts b/web/apps/bank/src/lib/actions.ts
+index 47ca9ad..fae0a5d 100644
+--- a/web/apps/bank/src/lib/actions.ts
++++ b/web/apps/bank/src/lib/actions.ts
+@@ -1,5 +1,5 @@
+ /**
+- * The bank console's only two actions, mapped to Bank A routes on the server. The form never
++ * The bank console's only three actions, mapped to Bank A routes on the server. The form never
+  * supplies a backend path: it names a fixed kind and an ID, both validated here, and only the
+  * allowlisted fields are forwarded (eval, 04:17Z: /act/ must not forward arbitrary paths with the
+  * Bank A credential). `handleAct` makes no upstream call unless the request is same-origin, carries
+@@ -8,9 +8,11 @@
+ 
+ import type { ActionResult } from '@alibi/ui/api';
+ 
++import { findCase } from '../data/cases';
++
+ import { BANK_ROUTES, type BankTarget } from './bankApi';
+ 
+-export type ActKind = 'decision' | 'followup';
++export type ActKind = 'decision' | 'followup' | 'request';
+ 
+ const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+ const DECISIONS = new Set(['clear', 'escalate', 'request_more']);
+@@ -65,6 +67,12 @@ export function planAction(
+       body: { decision: 'request_more', reason, requested_evidence: [question] },
+     };
+   }
++  if (kind === 'request') {
++    // The form names a case; the request ID comes from the case itself, never from the form.
++    const request = findCase(fields.case_id)?.request;
++    if (!request) return { ok: false, reason: 'this case has no Alibi request' };
++    return { ok: true, path: BANK_ROUTES.rfc(target), body: { request_id: request.id } };
++  }
+   return { ok: false, reason: 'unknown action' };
+ }
+ 
+diff --git a/web/apps/bank/src/lib/bankApi.ts b/web/apps/bank/src/lib/bankApi.ts
+index 6a844bd..1e9dff4 100644
+--- a/web/apps/bank/src/lib/bankApi.ts
++++ b/web/apps/bank/src/lib/bankApi.ts
+@@ -148,6 +148,8 @@ export const BANK_ROUTES = {
+   package: (t: BankTarget, id: string) => `${t.prefix}/packages/${encodeURIComponent(id)}`,
+   disposition: (t: BankTarget, id: string) =>
+     `${t.prefix}/packages/${encodeURIComponent(id)}/disposition`,
++  /** Issue a request for context; the body names one of this bank's case requests by ID. */
++  rfc: (t: BankTarget) => `${t.prefix}/rfc`,
+ };
+ 
+ // ------------------------------------------------------------------ conversion
+diff --git a/web/apps/bank/src/lib/caseState.ts b/web/apps/bank/src/lib/caseState.ts
+new file mode 100644
+index 0000000..4b77e30
+--- /dev/null
++++ b/web/apps/bank/src/lib/caseState.ts
+@@ -0,0 +1,43 @@
++/**
++ * Where each case stands with Alibi, from the bank service's own inbox: nothing asked yet, a
++ * request waiting for the customer, or a package received. Without a live inbox (the built-in
++ * preview) nothing has been sent, so every case starts at "not requested" and the full request
++ * flow stays visible.
++ */
++import type { FraudCase } from '../data/cases';
++
++import type { AnalystInbox } from './types';
++
++export type AlibiState =
++  | { kind: 'unavailable' }
++  | { kind: 'closed' }
++  | { kind: 'not_requested' }
++  | { kind: 'requested'; requestId: string; sentAt: string }
++  | { kind: 'received'; requestId: string; packageId: string; href: string; receivedAt: string };
++
++export function alibiState(c: FraudCase, inbox: AnalystInbox | null): AlibiState {
++  if (c.status === 'closed') return { kind: 'closed' };
++  if (!c.request) return { kind: 'unavailable' };
++  const id = c.request.id;
++  const pkg = inbox?.packages.find((p) => p.request_id === id);
++  if (pkg)
++    return {
++      kind: 'received',
++      requestId: id,
++      packageId: pkg.package_id,
++      href: pkg.href,
++      receivedAt: pkg.received_at,
++    };
++  const sent = inbox?.requests_sent.find((r) => r.request_id === id);
++  if (sent) return { kind: 'requested', requestId: id, sentAt: sent.sent_at };
++  return { kind: 'not_requested' };
++}
++
++/** The status column's words; never colour alone. */
++export function statusLabel(c: FraudCase, s: AlibiState): string {
++  if (s.kind === 'received') return 'Alibi received';
++  if (s.kind === 'requested') return 'Awaiting customer';
++  if (c.status === 'awaiting_customer') return 'Awaiting customer';
++  if (c.status === 'closed') return 'Closed';
++  return 'Open';
++}
+diff --git a/web/apps/bank/src/lib/queue.ts b/web/apps/bank/src/lib/queue.ts
+new file mode 100644
+index 0000000..f384ce5
+--- /dev/null
++++ b/web/apps/bank/src/lib/queue.ts
+@@ -0,0 +1,61 @@
++/**
++ * What the case queue pages (/, /cases/<id>/, /cases/<id>/request/) need from the server: the
++ * analyst's session, each case's Alibi state from the bank service's live inbox, and a one-off
++ * flash from the last action. Without a configured bank service the queue is the built-in
++ * preview: every case starts at "not requested" and sending is off.
++ */
++import type { AstroCookies } from 'astro';
++import {
++  ALIBI_API_ORIGIN,
++  BANK_API_ORIGIN,
++  BANK_A_TOKEN,
++  BANK_SESSION_SECRET,
++} from 'astro:env/server';
++
++import { analyst as demoAnalyst, bank, cases } from '@/data/cases';
++
++import { bankTarget } from './bankApi';
++import { alibiState, type AlibiState } from './caseState';
++import { loadInbox } from './load';
++import { RECIPIENT, backendHeaders, takeFlash, type Flash } from './screens';
++import { SESSION_COOKIE, verifySession } from './session';
++
++export interface Queue {
++  /** True when the bank service answered; false in the preview. */
++  live: boolean;
++  /** Why the queue is a preview, when it is. */
++  previewReason: string | null;
++  states: Record<string, AlibiState>;
++  flash: Flash | null;
++}
++
++export type QueueLoad = { redirect: string } | { queue: Queue };
++
++export async function loadQueue(cookies: AstroCookies): Promise<QueueLoad> {
++  const analyst = await verifySession(
++    BANK_SESSION_SECRET,
++    cookies.get(SESSION_COOKIE)?.value,
++    Date.now(),
++  );
++  const target = bankTarget(BANK_API_ORIGIN, ALIBI_API_ORIGIN);
++  if (target.origin && !analyst) return { redirect: '/sign-in/' };
++
++  const who = { id: RECIPIENT, name: bank.name, analyst_name: analyst ?? demoAnalyst.name };
++  const loaded = target.origin
++    ? await loadInbox(target, who, backendHeaders(BANK_A_TOKEN))
++    : { source: 'fixture' as const, reason: 'The bank service is not connected here.' };
++  const live = loaded.source === 'live';
++  const inbox = loaded.source === 'live' ? loaded.data : null;
++
++  const states: Record<string, AlibiState> = {};
++  for (const c of cases) states[c.id] = alibiState(c, inbox);
++
++  return {
++    queue: {
++      live,
++      previewReason: live ? null : (('reason' in loaded ? loaded.reason : null) ?? null),
++      states,
++      flash: takeFlash(cookies),
++    },
++  };
++}
+diff --git a/web/apps/bank/src/pages/act.ts b/web/apps/bank/src/pages/act.ts
+index 52512ca..2e97a20 100644
+--- a/web/apps/bank/src/pages/act.ts
++++ b/web/apps/bank/src/pages/act.ts
+@@ -1,5 +1,5 @@
+ /**
+- * POST /act/: the console's two analyst actions (decision, follow-up). The backend path is built
++ * POST /act/: the console's three analyst actions (request, decision, follow-up). The backend path is built
+  * on the server from a fixed kind and a validated ID (src/lib/actions.ts); the form never supplies
+  * a path. Requires a same-origin POST and a signed analyst session; otherwise nothing is sent
+  * upstream and the Bank A credential is never used. Refusals from the backend are shown verbatim.
+@@ -57,7 +57,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
+   else
+     setFlash(cookies, {
+       kind: 'ok',
+-      message: 'Recorded. The screen shows the backend’s current state.',
++      message:
++        fields.kind === 'request'
++          ? 'Request sent. The customer has it in their Alibi.'
++          : 'Recorded. The screen shows the backend’s current state.',
+     });
+   return redirect(returnTo, 303);
+ };
+diff --git a/web/apps/bank/src/pages/cases/[id]/index.astro b/web/apps/bank/src/pages/cases/[id]/index.astro
+index 18f6e62..1439cf3 100644
+--- a/web/apps/bank/src/pages/cases/[id]/index.astro
++++ b/web/apps/bank/src/pages/cases/[id]/index.astro
+@@ -1,117 +1,20 @@
+ ---
+-/** One case, with the "Request customer's Alibi" action. */
+-import type { GetStaticPaths } from 'astro';
+-
+-// Built from the fixed case list, so prerendered.
+-export const prerender = true;
+-import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
+-
++/** The case queue with one case's panel open. Same screen as /, rendered with the panel in place. */
++import CaseQueue from '@/components/CaseQueue.astro';
+ import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
+-import { cases, formatGBP, type FraudCase } from '@/data/cases';
++import { findCase } from '@/data/cases';
++import { loadQueue } from '@/lib/queue';
+ 
+-export const getStaticPaths = (() =>
+-  cases.map((c) => ({ params: { id: c.id }, props: { fraudCase: c } }))) satisfies GetStaticPaths;
++export const prerender = false;
+ 
+-interface Props {
+-  fraudCase: FraudCase;
+-}
++const fraudCase = findCase(Astro.params.id);
++if (!fraudCase) return new Response('Case not found', { status: 404 });
+ 
+-const { fraudCase: c } = Astro.props;
+-const closed = c.status === 'closed';
++const loaded = await loadQueue(Astro.cookies);
++if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
++Astro.response.headers.set('Cache-Control', 'private, no-store');
+ ---
+ 
+-<ConsoleLayout title={`Case ${c.id}`}>
+-  <p>
+-    <a href="/">← Case queue</a>
+-  </p>
+-  <h1>Case {c.id}</h1>
+-
+-  <div class="layout">
+-    <section class="panel" aria-labelledby="case-title">
+-      <h2 id="case-title">Summary</h2>
+-      <dl>
+-        <dt>Customer</dt>
+-        <dd>
+-          {c.customer} · <code>{c.accountRef}</code>
+-        </dd>
+-        <dt>Reason</dt>
+-        <dd>{c.reason}</dd>
+-        <dt>Status</dt>
+-        <dd>{c.status.replace('_', ' ')}</dd>
+-        <dt>Restriction</dt>
+-        <dd>{c.restriction}</dd>
+-        <dt>Opened</dt>
+-        <dd>
+-          <code>{c.openedAt}</code>
+-        </dd>
+-      </dl>
+-    </section>
+-
+-    <section class="panel" aria-labelledby="txn-title">
+-      <h2 id="txn-title">Transaction under review</h2>
+-      <dl>
+-        <dt>Transaction</dt>
+-        <dd>
+-          <code>{c.txn.id}</code>
+-        </dd>
+-        <dt>Booked</dt>
+-        <dd>
+-          <code>{c.txn.bookedAt}</code>
+-        </dd>
+-        <dt>Amount</dt>
+-        <dd>{formatGBP(c.txn.amountMinor)}</dd>
+-        <dt>Description</dt>
+-        <dd>{c.txn.description}</dd>
+-      </dl>
+-    </section>
+-
+-    <section class="panel actions" aria-labelledby="actions-title">
+-      <h2 id="actions-title">Actions</h2>
+-      <p>
+-        Ask the customer to explain this transaction through Alibi. They choose what to share, and
+-        you receive a signed package you can verify.
+-      </p>
+-      <RequestAlibiButton
+-        href={`/cases/${c.id}/request/`}
+-        disabledReason={closed ? 'This case is closed.' : undefined}
+-      />
+-    </section>
+-  </div>
++<ConsoleLayout title={`Case ${fraudCase.id}`} section="cases" wide>
++  <CaseQueue queue={loaded.queue} openId={fraudCase.id} />
+ </ConsoleLayout>
+-
+-<style>
+-  h1 {
+-    font-size: var(--t-lg);
+-  }
+-
+-  .layout {
+-    display: grid;
+-    gap: var(--space-sm);
+-    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+-  }
+-
+-  .panel {
+-    padding: var(--space-sm);
+-    background: var(--c-surface);
+-    border: 1px solid var(--c-line);
+-  }
+-
+-  h2 {
+-    font-size: var(--t-md);
+-  }
+-
+-  dl {
+-    display: grid;
+-    grid-template-columns: max-content 1fr;
+-    gap: var(--space-3xs) var(--space-sm);
+-    margin: 0;
+-  }
+-
+-  dt {
+-    color: var(--c-ink-faint);
+-  }
+-
+-  dd {
+-    margin: 0;
+-  }
+-</style>
+diff --git a/web/apps/bank/src/pages/cases/[id]/request.astro b/web/apps/bank/src/pages/cases/[id]/request.astro
+index 6d106af..f1c278f 100644
+--- a/web/apps/bank/src/pages/cases/[id]/request.astro
++++ b/web/apps/bank/src/pages/cases/[id]/request.astro
+@@ -1,114 +1,29 @@
+ ---
+ /**
+- * Compose a Request for Context. The analyst picks the questions; scope is
+- * fixed to the case's transaction. The audience is never a form field: the
+- * backend takes it from the bank's credential (execution SP-20, SP-24).
+- * Sending is not wired yet: it will go to the mock bank service, which
+- * delivers the RFC to the customer's Alibi.
++ * "Request customer's Alibi": the panel's review step. It shows exactly what will be asked (the
++ * case's own request, from data's case file), what it is about, the reply deadline and who sees
++ * the answer, then one Send. The form names only the case; /act/ picks the request ID on the
++ * server and posts it to the bank service's /rfc. The audience is never a form field: the backend
++ * takes it from the bank's credential (execution SP-20, SP-24).
+  */
+-import type { GetStaticPaths } from 'astro';
+-
+-// Built from the fixed case list, so prerendered.
+-export const prerender = true;
+-
++import CaseQueue from '@/components/CaseQueue.astro';
+ import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
+-import { bank, cases, formatGBP, questions, type FraudCase } from '@/data/cases';
++import { findCase } from '@/data/cases';
++import { loadQueue } from '@/lib/queue';
+ 
+-export const getStaticPaths = (() =>
+-  cases
+-    .filter((c) => c.status !== 'closed')
+-    .map((c) => ({ params: { id: c.id }, props: { fraudCase: c } }))) satisfies GetStaticPaths;
++export const prerender = false;
+ 
+-interface Props {
+-  fraudCase: FraudCase;
+-}
++const fraudCase = findCase(Astro.params.id);
++if (!fraudCase) return new Response('Case not found', { status: 404 });
+ 
+-const { fraudCase: c } = Astro.props;
+-const defaults = new Set(['q.source_of_funds', 'q.breakdown']);
++const loaded = await loadQueue(Astro.cookies);
++if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
++// Only a case that can still be asked has a request step.
++if (loaded.queue.states[fraudCase.id]?.kind !== 'not_requested')
++  return Astro.redirect(`/cases/${fraudCase.id}/`, 303);
++Astro.response.headers.set('Cache-Control', 'private, no-store');
+ ---
+ 
+-<ConsoleLayout title={`Request context · ${c.id}`}>
+-  <p>
+-    <a href={`/cases/${c.id}/`}>← Case {c.id}</a>
+-  </p>
+-  <h1>Request customer’s Alibi</h1>
+-
+-  <form class="panel" method="get" action="#" aria-describedby="not-wired">
+-    <fieldset>
+-      <legend>Scope</legend>
+-      <p>
+-        Transaction <code>{c.txn.id}</code>, {formatGBP(c.txn.amountMinor)}, booked
+-        <code>{c.txn.bookedAt}</code>. Recipient <code>{bank.id}</code>.
+-      </p>
+-      <input type="hidden" name="txn_ids" value={c.txn.id} />
+-    </fieldset>
+-
+-    <fieldset>
+-      <legend>Questions</legend>
+-      {questions.map((q) => (
+-        <label>
+-          <input type="checkbox" name="question_ids" value={q.id} checked={defaults.has(q.id)} />
+-          {q.text} <code>{q.id}</code>
+-        </label>
+-      ))}
+-    </fieldset>
+-
+-    <label class="expiry">
+-      Respond within
+-      <select name="expires_in_days">
+-        <option value="3">3 days</option>
+-        <option value="7" selected>
+-          7 days
+-        </option>
+-        <option value="14">14 days</option>
+-      </select>
+-    </label>
+-
+-    <p id="not-wired" class="note">
+-      Not wired yet. Sending will go through the mock bank service to the customer’s Alibi. The
+-      customer decides what to share; nothing about their account changes automatically.
+-    </p>
+-    <button type="submit" disabled>
+-      Send request
+-    </button>
+-  </form>
++<ConsoleLayout title={`Request Alibi · ${fraudCase.id}`} section="cases" wide>
++  <CaseQueue queue={loaded.queue} openId={fraudCase.id} step="request" />
+ </ConsoleLayout>
+-
+-<style>
+-  h1 {
+-    font-size: var(--t-lg);
+-  }
+-
+-  .panel {
+-    max-width: var(--measure);
+-    padding: var(--space-md);
+-    background: var(--c-surface);
+-    border: 1px solid var(--c-line);
+-  }
+-
+-  fieldset {
+-    border: 0;
+-    padding: 0;
+-    margin: 0 0 var(--space-md);
+-  }
+-
+-  legend {
+-    font-weight: 700;
+-    margin-bottom: var(--space-2xs);
+-  }
+-
+-  label {
+-    display: block;
+-    margin-block: var(--space-2xs);
+-  }
+-
+-  .note {
+-    font-size: var(--t-sm);
+-    color: var(--c-ink-soft);
+-  }
+-
+-  button {
+-    min-height: 40px;
+-    padding-inline: var(--space-md);
+-  }
+-</style>
+diff --git a/web/apps/bank/src/pages/inbox.astro b/web/apps/bank/src/pages/inbox.astro
+index 541d29b..88657df 100644
+--- a/web/apps/bank/src/pages/inbox.astro
++++ b/web/apps/bank/src/pages/inbox.astro
+@@ -34,7 +34,7 @@ const loaded = await loadInbox(target, who, backendHeaders(BANK_A_TOKEN));
+ Astro.response.headers.set('Cache-Control', 'private, no-store');
+ ---
+ 
+-<ConsoleLayout title="Alibi inbox">
++<ConsoleLayout title="Alibi inbox" section="inbox">
+   <h1>Alibi packages received</h1>
+   {loaded.source === 'missing' ? (
+     <p>{loaded.reason}</p>
+diff --git a/web/apps/bank/src/pages/index.astro b/web/apps/bank/src/pages/index.astro
+index b4e769c..814716d 100644
+--- a/web/apps/bank/src/pages/index.astro
++++ b/web/apps/bank/src/pages/index.astro
+@@ -1,56 +1,16 @@
+ ---
+-/** The case queue. */
++/** The case queue. Cases open in a slide-over panel (src/components/CaseQueue.astro). */
++import CaseQueue from '@/components/CaseQueue.astro';
+ import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
+-import { cases, formatGBP } from '@/data/cases';
+----
+-
+-<ConsoleLayout title="Case queue">
+-  <h1>Case queue</h1>
+-  <div class="table-wrap">
+-    <table>
+-      <thead>
+-        <tr>
+-          <th scope="col">Case</th>
+-          <th scope="col">Customer</th>
+-          <th scope="col">Reason</th>
+-          <th scope="col">Amount</th>
+-          <th scope="col">Status</th>
+-          <th scope="col">Opened</th>
+-        </tr>
+-      </thead>
+-      <tbody>
+-        {cases.map((c) => (
+-          <tr>
+-            <td>
+-              <a href={`/cases/${c.id}/`}>{c.id}</a>
+-            </td>
+-            <td>{c.customer}</td>
+-            <td>{c.reason}</td>
+-            <td class="num">{formatGBP(c.txn.amountMinor)}</td>
+-            <td>{c.status.replace('_', ' ')}</td>
+-            <td>
+-              <code>{c.openedAt}</code>
+-            </td>
+-          </tr>
+-        ))}
+-      </tbody>
+-    </table>
+-  </div>
+-</ConsoleLayout>
++import { loadQueue } from '@/lib/queue';
+ 
+-<style>
+-  h1 {
+-    font-size: var(--t-lg);
+-  }
++export const prerender = false;
+ 
+-  .table-wrap {
+-    overflow-x: auto;
+-    background: var(--c-surface);
+-    border: 1px solid var(--c-line);
+-  }
++const loaded = await loadQueue(Astro.cookies);
++if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
++Astro.response.headers.set('Cache-Control', 'private, no-store');
++---
+ 
+-  .num {
+-    text-align: right;
+-    font-variant-numeric: tabular-nums;
+-  }
+-</style>
++<ConsoleLayout title="Cases" section="cases" wide>
++  <CaseQueue queue={loaded.queue} />
++</ConsoleLayout>
+diff --git a/web/apps/bank/src/pages/packages/[id].astro b/web/apps/bank/src/pages/packages/[id].astro
+index e3143ff..c922116 100644
+--- a/web/apps/bank/src/pages/packages/[id].astro
++++ b/web/apps/bank/src/pages/packages/[id].astro
+@@ -41,7 +41,7 @@ if (loaded.source === 'missing') Astro.response.status = 404;
+ const returnTo = `/packages/${encodeURIComponent(id)}/`;
+ ---
+ 
+-<ConsoleLayout title={`Package ${id}`}>
++<ConsoleLayout title={`Package ${id}`} section="inbox">
+   <p>
+     <a href="/inbox/">← Alibi inbox</a>
+   </p>
+diff --git a/web/apps/bank/src/pages/session.ts b/web/apps/bank/src/pages/session.ts
+index 165946c..899a9d6 100644
+--- a/web/apps/bank/src/pages/session.ts
++++ b/web/apps/bank/src/pages/session.ts
+@@ -30,5 +30,5 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
+     sameSite: 'strict',
+     maxAge: Math.floor(SESSION_TTL_MS / 1000),
+   });
+-  return redirect('/inbox/', 303);
++  return redirect('/', 303);
+ };
+diff --git a/web/apps/bank/src/pages/sign-in.astro b/web/apps/bank/src/pages/sign-in.astro
+index ac356e5..47489e6 100644
+--- a/web/apps/bank/src/pages/sign-in.astro
++++ b/web/apps/bank/src/pages/sign-in.astro
+@@ -10,7 +10,7 @@ const enabled = Boolean(ANALYST_PASSCODE && BANK_SESSION_SECRET);
+ const failed = Astro.url.searchParams.get('failed') === '1';
+ ---
+ 
+-<ConsoleLayout title="Analyst sign-in">
++<ConsoleLayout title="Analyst sign-in" section="sign-in">
+   <h1>Analyst sign-in</h1>
+   {enabled ? (
+     <form method="post" action="/session/" class="panel">
+diff --git a/web/apps/bank/tests/request.test.ts b/web/apps/bank/tests/request.test.ts
+new file mode 100644
+index 0000000..c3a2f6e
+--- /dev/null
++++ b/web/apps/bank/tests/request.test.ts
+@@ -0,0 +1,153 @@
++/**
++ * "Request customer's Alibi" from the case panel: the form names only a case, the server picks that
++ * case's request ID, and nothing goes upstream for a case without one. The case states come from
++ * the bank's own inbox.
++ */
++import { describe, expect, it } from 'vitest';
++
++import { cases, findCase } from '../src/data/cases';
++import { handleAct, planAction, type Forward } from '../src/lib/actions';
++import { bankTarget } from '../src/lib/bankApi';
++import { alibiState, statusLabel } from '../src/lib/caseState';
++import type { AnalystInbox } from '../src/lib/types';
++
++const SITE = 'https://bank.example.test';
++const target = bankTarget(undefined, 'https://backend.example.test');
++
++function recorder() {
++  const calls: Parameters<Forward>[0][] = [];
++  const forward: Forward = async (opts) => {
++    calls.push(opts);
++    return { kind: 'ok', data: null };
++  };
++  return { calls, forward };
++}
++
++const maya = findCase('FC-0147')!;
++
++describe('request action', () => {
++  it("sends Maya's case request by ID to the bank's /rfc route", () => {
++    const plan = planAction({ kind: 'request', case_id: 'FC-0147' }, target);
++    expect(plan).toEqual({ ok: true, path: '/bank/rfc', body: { request_id: 'rfc-0001-01' } });
++  });
++
++  it('ignores a request ID or path supplied by the form', () => {
++    const plan = planAction(
++      { kind: 'request', case_id: 'FC-0147', request_id: 'rfc-0001-02', path: '/admin/seed' },
++      target,
++    );
++    expect(plan).toEqual({ ok: true, path: '/bank/rfc', body: { request_id: 'rfc-0001-01' } });
++  });
++
++  it('refuses a case with no Alibi request, or an unknown case, before any upstream call', async () => {
++    for (const case_id of ['FC-0152', 'FC-9999', '../admin/seed', '']) {
++      const { calls, forward } = recorder();
++      const out = await handleAct(
++        {
++          fields: { kind: 'request', case_id },
++          requestOrigin: SITE,
++          siteOrigin: SITE,
++          analyst: 'J. Okafor',
++        },
++        { target, headers: {}, forward },
++      );
++      expect(out.kind).toBe('forbidden');
++      expect(calls).toHaveLength(0);
++    }
++  });
++
++  it('needs a signed-in analyst', async () => {
++    const { calls, forward } = recorder();
++    const out = await handleAct(
++      {
++        fields: { kind: 'request', case_id: 'FC-0147' },
++        requestOrigin: SITE,
++        siteOrigin: SITE,
++        analyst: null,
++      },
++      { target, headers: {}, forward },
++    );
++    expect(out).toMatchObject({ kind: 'forbidden', status: 401 });
++    expect(calls).toHaveLength(0);
++  });
++});
++
++describe('case data', () => {
++  it("carries case 1's Bank A request: ID, both questions and the reply deadline", () => {
++    expect(maya.txn).toMatchObject({ id: 'txn-0001-004', amountMinor: 216000 });
++    expect(maya.request?.id).toBe('rfc-0001-01');
++    expect(maya.request?.questions.map((q) => q.id)).toEqual(['q.source_of_funds', 'q.breakdown']);
++    expect(maya.request?.expiresAt).toBe('2026-11-09T09:00:00Z');
++  });
++
++  it('gives only case 1 a request; filler cases use txn-q- IDs', () => {
++    for (const c of cases.filter((c) => c.id !== 'FC-0147')) {
++      expect(c.request).toBeUndefined();
++      expect(c.txn.id.startsWith('txn-q-')).toBe(true);
++    }
++  });
++});
++
++const inbox = (over: Partial<AnalystInbox>): AnalystInbox => ({
++  recipient: { id: 'bank_a', name: 'Bank A', analyst_name: 'J. Okafor' },
++  packages: [],
++  requests_sent: [],
++  ...over,
++});
++
++describe('alibiState', () => {
++  it('starts at not requested in the preview', () => {
++    expect(alibiState(maya, null)).toEqual({ kind: 'not_requested' });
++    expect(statusLabel(maya, { kind: 'not_requested' })).toBe('Open');
++  });
++
++  it('shows a sent request as awaiting the customer', () => {
++    const s = alibiState(
++      maya,
++      inbox({
++        requests_sent: [
++          {
++            request_id: 'rfc-0001-01',
++            parent_request_id: null,
++            sent_at: '2026-11-02T09:00:00Z',
++            status: 'awaiting_answer',
++            question_count: 2,
++          },
++        ],
++      }),
++    );
++    expect(s).toEqual({
++      kind: 'requested',
++      requestId: 'rfc-0001-01',
++      sentAt: '2026-11-02T09:00:00Z',
++    });
++    expect(statusLabel(maya, s)).toBe('Awaiting customer');
++  });
++
++  it('links a received package to its review page', () => {
++    const s = alibiState(
++      maya,
++      inbox({
++        packages: [
++          {
++            package_id: 'pkg-1',
++            request_id: 'rfc-0001-01',
++            received_at: '2026-11-03T10:00:00Z',
++            expires_at: '2026-11-09T09:00:00Z',
++            subject_ref_masked: 'm***-001',
++            authentication: 'verified',
++            disposition: null,
++            href: '/packages/pkg-1/',
++          },
++        ],
++      }),
++    );
++    expect(s).toMatchObject({ kind: 'received', href: '/packages/pkg-1/' });
++    expect(statusLabel(maya, s)).toBe('Alibi received');
++  });
++
++  it('never offers a request for a closed case or a case without one', () => {
++    expect(alibiState(findCase('FC-0139')!, null).kind).toBe('closed');
++    expect(alibiState(findCase('FC-0152')!, null).kind).toBe('unavailable');
++  });
++});
+diff --git a/web/packages/ui/src/RequestAlibiButton.astro b/web/packages/ui/src/RequestAlibiButton.astro
+index 189288f..b2b07aa 100644
+--- a/web/packages/ui/src/RequestAlibiButton.astro
++++ b/web/packages/ui/src/RequestAlibiButton.astro
+@@ -2,28 +2,50 @@
+ /**
+  * "Request customer's Alibi". The button a bank's fraud analyst presses on a
+  * case to ask the customer for context. It opens the bank's own request
+- * screen, where the analyst picks the questions; the request then travels
+- * through the bank connection, and the customer decides what to share.
++ * screen, where the analyst reviews what will be asked; the request then
++ * travels through the bank connection, and the customer decides what to share.
++ *
++ * `variant="solid"` is the primary, full-strength form for a case panel's
++ * footer; the default outline form sits inline among other actions. Extra
++ * attributes (such as data hooks) pass through to the link.
+  */
++import type { HTMLAttributes } from 'astro/types';
++
+ import Logomark from './Logomark.astro';
+ 
+-interface Props {
++interface Props extends Omit<HTMLAttributes<'a'>, 'href'> {
+   /** The bank system's own "compose request" screen for this case. */
+   href: string;
+   /** Set when a request is already open, so the analyst cannot send another. */
+   disabledReason?: string;
++  variant?: 'outline' | 'solid';
++  /** Fill the width of its container. */
++  block?: boolean;
+ }
+ 
+-const { href, disabledReason } = Astro.props;
++const {
++  href,
++  disabledReason,
++  variant = 'outline',
++  block = false,
++  class: extra,
++  ...rest
++} = Astro.props;
++const classes = [
++  'alibi-request',
++  `alibi-request--${variant}`,
++  block && 'alibi-request--block',
++  extra,
++];
+ ---
+ 
+ {disabledReason ? (
+-  <span class="alibi-request" aria-disabled="true" title={disabledReason}>
++  <span class:list={classes} aria-disabled="true" title={disabledReason}>
+     <span>Request customer's</span>
+     <Logomark height="1.1em" />
+   </span>
+ ) : (
+-  <a class="alibi-request" href={href}>
++  <a class:list={classes} href={href} {...rest}>
+     <span>Request customer's</span>
+     <Logomark height="1.1em" />
+   </a>
+@@ -33,6 +55,7 @@ const { href, disabledReason } = Astro.props;
+   .alibi-request {
+     display: inline-flex;
+     align-items: center;
++    justify-content: center;
+     gap: 0.4em;
+     min-height: 40px;
+     padding: var(--space-2xs) var(--space-sm);
+@@ -42,11 +65,39 @@ const { href, disabledReason } = Astro.props;
+     color: var(--c-alibi);
+     font: 600 var(--t-sm) / 1 var(--font-sans);
+     text-decoration: none;
++    transition:
++      background-color 140ms ease-out,
++      color 140ms ease-out,
++      transform 120ms ease-out;
++  }
++
++  a.alibi-request--outline:hover {
++    background: var(--c-alibi);
++    color: var(--c-alibi-ink);
+   }
+ 
+-  a.alibi-request:hover {
++  .alibi-request--solid {
++    min-height: 48px;
++    padding-inline: 20px;
++    border-radius: 10px;
+     background: var(--c-alibi);
+     color: var(--c-alibi-ink);
++    font-size: 0.9375rem;
++    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
++  }
++
++  a.alibi-request--solid:hover {
++    background: #262a33;
++    border-color: #262a33;
++  }
++
++  a.alibi-request:active {
++    transform: scale(0.98);
++  }
++
++  .alibi-request--block {
++    display: flex;
++    width: 100%;
+   }
+ 
+   [aria-disabled='true'].alibi-request {

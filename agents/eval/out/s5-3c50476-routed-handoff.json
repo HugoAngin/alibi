@@ -1,0 +1,41 @@
+{
+  "candidate_commit": "3c5047639aade89f1916163ae2ad3a00050d1143",
+  "environment": "Fresh disposable synthetic Case 1 on the candidate router, rules mode, pinned local public registry.",
+  "gate": {
+    "banks": {
+      "bank_a": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      },
+      "bank_b": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      }
+    },
+    "case": 1,
+    "passed": true
+  },
+  "verification_time": "2026-11-05T09:00:00Z"
+}

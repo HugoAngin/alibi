@@ -58,6 +58,7 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 01:08Z: eval done x3 (f53f885): independent verifier `agents.eval.verify_package` (linked in the Signing row); cost reader `agents.eval.llm_cost` (pinned log fields `case_number`, `system`, run ID, fresh log per system in the LLM row; S5 wiring queued for Arnav); `agents/eval/out/REDTEAM.md` with four S3a findings (queued for Arnav). 586 tests pass with six strict xfails.
 - 01:10Z: data done (11abc05): alert cases 61 to 70 with `gold.alerts` in UI.md's alert shape, seven alert kinds, demo cases 1 and 2 get an `unexplained_credit` on 29 Oct that the demo opens on, mock merchant registry and `api.merchant_lookup`. 513 tests pass. Pinned in the Questions and matching row. No reply needed.
 - 01:17Z: eval progress (ebe2a40): HTTP evaluator dispatches SP-17 to 19, 21 to 24, 33 to 37 and 39 through `agents.eval.api.attempt`; integrated app, RFC intake and ingest fixtures still pending and return `not_run`. 668 tests pass with 6 S3a xfails. No reply needed.
+- 01:24Z: eval progress (dbee51a): HTTP consent and disclosure handlers for SP-01 to 16 and SP-20 on main; live hooks (race audit, export inspection) still `not_run`. 694 tests pass with 6 S3a xfails. No reply needed.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

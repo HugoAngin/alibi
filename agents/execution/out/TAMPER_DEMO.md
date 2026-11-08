@@ -20,7 +20,7 @@ That verifies the file, writes `<name>_tampered.json` with the first `216000` ch
 
 ## What to flip, exactly
 
-In the exported JSON, the first occurrence of the bytes `216000` is the credit amount inside a signed attachment (`"amount_pence":216000`). In the reference build that is **byte offset 4589 to 4594**. The offset is stable across runs; the package hash is not, because the demo keys are generated fresh each run. Change `216000` to `261000`: same length, so nothing else in the file moves.
+The demo edits the credit amount inside the signed body: the first `"amount_pence":216000` field (`.body.attachments[5].content.amount_pence`). It finds that JSON field, never a bare byte match, so a digest or signature that happens to contain `216000` is never touched, and it re-parses the result to prove that one field is the only change (eval ae17c2d). In the reference build that is **byte offset 4589 to 4594**; the offset is display only and can move, because IDs, timestamps and fresh demo keys change the bytes before it. Change `216000` to `261000`: same length, so nothing else in the file moves.
 
 By hand, in any editor: search for `216000` and change it to `261000`, then save and verify again.
 
@@ -34,7 +34,7 @@ package: data/alibi/tamper_demo/package.json  sha256 61bd87fffb25fe1a  11741 byt
   sources checked: 9 (1 at lower trust)
   claims: q1 supported
 
-2. Tamper: bytes 4589..4594  216000 -> 261000
+2. Tamper: .body.attachments[5].content.amount_pence, bytes 4589..4594  216000 -> 261000
    context: ...ontent":{"amount_pence":216000,"curr...
 
    Bank A verifies the tampered package: REJECTED

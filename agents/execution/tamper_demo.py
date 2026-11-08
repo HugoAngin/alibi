@@ -9,8 +9,11 @@ alibi/CONTRACTS.md) in a throwaway store and keystore under data/alibi/tamper_de
 exported JSON to data/alibi/tamper_demo/package.json, and then:
 
   1. verifies it as Bank A                       -> accepted
-  2. changes the first occurrence of the credit amount 216000 to 261000 at a printed byte offset
-                                                  -> rejected, with the verifier's own reasons
+  2. changes the credit amount, the first `amount_pence` field equal to 216000 inside the signed
+     body, to 261000, and prints its byte offset    -> rejected, with the verifier's own reasons
+     (the edit is located as a JSON field, never as a bare byte match, so a digest or signature
+     that happens to contain "216000" is never touched; the edited document is re-parsed to
+     prove that this one field, and nothing else, changed)
   3. re-addresses the original to Bank B          -> rejected (signature and recipient binding)
 
 Everything is synthetic: demo keys, demo master key, Maya's fixture. data/ is git-ignored.
@@ -20,6 +23,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -27,6 +31,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / "data" / "alibi" / "tamper_demo"
 ORIGINAL, TAMPERED = b"216000", b"261000"
+# The credit amount as a JSON number in the canonical encoding: `"amount_pence":216000` followed by
+# `,` or `}`. Quoted strings (hex digests, base64 signatures, prose) can never match.
+AMOUNT_FIELD = re.compile(rb'"amount_pence":(' + ORIGINAL + rb')(?=[,}])')
 DEMO_MASTER_KEY = base64.urlsafe_b64encode(hashlib.sha256(b"SYNTHETIC tamper demo master key").digest())
 
 
@@ -67,11 +74,38 @@ def verify(raw: bytes, registry, now, audience: str = "bank_a") -> dict:
             "claims": [(c.get("question_id"), c.get("status")) for c in data.get("claims") or []]}
 
 
-def tamper(raw: bytes) -> tuple[bytes, int]:
-    offset = raw.find(ORIGINAL)
-    if offset < 0:
-        raise SystemExit("the package has no 216000 to change")
-    return raw[:offset] + TAMPERED + raw[offset + len(ORIGINAL):], offset
+def _leaves(node, path: str = ""):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            yield from _leaves(v, f"{path}.{k}")
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            yield from _leaves(v, f"{path}[{i}]")
+    else:
+        yield path, node
+
+
+def changed_fields(before: bytes, after: bytes) -> list[tuple[str, object, object]]:
+    """Every leaf whose value differs between two JSON documents of the same shape."""
+    a, b = dict(_leaves(json.loads(before))), dict(_leaves(json.loads(after)))
+    return [(p, a.get(p), b.get(p)) for p in sorted(set(a) | set(b)) if a.get(p) != b.get(p)]
+
+
+def tamper(raw: bytes) -> tuple[bytes, int, str]:
+    """Change the credit amount inside the signed body. Returns the bytes, the byte offset and the
+    JSON path of the edited field, after checking that it is the only field that changed."""
+    body_at = raw.find(b'"body":{')
+    match = AMOUNT_FIELD.search(raw, body_at if body_at >= 0 else 0)
+    if body_at < 0 or not match:
+        raise SystemExit("the signed body has no amount_pence of 216000 to change")
+    offset = match.start(1)
+    bad = raw[:offset] + TAMPERED + raw[offset + len(ORIGINAL):]
+    changes = changed_fields(raw, bad)
+    if len(changes) != 1 or not changes[0][0].startswith(".body.") \
+            or not changes[0][0].endswith(".amount_pence") \
+            or (changes[0][1], changes[0][2]) != (int(ORIGINAL), int(TAMPERED)):
+        raise SystemExit(f"tamper did not change exactly the credit amount: {changes}")
+    return bad, offset, changes[0][0]
 
 
 def readdress(raw: bytes) -> bytes:
@@ -96,10 +130,10 @@ def run() -> dict:
     before = verify(raw, registry, now)
     _show("1. Bank A verifies the exported package", before)
 
-    bad, offset = tamper(raw)
+    bad, offset, field = tamper(raw)
     (WORK / "package_tampered.json").write_bytes(bad)
     ctx = raw[max(0, offset - 24): offset + 12].decode(errors="replace")
-    print(f"\n2. Tamper: bytes {offset}..{offset + len(ORIGINAL) - 1}  {ORIGINAL.decode()} -> {TAMPERED.decode()}")
+    print(f"\n2. Tamper: {field}, bytes {offset}..{offset + len(ORIGINAL) - 1}  {ORIGINAL.decode()} -> {TAMPERED.decode()}")
     print(f"   context: ...{ctx}...")
     after = verify(bad, registry, now)
     _show("   Bank A verifies the tampered package", after)
@@ -107,7 +141,8 @@ def run() -> dict:
     moved = readdress(raw)
     redirected = verify(moved, registry, now, audience="bank_b")
     _show("3. Same package re-addressed and sent to Bank B", redirected)
-    return {"before": before, "after": after, "readdressed": redirected, "offset": offset}
+    return {"before": before, "after": after, "readdressed": redirected, "offset": offset,
+            "field": field, "changed": changed_fields(raw, bad)}
 
 
 def main() -> None:
@@ -124,10 +159,10 @@ def main() -> None:
         now = datetime.now(timezone.utc)
         _show(f"verify {path.name} as bank_a", verify(raw, registry, now))
         if flag == "--file":
-            bad, offset = tamper(raw)
+            bad, offset, field = tamper(raw)
             out = path.with_name(path.stem + "_tampered.json")
             out.write_bytes(bad)
-            print(f"\nTamper: bytes {offset}..{offset + len(ORIGINAL) - 1}  {ORIGINAL.decode()} -> {TAMPERED.decode()}  -> {out}")
+            print(f"\nTamper: {field}, bytes {offset}..{offset + len(ORIGINAL) - 1}  {ORIGINAL.decode()} -> {TAMPERED.decode()}  -> {out}")
             _show("verify tampered copy as bank_a", verify(bad, registry, now))
         return
     result = run()

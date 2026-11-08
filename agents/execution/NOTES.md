@@ -26,6 +26,10 @@ Lead 01:27Z (d5f78a5): heavier work assigned, (a) then (b); (c) skipped (eval ha
 - (a) `policy.py`: compile_policy / apply_policy / record_index exported from api; Policy row in CONTRACTS points here. Code text parser: fixture 40/40 0 leaks (tuned, record 9a0a1cdabb), holdout 12 written+committed first (294cb91): 7/12, 0 leaks (record d9601d98d6). Harness `--parser execution`, `--holdout`.
 - (b) `approval_gate.py`: ApprovalGate (register_request, set_draft, approve, dispatch, policy_changed, source_corrected), CONSENT_MATRIX code -> rows + verbatim template; api.approval_gate(). Tests C1-C16 + F1/F3 + drift check against consent_matrix.md.
 
+Lead 01:29Z (5 items): (3)(4) done earlier. (5) `tamper_demo.py` + `out/TAMPER_DEMO.md` (real alibi sign/verify; bytes 4589..4594 216000->261000; rejected). (2) `consent_flows_http.py` F1-F3 on ProbeSession, fake-app tests, LiveStack skipped until ALIBI_LIVE_CONFIG. (1) `out/regulatory_frame.md`, cited, 'not lawyers', (check) marks on commencement/case law.
+- Lead parser harness: 18/40, 0 leaks; holdout 5/12, 0 leaks (records 41b4ec66ac, f62892b17d).
+- SP-47 on real store: configured key -> blocked; default layout -> not_blocked (master.key beside passport.db). Record dfb59fcdbf.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.

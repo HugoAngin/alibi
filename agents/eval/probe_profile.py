@@ -4,8 +4,9 @@ Reads two already-dispatched public Case 1 receipts from the native mock bank
 (``alibi/bank/service.py``: ``/``, ``/inbox``, ``/packages/{id}``, ``/packages/{id}/raw``,
 ``/rfc/{id}``) and the holder's request from the S4 app (``alibi/app/main.py``: ``/health``,
 ``/requests/{id}``, ``/sources/{id}/{revision}``). After checking them it writes a
-run_probes config that adds native routes and fixtures for SP-17, SP-18, SP-20, SP-21 and
-SP-25..SP-32 only, each under that probe's own ``probes`` entry.
+run_probes config that adds native routes and fixtures for SP-17, SP-18 and SP-20..SP-32,
+each under that probe's own ``probes`` entry. SP-22..SP-24 use public RFC inputs rather
+than receipts. Run them with the bank's clock inside the Case 1 RFC window.
 
     uv run --frozen python -m agents.eval.probe_profile --config data/alibi/probe-base.json \\
         --out data/alibi/live-probes.json
@@ -38,6 +39,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import stat
 import subprocess
 import sys
@@ -70,6 +72,11 @@ NEEDS = {
               ("consent_bank_service", "recipient_bank_a", "recipient_bank_b", "bank_b_package_id")),
     "SP-21": ("holder", ("holder", "bank_b"), ("source_record",),
               ("holder_request_id", "source_record_id", "source_record_revision")),
+    "SP-22": ("rfc_intake", ("bank_a",), ("rfc_intake",),
+              ("rfc_foreign_subject", "sp22_codes")),
+    "SP-23": ("rfc_intake", ("bank_a",), ("rfc_intake",), ("rfc_out_of_scope_txns",)),
+    "SP-24": ("rfc_intake", ("bank_b",), ("rfc_intake",),
+              ("rfc_claims_bank_a", "rfc_claims_bank_a_control")),
     **{pid: ("bank_a", ("bank_a", "bank_b"), (), VERIFIER_FIXTURES) for pid in VERIFIER},
 }
 
@@ -294,6 +301,49 @@ def _plan(b: dict | None, a: dict | None, h: dict | None) -> dict:
     return plan
 
 
+def _rfc_intake_plan(case: dict) -> dict:
+    """Build native Case 1 attack bodies using only public inputs."""
+    rfc_a, rfc_b = (
+        next((rfc for rfc in case["rfcs"]
+              if rfc["audience"] == recipient and not rfc.get("parent_request_id")), None)
+        for recipient in ("bank_a", "bank_b")
+    )
+    if not rfc_a or not rfc_b or not rfc_a.get("txn_ids"):
+        raise ProfileError("public Case 1 needs a transaction RFC for bank_a and an RFC for bank_b")
+    own_txns = {delivery["row"].get("txn_id") for delivery in case["bank_deliveries"]}
+    foreign_subject = foreign_txn = None
+    for number in range(2, 81):
+        try:
+            other = load_case_without_gold(number)
+        except KeyError:
+            continue
+        if other["subject_ref"] != case["subject_ref"]:
+            for delivery in other["bank_deliveries"]:
+                txn_id = delivery["row"].get("txn_id")
+                if txn_id and txn_id not in own_txns:
+                    foreign_subject, foreign_txn = other["subject_ref"], txn_id
+                    break
+        if foreign_txn:
+            break
+    if foreign_subject is None or foreign_txn is None:
+        raise ProfileError("public RFC inputs do not supply a foreign subject and transaction")
+    tag = secrets.token_hex(6)
+
+    def request(rfc: dict, label: str, **changes) -> dict:
+        fields = {key: rfc[key] for key in ("subject_ref", "questions", "issued_at", "expires_at")}
+        scope = "txn_ids" if rfc.get("txn_ids") else "period"
+        return {"request": {**fields, scope: rfc[scope], "request_id": f"probe-{label}-{tag}", **changes}}
+
+    fixtures = {
+        "SP-22": {"rfc_foreign_subject": request(rfc_a, "sp22", subject_ref=foreign_subject),
+                  "sp22_codes": ["foreign_subject", "subject_mismatch"]},
+        "SP-23": {"rfc_out_of_scope_txns": request(rfc_a, "sp23", txn_ids=[foreign_txn])},
+        "SP-24": {"rfc_claims_bank_a": request(rfc_b, "sp24", issuer="bank_a", audience="bank_b"),
+                  "rfc_claims_bank_a_control": request(rfc_b, "sp24-control", issuer="bank_b", audience="bank_b")},
+    }
+    return {probe: {"routes": {"rfc_intake": "/rfc"}, "fixtures": values} for probe, values in fixtures.items()}
+
+
 def build(config: dict, args) -> tuple[dict, dict]:
     """Return (profile, report). The report holds key names and reasons only."""
     stack = Stack(config, Path(args.key_dir))
@@ -315,6 +365,7 @@ def build(config: dict, args) -> tuple[dict, dict]:
     finally:
         stack.session.close()
     plan = _plan(receipt_b, fixtures_a, fixtures_h)
+    plan.update(_section(errors, "rfc_intake", lambda: _rfc_intake_plan(case)) or {})
 
     profile = deepcopy(config)
     base, tokens = config.get("base_urls", {}), config.get("tokens", {})

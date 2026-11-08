@@ -43,7 +43,10 @@ uv run --frozen python -m agents.eval.probe_profile --config "$ALIBI_BASE_PROBES
   --key-dir "$ALIBI_DEMO_KEYS" --out "$ALIBI_LIVE_PROBES"
 ```
 
-This prepares SP-17, SP-18, SP-20, SP-21 and SP-25 through SP-32. Supply the
+This prepares SP-17, SP-18 and SP-20 through SP-32. Run the three RFC intake
+checks on a disposable bank clock inside both Case 1 RFC windows. SP-22 and
+SP-23 require specific refusal codes. SP-24 sends a valid Bank B control and
+changes the declared issuer to Bank A on the attack. Supply the
 remaining route and fixture settings in the base config for the full catalogue.
 
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.

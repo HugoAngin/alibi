@@ -3,12 +3,14 @@
     uv run --frozen python -m agents.execution.policy_harness                 # every available parser
     uv run --frozen python -m agents.execution.policy_harness --parser rules  # one parser
     uv run --frozen python -m agents.execution.policy_harness --parser gemini # live Gemini (spends calls)
+    ... --holdout   score the 12 held-out paraphrases (out/policy_rules_holdout.jsonl) instead
 
 A parser is any callable `parse(text: str, material: dict) -> dict` returning the
 `alibi/agents/prompts/policy_parse.json` shape: {"rules": [...], "clarifications": [...]}. A bare
 list is read as rules. Adapters:
 
-    rules   agents.lead.api.parse_rule_text (code parser; "unavailable" until it is on main)
+    rules      agents.lead.api.parse_rule_text (lead's code parser; "unavailable" until it is on main)
+    execution  agents.execution.policy.parse_rule_text (this folder's conservative code parser)
     gemini  alibi.llm GeminiClient with the policy_parse prompt, model FLASH (one call per rule,
             cached on disk by the client; only run when asked, it spends the shared call cap)
 
@@ -30,6 +32,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Callable
 
 from agents.execution.api import load_policy_material, load_policy_rules
@@ -75,7 +78,13 @@ def gemini_parser(client=None, model: str | None = None) -> Callable | None:
     return parse
 
 
-PARSERS = {"rules": rules_parser, "gemini": gemini_parser}
+def execution_parser() -> Callable:
+    from agents.execution.policy import parse_rule_text
+
+    return parse_rule_text
+
+
+PARSERS = {"rules": rules_parser, "execution": execution_parser, "gemini": gemini_parser}
 
 
 # --------------------------------------------------------------------------- scoring
@@ -192,7 +201,7 @@ def score_case(case: dict, out, material: dict) -> dict:
 
 
 def evaluate(parse: Callable, cases=None, material=None) -> dict:
-    cases = cases or load_policy_rules()
+    cases = cases if cases is not None else load_policy_rules()
     material = material or load_policy_material()
     rows = []
     for c in cases:
@@ -222,7 +231,7 @@ def evaluate(parse: Callable, cases=None, material=None) -> dict:
 
 def main() -> None:
     want = sys.argv[sys.argv.index("--parser") + 1] if "--parser" in sys.argv else None
-    names = [want] if want else ["rules"]  # gemini only when asked: it spends the shared call cap
+    names = [want] if want else ["rules", "execution"]  # gemini only when asked: it spends the shared call cap
     summary = {}
     for name in names:
         parse = PARSERS[name]()
@@ -230,7 +239,11 @@ def main() -> None:
             summary[name] = {"status": "unavailable"}
             print(f"{name}: unavailable")
             continue
-        result = evaluate(parse)
+        cases = None
+        if "--holdout" in sys.argv:
+            path = Path(__file__).resolve().parent / "out" / "policy_rules_holdout.jsonl"
+            cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        result = evaluate(parse, cases)
         for r in result["rows"]:
             if r["verdict"] != "correct":
                 print(f"{name} {r['id']:6} {r['verdict']:10} {r.get('why', '')}")

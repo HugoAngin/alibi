@@ -99,3 +99,31 @@ def verifier_http_handlers() -> dict:
     from agents.execution.verifier_http import handlers
 
     return handlers()
+
+
+def compile_policy(item, material: dict | None = None) -> dict:
+    """Plain text, one typed rule, a list, or parser output -> {"rules", "unresolved", "alerts", "held", "version"}.
+
+    Reference compiler for the Policy row in shared/CONTRACTS.md; see agents/execution/policy.py.
+    """
+    from agents.execution.policy import compile_policy as _compile
+
+    return _compile(item, material)
+
+
+def apply_policy(package: dict, compiled: dict, recipient: str, *, records: dict, now) -> dict:
+    """Filter a package for one recipient -> {"held", "package", "gaps", "private_review", "version"}.
+
+    Deny wins, withheld evidence leaves a generic gap, a final scan fails closed. `records` is
+    agents.execution.api.record_index(case).
+    """
+    from agents.execution.policy import apply_policy as _apply
+
+    return _apply(package, compiled, recipient, records=records, now=now)
+
+
+def record_index(case: dict) -> dict:
+    """record_id / txn_id -> metadata apply_policy needs, built from a data case."""
+    from agents.execution.policy import record_index as _index
+
+    return _index(case)

@@ -1,0 +1,416 @@
+--- a/.env.example
++++ b/.env.example
+@@ -1,3 +1,4 @@
+ # Copy to .env. List variable names here, never real values.
+ GEMINI_API_KEY=
+ ALIBI_MASTER_KEY=
++ALIBI_BANK_STATE_KEY=
+--- a/alibi/RUNBOOK.md
++++ b/alibi/RUNBOOK.md
+@@ -18,6 +18,7 @@
+ | --- | --- |
+ | `GEMINI_API_KEY` | Gemini calls by the agents, the one-pass baseline and the policy parser. Read by `alibi.llm` from the environment, falling back to the repo-root `.env`. The holder app's `/rules` Gemini layer runs only when the key is **exported** in the shell that starts the app. |
+ | `ALIBI_MASTER_KEY` | Fernet key that encrypts the passport store. Optional: without it the app writes `data/alibi/app/master.key` beside the databases. |
++| `ALIBI_BANK_STATE_KEY` | Separate Fernet key for the standalone bank snapshot. Export through the host's secret configuration. Local runs without it create `<state_path>.key`. |
+
+ Other environment names (all optional, documented in `alibi/app/UI.md` and `alibi/connectors/SERVICES.md`):
+ `ALIBI_CASE`, `ALIBI_DATA_DIR`, `ALIBI_KEY_DIR`, `ALIBI_NOW`, `ALIBI_REPLAY`, `ALIBI_API_ORIGIN`,
+@@ -66,6 +67,12 @@
+ delete every database beside it) and the bank state `data/alibi/bank/state.json`. A restart
+ **without** a reset replays the case as duplicates and keeps history; that is the persistence
+ check, not a reload.
++
++To upgrade a trusted legacy bank snapshot, stop the bank, configure `ALIBI_BANK_STATE_KEY`
++for the new service, and run `uv run --frozen python -m alibi.bank.state PATH` with that same
++configuration. Use the actual `--state` path or the demo's `case_<n>/bank_state.json`. The command
++encrypts the snapshot in place. Start the bank after it succeeds and keep the same key on future
++restarts. Existing backups must be managed separately.
+
+ ## Live demo (the sites drive it)
+
+--- a/alibi/bank/service.py
++++ b/alibi/bank/service.py
+@@ -888,7 +888,7 @@
+     ``data/alibi/bank_tokens.json``. The admin credential for ``/admin/*`` is ``admin_token``,
+     else ``tokens["admin"]``, else a fresh random token; whichever applies is kept as
+     ``app.state.admin_token`` and never logged. State lives in memory, or at ``state_path`` as
+-    JSON (loaded when the file exists, replaced atomically on every write). ``rfc_sink``
++    encrypted JSON (loaded when the file exists, replaced atomically on every write). ``rfc_sink``
+     receives every issued request (``plug.RfcSink``); without one, ``rfc_url`` (the passport
+     app's ``POST /connect/bank/rfc`` URL, like the merchant's ``passport_url``) forwards each
+     request over HTTP with the recipient's own bearer (``http_rfc_sink``; ``http_client`` is
+--- a/alibi/bank/state.py
++++ b/alibi/bank/state.py
+@@ -15,9 +15,8 @@
+ * ``dispositions``: analyst decisions, in order;
+ * ``audit``: every accepted and refused action, in order.
+
+-``save(path)`` writes JSON to a temporary file beside ``path`` and ``os.replace``s it, so a
+-reader never sees a half-written file. ``load(path)`` reads it back. Nothing here is a token
+-or a key: the state file holds case data, signed requests and packages only.
++``save(path)`` encrypts the JSON and replaces the state file atomically. Migrate legacy files
++explicitly with ``python -m alibi.bank.state PATH``. State holds no tokens or keys.
+ """
+
+ from __future__ import annotations
+@@ -27,12 +26,24 @@
+ import os
+ from dataclasses import asdict, dataclass, field
+ from pathlib import Path
++from tempfile import NamedTemporaryFile
+ from typing import Any
++
++from cryptography.fernet import Fernet, InvalidToken
++
++from alibi.core.store import StoreError, load_master_key
+
+ __all__ = ["RECIPIENTS", "BankState", "InboxEntry", "RecipientState", "SentRequest"]
+
+ RECIPIENTS = ("bank_a", "bank_b")
+ STATE_VERSION = "alibi.bank_state.v1"
++ENCRYPTED_VERSION = "alibi.bank_state.encrypted.v1"
++STATE_KEY_ENV = "ALIBI_BANK_STATE_KEY"
++
++
++def _state_cipher(path: Path, *, create: bool) -> Fernet:
++    key_path = path.with_name(path.name + ".key")
++    return Fernet(load_master_key(key_path, create=create, env_name=STATE_KEY_ENV))
+
+
+ @dataclass
+@@ -198,21 +209,61 @@
+             state.recipients.setdefault(name, RecipientState())
+         return state
+
+-    def save(self, path: Path | str) -> Path:
+-        """Write the state as JSON with an atomic replace (temp file, then ``os.replace``)."""
++    def save(self, path: Path | str, *, _migrating: bool = False) -> Path:
++        """Atomically replace the state file with an authenticated encrypted snapshot."""
+         target = Path(path)
++        plaintext = json.dumps(self.to_json(), ensure_ascii=False).encode("utf-8")
++        cipher = _state_cipher(target, create=_migrating or not target.exists())
++        ciphertext = cipher.encrypt(plaintext).decode("ascii")
+         target.parent.mkdir(parents=True, exist_ok=True)
+-        temp = target.with_name(target.name + ".tmp")
+-        text = json.dumps(self.to_json(), indent=1, sort_keys=True, ensure_ascii=False)
+-        with open(temp, "w", encoding="utf-8", newline="\n") as handle:
+-            handle.write(text)
+-            handle.flush()
+-            os.fsync(handle.fileno())
+-        os.replace(temp, target)
++        handle = NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent,
++                                    prefix=f".{target.name}.", suffix=".tmp", delete=False)
++        temp = Path(handle.name)
++        try:
++            with handle:
++                json.dump({"version": ENCRYPTED_VERSION, "ciphertext": ciphertext}, handle)
++                handle.flush()
++                os.fsync(handle.fileno())
++            os.replace(temp, target)
++        finally:
++            temp.unlink(missing_ok=True)
++        target.with_name(target.name + ".tmp").unlink(missing_ok=True)
+         return target
+
+     @classmethod
+     def load(cls, path: Path | str) -> "BankState":
+-        """Read a state file written by ``save``."""
+-        with open(path, encoding="utf-8") as handle:
+-            return cls.from_json(json.load(handle))
++        """Open an encrypted snapshot with the configured bank state key."""
++        target = Path(path)
++        data = json.loads(target.read_text(encoding="utf-8"))
++        version = data.get("version") if isinstance(data, dict) else None
++        if version == STATE_VERSION:
++            raise StoreError("legacy plaintext bank state: migrate with python -m alibi.bank.state PATH")
++        if version != ENCRYPTED_VERSION or not isinstance(data.get("ciphertext"), str):
++            raise ValueError("unsupported bank state format")
++        try:
++            plaintext = _state_cipher(target, create=False).decrypt(data["ciphertext"])
++        except (InvalidToken, ValueError):
++            raise StoreError("bank state could not be decrypted") from None
++        return cls.from_json(json.loads(plaintext))
++
++    @classmethod
++    def migrate_legacy(cls, path: Path | str) -> None:
++        """Rewrite a trusted legacy snapshot in place while the bank is stopped."""
++        target = Path(path)
++        data = json.loads(target.read_text(encoding="utf-8"))
++        if isinstance(data, dict) and data.get("version") == STATE_VERSION:
++            cls.from_json(data).save(target, _migrating=True)
++        else:
++            cls.load(target)  # a successful migration can be retried with the same key
++            target.with_name(target.name + ".tmp").unlink(missing_ok=True)
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser(description=BankState.migrate_legacy.__doc__)
++    parser.add_argument("path", type=Path)
++    try:
++        BankState.migrate_legacy(parser.parse_args().path)
++    except (OSError, StoreError, ValueError) as exc:
++        parser.exit(1, f"{exc}\n")
+--- a/alibi/connectors/SERVICES.md
++++ b/alibi/connectors/SERVICES.md
+@@ -124,9 +124,12 @@
+ `401 unauthenticated`. The recipient and analyst come from the token only; posted `recipient`,
+ `analyst` or `analyst_name` fields are ignored.
+
+-State (`alibi/bank/state.py`, `BankState`): in memory, or persisted as JSON at `state_path`
+-(atomic replace on every write). Per recipient: requests sent, inbox entries, dispositions,
+-audit. Rejected inbox entries keep reasons and digests only, never the package bytes.
++State (`alibi/bank/state.py`, `BankState`): in memory, or persisted as an authenticated encrypted
++snapshot at `state_path` with atomic replacement. Migrate legacy files using the bank-state
++command in `alibi/RUNBOOK.md`. Export a stable `ALIBI_BANK_STATE_KEY` (Fernet key) through the host's secret
++configuration. Local runs fall back to a mode-0600 `<state_path>.key` file. Keep the key across
++restarts. Per-recipient state includes requests, inbox entries, dispositions and audit entries.
++Rejected inbox entries keep reasons and digests only, never the package bytes.
+
+ The `rfc_sink` is `alibi.connectors.plug.RfcSink`: `sink(signed_request, recipient, account_refs, now) ->
+ {"status": accepted | refused, "reason"?}`; it is the passport's `receive_rfc`. Without one,
+--- a/alibi/core/store.py
++++ b/alibi/core/store.py
+@@ -159,16 +159,17 @@
+     return raw
+
+
+-def load_master_key(key_path: Path | str, *, create: bool = True) -> bytes:
+-    """The Fernet master key: ``ALIBI_MASTER_KEY`` if set, else the key file at ``key_path``.
++def load_master_key(key_path: Path | str, *, create: bool = True,
++                    env_name: str = MASTER_KEY_ENV) -> bytes:
++    """The Fernet key from ``env_name`` if set, else the key file at ``key_path``.
+
+     A missing key file is created (see ``_create_key_file``) when ``create`` is true;
+     otherwise ``StoreError``. An empty key file holds no key, so nothing can have been
+     encrypted with it: with ``create`` it is replaced, otherwise it is an error.
+     """
+-    env = os.environ.get(MASTER_KEY_ENV, "").strip()
++    env = os.environ.get(env_name, "").strip()
+     if env:
+-        return _check_key(env, f"environment variable {MASTER_KEY_ENV}")
++        return _check_key(env, f"environment variable {env_name}")
+     path = Path(key_path)
+     try:
+         if path.exists():
+@@ -177,12 +178,12 @@
+                 return _check_key(data, f"master key file {path}")
+             if not create:
+                 raise StoreError(f"master key file {path} is empty: restore it or set "
+-                                 f"{MASTER_KEY_ENV}")
++                                 f"{env_name}")
+             path.unlink()
+             return _create_key_file(path)
+         if not create:
+             raise StoreError(
+-                f"no master key for this database: set {MASTER_KEY_ENV} or restore {path}")
++                f"no master key for this store: set {env_name} or restore {path}")
+         return _create_key_file(path)
+     except OSError as exc:
+         raise StoreError(f"cannot use master key file {path}: {type(exc).__name__}") from None
+--- a/alibi/demo.py
++++ b/alibi/demo.py
+@@ -49,6 +49,7 @@
+ import httpx
+
+ from alibi import demo_services
++from alibi.bank.state import BankState
+ from alibi.connectors.case_source import MappingError, parse_time
+ from alibi.connectors.http import ADMIN, TOKEN_ENV, load_tokens
+ from alibi.core.schemas import format_utc
+@@ -162,12 +163,12 @@
+     if not path.exists():
+         return as_of, None
+     try:
+-        data = json.loads(path.read_text(encoding="utf-8"))
++        state = BankState.load(path)
+     except (OSError, ValueError):
+         return as_of, None
+-    if not isinstance(data, dict) or data.get("case_number") != case:
++    if state.case_number != case:
+         return as_of, None
+-    kept = data.get("as_of")
++    kept = state.as_of
+     if not isinstance(kept, str) or not kept:
+         return as_of, None
+     return (kept if kept > as_of else as_of), kept
+--- a/alibi/tests/test_app_integration.py
++++ b/alibi/tests/test_app_integration.py
+@@ -23,6 +23,7 @@
+ from alibi.app.config import APP_KEYS, settings_from_env
+ from alibi.app.main import create_app
+ from alibi.bank.service import create_bank_app
++from alibi.bank.state import BankState
+ from alibi.connectors import keys
+ from alibi.connectors.http import load_tokens
+ from alibi.connectors.merchant import create_merchant_app, http_sink
+@@ -679,9 +680,10 @@
+
+     state_path = stack.root / "bank" / "state.json"
+     if legacy:
+-        state = json.loads(state_path.read_text())
++        state = BankState.load(state_path).to_json()
+         del state["recipients"]["bank_a"]["requests"][0]["accepted_forward"]
+         state_path.write_text(json.dumps(state))
++        BankState.migrate_legacy(state_path)
+
+     class RecordingForward(_Forward):
+         def __init__(self, stack):
+--- a/alibi/tests/test_bank_service.py
++++ b/alibi/tests/test_bank_service.py
+@@ -9,6 +9,7 @@
+ from types import SimpleNamespace
+
+ import pytest
++from cryptography.fernet import Fernet
+ from fastapi.testclient import TestClient
+
+ from alibi import api
+@@ -25,7 +26,7 @@
+ from alibi.core import canon
+ from alibi.core.schemas import format_utc, parse_utc
+ from alibi.core.signing import verify
+-from alibi.core.store import Store
++from alibi.core.store import Store, StoreError
+
+ # ``admin`` is the shared demo control credential; ``create_bank_app`` takes it from the dict.
+ TOKENS = {"bank_a": "tok-a", "bank_b": "tok-b", "feed": "tok-feed", "admin": "tok-admin"}
+@@ -435,7 +436,7 @@
+
+     # The state file keeps reasons and digests only: no package, no sources, no claims.
+     text = state_path.read_text(encoding="utf-8")
+-    entries = json.loads(text)["recipients"]["bank_a"]["inbox"]
++    entries = BankState.load(state_path).to_json()["recipients"]["bank_a"]["inbox"]
+     assert [e["package_id"] for e in entries] == [pid]
+     entry = entries[0]
+     assert entry["status"] == "rejected" and entry["package"] is None
+@@ -451,7 +452,7 @@
+     other = client.post("/deliver", json=built.p3, headers=auth("bank_a"))
+     assert other.status_code == 409 and other.json()["code"] == "audience_mismatch"
+     stored = {e["package_id"]: e for e in
+-              json.loads(state_path.read_text(encoding="utf-8"))["recipients"]["bank_a"]["inbox"]}
++              BankState.load(state_path).to_json()["recipients"]["bank_a"]["inbox"]}
+     assert set(stored[built.p3["package_id"]]["verification"]) == {"authentication", "errors"}
+     assert stored[built.p3["package_id"]]["package"] is None
+     assert stored[built.p3["package_id"]]["request_id"] == RFC_B
+@@ -877,9 +878,10 @@
+     first = make_app(built, state_path=state_path, sink=sink)
+     issued = first.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
+     assert issued.status_code == 201 and len(sink.calls) == 1
+-    state = json.loads(state_path.read_text())
++    state = BankState.load(state_path).to_json()
+     del state["recipients"]["bank_a"]["requests"][0]["accepted_forward"]
+     state_path.write_text(json.dumps(state))
++    BankState.migrate_legacy(state_path)
+
+     restarted = make_app(built, state_path=state_path, sink=sink, seed=False)
+     assert restarted.get("/rfc", headers=auth("bank_a")).json()["requests"][0]["delivery_confirmed"] is True
+@@ -888,12 +890,15 @@
+     assert len(sink.calls) == 1
+
+
+-def test_state_persists_across_apps_and_never_holds_tokens(built, tmp_path):
++def test_state_persists_across_apps_without_plaintext_packages(built, tmp_path, monkeypatch):
++    monkeypatch.delenv("ALIBI_BANK_STATE_KEY", raising=False)
+     state_path = tmp_path / "bank" / "state.json"
+     first = make_app(built, state_path=state_path)
+     issue_both(first)
+     p1 = built.p1
++    p3 = built.p3
+     assert first.post("/deliver", json=p1, headers=auth("bank_a")).status_code == 200
++    assert first.post("/deliver", json=p3, headers=auth("bank_b")).status_code == 200
+     assert first.post(f"/packages/{p1['package_id']}/disposition",
+                       json={"decision": "request_more", "reason": "more please",
+                             "requested_evidence": ["the settlement record"]},
+@@ -906,8 +911,18 @@
+
+     assert state_path.exists() and not state_path.with_name("state.json.tmp").exists()
+     text = state_path.read_text(encoding="utf-8")
++    assert set(json.loads(text)) == {"version", "ciphertext"}
++    assert p3["body"]["attachments"]
++    first_attachment = p3["body"]["attachments"][0]["attachment_id"]
++    for marker in (p1["package_id"], p3["package_id"], RFC_A, first_attachment,
++                   "attachments", "amount_pence", "more please"):
++        assert marker not in text
+     for token in TOKENS.values():
+         assert token not in text
++    key_path = state_path.with_name("state.json.key")
++    assert key_path.exists()
++    if os.name != "nt":
++        assert key_path.stat().st_mode & 0o777 == 0o600
+     loaded = BankState.load(state_path)
+     assert loaded.case_number == 1 and loaded.as_of == AS_OF and loaded.account_ref == ACCOUNT
+     assert loaded.recipient("bank_a").inbox[p1["package_id"]].package == p1
+@@ -920,7 +935,52 @@
+     assert second.get("/rfc", headers=auth("bank_a")).json() == requests
+     assert second.get("/audit", headers=auth("bank_a")).json() == audit
+     assert second.get(f"/packages/{p1['package_id']}/raw", headers=auth("bank_a")).json() == p1
+-    assert second.get("/inbox", headers=auth("bank_b")).json()["packages"] == []
++    assert second.get(f"/packages/{p3['package_id']}/raw", headers=auth("bank_b")).json() == p3
++    assert second.get(f"/packages/{p3['package_id']}/raw", headers=auth("bank_a")).status_code == 404
++
++
++def test_legacy_bank_state_requires_explicit_migration_and_the_same_key(built, tmp_path, monkeypatch):
++    key = Fernet.generate_key().decode("ascii")
++    monkeypatch.setenv("ALIBI_BANK_STATE_KEY", key)
++    path = tmp_path / "state.json"
++    first = make_app(built, state_path=path)
++    issue_both(first)
++    package = built.p3
++    assert first.post("/deliver", json=package, headers=auth("bank_b")).status_code == 200
++    legacy_text = json.dumps(BankState.load(path).to_json())
++    assert package["package_id"] in legacy_text
++    path.write_text(legacy_text, encoding="utf-8")
++    old_temp = path.with_name("state.json.tmp")
++    old_temp.write_text(legacy_text, encoding="utf-8")
++
++    with pytest.raises(StoreError, match="legacy plaintext bank state"):
++        make_app(built, state_path=path, seed=False)
++    assert path.read_text(encoding="utf-8") == legacy_text
++    BankState.migrate_legacy(path)
++    BankState.migrate_legacy(path)
++    restarted = make_app(built, state_path=path, seed=False)
++    assert restarted.get(f"/packages/{package['package_id']}/raw", headers=auth("bank_b")).json() == package
++    assert not old_temp.exists()
++    encrypted = path.read_bytes()
++    assert package["package_id"].encode() not in encrypted
++    assert not path.with_name("state.json.key").exists()
++
++    monkeypatch.delenv("ALIBI_BANK_STATE_KEY")
++    with pytest.raises(StoreError, match="no master key"):
++        make_app(built, state_path=path, seed=False)
++    monkeypatch.setenv("ALIBI_BANK_STATE_KEY", Fernet.generate_key().decode("ascii"))
++    with pytest.raises(StoreError, match="bank state could not be decrypted"):
++        make_app(built, state_path=path, seed=False)
++    assert path.read_bytes() == encrypted
++
++    monkeypatch.setenv("ALIBI_BANK_STATE_KEY", key)
++    envelope = json.loads(encrypted)
++    token = envelope["ciphertext"]
++    changed = "A" if token[20] != "A" else "B"
++    envelope["ciphertext"] = token[:20] + changed + token[21:]
++    path.write_text(json.dumps(envelope), encoding="utf-8")
++    with pytest.raises(StoreError, match="bank state could not be decrypted"):
++        make_app(built, state_path=path, seed=False)
+
+
+ def test_unseeded_app_refuses_until_seeded(built):
+--- a/alibi/tests/test_demo.py
++++ b/alibi/tests/test_demo.py
+@@ -17,6 +17,7 @@
+ import pytest
+
+ from alibi import demo, demo_services
++from alibi.bank.state import BankState
+ from alibi.connectors.http import TOKEN_ENV
+
+ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+@@ -111,6 +112,7 @@
+     state.parent.mkdir(parents=True)
+     state.write_text(json.dumps({"version": "alibi.bank_state.v1", "case_number": 1,
+                                  "as_of": "2026-11-02T09:00:00Z"}))
++    BankState.migrate_legacy(state)
+     assert demo.resume_clock(root, 1, as_of) == ("2026-11-02T09:00:00Z", "2026-11-02T09:00:00Z")
+     # A later --as-of wins; the kept clock is still reported.
+     assert demo.resume_clock(root, 1, "2026-11-04T14:00:00Z") == ("2026-11-04T14:00:00Z", "2026-11-02T09:00:00Z")

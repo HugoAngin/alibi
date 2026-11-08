@@ -73,7 +73,7 @@ index 921cf1b..0ed21e9 100644
            {% endfor %}
          </tbody>
 diff --git a/alibi/app/templates/analyst/package.html b/alibi/app/templates/analyst/package.html
-index b8400ce..80418c9 100644
+index b8400ce..460e24e 100644
 --- a/alibi/app/templates/analyst/package.html
 +++ b/alibi/app/templates/analyst/package.html
 @@ -4,16 +4,22 @@
@@ -179,9 +179,9 @@ index b8400ce..80418c9 100644
    </section>
  
 +  {% if rejected %}
-   <section class="section-anchor" id="checks">
-     <h2>Verification</h2>
-     <div class="panel-grid">
++  <section class="section-anchor" id="checks">
++    <h2>Verification</h2>
++    <div class="panel-grid">
 +      <section class="panel panel--auth" id="authentication">
 +        <h3 class="panel__title">Package authentication</h3>
 +        <p class="muted small panel__question">Did this package arrive from Alibi, unaltered, addressed to this recipient?</p>
@@ -205,12 +205,12 @@ index b8400ce..80418c9 100644
 +    </div>
 +  </section>
 +  {% else %}
++
+   <section class="section-anchor" id="checks">
+     <h2>Verification</h2>
+     <div class="panel-grid">
  
 -      <section class="panel" id="authentication">
-+  <section class="section-anchor" id="checks">
-+    <h2>Verification</h2>
-+    <div class="panel-grid">
-+
 +      <section class="panel panel--auth" id="authentication">
          <h3 class="panel__title">Package authentication</h3>
 +        <p class="muted small panel__question">Did this package arrive from Alibi, unaltered, addressed to this recipient?</p>
@@ -326,16 +326,18 @@ index b8400ce..80418c9 100644
          {% if item.gap %}
          <p class="small"><span class="muted">Gap:</span> {{ item.gap }}</p>
          {% endif %}
-@@ -218,7 +313,7 @@
+@@ -217,8 +312,9 @@
+   <section class="card section-anchor" id="reconciliation">
      <h2>Reconciliation</h2>
      <p class="muted small">{{ reconciliation.title }}</p>
++    {% if reconciliation.lines %}
      <div class="table-wrap">
 -      <table class="recon">
 +      <table class="recon stack">
          <thead>
            <tr>
              <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
-@@ -231,39 +326,39 @@
+@@ -231,43 +327,46 @@
          <tbody>
            {% for line in reconciliation.lines %}
            <tr>
@@ -395,7 +397,14 @@ index b8400ce..80418c9 100644
            </tr>
          </tbody>
        </table>
-@@ -320,42 +415,69 @@
+     </div>
++    {% else %}
++    <p class="empty">{{ reconciliation.expression }}</p>
++    {% endif %}
+     <p class="recon__expression">{{ reconciliation.expression }}</p>
+     <p class="muted small">Recomputed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}.</p>
+   </section>
+@@ -320,42 +419,69 @@
    <section class="card section-anchor" id="disposition">
      <h2>Disposition</h2>
      {% if disposition_form.current %}
@@ -482,7 +491,7 @@ index b8400ce..80418c9 100644
      <p class="muted small">A disposition is a human record. It does not change the holder&#39;s account automatically.</p>
    </section>
  
-@@ -366,20 +488,37 @@
+@@ -366,20 +492,37 @@
      </div>
      <form class="form" method="post" action="{{ followup_form.action }}">
        <input type="hidden" name="parent_request_id" value="{{ followup_form.parent_request_id }}">
@@ -523,7 +532,7 @@ index b8400ce..80418c9 100644
          <span class="field__hint">Exclusive.</span>
        </div>
        <div class="field">
-@@ -392,5 +531,7 @@
+@@ -392,5 +535,7 @@
      </form>
    </section>
  
@@ -637,7 +646,7 @@ index f78f1ce..d19a9ed 100644
        <dd>{{ result.notes }}</dd>
      </dl>
 diff --git a/alibi/app/templates/passport/home.html b/alibi/app/templates/passport/home.html
-index 55b1bb8..bb9fc27 100644
+index 55b1bb8..591c4a6 100644
 --- a/alibi/app/templates/passport/home.html
 +++ b/alibi/app/templates/passport/home.html
 @@ -15,6 +15,7 @@
@@ -648,16 +657,89 @@ index 55b1bb8..bb9fc27 100644
  
  {% block content %}
  <h1 class="page-title">Financial passport</h1>
-@@ -52,7 +53,7 @@
+@@ -34,33 +35,65 @@
+     </dl>
+   </section>
+ 
+-  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
++  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
+     <div class="card__head">
+-      <h2 id="connections-title">Connections</h2>
+-      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
++      <h2 id="alerts-title">Alerts</h2>
++      <a href="/alerts" class="small">All alerts</a>
+     </div>
+-    {% if connections %}
++    {% if alerts %}
+     <ul class="items">
+-      {% for c in connections %}
+-      <li id="{{ c.connection_id }}">
++      {% for a in alerts %}
++      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
+         <div class="item__head">
+-          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
++          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
+           <span class="cluster">
+-            {{ status_badge(c.status) }}
+-            {{ trust_badge(c.trust) }}
++            {{ status_badge(a.severity) }}
++            {{ status_badge(a.status) }}
+           </span>
          </div>
-         <div class="item__meta">
-           Kind: {{ c.kind }} ·
+-        <div class="item__meta">
+-          Kind: {{ c.kind }} ·
 -          Last synced {{ c.last_synced_at }} ·
-+          Last synced {{ when(c.last_synced_at) }} ·
-           {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
-           <code>{{ c.connection_id }}</code>
-         </div>
-@@ -71,7 +72,7 @@
+-          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
+-          <code>{{ c.connection_id }}</code>
+-        </div>
++        <div class="item__meta">Created {{ when(a.created_at) }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
+       </li>
+       {% endfor %}
+     </ul>
+     {% else %}
+-    <p class="empty">No connections yet.</p>
++    <p class="empty">No alerts.</p>
++    {% endif %}
++  </section>
++
++  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
++    <div class="card__head">
++      <h2 id="requests-title">Requests</h2>
++      <a href="/requests" class="small">All requests</a>
++    </div>
++    {% if requests %}
++    <div class="table-wrap">
++      <table class="table stack">
++        <thead>
++          <tr>
++            <th scope="col">Request</th>
++            <th scope="col">From</th>
++            <th scope="col" class="num">Questions</th>
++            <th scope="col">Received</th>
++            <th scope="col">Expires</th>
++            <th scope="col">Status</th>
++          </tr>
++        </thead>
++        <tbody>
++          {% for q in requests %}
++          <tr id="{{ q.request_id }}">
++            <td data-label="Request"><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
++            <td data-label="From">{{ q.recipient }}</td>
++            <td class="num" data-label="Questions">{{ q.question_count }}</td>
++            <td class="nowrap" data-label="Received">{{ when(q.received_at) }}</td>
++            <td class="nowrap" data-label="Expires">{{ when(q.expires_at) }}</td>
++            <td data-label="Status">{{ status_badge(q.status) }}</td>
++          </tr>
++          {% endfor %}
++        </tbody>
++      </table>
++    </div>
++    {% else %}
++    <p class="empty">No requests received.</p>
+     {% endif %}
+   </section>
+ 
+@@ -71,7 +104,7 @@
      </div>
      {% if transactions %}
      <div class="table-wrap">
@@ -666,7 +748,7 @@ index 55b1bb8..bb9fc27 100644
          <thead>
            <tr>
              <th scope="col">Booked</th>
-@@ -83,13 +84,13 @@
+@@ -83,13 +116,13 @@
          <tbody>
            {% for t in transactions %}
            <tr id="{{ t.txn_id }}">
@@ -684,7 +766,7 @@ index 55b1bb8..bb9fc27 100644
            </tr>
            {% endfor %}
          </tbody>
-@@ -103,7 +104,7 @@
+@@ -103,7 +136,7 @@
    <section class="card section-anchor" id="evidence" aria-labelledby="evidence-title">
      <div class="card__head">
        <h2 id="evidence-title">Evidence status</h2>
@@ -693,44 +775,98 @@ index 55b1bb8..bb9fc27 100644
      </div>
      <div class="stats">
        <div class="stat">
-@@ -144,7 +145,7 @@
-             {{ status_badge(a.status) }}
-           </span>
-         </div>
+@@ -128,90 +161,6 @@
+     </p>
+   </section>
+ 
+-  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
+-    <div class="card__head">
+-      <h2 id="alerts-title">Alerts</h2>
+-      <a href="/alerts" class="small">All alerts</a>
+-    </div>
+-    {% if alerts %}
+-    <ul class="items">
+-      {% for a in alerts %}
+-      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
+-        <div class="item__head">
+-          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
+-          <span class="cluster">
+-            {{ status_badge(a.severity) }}
+-            {{ status_badge(a.status) }}
+-          </span>
+-        </div>
 -        <div class="item__meta">Created {{ a.created_at }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
-+        <div class="item__meta">Created {{ when(a.created_at) }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
-       </li>
-       {% endfor %}
-     </ul>
-@@ -182,7 +183,7 @@
-     </div>
-     {% if requests %}
-     <div class="table-wrap">
+-      </li>
+-      {% endfor %}
+-    </ul>
+-    {% else %}
+-    <p class="empty">No alerts.</p>
+-    {% endif %}
+-  </section>
+-
+-  <section class="card card--private section-anchor" id="rules" aria-labelledby="rules-title">
+-    <div class="card__head">
+-      <h2 id="rules-title">Privacy rules</h2>
+-      <a href="/rules" class="small">Manage rules</a>
+-    </div>
+-    {% if rules %}
+-    <ul class="items">
+-      {% for r in rules %}
+-      <li id="{{ r.rule_id }}">
+-        <div class="item__head">
+-          <span class="item__title"><a href="{{ r.href }}">{{ r.text }}</a></span>
+-          {{ status_badge(r.status) }}
+-        </div>
+-        <div class="item__meta">{{ r.summary }} · <code>{{ r.rule_id }}</code></div>
+-      </li>
+-      {% endfor %}
+-    </ul>
+-    {% else %}
+-    <p class="empty">No rules yet. Default-minimum disclosure applies.</p>
+-    {% endif %}
+-  </section>
+-
+-  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
+-    <div class="card__head">
+-      <h2 id="requests-title">Requests</h2>
+-      <a href="/requests" class="small">All requests</a>
+-    </div>
+-    {% if requests %}
+-    <div class="table-wrap">
 -      <table class="table">
-+      <table class="table stack">
-         <thead>
-           <tr>
-             <th scope="col">Request</th>
-@@ -196,12 +197,12 @@
-         <tbody>
-           {% for q in requests %}
-           <tr id="{{ q.request_id }}">
+-        <thead>
+-          <tr>
+-            <th scope="col">Request</th>
+-            <th scope="col">From</th>
+-            <th scope="col" class="num">Questions</th>
+-            <th scope="col">Received</th>
+-            <th scope="col">Expires</th>
+-            <th scope="col">Status</th>
+-          </tr>
+-        </thead>
+-        <tbody>
+-          {% for q in requests %}
+-          <tr id="{{ q.request_id }}">
 -            <td><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
 -            <td>{{ q.recipient }}</td>
 -            <td class="num">{{ q.question_count }}</td>
 -            <td class="nowrap">{{ q.received_at }}</td>
 -            <td class="nowrap">{{ q.expires_at }}</td>
 -            <td>{{ status_badge(q.status) }}</td>
-+            <td data-label="Request"><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
-+            <td data-label="From">{{ q.recipient }}</td>
-+            <td class="num" data-label="Questions">{{ q.question_count }}</td>
-+            <td class="nowrap" data-label="Received">{{ when(q.received_at) }}</td>
-+            <td class="nowrap" data-label="Expires">{{ when(q.expires_at) }}</td>
-+            <td data-label="Status">{{ status_badge(q.status) }}</td>
-           </tr>
-           {% endfor %}
-         </tbody>
-@@ -219,7 +220,7 @@
+-          </tr>
+-          {% endfor %}
+-        </tbody>
+-      </table>
+-    </div>
+-    {% else %}
+-    <p class="empty">No requests received.</p>
+-    {% endif %}
+-  </section>
+-
+   <section class="card section-anchor" id="sharing" aria-labelledby="sharing-title">
+     <div class="card__head">
+       <h2 id="sharing-title">Sharing history</h2>
+@@ -219,7 +168,7 @@
      </div>
      {% if sharing_history %}
      <div class="table-wrap">
@@ -739,7 +875,7 @@ index 55b1bb8..bb9fc27 100644
          <thead>
            <tr>
              <th scope="col">Package</th>
-@@ -233,15 +234,15 @@
+@@ -233,15 +182,15 @@
          <tbody>
            {% for p in sharing_history %}
            <tr id="{{ p.package_id }}">
@@ -761,6 +897,64 @@ index 55b1bb8..bb9fc27 100644
            </tr>
            {% endfor %}
          </tbody>
+@@ -252,5 +201,57 @@
+     {% endif %}
+   </section>
+ 
++
++  <section class="card card--private section-anchor" id="rules" aria-labelledby="rules-title">
++    <div class="card__head">
++      <h2 id="rules-title">Privacy rules</h2>
++      <a href="/rules" class="small">Manage rules</a>
++    </div>
++    {% if rules %}
++    <ul class="items">
++      {% for r in rules %}
++      <li id="{{ r.rule_id }}">
++        <div class="item__head">
++          <span class="item__title"><a href="{{ r.href }}">{{ r.text }}</a></span>
++          {{ status_badge(r.status) }}
++        </div>
++        <div class="item__meta">{{ r.summary }} · <code>{{ r.rule_id }}</code></div>
++      </li>
++      {% endfor %}
++    </ul>
++    {% else %}
++    <p class="empty">No rules yet. Default-minimum disclosure applies.</p>
++    {% endif %}
++  </section>
++
++  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
++    <div class="card__head">
++      <h2 id="connections-title">Connections</h2>
++      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
++    </div>
++    {% if connections %}
++    <ul class="items">
++      {% for c in connections %}
++      <li id="{{ c.connection_id }}">
++        <div class="item__head">
++          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
++          <span class="cluster">
++            {{ status_badge(c.status) }}
++            {{ trust_badge(c.trust) }}
++          </span>
++        </div>
++        <div class="item__meta">
++          Kind: {{ c.kind }} ·
++          Last synced {{ when(c.last_synced_at) }} ·
++          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
++          <code>{{ c.connection_id }}</code>
++        </div>
++      </li>
++      {% endfor %}
++    </ul>
++    {% else %}
++    <p class="empty">No connections yet.</p>
++    {% endif %}
++  </section>
+ </div>
+ {% endblock %}
 diff --git a/alibi/app/templates/passport/rules.html b/alibi/app/templates/passport/rules.html
 index ed46f37..d354b1a 100644
 --- a/alibi/app/templates/passport/rules.html
@@ -792,7 +986,7 @@ index ed46f37..d354b1a 100644
            <form class="inline" method="post" action="{{ rule.clarify_action }}">
              <button type="submit" class="btn btn--small">Clarify</button>
 diff --git a/alibi/app/templates/passport/transaction.html b/alibi/app/templates/passport/transaction.html
-index 6a1ff25..16daf01 100644
+index 6a1ff25..5424e3b 100644
 --- a/alibi/app/templates/passport/transaction.html
 +++ b/alibi/app/templates/passport/transaction.html
 @@ -6,7 +6,8 @@
@@ -848,16 +1042,18 @@ index 6a1ff25..16daf01 100644
            {{ money_raw(s.amount) }} ·
            {% if s.signature.present %}
              Issuer signature key <code>{{ s.signature.key_id }}</code>, {% if s.signature.verified %}verified{% else %}not verified{% endif %}
-@@ -119,7 +122,7 @@
+@@ -118,8 +121,9 @@
+       <h2 id="reconciliation-title">Reconciliation</h2>
        <span class="item__meta">{{ reconciliation.title }}</span>
      </div>
++    {% if reconciliation.lines %}
      <div class="table-wrap">
 -      <table class="recon">
 +      <table class="recon stack">
          <thead>
            <tr>
              <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
-@@ -132,39 +135,39 @@
+@@ -132,39 +136,42 @@
          <tbody>
            {% for line in reconciliation.lines %}
            <tr>
@@ -912,13 +1108,16 @@ index 6a1ff25..16daf01 100644
          </tbody>
        </table>
      </div>
++    {% else %}
++    <p class="empty">{{ reconciliation.expression }}</p>
++    {% endif %}
      <p class="recon__expression">{{ reconciliation.expression }}</p>
 -    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}. The sum is taken from the cited amounts, not typed by hand.</p>
 +    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ when(reconciliation.computed_at) }}. The sum is taken from the cited amounts, not typed by hand.</p>
    </section>
  
    <section class="card section-anchor" id="claims" aria-labelledby="claims-title">
-@@ -201,11 +204,11 @@
+@@ -201,11 +208,11 @@
        <li id="{{ ch.change_id }}">
          <div class="item__head">
            <span class="item__title"><code>{{ ch.record_id }}</code> r{{ ch.older.revision }} to r{{ ch.newer.revision }} <span class="muted">· {{ ch.kind }}</span></span>
@@ -932,7 +1131,7 @@ index 6a1ff25..16daf01 100644
              <thead>
                <tr>
                  <th scope="col">Field</th>
-@@ -216,9 +219,9 @@
+@@ -216,9 +223,9 @@
              <tbody>
                {% for d in ch.diff %}
                <tr>
@@ -945,7 +1144,7 @@ index 6a1ff25..16daf01 100644
                </tr>
                {% endfor %}
              </tbody>
-@@ -231,7 +234,7 @@
+@@ -231,7 +238,7 @@
                <div class="revision__title">Revision r{{ ch.older.revision }} <span class="badge badge--status badge--superseded">superseded</span></div>
                <dl class="kv">
                  <dt>Received</dt>
@@ -954,7 +1153,7 @@ index 6a1ff25..16daf01 100644
                  {% for f in ch.older.fields %}
                  <dt><code>{{ f.name }}</code></dt>
                  <dd>{{ f.value }}</dd>
-@@ -243,7 +246,7 @@
+@@ -243,7 +250,7 @@
                <div class="revision__title">Revision r{{ ch.newer.revision }} <span class="muted small">(active)</span></div>
                <dl class="kv">
                  <dt>Received</dt>
@@ -1211,8 +1410,54 @@ index 11661a6..c7038fc 100644
        {% endif %}
        {% if approval.invalidated_reason %}
        <dt>Invalidated</dt>
+diff --git a/alibi/app/templates/requests/dispatch.html b/alibi/app/templates/requests/dispatch.html
+index 9fa7b08..b49a5af 100644
+--- a/alibi/app/templates/requests/dispatch.html
++++ b/alibi/app/templates/requests/dispatch.html
+@@ -8,6 +8,7 @@
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Dispatch result</h1>
+@@ -21,7 +22,7 @@
+     <dt>Request ID</dt>
+     <dd><code>{{ dispatch.request_id }}</code></dd>
+     <dt>Attempted at</dt>
+-    <dd>{{ dispatch.attempted_at }}</dd>
++    <dd>{{ when(dispatch.attempted_at) }}</dd>
+   </dl>
+ 
+   <h3 id="receipt">Receipt</h3>
+@@ -31,13 +32,13 @@
+     <dt>Package digest</dt>
+     <dd class="digest">{{ dispatch.receipt.package_digest }}</dd>
+     <dt>Received at</dt>
+-    <dd>{{ dispatch.receipt.received_at }}</dd>
++    <dd>{{ when(dispatch.receipt.received_at) }}</dd>
+     <dt>Status</dt>
+     <dd>{{ status_badge(dispatch.receipt.status) }}</dd>
+     <dt>Signer key</dt>
+     <dd><code>{{ dispatch.receipt.signer_key_id }}</code></dd>
+     <dt>Expires</dt>
+-    <dd>{{ dispatch.receipt.expires_at }}</dd>
++    <dd>{{ when(dispatch.receipt.expires_at) }}</dd>
+   </dl>
+   <p class="muted small">The receipt binds this package ID to its digest. The bank's receipt shows the bytes arrived intact; it does not mark any claim true.</p>
+   <div class="btn-row">
+@@ -57,7 +58,7 @@
+     <dt>Recipient</dt>
+     <dd>{{ dispatch.recipient }}</dd>
+     <dt>Attempted at</dt>
+-    <dd>{{ dispatch.attempted_at }}</dd>
++    <dd>{{ when(dispatch.attempted_at) }}</dd>
+     {% if dispatch.refusal %}
+     <dt>Code</dt>
+     <dd>{{ status_badge(dispatch.refusal.code) }}</dd>
 diff --git a/alibi/app/templates/requests/export.html b/alibi/app/templates/requests/export.html
-index 9c02e38..e73cbc4 100644
+index 9c02e38..b9c0095 100644
 --- a/alibi/app/templates/requests/export.html
 +++ b/alibi/app/templates/requests/export.html
 @@ -2,7 +2,7 @@
@@ -1224,7 +1469,15 @@ index 9c02e38..e73cbc4 100644
                signature{alg,key_id,domain,value},
                claims[{question_id, question, status, rationale,
                        evidence_refs[{record_id,revision,trust}],
-@@ -56,8 +56,14 @@
+@@ -15,6 +15,7 @@
+ #}
+ {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
+ {% from "partials/money.html" import money, money_raw %}
++{% from "partials/when.html" import when %}
+ 
+ {% block content %}
+ <h1 class="page-title">Package {{ package.package_id }}</h1>
+@@ -56,12 +57,18 @@
      <dd><code>{{ package.case_id }}</code></dd>
      <dt>Subject</dt>
      <dd><code>{{ package.subject_ref_masked }}</code> <span class="muted small">masked</span></dd>
@@ -1239,9 +1492,24 @@ index 9c02e38..e73cbc4 100644
 +      {% endif %}
 +    </dd>
      <dt>Issued</dt>
-     <dd>{{ package.issued_at }}</dd>
+-    <dd>{{ package.issued_at }}</dd>
++    <dd>{{ when(package.issued_at) }}</dd>
      <dt>Expires</dt>
-@@ -141,7 +147,7 @@
+-    <dd>{{ package.expires_at }}</dd>
++    <dd>{{ when(package.expires_at) }}</dd>
+     <dt>Body digest</dt>
+     <dd class="digest">{{ package.digest }}</dd>
+     <dt>Signature</dt>
+@@ -85,7 +92,7 @@
+     <dt>Recipient</dt>
+     <dd>{{ export.approval.recipient }}</dd>
+     <dt>Approved at</dt>
+-    <dd>{% if export.approval.approved_at %}{{ export.approval.approved_at }}{% else %}not approved{% endif %}</dd>
++    <dd>{% if export.approval.approved_at %}{{ when(export.approval.approved_at) }}{% else %}not approved{% endif %}</dd>
+     <dt>Policy version</dt>
+     <dd><code>{{ export.approval.policy_version }}</code></dd>
+     {% if export.approval.invalidated_reason %}
+@@ -141,7 +148,7 @@
      <h2 id="attachments-title">Attachments</h2>
    </div>
    <div class="table-wrap">
@@ -1250,7 +1518,7 @@ index 9c02e38..e73cbc4 100644
        <thead>
          <tr>
            <th scope="col">ID</th>
-@@ -157,14 +163,14 @@
+@@ -157,14 +164,14 @@
        <tbody>
          {% for att in package.attachments %}
          <tr id="{{ att.attachment_id }}">

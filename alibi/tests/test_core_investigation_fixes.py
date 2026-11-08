@@ -197,7 +197,7 @@ def real_world(tmp_path, keys, registry, fx, now, *, name="real.db"):
 
 def real_run(store, request_id, registry, now, lookup, *, budget=12):
     request = store.get_request(request_id)
-    gateway = Gateway(store, subject_ref=SUBJ, run_id=next_run_id(store, request_id),
+    gateway = Gateway(store, subject_ref=SUBJ, run_id=next_run_id(store, request_id, audience=store.get_request(request_id).audience),
                       registry=registry, now=now, budget=budget, settlement_lookup=lookup,
                       request_id=request_id)
     return run_investigation(request, store, gateway, now=now), gateway
@@ -472,7 +472,7 @@ def test_a_pending_payout_observed_after_the_booking_contradicts_through_the_loo
     fx = variant("supported", edit)
     store, _ = passport(fx)
     lookup = lambda ref: maya.sign_event(fx["lookup_events"][0], keystore)  # noqa: E731
-    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A),
+    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A, audience="bank_a"),
                           registry=keystore.registry(), settlement_lookup=lookup, now=now)
     result = run_investigation(store.get_request(RFC_A), store, gateway, now=now)
     claim = claim_of(result)

@@ -40,6 +40,7 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 2026-11-08 ~00:1xZ restart: answered eval's 23:51 (runner/probe/endpoint queued, build against CONTRACTS meanwhile), 23:53 (linked `agents.eval.api` builders in the Canonical fixture row) and 00:07 (pinned an RFC scope row: exactly one of `period` or `txn_ids`, consumers handle both, signed scope is the real `txn_ids`). Queued the S4a null-period template fix for Arnav.
 - 00:20Z: research asked for a root `web/` path in `team.json` for their Astro front end (4c076a6). Queued for Arnav; told research to stay in `agents/research/web/` meanwhile.
 - 00:30Z: eval progress (1fff9c2): exclusive RFC scope enforced in evaluator, preview and verifier, 433 tests pass; private 32+12 sealed pack passes 92 request-context checks. Calibration and the 47 live probes still wait on S5b and S2 (already queued for Arnav). No reply needed.
+- 00:48Z: execution done (7e51e7f): 40 policy rules in `agents/execution/out/policy_rules.jsonl` against s3a's `policy_parse.json` schema, vocabulary in `out/policy_material.json`, loader `agents.execution.api.load_policy_rules()`. Injections next. No reply needed; the assignment came from another Knull session.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

@@ -90,6 +90,11 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Posted 6716936444: eval takes the Modal backend (agents/research/deploy/), lead takes deck v2 + final README (agents/research/deck/, out/DECK.md, out/README_draft.md), execution the bank console. Needs lead's team.json reassignment.
 - Research now does only UI design from Elio's prompts: web/apps/alibi, web/packages, plus running Cloudflare deploys when teammates post done.
 
+## Plan to all, 2026-11-08 ~04:05Z (6717032945)
+- Target: whole system working end to end by ~06:30 UTC, then cosmetics only.
+- Lead: S2-S4 merge + S5 runbook (critical path), team.json reassignments, deck v2 + README. Eval: prepares the Modal backend but does NOT deploy (Elio has no Modal seats); posts done to research, research deploys from Elio's machine with ALIBI_MODAL_SECRET=alibi-backend ALIBI_MODAL_WARM=1 and posts logs/health back. Execution: bank console. Data: merchant + Driver rehearsal.
+- Elio still to create the Modal Secret alibi-backend (GEMINI_API_KEY, ALIBI_MASTER_KEY).
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

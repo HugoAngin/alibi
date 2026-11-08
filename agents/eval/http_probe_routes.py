@@ -740,7 +740,8 @@ def _holder_post(session: ProbeSession, spec, request_id: str, data=None) -> dic
     return ProbeSession.payload(resp)
 
 
-def _sp39_delivered(session: ProbeSession, target: str, request_id: str, parent, forbidden) -> str:
+def _sp39_delivered(session: ProbeSession, target: str, request_id: str, parent, forbidden,
+                    *, s5_bank: bool = False) -> str:
     """Native S4 disclosure check for a created follow-up (``followup_dispatch`` set).
 
     The passport's stored copy must keep the parent's scope. The scripted holder then
@@ -780,7 +781,8 @@ def _sp39_delivered(session: ProbeSession, target: str, request_id: str, parent,
     entries = ProbeSession.payload(inbox).get("packages")
     entries = [p for p in entries if isinstance(p, dict) and p.get("request_id") == request_id] \
         if isinstance(entries, list) else []
-    if [(p.get("package_id"), p.get("authentication")) for p in entries] != [(package_id, "valid")]:
+    status_field, expected = ("status", "verified") if s5_bank else ("authentication", "valid")
+    if [(p.get("package_id"), p.get(status_field)) for p in entries] != [(package_id, expected)]:
         raise ProbeUnavailable("bank inbox did not hold exactly the verified dispatched package")
     view = session.http("GET", SVC_BANK, _route(session, R_BANK_PACKAGE, recipient=target,
                                                 package_id=package_id),
@@ -790,6 +792,18 @@ def _sp39_delivered(session: ProbeSession, target: str, request_id: str, parent,
         return NOT_BLOCKED
     shown = ProbeSession.payload(view)
     package, auth = shown.get("package"), shown.get("authentication")
+    if s5_bank:
+        body = package.get("body") if isinstance(package, dict) else None
+        receipt, claims = shown.get("receipt"), shown.get("claims")
+        if (not isinstance(body, dict) or body.get("audience") != target
+                or body.get("request_id") != request_id or package.get("package_id") != package_id
+                or not isinstance(auth, dict) or auth.get("valid") is not True
+                or not isinstance(receipt, dict) or receipt.get("recipient") != target
+                or receipt.get("accepted") is not True or not isinstance(claims, list)
+                or not isinstance(shown.get("sources"), list)
+                or {c.get("question_id") for c in claims if isinstance(c, dict)} != asked):
+            raise ProbeUnavailable("standalone bank did not verify the requested follow-up package")
+        return BLOCKED if _same_scope(*_scope_of(body.get("scope")), *parent) else NOT_BLOCKED
     claims, sources = shown.get("claim_status"), shown.get("source_trust")
     allowed = session.fixtures.get("followup_allowed_marker")
     if (not isinstance(package, dict) or package.get("request_id") != request_id
@@ -801,6 +815,52 @@ def _sp39_delivered(session: ProbeSession, target: str, request_id: str, parent,
                                          or allowed not in view.text))):
         raise ProbeUnavailable("verified follow-up package view was not observable")
     return BLOCKED if _same_scope(*_scope_of(package), *parent) else NOT_BLOCKED
+
+
+def _standalone_rfc_scope(session: ProbeSession, request_id: str) -> tuple[list, object]:
+    rfc_route = ("standalone_rfc", "/rfc/{request_id}")
+    resp = session.http("GET", SVC_BANK, _route(session, rfc_route, request_id=request_id),
+                        actor="bank_a", headers=JSON_HEADERS)
+    session.require_success(resp)
+    rfc = session.payload(resp).get("rfc")
+    return _scope_of(rfc.get("request") if isinstance(rfc, dict) else None)
+
+
+def _sp39_standalone(session: ProbeSession, target: str, body: dict, parent, forbidden) -> str:
+    parent_id = body.get("parent_request_id")
+    if not isinstance(parent_id, str) or not parent_id or not isinstance(body.get("question"), str):
+        raise ProbeUnavailable("standalone follow-up needs the parent RFC and question text")
+    if not _same_scope(*_standalone_rfc_scope(session, parent_id), *parent):
+        raise ProbeUnavailable("standalone bank's parent RFC differs from the probe scope")
+    inbox = session.http("GET", SVC_BANK, _route(session, R_BANK_INBOX, recipient=target),
+                         actor="bank_a", headers=JSON_HEADERS)
+    session.require_success(inbox)
+    entries = session.payload(inbox).get("packages")
+    packages = [p.get("package_id") for p in entries if isinstance(p, dict)
+                and p.get("request_id") == parent_id and p.get("status") == "verified"] \
+        if isinstance(entries, list) else []
+    if len(packages) != 1 or not isinstance(packages[0], str) or not packages[0]:
+        raise ProbeUnavailable("standalone follow-up needs one verified parent package")
+    route = _route(session, ("standalone_disposition", "/packages/{package_id}/disposition"),
+                   package_id=packages[0])
+    resp = session.http("POST", SVC_BANK, route, actor="bank_a", headers=JSON_HEADERS,
+                        json={"decision": "request_more", "reason": "Synthetic follow-up scope test",
+                              "requested_evidence": [body["question"]]})
+    session.require_success(resp)
+    follow_up = session.payload(resp).get("follow_up")
+    if not isinstance(follow_up, dict):
+        raise ProbeUnavailable("standalone bank did not return the follow-up")
+    request_id = follow_up.get("request_id")
+    rfc, forwarded = follow_up.get("rfc"), follow_up.get("forwarded")
+    issued = rfc.get("request") if isinstance(rfc, dict) else None
+    if (not isinstance(request_id, str) or not request_id or not isinstance(issued, dict)
+            or issued.get("parent_request_id") != parent_id
+            or not isinstance(forwarded, dict) or forwarded.get("status") != "accepted"):
+        raise ProbeUnavailable("standalone bank did not issue and forward the follow-up")
+    if (not _same_scope(*_scope_of(issued), *parent)
+            or not _same_scope(*_standalone_rfc_scope(session, request_id), *parent)):
+        return NOT_BLOCKED
+    return _sp39_delivered(session, target, request_id, parent, forbidden, s5_bank=True)
 
 
 def sp39(session: ProbeSession) -> str:
@@ -835,6 +895,10 @@ def sp39(session: ProbeSession) -> str:
         _route(session, R_BANK_INBOX, recipient=target)
         _route(session, R_BANK_PACKAGE, recipient=target, package_id="preflight")
         forbidden = _forbidden_markers(session)
+        if session.fixtures.get("s5_standalone_followup"):
+            if not isinstance(body, dict):
+                raise ProbeUnavailable("standalone follow-up body must be an object")
+            return _sp39_standalone(session, target, body, (parent_txn_ids, parent_period), forbidden)
         parent_id = body.get("parent_request_id") if isinstance(body, dict) else None
         if not _same_scope(*_issued(session, target, parent_id), parent_txn_ids, parent_period):
             raise ProbeUnavailable("parent request's stored scope differs from the parent fixtures")

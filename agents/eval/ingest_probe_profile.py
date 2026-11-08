@@ -132,7 +132,7 @@ def _merge(entry: dict, routes: dict, fixtures: dict, **urls) -> dict:
 
 
 def build(config: dict, case_number: int, *, webhook_keys: Path | None = None,
-          received_at: str | None = None) -> tuple[dict, dict]:
+          received_at: str | None = None, s5_standalone_followup: bool = False) -> tuple[dict, dict]:
     app = config.get("base_urls", {}).get("app")
     session = ProbeSession({"app": app, "bank": app, "routes": {**SP39_ROUTES, **READBACK_ROUTES},
                             "fixtures": {}}, config.get("tokens", {}))
@@ -162,10 +162,16 @@ def build(config: dict, case_number: int, *, webhook_keys: Path | None = None,
         session.close()
     profile = deepcopy(config)
     probes = profile.setdefault("probes", {})
-    probes["SP-39"] = _merge(probes.get("SP-39", {}), SP39_ROUTES, sp39, bank=app)
+    followup_routes = SP39_ROUTES
+    followup_bank = app
+    if s5_standalone_followup:
+        followup_bank = config.get("base_urls", {}).get("bank")
+        followup_routes = {**SP39_ROUTES, "bank_inbox": "/inbox", "bank_package": "/packages/{package_id}"}
+        sp39["s5_standalone_followup"] = True
+    probes["SP-39"] = _merge(probes.get("SP-39", {}), followup_routes, sp39, bank=followup_bank)
     for pid in INGEST:
         probes[pid] = _merge(probes.get(pid, {}), READBACK_ROUTES, control)
-    report = {"case": case_number, "SP-39": {"routes": sorted(SP39_ROUTES), "fixtures": sorted(sp39)},
+    report = {"case": case_number, "SP-39": {"routes": sorted(followup_routes), "fixtures": sorted(sp39)},
               **{pid: {"routes": sorted(READBACK_ROUTES), "fixtures": sorted(control), "blocked": BLOCKER}
                  for pid in INGEST}}
     if webhook_keys is not None:
@@ -190,13 +196,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--case", type=int, default=1, help="public case the app serves (default 1)")
     parser.add_argument("--webhook-key-dir", type=Path, help="signing keys from the disposable S5 stack")
     parser.add_argument("--received-at", help="UTC clock for the local S5 webhook")
+    parser.add_argument("--s5-standalone-followup", action="store_true",
+                        help="use the local S5 bank service after answering the parent request")
     args = parser.parse_args(argv)
     tokens: dict = {}
     try:
         config = _load(args.config)
         tokens = config.get("tokens", {})
         out = _check_out(args.out, args.config)
-        profile, report = build(config, args.case, webhook_keys=args.webhook_key_dir, received_at=args.received_at)
+        profile, report = build(config, args.case, webhook_keys=args.webhook_key_dir, received_at=args.received_at,
+                                s5_standalone_followup=args.s5_standalone_followup)
         build_probe_harness(profile)  # the profile must be a valid run_probes config
         _write(out, profile)
     except (ProfileError, MappingError, SignatureError, OSError, ValueError) as exc:

@@ -110,8 +110,20 @@ uv run --frozen python -m agents.eval.ingest_probe_profile --config "$ALIBI_BASE
 ```
 
 SP-39 dispatches a real package through the S4 app's in-process bank and
-checks the retained transaction scope and bank-visible response. For S5's
-local-only merchant webhook, start a fresh public stack and provide its
+checks the retained transaction scope and bank-visible response. On S5, set
+`base_urls.bank` to the standalone Bank A origin and deliver the public parent
+request to that bank before running the probe. The probe requests more evidence
+through the analyst disposition endpoint and checks the stored bank RFC,
+passport RFC and verified follow-up package.
+
+```bash
+uv run --frozen python -m agents.eval.ingest_probe_profile --config "$ALIBI_BASE_PROBES" \
+  --s5-standalone-followup --out "$ALIBI_FOLLOWUP_PROBES"
+uv run --frozen python -m agents.eval.run_probes --config "$ALIBI_FOLLOWUP_PROBES" \
+  --ids SP-39 --results "$ALIBI_FOLLOWUP_RESULTS"
+```
+
+For S5's local-only merchant webhook, start a fresh public stack and provide its
 throwaway signing keys and the shared UTC clock. The public router refuses
 this route.
 

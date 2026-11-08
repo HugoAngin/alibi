@@ -48,6 +48,16 @@ uv run --frozen python -m pytest -q --runxfail --tb=short agents/eval/test_redte
 
 The first command records seven strict expected failures and a passing boundary control. The second reproduces the seven failing assertions directly. The published S1 interface is in-process, so these results establish core behaviour before the HTTP and S5 adapters apply their own checks.
 
+## C3 consent after a regenerated investigation
+
+On the public Maya fixture, approve the supported draft, rerun the same request with new rationale text and identical evidence references, then dispatch with the original approval before rebuilding the preview. S1 signs and delivers the old body. [C3 in the consent matrix](../../execution/out/consent_matrix.md) requires refusal with `approval_digest_mismatch`. Dispatch currently compares the approval to its stored draft, policy and evidence revisions. A newer investigation can change the body while leaving all three checks satisfied. [Dispatch implementation](../../../alibi/api.py#L613)
+
+The preview supersession candidate addresses C2/C6 once a newer preview exists. For C3, bind the approval to the investigation behind the preview and reject dispatch once a newer run has changed the body, including when no newer preview has been built. Keep retries for already delivered packages idempotent.
+
+```sh
+uv run --frozen --offline python -m pytest -q --runxfail --tb=short agents/eval/test_redteam_core.py -k rerunning
+```
+
 ## S5b scorer and retrieval accounting
 
 Both probes use the first request of public Case 1 and a synthetic prediction derived from its public oracle. The same assertions run without an adapter, network calls or sealed data.

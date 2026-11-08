@@ -41,6 +41,33 @@ def investigate(passport, request_id, lookup):
                                  registry=passport.registry, now=NOW)
 
 
+@pytest.mark.xfail(strict=True, reason="S1 dispatch does not bind consent to the latest investigation")
+def test_rerunning_investigation_with_changed_rationale_revokes_old_consent(passport, monkeypatch):
+    from alibi.core import investigate_rules
+
+    fixture = load(passport)
+    request_id = "rfc_a_001"
+    lookup = fixture["settlement_lookup"]
+    initial = investigate(passport, request_id, lookup)
+    draft = api.build_review(passport.store, request_id, now=NOW)
+    approval = api.approve(passport.store, draft.draft_id, holder_id="holder_maya", now=NOW)
+
+    answer = investigate_rules._Run.answer
+
+    def revised_answer(run, question):
+        claim = answer(run, question)
+        return claim.model_copy(update={"rationale": f"Rechecked. {claim.rationale}"})
+
+    monkeypatch.setattr(investigate_rules._Run, "answer", revised_answer)
+    revised = investigate(passport, request_id, lookup)
+    assert revised.run_id != initial.run_id
+    assert [claim.evidence_refs for claim in revised.claims] == [claim.evidence_refs for claim in initial.claims]
+    assert [claim.rationale for claim in revised.claims] != [claim.rationale for claim in initial.claims]
+
+    with pytest.raises(api.ApprovalError):
+        api.sign_and_package(passport.store, approval.approval_id, keystore=passport.keys, now=NOW)
+
+
 @pytest.mark.xfail(strict=True, reason="S1 stores external RFC IDs in one global namespace")
 def test_independent_banks_can_reuse_their_own_external_request_id(passport):
     load(passport)

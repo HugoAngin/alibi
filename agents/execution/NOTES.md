@@ -30,6 +30,9 @@ Lead 01:29Z (5 items): (3)(4) done earlier. (5) `tamper_demo.py` + `out/TAMPER_D
 - Lead parser harness: 18/40, 0 leaks; holdout 5/12, 0 leaks (records 41b4ec66ac, f62892b17d).
 - SP-47 on real store: configured key -> blocked; default layout -> not_blocked (master.key beside passport.db). Record dfb59fcdbf.
 
+Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_coverage.py` done. S1 FINDINGS: C2 a new review (Maya removes rfd_2001) does not invalidate the earlier approval, so sign_and_package sends the pre-edit body with rfd_2001; C6 the superseded draft can still be approved. Audit gaps: no link entry; delivery receipt, disposition, follow-up are S2. (3) S2 security review when S2 merges (~02:30). (4) 09:00 judge drill needs the human presenter. (5) Gemini parser score after S3.
+- `refusal_codes.py`: core ApprovalError problems -> consent_matrix codes (asked lead to route to S2).
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.

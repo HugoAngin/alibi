@@ -51,6 +51,7 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 00:5xZ: `alibi/SPEC.md` has been on `main` since 9ae0ecf (22:42Z, another Knull session); it is byte-identical to the snapshot minus the header. Deleted `docs/SPEC.md`; teammates' README/NOTES still say `docs/SPEC.md`, told them by fyi.
 - ~01:00Z: 621b0a2 (other Knull session) grants research `web/` and removes `docs/SPEC.md`. Told research to move the Astro app and post the path. Watch for `docs/` references to update once it moves.
 - ~01:02Z: another Knull session commits on `main` in this same checkout (eb95cec, Gemini client, was local before my pull). My notes commit became a merge commit and the rebase dropped it; redone as a plain commit. Arnav: two sessions on one checkout can lose commits this way.
+- 01:01Z: research moved the Astro front end to `web/` (fbf8bf2): `cd web && pnpm install`, `pnpm dev` (4321 site, /phone/, 4322 merchant, 4323 bank), `pnpm verify` passes, Cloudflare deploy not done. Added a `web/` row and a section to `docs/FRONTEND.md`. No reply needed.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

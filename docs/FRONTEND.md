@@ -39,11 +39,16 @@ uv run --frozen python -m alibi.app --timeout 600     # serves http://127.0.0.1:
 
 Later, once integration (S5) lands, `uv run --frozen python -m alibi.demo --timeout 600` starts the merchant mock, the bank mock and the app together with Maya's data loaded. Until then the app serves fixture data.
 
+## The public web front end
+
+`web/` is a pnpm workspace owned by research, deployed to Cloudflare, and independent of the Python app and its templates. Set up with `cd web && pnpm install`, preview with `pnpm dev` (Alibi site on port 4321 with the phone view at `/phone/`, merchant on 4322, bank on 4323), and check with `pnpm verify`. Deploy commands and the Cloudflare login are in `web/README.md`; nothing is deployed yet. It must tell the same story as the Python screens: data's case 1, the same IDs and amounts, the same three-panel distinction on the analyst side.
+
 ## Who owns what
 
 | Who | Path | What |
 | --- | --- | --- |
 | research (Elio) | `alibi/app/templates/` | All templates and partials |
+| research (Elio) | `web/` | The public Astro front end: landing page that becomes the phone app on mobile, plus the simulated merchant and bank sites. Separate from the Python app above; see `web/README.md` |
 | data (Hugo) | `alibi/app/static/` | The stylesheet and any static assets |
 | execution (Mouaad) | `agents/execution/out/` | Review of the analyst screens against `ANALYST_FLOW.md`; send changes to Elio |
 | lead (Arnav) | `alibi/app/*.py` and everything else in `alibi/` | Routes, wiring, logic |

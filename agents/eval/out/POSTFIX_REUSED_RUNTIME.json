@@ -1,0 +1,15 @@
+{
+  "disclosure": "Post-hoc runtime diagnostic on reused held-out inputs; not fresh unseen accuracy.",
+  "candidate": "a3be52a33341ce77bf681380fad66d59e5aaef13",
+  "metrics": {
+    "cases": 44,
+    "completed": 44,
+    "failed": 0,
+    "unstarted": 0,
+    "scheduler_errors": 0,
+    "model_calls": 0
+  },
+  "failure_codes": {
+    "completed": 44
+  }
+}

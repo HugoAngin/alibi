@@ -57,6 +57,28 @@ def test_valid_core_shaped_import_keeps_core_defaults(case39):
     assert row["defaulted"] == ["subject_ref", "issuer_id", "revision", "record_id", "event_id"]
 
 
+def test_wrapped_core_event_reports_defaults_of_the_inner_event(case39):
+    event = {"kind": "receipt", "amount_pence": 4599, "currency": "GBP",
+             "occurred_at": "2026-07-10T13:20:00Z", "record_id": "rec-w1", "event_id": "evt-w1",
+             "issuer_id": "shop-w1", "revision": 2, "subject_ref": case39["subject_ref"]}
+    partial = {k: v for k, v in event.items() if k not in ("issuer_id", "revision")}
+    wrapped = [{"event": event, "signature": {"kid": SENTINEL}}, {"event": {**partial, "record_id": "rec-w2"}}]
+    report = validate_case_contract(with_imports(case39, *wrapped))
+    assert report["valid"] and SENTINEL not in json.dumps(report)
+    full, part = report["accepted"]
+    assert full["shape"] == part["shape"] == "core_shaped" and full["trust"] == "self_supplied"
+    assert full["defaulted"] == [] and part["defaulted"] == ["issuer_id", "revision"]
+    # The native door kept the inner event's own fields, so nothing was defaulted.
+    from cryptography.fernet import Fernet
+    from alibi.connectors.case_source import parse_time
+    from alibi.connectors.self_supplied import import_record
+    from alibi.core.store import Store
+    with Store(":memory:", master_key=Fernet.generate_key()) as store:
+        stored = import_record(store, copy.deepcopy(wrapped[0]), subject_ref=case39["subject_ref"],
+                               now=parse_time(case39["imports"][0]["received_at"])).record
+    assert (stored.issuer_id, stored.revision, stored.subject_ref) == ("shop-w1", 2, case39["subject_ref"])
+
+
 def test_trust_claim_is_not_honoured_but_record_is_accepted(case39):
     record = {**case39["imports"][0]["record"], "claimed_trust": "issuer_verified"}
     report = validate_case_contract(with_imports(case39, record))

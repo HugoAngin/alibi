@@ -144,7 +144,10 @@ def _check_import(store: Store, index: int, entry: Any, subject: str) -> tuple[d
         return None, _issue(index, "trust", "stored_subject_mismatch", shape, fields=["subject_ref"])
     row = {"index": index, "shape": shape, "status": put.status, "trust": SELF_SUPPLIED}
     if shape == "core_shaped":
-        row["defaulted"] = [name for name in DEFAULTED if record.get(name) is None]
+        # The core defaults fields on the event body, after unwrapping a pasted
+        # {"event": ...} wrapper (``ingest._strip_trust_claims``), not on the wrapper itself.
+        body = record["event"] if "event" in record and isinstance(record["event"], dict) else record
+        row["defaulted"] = [name for name in DEFAULTED if body.get(name) is None]
     return row, None
 
 

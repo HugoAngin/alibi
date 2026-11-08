@@ -112,7 +112,7 @@
 
     <g class="bank" transform="translate(440,86)">
       <rect width="150" height="88" rx="8"></rect>
-      <text x="12" y="22" class="strong">Bank A · fraud team</text>
+      <text x="12" y="22" class="strong bank-name">Bank A · fraud team</text>
       <text x="12" y="40" class="stamp">rfc-0001-01</text>
       <text x="12" y="58">Where did the £2,160.00</text>
       <text x="12" y="74">credit come from?</text>
@@ -122,10 +122,10 @@
 
     <g class="package" data-package transform="translate(452,398)">
       <rect width="138" height="84" rx="8"></rect>
-      <text x="12" y="22" class="strong">Context package</text>
+      <text x="12" y="22" class="strong">Signed package</text>
       <text x="12" y="40" class="stamp">txn-0001-004 r1</text>
       <text x="12" y="56" class="stamp">PO-0001-01 r1</text>
-      <text x="12" y="74" class="seal">✓ signed · approved by Maya</text>
+      <text x="12" y="74" class="seal">✓ approved by Maya</text>
     </g>
 
     <g class="packets" data-packets></g>
@@ -255,6 +255,10 @@
 
   .bank text {
     font-size: 11px;
+  }
+
+  .bank .bank-name {
+    font-size: 13px;
   }
 
   .package {

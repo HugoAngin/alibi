@@ -500,7 +500,7 @@ pres.addSection({ title: 'Impact and controls' });
   const s = content(
     'Impact and controls',
     `${R.risk} · Controls`,
-    'The backend says no, live',
+    'The backend says no',
     'Editing an approved package, reaching another bank’s inbox, or hiding instructions in a receipt is refused in code, and every refusal is logged.',
   );
   const probes = [
@@ -523,7 +523,7 @@ pres.addSection({ title: 'Impact and controls' });
   const s = content(
     'Impact and controls',
     `${R.risk} · Controls`,
-    'Maya approves, the analyst decides, nothing is automatic',
+    'Maya approves. The analyst decides.',
     'Three separate checks: is the package genuine, who vouches for each source, and what does the evidence support. A valid signature never means “all true”.',
   );
   bullets(
@@ -660,7 +660,7 @@ pres.addSection({ title: 'Testing on unseen data' });
     options: { bold: true, color: PALETTE.white, fill: { color: PALETTE.navy } },
   }));
   const rows = [
-    ['Gold leaks into the system under test', 'Public and private views checked against independently parsed times; the subprocess is denied the gold path. Rechecked on the frozen adapter.'],
+    ['Gold leaks into the system under test', 'Public and private views checked against independently parsed times; the subprocess is denied the gold path. Recheck on the frozen adapter at freeze: {{PH-16}}.'],
     ['Generator and rules overlap, so a baseline wins by design', 'Sealed cases written separately by eval: {{PH-03}} cases in {{PH-04}} families, plus {{PH-05}} adversarial. The rules baseline scored below the ceiling on them.'],
     ['Variants of one scenario are not independent', 'Families counted apart from variants; intervals by 2,000 family resamples or paired win/tie/loss {{PH-38}}.'],
     ['Injection carriers prove nothing', 'A probe needs a landed marker, a structured refusal and an audit entry; an allowed read is the negative control.'],
@@ -685,7 +685,7 @@ pres.addSection({ title: 'Testing on unseen data' });
   const s = content(
     'Testing on unseen data',
     R.ambition,
-    'Choosing the next lookup is where the model earns its place',
+    'Adaptive retrieval chooses the next lookup',
     '{{PH-41}}',
   );
   stat(s, { x: M, y: 1.85, w: 2.6 }, '{{PH-43}}', 'Safe and complete on lookup-dependent sealed cases, one-pass vs Alibi');
@@ -722,7 +722,7 @@ pres.addSection({ title: 'Close' });
     s,
     { x: 5.1, y: 1.95, w: 4.4, h: 2.3 },
     'Trust boundaries',
-    'The app holds the encryption key; evidence is encrypted at rest only when that key is kept outside the data folder (SP-47). Gemini can read the synthetic data sent to it.\nNot a W3C Verifiable Credential.\nUntested or replayed features: {{PH-45}}',
+    'The app holds the encryption key. Evidence is stored as ciphertext; the key must sit outside the data folder (SP-47 fails in the default layout, which keeps it beside the database). Gemini can read the synthetic data sent to it.\nNot a W3C Verifiable Credential.\nUntested or replayed features: {{PH-45}}',
     { size: 13 },
   );
   s.addNotes('Source: SPEC Prototype boundaries. PH-45 from lead’s integration status; eval adds sample-size caveats.');

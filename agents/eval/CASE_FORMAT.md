@@ -20,6 +20,15 @@ Security checks use Mouaad's published probe IDs and `agents.execution.api.summa
 
 For a multi-step test, call `agents.eval.api.score_probe_steps(plan, observations)`. Join observations to the plan by `case_number`, `request_id` and `step_id`. Capture what the app actually did as `accepted`, `refused` or `error`. If an observation supplies a `probe_id`, it must match the plan. Set `expected_outcome` on a planned step when it differs from the probe default, such as an accepted identical retry before a refused conflicting retry. Feed the full report to the capture scorer so missing and errored steps remain separate. The catalogue denominator stays fixed.
 
+For the integrated app, use the eval runner with a git-ignored config for a disposable synthetic stack. The config has `base_urls` (service origins, `routes` and `fixtures`) and `tokens` (bearer credentials by actor). Optional `probes` entries keyed by probe ID override those settings. Give mutating probes independent stores or endpoints so one attempt cannot reuse another attempt's approval or delivery. Run a subset with `--ids` during setup. Every omitted probe remains `not_run` in the official results file.
+
+```bash
+uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes.json \
+  --results data/alibi/probes.jsonl
+```
+
+Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. For SP-47, set `storage_layout` to `configured` or `default` only after confirming the matching layout for the target. The runner labels that result as an isolated local core probe. It cannot inspect a remote host’s raw store.
+
 `score_capture` takes normalized records extracted from actual application output. Include `case_number`, `request_id`, `audience`, `answers` keyed by question and `disclosed_refs` for every reference in the delivered body. Each answer has `status`, `facts`, `gap` and `evidence_refs`. The scorer counts a case as complete only when every request passes, so a missing second-bank response stays in the denominator. The probe file is a JSON object keyed by probe ID, or the `observed` report printed by `uv run --frozen python -m pytest -q -s agents/eval/test_sharing_flow.py` for the local reference. Use separate probe captures for each system. The final output line contains numeric metrics, with unexercised probes listed separately above it.
 
 For the supported source question, capture `payout_references` and `settled_at` as parallel arrays ordered by payout record ID. For a computed breakdown, capture `breakdown_minor` with `sales`, `refunds`, `fees` and `net`. A contradiction supported by a cited payout status can instead carry `cited_payout_status`. For the period answer, capture `sales_minor`, `refunds_minor`, `sale_count` and `refund_count`. Use an empty facts object when no facts are asserted. These fields describe the actual answer and its evidence. The adapter must never populate them from gold.

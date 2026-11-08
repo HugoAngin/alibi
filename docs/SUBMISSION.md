@@ -138,3 +138,12 @@ git log --format=%s | cut -d: -f1 | sort | uniq -c
 - [ ] Set the repo visibility the organisers require.
 - [ ] Open the repo and the Devfolio page logged out. The README renders, the links work, and the video plays.
 - [ ] Everyone is on the Devfolio project, and every track and prize you qualify for is selected.
+
+## Sealed result: closing line for the talk and Devfolio
+
+Use these words at the demo script's 3:10 mark (`agents/data/out/demo_script.md`) and in the Devfolio results field. Source: `agents/eval/out/UNSEEN_RESULTS.md`; rule 9 in `shared/CONTRACTS.md`.
+
+> On 44 sealed cases we had never seen, scored once on frozen commit 58bf0d4, none of the three systems (our agents, a one-pass Gemini baseline and a rules baseline) produced a safe-complete answer. Each returned 10 of 44 cases without a worker failure. The capture was interrupted by a harness fault and resumed under pre-registered rules. That is a negative result, and we are reporting it as one. The protections held where we tested them: separate approval per bank, signed packages the bank verifies independently, cross-bank reads refused, and 15 of 15 exercised refusals holding. SP-23 and SP-24 failed and are listed as limits.
+
+Records: 1b235c16e9, e16afeeac5 and f8dc5763b6. Development results on public cases 1 to 80 are labelled development.
+

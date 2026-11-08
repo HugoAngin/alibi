@@ -82,3 +82,10 @@ def load_injections() -> list[dict]:
     """25 adversarial strings with plant location and expected behaviour (out/injections.jsonl)."""
     with (OUT / "injections.jsonl").open(encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
+
+
+def verifier_probe_plan() -> list[dict]:
+    """SP-25..SP-32 steps in agents.eval.api.score_probe_steps `plan` format."""
+    from agents.execution.verifier_probes import score_plan
+
+    return score_plan()

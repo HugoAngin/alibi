@@ -1,0 +1,167 @@
+{
+  "label": "SYNTHETIC - bank-verifier probe plan, simulated services only",
+  "base": "valid bank_a package for rfc-0001-01: canonical case 1 body, signed by the Alibi package key",
+  "reference_verifier": "agents/eval/sharing_delivery.py verify_package and BankInbox.deliver",
+  "outcomes": "accepted | refused | error; a missing route or a crash is error, never refused",
+  "steps": [
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp25-body-edit",
+      "probe_id": "SP-25",
+      "deliver_to": "bank_a",
+      "build": "BASE; after signing, change one character of claims[0].rationale and re-serialise the envelope with JCS",
+      "expect": "refused",
+      "codes": [
+        "bad_signature"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp25-raw-flip",
+      "probe_id": "SP-25",
+      "deliver_to": "bank_a",
+      "build": "BASE; flip one bit of one byte inside the signature value of the raw envelope bytes",
+      "expect": "refused",
+      "codes": [
+        "bad_signature",
+        "bad_encoding",
+        "malformed",
+        "non_canonical"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp26-wrong-inbox",
+      "probe_id": "SP-26",
+      "deliver_to": "bank_b",
+      "build": "BASE unchanged (audience bank_a), delivered into bank_b's inbox",
+      "expect": "refused",
+      "codes": [
+        "wrong_recipient"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp27-expired",
+      "probe_id": "SP-27",
+      "deliver_to": "bank_a",
+      "build": "BASE with a fresh package_id and expires_at 1 minute after issued_at; deliver at expires_at + 1s (never delivered before, so no exact-retry shortcut)",
+      "expect": "refused",
+      "codes": [
+        "expired"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp28-unknown-key",
+      "probe_id": "SP-28",
+      "deliver_to": "bank_a",
+      "build": "BASE signed by a fresh Ed25519 key with key_id 'alibi-rogue-1' that is not in the pinned registry",
+      "expect": "refused",
+      "codes": [
+        "unknown_key"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp28-merchant-key",
+      "probe_id": "SP-28",
+      "deliver_to": "bank_a",
+      "build": "BASE signed in the package domain by the mock merchant key, using the merchant's pinned key_id (issuer-record purpose)",
+      "expect": "refused",
+      "codes": [
+        "wrong_key_purpose"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp29-bad-issuer-sig",
+      "probe_id": "SP-29",
+      "deliver_to": "bank_a",
+      "build": "BASE whose issuer_verified attachment carries a record signature that does not verify (one field changed after the merchant signed it); then sign the package correctly",
+      "expect": "refused",
+      "codes": [
+        "source_signature_invalid"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp29-missing-issuer-sig",
+      "probe_id": "SP-29",
+      "deliver_to": "bank_a",
+      "build": "BASE whose attachment claims issuer_verified with no record signature or issuer proof",
+      "expect": "refused",
+      "codes": [
+        "source_signature_missing"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp30-self-supplied",
+      "probe_id": "SP-30",
+      "deliver_to": "bank_a",
+      "build": "BASE with a fresh package_id plus one self_supplied attachment that has no issuer signature",
+      "expect": "accepted",
+      "codes": [],
+      "assert": "that attachment reports trust self_supplied, source_signature absent, attested_by package_signer; no attachment is upgraded"
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp31-reuse-id",
+      "probe_id": "SP-31",
+      "deliver_to": "bank_a",
+      "build": "after check sp32-valid, a correctly signed package with the SAME package_id and a different body (e.g. issued_at + 1s)",
+      "expect": "refused",
+      "codes": [
+        "package_id_conflict"
+      ]
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp32-valid",
+      "probe_id": "SP-32",
+      "deliver_to": "bank_a",
+      "build": "BASE unchanged",
+      "expect": "accepted",
+      "codes": [],
+      "assert": "receipt binds package_id and sha256 digest of the received bytes; package authentication shown separately from per-attachment trust and per-claim status; claim statuses equal the body's"
+    }
+  ],
+  "checks": [
+    {
+      "check_id": "replay-identical",
+      "after": "sp32-valid",
+      "deliver_to": "bank_a",
+      "build": "the exact bytes of sp32-valid again",
+      "expect": "accepted with the original receipt (created false); inbox lists the package once; one receipt audit entry",
+      "covers": "SP-31 deduplication half"
+    },
+    {
+      "check_id": "receipt-evidence",
+      "after": "sp32-valid",
+      "deliver_to": null,
+      "build": "read the stored receipt and the bank audit log",
+      "expect": "receipt {package_id, recipient, request_id, digest, received_at}; every refused step left an audit entry with its code and no stored package",
+      "covers": "SP-25 to SP-31 audit column"
+    },
+    {
+      "check_id": "isolation-after",
+      "after": "all",
+      "deliver_to": null,
+      "build": "bank_b lists its inbox",
+      "expect": "empty: the sp26 attempt stored nothing in bank_b",
+      "covers": "SP-26"
+    }
+  ]
+}

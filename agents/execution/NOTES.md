@@ -1,28 +1,27 @@
 # Notes
 
-Role: `execution` (sirExile44). Writes only in `agents/execution/`. Spec: `docs/SPEC.md` (snapshot of `alibi/SPEC.md`). SPEC's execution role: reconciliation, privacy compilation/enforcement, exact approval, signing, package/source verification, minimal analyst console. Nobody edits `alibi/`.
+Role: `execution` (sirExile44). Writes only in `agents/execution/`. Spec: `docs/SPEC.md` (snapshot of `alibi/SPEC.md`). SPEC's execution role: reconciliation, privacy compilation/enforcement, exact approval, signing, package/source verification, minimal analyst console. Nobody edits `alibi/` (build sessions S2 bank/verifier, S4 app screens, S5 integration).
 
-## Assignment (lead, 21:40Z 2026-11-07)
-Security probe list and analyst disposition flow as a checklist in `agents/execution/out`.
+## Done
+2026-11-07
+- 21:40Z assignment: `out/probes.json` → `out/PROBES.md` (47 probes, 32 core), `out/ANALYST_FLOW.md`. Lead pinned the disposition record (f67902c). PROBES.md is the S5 acceptance list; keep it current.
+- 23:33Z frontend Phase 1: `out/FRONTEND_NOTES.md`, analyst-screen review of s4a (6 must-fix, 4 should-fix). Elio owns templates, Hugo static, lead the `.py`.
 
-## Done (2026-11-07)
-- ~22:35Z posted fyi pickup.
-- `out/probes.json`: 47 probes (32 core, 5 demo, 2 controls) across consent, delivery, disclosure, policy, isolation, RFC, verification, ingest, injection, fabrication, availability, authority, secrets. Rendered to `out/PROBES.md` by `uv run --frozen python -m agents.execution.probes`.
-- `out/ANALYST_FLOW.md`: verify → review (auth / source trust / claim status kept separate) → disposition (clear, escalate, request_more) → follow-up RFC with new request_id and fresh approval. Proposed disposition record shape.
-- `api.py`: `load_probes`, `core_probes`, `probe_ids`, `summarise(outcomes)` → `probes_blocked` / `probes_attempted` + controls.
-- Tests: `uv run --frozen python -m pytest agents/execution`.
+2026-11-08, lead work order 00:45Z (5107aca), all posted done:
+- (1) `out/policy_rules.jsonl` + `out/policy_material.json`, 40 rules vs s3a `policy_parse.json` schema. Generator `policy_fixture.py`. 7e51e7f.
+- (2) `out/injections.jsonl`, 25 strings on dev cases 1/2. Generator `injection_fixture.py`. a27fcad.
+- (3) `out/consent_matrix.md`, triggers C1–C16 + HTTP flows F1–F3. Routes from S4 form actions; RFC intake and merchant events are placeholders. b5cf448.
+- (4) `out/CONTROLS_SLIDE.md`, six threat rows → control, IDs, evidence; README limits draft. 06d22b1.
 
-- 22:38Z lead pinned the disposition record in `shared/CONTRACTS.md` (f67902c). 
-- 22:42Z lead (9ae0ecf): verifier + bank service (inbox, delivery, receipts, dispositions) = build session S2 in `alibi/bank/`; console screens = S4 in `alibi/app/`. `PROBES.md` is the acceptance list for the S5 integration run, keep it current (edit `probes.json`, rerun `python -m agents.execution.probes`).
-
-- 23:33Z lead need (df8cb9d): frontend Phase 1. Reviewed analyst screens on s4a (6466584, pytest alibi 22 passed) and wrote `out/FRONTEND_NOTES.md`: 6 must-fix (rejected packages still show evidence, identical verification panels, redacted extract badged issuer_verified, editable analyst name, optional reason, terminal dispositions still editable), 4 should-fix. Execution edits no templates; Elio owns `alibi/app/templates/`, Hugo `alibi/app/static/`, lead the `.py`.
+Eval need 00:45Z: SP-25..SP-32 verifier probes. Plan prepared in `out/verifier_probes.json` (11 steps, 3 checks) via `verifier_probes.py`; `api.verifier_probe_plan()` is in `score_probe_steps` format. Expected codes match eval's reference verifier.
 
 ## Decisions
-- Probe pass rule: refusal probes pass when refused, control probes when accepted; missing outcomes count as failed.
+- Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
+- Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
 
 ## Next
-- After the S4 merge (~00:45): recheck the analyst screens on main against FRONTEND_NOTES.md and PROBES.md.
-- Wait on the board. Likely next asks: policy, signing and receipt contracts (SPEC says execution supplies them early), or a reference verifier.
+- When S2 bank routes and the S5 attempt contract land: implement the SP-25..32 runner (local reference run against eval's BankInbox, then HTTP), push, send eval the commit and command.
+- After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- None.
+- 2026-11-08 ~01:00Z need to eval: export TrustRegistry, sign_record, verify_package and the PURPOSE_* constants from agents.eval.api for the local reference run. Assumption if no reply: write the HTTP runner only.

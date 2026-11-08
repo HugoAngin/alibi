@@ -81,6 +81,11 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Asked lead (6716849163) to give execution web/apps/bank/ and data web/apps/merchant/; research keeps web/apps/alibi/, web/packages/, web/docs/, web/ root. Guide: web/docs/contributing.md (2076f6d). Bank and merchant already render per request on Workers with the adapter, so no lockfile changes needed.
 - Research: Alibi app (new design, dispatch refusal + re-approve, Bank B), shared UI, integration, deploys, deck v2. Elio: cosmetic review, Clerk sign-up fields, Modal Secret.
 
+## Alibi app, 2026-11-08 ~03:55Z (5645113, deployed)
+- App view uses the site's design (tokens remapped in apps/alibi/src/styles/site.css; text wordmark, glass header, Inter).
+- Approval = send (UI.md). Approval form posts result_page=sent; /app/requests/<id>/sent/ shows the Bank's receipt, or the refusal verbatim (4xx {code, reason} or dispatch.refusal with digests) and "Review and approve again". Tested end to end against the stand-in backend: refused, then delivered.
+- Local launch config `alibi-site-fake-backend` (in .claude/launch.json, not committed) runs against scratchpad/fake_backend.py on :8199.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

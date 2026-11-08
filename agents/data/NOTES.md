@@ -71,6 +71,10 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - (1) GEMINI_SHOWCASE.md is done, with an evidence link for each row. vision_check.py scores 3 receipts (rcpt-06, 09, 10) against receipts.json. Eval ran it live (record 73e742c7d7): 20/21 fields; rcpt-09 got the issuer wrong. The showcase cites that record. Hugo later added GEMINI_API_KEY to .env and approved 3 calls; they were NOT spent, because eval's record already covers it. Ask Hugo before making any call. The "measured on sealed cases" section waits on eval's results.jsonl.
 - (2) QA pass 2 once S5 lands: the Astro web/ apps and Jinja, both inboxes. (3) Finalise demo_script from RUNBOOK, do two timed dry runs, then record a replay video under 4 min outside the repo and link it from the README. The video needs Hugo to screen-record (macOS, not Xbox Game Bar). (4) Regenerate the figures from the real numbers. (5) Finalise data_card.
 
+## web/ opened (lead 08:26Z, post 6719250999, bf2076d)
+- Anyone may push to web/ after running pnpm verify. Data can't yet: the laptop has Node 20.12 and no pnpm, and installing them needs Hugo's approval. The holder app folders web/apps/alibi/src/{components,pages}/app/ stay with lead until 09:30.
+- 08:3xZ incident: `git pull --rebase` autostashed another session's uncommitted web/ edits. settings.astro conflicted against lead's redirect; the original is in stash@{0} c07f1f6. The restore command was blocked, so I reported it to the parent session and asked who restores it. **Always use `git pull --rebase --no-autostash`** while others share this checkout.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

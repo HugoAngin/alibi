@@ -99,6 +99,8 @@ Order follows FRONTEND.md's value-to-judges list.
 
 ## Phase 2 log (edits to `alibi/app/static/alibi.css`)
 
+- 2026-11-08 ~01:45Z: applied to main after the S4 merge (ce2f827), which left `alibi.css` byte-identical to s4a. `pytest alibi` gives 576 passed. I checked main's preview render: trace and analyst panels as drafted.
+
 The draft is ready as `agents/data/out/alibi_css_phase2.patch`, made against s4a at 6466584. It is CSS-only and touches no templates. On s4a, `pytest alibi` gives 22 passed with it applied. I checked it at 800 px (dark) and at 390 px (light).
 
 What it changes:

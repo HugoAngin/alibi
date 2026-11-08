@@ -47,6 +47,8 @@ Notes:
 - `<a12>` and `<b12>` are the first 12 hex characters of a digest, matching the S4 sample's style.
 - C9 matters as much as C8: invalidating on *every* correction would make the demo's reapproval meaningless. Only sources cited in the body count.
 - After any refusal, the next approve must post the **current** digest. Re-posting the old one returns C6.
+- Check 4 (`approval_request_mismatch`) only arises when a caller names an approval explicitly; looking approvals up by request ID gives C12/C13 instead. Its reason text: `dispatch refused: approval <approval_id> is for request <request_a>, not <request_b>. Each request needs its own approval.`
+- Reference implementation: `agents/execution/approval_gate.py` (`agents.execution.api.approval_gate()`); its `CONSENT_MATRIX` holds every code with its rows and reason template, and `agents/execution/test_approval_gate.py` checks each row against this page.
 - Audit entries carry `actor`, `role`, `at`, `request_id`, `event_id` (approval, package or event ID), `action`, `outcome`, `detail`, matching the S4 audit sample. Details never contain body content, only IDs, codes and digest prefixes.
 
 ## Flows

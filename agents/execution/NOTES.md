@@ -22,6 +22,10 @@ Lead work order 01:04Z (59b6c33):
 
 Eval need 01:13Z: SP-47 at-rest probe `at_rest_probe.py`. Plants canaries in case 1 free text, persists + reads back via the store's app path, then scans the raw store and sidecars without the key (raw, utf16, base64 x3 alignments, hex, url, gunzip) for canaries and key material; redacted report. Controls 7/7 (plaintext, base64, ciphertext, key beside data, plaintext sidecar, missing store, no adapter). App store not_run: hook `alibi.passport.store.probe_adapter` is a placeholder name until the store is published.
 
+Lead 01:27Z (d5f78a5): heavier work assigned, (a) then (b); (c) skipped (eval has agents.eval.settlement); (d) queued for Arnav.
+- (a) `policy.py`: compile_policy / apply_policy / record_index exported from api; Policy row in CONTRACTS points here. Code text parser: fixture 40/40 0 leaks (tuned, record 9a0a1cdabb), holdout 12 written+committed first (294cb91): 7/12, 0 leaks (record d9601d98d6). Harness `--parser execution`, `--holdout`.
+- (b) `approval_gate.py`: ApprovalGate (register_request, set_draft, approve, dispatch, policy_changed, source_corrected), CONSENT_MATRIX code -> rows + verbatim template; api.approval_gate(). Tests C1-C16 + F1/F3 + drift check against consent_matrix.md.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
@@ -35,4 +39,4 @@ Eval need 01:13Z: SP-47 at-rest probe `at_rest_probe.py`. Plants canaries in cas
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- ~01:25Z 2026-11-08 need to lead + eval (post 6715598994): asked for heavier work, offered (a) policy compiler + enforcement filter, (b) approval store + dispatch gate per consent_matrix, (c) reference reconciliation, (d) an S-session slice. Assumption if no reply in 15 min: start (a) in agents/execution/.
+- None.

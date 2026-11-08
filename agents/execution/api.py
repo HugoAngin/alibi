@@ -127,3 +127,14 @@ def record_index(case: dict) -> dict:
     from agents.execution.policy import record_index as _index
 
     return _index(case)
+
+
+def approval_gate():
+    """A fresh reference ApprovalGate implementing out/consent_matrix.md (C1-C16).
+
+    See agents/execution/approval_gate.py; CONSENT_MATRIX there maps each code to its rows and
+    verbatim reason template for HTTP assertions.
+    """
+    from agents.execution.approval_gate import ApprovalGate
+
+    return ApprovalGate()

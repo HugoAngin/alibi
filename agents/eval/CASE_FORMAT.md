@@ -29,6 +29,17 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
 
 Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. SP-47 covers the passport store, as specified in `shared/CONTRACTS.md`. Set `storage_layout` to `configured` or `default` only after confirming the target passport's layout. The report and deck table name the plaintext S4/S2 delivery state files separately.
 
+SP-46 can scan local captures when inspection routes are unavailable. Set
+the top-level `sp46_native` config with
+`opt_in: "scan three captures of a disposable public synthetic run"`, an
+owner-only `scratch_dir` named `alibi-sp46-*` directly under the OS temp
+directory, and exactly three named `captures` for `audit`, `logs` and
+`traces`. Supply a distinct current benign marker per capture in
+`canaries`, plus `secret_patterns` and `raw_payload_patterns` from that
+synthetic run. Use capture filenames such as `audit.json`, `logs.log` and
+`traces.json`. Keep the config outside that capture directory. The
+result reports corpus labels and a verdict. The scanner retains no capture text.
+
 For the app and bank check, use public Case 1 with a disposable master key and
 signing keys outside the data directories. Run, approve and dispatch Bank A's
 request, then verify the receipt against the package in the bank view. Inspect

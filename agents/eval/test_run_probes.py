@@ -49,6 +49,23 @@ def test_unconfigured_runner_is_all_not_run():
     assert all(result.outcome == "not_run" and result.detail for result in results)
 
 
+def test_runner_uses_native_sp46_only_on_explicit_opt_in(monkeypatch, tmp_path):
+    config = {"sp46_native": {"synthetic": "private-config-marker"}}
+
+    def scan(value):
+        assert value == config["sp46_native"]
+        return {"outcome": "not_blocked", "reason": "logs show a synthetic key value", "corpora": ["logs"]}
+
+    monkeypatch.setattr(run_probes, "native_log_scan", scan)
+    monkeypatch.setattr(run_probes, "attempt", lambda *_: pytest.fail("native scan attempted HTTP"))
+    harness = run_probes.build_probe_harness(config, ["SP-46"])
+    path = tmp_path / "probes.jsonl"
+    harness.write_results(harness.run(), path)
+    row = next(row for row in common.read_jsonl(path) if row["probe_id"] == "SP-46")
+    assert row["outcome"] == "not_blocked" and row["audit"] == ["local logs capture"]
+    assert "private-config-marker" not in path.read_text()
+
+
 def test_candidate_capture_records_catalogue_commit_and_digest(tmp_path, monkeypatch):
     config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
     common.write_json(config, {"base_urls": {"app": "http://127.0.0.1:8100"}})

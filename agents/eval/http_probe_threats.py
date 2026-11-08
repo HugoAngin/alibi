@@ -63,13 +63,26 @@ Routes read (all optional; absence keeps the probe NOT_RUN):
 Fixtures are named one object per probe. Each handler documents its fields. Log
 canaries and forbidden strings are synthetic. SP-47 uses Execution's local storage
 inspection harness, where the raw files and sidecars can be inspected independently.
+
+SP-46 also has a native local lane, ``native_log_scan``, for a stack that exposes no
+inspection routes. It reads three operator-made captures of a disposable public run
+with the same matcher as the HTTP scan. It is opt-in, makes no HTTP call and so runs
+outside ``attempt``:
+
+    uv run --frozen python -m agents.eval.http_probe_threats --sp46-native CONFIG.json
 """
 
 from __future__ import annotations
 
+import argparse
 import base64
+import errno
 import json
+import os
 import re
+import stat
+import tempfile
+from pathlib import Path
 from urllib.parse import quote, quote_plus
 
 import httpx
@@ -391,6 +404,15 @@ def _secret_spellings(value: str) -> set[str]:
     }
 
 
+def _secret_variants(patterns) -> set[str]:
+    return set().union(*(_secret_spellings(pattern) for pattern in patterns))
+
+
+def _secret_leak(text: str, variants) -> bool:
+    """The SP-46 matcher shared by the HTTP and native scans."""
+    return bool(PRIVATE_KEY.search(text) or _contains_any(text, variants))
+
+
 def sp46_log_secrets(session: ProbeSession) -> str:
     """SP-46: logs, traces and audit entries must not carry secret values or full raw
     payloads. A clean scan is meaningful only if it reaches live data, so a benign canary
@@ -402,11 +424,12 @@ def sp46_log_secrets(session: ProbeSession) -> str:
                          be absent. Never place a real secret value here.
         actor            optional inspector bearer
     Routes scanned: ``audit``, ``logs``, ``traces``. Each needs positive evidence.
+    For a stack without these routes, use ``native_log_scan`` on local captures.
     """
     cfg = session.require("sp46")
     canaries = _need(cfg, "canaries", "sp46")
     patterns = _strings(cfg, "secret_patterns", "sp46")
-    variants = set().union(*(_secret_spellings(pattern) for pattern in patterns))
+    variants = _secret_variants(patterns)
     actor = cfg.get("actor")
     service = _service(session, "inspect", "app")
 
@@ -416,7 +439,7 @@ def sp46_log_secrets(session: ProbeSession) -> str:
             response = session.http("GET", service, session.route(key), actor, capture_response=False)
             session.require_success(response)
             inspected = "\n".join((response.text, *response.headers.values()))
-            if PRIVATE_KEY.search(inspected) or _contains_any(inspected, variants):
+            if _secret_leak(inspected, variants):
                 return NOT_BLOCKED
             canary = _need(canaries, key, "sp46 canaries")
             if not _contains_any(response.text, [canary]):
@@ -426,6 +449,241 @@ def sp46_log_secrets(session: ProbeSession) -> str:
     if missing:
         raise ProbeUnavailable("; ".join(missing))
     return BLOCKED
+
+
+# --------------------------------------------------------------------------- SP-46 native
+
+NATIVE_SP46_KEY = "sp46_native"
+NATIVE_SP46_OPT_IN = "scan three captures of a disposable public synthetic run"
+NATIVE_CORPORA = ("audit", "logs", "traces")
+NATIVE_SUFFIXES = (".json", ".jsonl", ".log", ".txt")
+NATIVE_CAPTURE_LIMIT = 4 * 1024 * 1024
+NATIVE_CONFIG_LIMIT = 1024 * 1024
+NATIVE_FIELDS = frozenset({"opt_in", "scratch_dir", "captures", "canaries",
+                           "secret_patterns", "raw_payload_patterns"})
+_NATIVE_SCRATCH = re.compile(r"alibi-sp46-[A-Za-z0-9_]{1,64}")
+_NATIVE_MARKER = re.compile(r"[A-Za-z0-9._:-]{16,128}")
+_NATIVE_PATTERN_LENGTH = (16, 65_536)
+
+
+def _native_supported() -> bool:
+    return (os.name == "posix" and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
+            and os.open in os.supports_dir_fd and os.listdir in os.supports_fd)
+
+
+def _native_why(exc: OSError) -> str:
+    """A fixed description of an open failure; never the path or the OS message."""
+    return {errno.ENOENT: "is missing", errno.ELOOP: "is a symbolic link",
+            errno.ENOTDIR: "is not a directory"}.get(exc.errno, "could not be opened")
+
+
+def _native_labelled(cfg: dict, key: str) -> dict:
+    value = cfg.get(key)
+    if not isinstance(value, dict) or set(value) != set(NATIVE_CORPORA):
+        raise ProbeUnavailable(f"{key} must name exactly audit, logs and traces")
+    return value
+
+
+def _native_patterns(cfg: dict, key: str) -> list[str]:
+    values = cfg.get(key)
+    low, high = _NATIVE_PATTERN_LENGTH
+    if (not isinstance(values, list) or not values
+            or not all(isinstance(value, str) and low <= len(value) <= high and "\x00" not in value
+                       for value in values)
+            or len(set(values)) != len(values)):
+        raise ProbeUnavailable(f"{key} must be distinct generated synthetic strings of {low} or more characters")
+    return values
+
+
+def _native_config(cfg) -> dict:
+    """Validate the opt-in object before anything on disk is touched."""
+    if not isinstance(cfg, dict) or cfg.get("opt_in") != NATIVE_SP46_OPT_IN:
+        raise ProbeUnavailable("native SP-46 scan needs its explicit opt_in")
+    if set(cfg) != NATIVE_FIELDS:
+        raise ProbeUnavailable("native SP-46 config needs exactly " + ", ".join(sorted(NATIVE_FIELDS)))
+    captures = _native_labelled(cfg, "captures")
+    for label, name in captures.items():
+        if not isinstance(name, str) or name not in {label + suffix for suffix in NATIVE_SUFFIXES}:
+            raise ProbeUnavailable(f"{label} capture must be named {label} plus one of {', '.join(NATIVE_SUFFIXES)}")
+    canaries = _native_labelled(cfg, "canaries")
+    if (not all(isinstance(marker, str) and _NATIVE_MARKER.fullmatch(marker) for marker in canaries.values())
+            or len({marker.lower() for marker in canaries.values()}) != len(NATIVE_CORPORA)):
+        raise ProbeUnavailable("canaries must be three distinct current markers of 16 to 128 [A-Za-z0-9._:-]")
+    keys = _secret_variants(_native_patterns(cfg, "secret_patterns"))
+    raws = _secret_variants(_native_patterns(cfg, "raw_payload_patterns"))
+    for marker in canaries.values():
+        # A marker may be an ID inside a raw payload, but never part of a key or hold a pattern.
+        low = marker.lower()
+        if (any(variant.lower() in low for variant in keys | raws)
+                or any(low in variant.lower() for variant in keys)):
+            raise ProbeUnavailable("a canary must not overlap a secret or raw payload pattern")
+    return {"scratch_dir": cfg["scratch_dir"], "captures": captures, "canaries": canaries,
+            "keys": keys, "raws": raws}
+
+
+def _native_open_scratch(path, names) -> int:
+    """Open the fresh owner-only scratch directory directly under the OS temp directory."""
+    if not isinstance(path, str) or not os.path.isabs(path) or os.path.normpath(path) != path:
+        raise ProbeUnavailable("scratch_dir must be an absolute normalised path")
+    parent, name = os.path.split(path)
+    if not _NATIVE_SCRATCH.fullmatch(name):
+        raise ProbeUnavailable("scratch_dir must be a fresh alibi-sp46-* directory")
+    if os.path.realpath(parent) != os.path.realpath(tempfile.gettempdir()):
+        raise ProbeUnavailable("scratch_dir must sit directly under the OS temp directory")
+    if os.path.islink(path):        # clearer reason; O_NOFOLLOW below is the actual guard
+        raise ProbeUnavailable("scratch_dir is a symbolic link")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+    except OSError as exc:
+        raise ProbeUnavailable(f"scratch_dir {_native_why(exc)}") from None
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) & 0o077):
+            raise ProbeUnavailable("scratch_dir must be an owner-only directory of this user")
+        # Only names are listed, to prove the directory holds this run's captures and nothing else.
+        if sorted(os.listdir(fd)) != sorted(names):
+            raise ProbeUnavailable("scratch_dir must hold exactly the three configured captures")
+    except OSError:
+        os.close(fd)
+        raise ProbeUnavailable("scratch_dir could not be listed") from None
+    except ProbeUnavailable:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _native_read(dir_fd: int, name: str) -> str:
+    """Read one allowlisted capture: regular, unlinked elsewhere, owned, bounded UTF-8 text."""
+    flags = (os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
+             | getattr(os, "O_NOCTTY", 0) | getattr(os, "O_CLOEXEC", 0))
+    try:
+        fd = os.open(name, flags, dir_fd=dir_fd)
+    except OSError as exc:
+        raise ProbeUnavailable(f"capture {_native_why(exc)}") from None
+    data = bytearray()
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ProbeUnavailable("capture is not a regular file")
+        if info.st_nlink != 1:
+            raise ProbeUnavailable("capture has another hard link")
+        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o022:
+            raise ProbeUnavailable("capture must be owned and writable only by this user")
+        if not 0 < info.st_size <= NATIVE_CAPTURE_LIMIT:
+            raise ProbeUnavailable("capture is empty or over the size bound")
+        while len(data) <= NATIVE_CAPTURE_LIMIT:
+            chunk = os.read(fd, NATIVE_CAPTURE_LIMIT + 1 - len(data))
+            if not chunk:
+                break
+            data += chunk
+    except OSError:
+        raise ProbeUnavailable("capture could not be read") from None
+    finally:
+        os.close(fd)
+    if len(data) != info.st_size:
+        raise ProbeUnavailable("capture changed while it was read")
+    if b"\x00" in data:
+        raise ProbeUnavailable("capture is not text")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ProbeUnavailable("capture is not UTF-8 text") from None
+
+
+def _native_finding(text: str, keys: set[str], raws: set[str]) -> str | None:
+    if PRIVATE_KEY.search(text):
+        return "PEM private key block"
+    if _contains_any(text, keys):
+        return "synthetic key value"
+    if _contains_any(text, raws):
+        return "synthetic raw payload"
+    return None
+
+
+def _native_result(outcome: str, reason: str, corpora) -> dict:
+    return {"outcome": outcome, "reason": reason, "corpora": list(corpora)}
+
+
+def native_log_scan(cfg) -> dict:
+    """SP-46 over local audit, logs and traces captures from one disposable public run.
+
+    ``cfg`` is the ``sp46_native`` object of a git-ignored config, nothing else:
+
+        opt_in                the literal NATIVE_SP46_OPT_IN
+        scratch_dir           absolute path of a fresh ``alibi-sp46-*`` directory made by
+                              ``tempfile.mkdtemp`` directly under the OS temp directory,
+                              owner-only and holding exactly the three captures
+        captures              {"audit": "audit.json", "logs": "logs.log", "traces": "traces.json"}:
+                              each name is its label plus .json, .jsonl, .log or .txt
+        canaries              {label: marker} planted or minted by this run, distinct, never
+                              derived from a pattern
+        secret_patterns       generated synthetic key values used by the run (master key,
+                              bearer tokens)
+        raw_payload_patterns  generated synthetic raw payloads sent during the run
+
+    Only those three names are opened, without following links, so nothing is discovered
+    and no other file is read. A capture counts only with its current marker, so a stale
+    file is never judged. The result carries only the outcome, a reason and corpus labels:
+    never a path, marker, pattern or captured text.
+    """
+    if not _native_supported():
+        return _native_result(NOT_RUN, "native SP-46 scan needs POSIX no-follow opens", NATIVE_CORPORA)
+    try:
+        config = _native_config(cfg)
+        dir_fd = _native_open_scratch(config["scratch_dir"], config["captures"].values())
+    except ProbeUnavailable as exc:
+        return _native_result(NOT_RUN, str(exc), NATIVE_CORPORA)
+
+    leaks, missing = {}, {}
+    try:
+        for label in NATIVE_CORPORA:
+            try:
+                text = _native_read(dir_fd, config["captures"][label])
+                if not _contains_any(text, [config["canaries"][label]]):
+                    raise ProbeUnavailable("capture lacks its current benign marker")
+            except ProbeUnavailable as exc:
+                missing[label] = str(exc)
+                continue
+            finding = _native_finding(text, config["keys"], config["raws"])
+            if finding:
+                leaks[label] = finding
+    finally:
+        os.close(dir_fd)
+
+    if leaks:
+        return _native_result(NOT_BLOCKED, "; ".join(f"{label} shows a {finding}"
+                                                     for label, finding in leaks.items()), leaks)
+    if missing:
+        return _native_result(NOT_RUN, "; ".join(f"{label}: {why}" for label, why in missing.items()), missing)
+    return _native_result(BLOCKED, "audit, logs and traces showed their current markers and no PEM "
+                                   "private key, synthetic key value or synthetic raw payload", NATIVE_CORPORA)
+
+
+def _native_config_file(path: Path) -> dict | None:
+    """The ``sp46_native`` object of a bounded, non-hidden, non-symlink .json config file."""
+    if path.suffix != ".json" or path.name.startswith(".") or path.is_symlink() or not path.is_file():
+        raise ProbeUnavailable("native SP-46 config must be a regular .json file")
+    if path.stat().st_size > NATIVE_CONFIG_LIMIT:
+        raise ProbeUnavailable("native SP-46 config is over the size bound")
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        raise ProbeUnavailable("native SP-46 config is not readable JSON") from None
+    return config.get(NATIVE_SP46_KEY) if isinstance(config, dict) else None
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="Native SP-46 scan of three local captures from a disposable public run.")
+    parser.add_argument("--sp46-native", type=Path, required=True, metavar="CONFIG.json",
+                        help="git-ignored config whose sp46_native object names the captures")
+    args = parser.parse_args(argv)
+    try:
+        result = native_log_scan(_native_config_file(args.sp46_native))
+    except ProbeUnavailable as exc:
+        result = _native_result(NOT_RUN, str(exc), NATIVE_CORPORA)
+    print(json.dumps(result, sort_keys=True))
 
 
 def sp47_evidence_at_rest(_session: ProbeSession) -> str:
@@ -444,3 +702,7 @@ HANDLERS = {
     "SP-46": sp46_log_secrets,
     "SP-47": sp47_evidence_at_rest,
 }
+
+
+if __name__ == "__main__":
+    main()

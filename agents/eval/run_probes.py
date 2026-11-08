@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import urlsplit
 
 from agents.eval.http_probe_runtime import attempt
+from agents.eval.http_probe_threats import NATIVE_SP46_KEY, native_log_scan
 from agents.eval.probe_capture import missing_demo_probe_kinds, probe_receipt, probe_receipt_path
 from alibi.eval import common, seal
 from alibi.eval.probes import Harness, ProbeResult
@@ -43,6 +44,10 @@ def _registered_attempt(config: dict, probe_id: str, kind: str, chosen: set[str]
         if probe_id not in chosen:
             return ProbeResult(probe_id, "not_run", "not selected")
         try:
+            if probe_id == "SP-46" and NATIVE_SP46_KEY in config:
+                scan = native_log_scan(config[NATIVE_SP46_KEY])
+                return ProbeResult("SP-46", scan["outcome"], scan["reason"],
+                                   audit=[f"local {label} capture" for label in scan["corpora"]])
             if probe_id == "SP-47":
                 return _storage_probe(config.get("storage_layout"))
             base_urls, tokens = _target(config, probe_id)

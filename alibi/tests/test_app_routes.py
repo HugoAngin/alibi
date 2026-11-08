@@ -310,8 +310,12 @@ def test_recipient_isolation(client):
     assert client.get(f"/bank/bank_a/packages/{pid}", headers={**JSON, **TOKEN_B}).status_code == 403
     assert client.get(f"/bank/bank_b/packages/{pid}", headers={**JSON, **TOKEN_B}).status_code == 404
     assert client.get("/bank/bank_b/inbox", headers={**JSON, **TOKEN_B}).json()["packages"] == []
-    session = client.get("/bank/bank_a/inbox?token=demo-token-bank-a")
-    assert session.status_code == 200 and "alibi_bank" in session.headers.get("set-cookie", "")
+    assert client.get("/bank/bank_a/packages/x?token=demo-token-bank-a", headers=JSON).status_code == 401
+    session = client.get("/bank/bank_a/inbox?token=demo-token-bank-a", follow_redirects=False)
+    assert session.status_code == 303 and "alibi_bank" in session.headers.get("set-cookie", "")
+    assert session.headers["location"] == "/bank/bank_a/inbox"      # the credential leaves the URL
+    cross = client.post("/requests/x/dispatch", headers={**JSON, "origin": "http://evil.example"})
+    assert cross.status_code == 403 and cross.json()["code"] == "cross_site_post"
     assert client.get("/bank/bank_a/inbox").status_code == 200   # cookie session
     assert client.get("/bank/bank_b/inbox").status_code == 403
 
@@ -516,19 +520,26 @@ def test_rules_interpret_confirm_hold_and_retire(client):
     assert client.get("/rules", headers=JSON).json()["held_rules"] == []
 
 
-def test_audit_lists_refusals_and_bank_entries(client):
+def test_audit_lists_refusals_and_bank_entries_stay_with_the_bank(client):
     run_approve(client, client.rid)
     client.post(f"/requests/{client.rid}/dispatch", headers=JSON)
     client.get("/bank/bank_a/inbox", headers=TOKEN_B)
     entries = client.get("/audit", headers=JSON).json()["entries"]
     actions_seen = {e["action"] for e in entries}
-    assert {"receive_rfc", "run_investigation", "approve", "sign_and_package", "dispatch", "package.received",
-            "access.refused"} <= actions_seen
-    assert any(e["outcome"] == "refused" and e["action"] == "access.refused" for e in entries)
-    filtered = client.get("/audit?actor=bank_b", headers=JSON).json()
-    assert filtered["entries"] and all(e["actor"] == "bank_b" for e in filtered["entries"])
+    assert {"receive_rfc", "run_investigation", "approve", "sign_and_package", "dispatch"} <= actions_seen
+    # bank-side entries (receipts, dispositions, refused access) are the bank's, never the holder's
+    assert not {"package.received", "access.refused", "disposition.recorded"} & actions_seen
+    bank_audit = client.get("/bank/bank_a/audit", headers={**JSON, **TOKEN_A}).json()["entries"]
+    assert {"package.received"} <= {e["action"] for e in bank_audit}
+    bank_b_audit = client.get("/bank/bank_b/audit", headers={**JSON, **TOKEN_B}).json()["entries"]
+    assert any(e["action"] == "access.refused" and e["outcome"] == "refused" for e in bank_b_audit)
+    assert client.get("/bank/bank_a/audit", headers=JSON).status_code == 401
+    filtered = client.get("/audit?actor=alibi", headers=JSON).json()
+    assert filtered["entries"] and all(e["actor"] == "alibi" for e in filtered["entries"])
     html = client.get("/audit?q=dispatch")
     assert html.status_code == 200 and "dispatch" in html.text
+    refused_page = client.get("/bank/bank_b/inbox", headers={**TOKEN_A, "accept": "text/html"})
+    assert refused_page.status_code == 403 and "recipient_mismatch" in refused_page.text
 
 
 def test_replay_banner_when_enabled(tmp_path):
@@ -594,3 +605,138 @@ def test_dispatch_over_http_to_the_configured_bank_url(tmp_path):
     finally:
         holder.app.state.runtime.close()
         bank.app.state.runtime.close()
+
+
+# --------------------------------------------------------------------------- regressions from the adversarial review
+
+
+def test_rerun_keeps_the_holders_removals(client):
+    rid = client.rid
+    client.post(f"/requests/{rid}/run", headers=JSON)
+    detail = client.get(f"/requests/{rid}", headers=JSON).json()
+    victim = next(i for i in detail["review"]["included"] if i["kind"] == "fee")
+    client.post(victim["remove_action"], headers=JSON)
+    client.post(f"/requests/{rid}/run", headers=JSON)           # a rerun must not re-include it
+    after = client.get(f"/requests/{rid}", headers=JSON).json()
+    assert all(i["record_id"] != victim["record_id"] for i in after["review"]["included"])
+    assert any(e["record_id"] == victim["record_id"] for e in after["review"]["excluded"])
+    restored = client.post(f"/requests/{rid}/restore", headers=JSON).json()
+    page = client.get(f"/requests/{rid}", headers=JSON).json()
+    assert page["review"]["approval"]["digest"] == restored["digest"]
+    assert any(i["record_id"] == victim["record_id"] for i in page["review"]["included"])
+
+
+def test_failed_delivery_is_not_shown_as_sent(tmp_path):
+    from alibi.app import actions
+    cl = make_client(tmp_path, 1)
+    try:
+        rt = cl.app.state.runtime
+        run_approve(cl, "rfc-0001-01")
+        down = actions.deliver_over_http("http://127.0.0.1:9", timeout=0.3)
+        with pytest.raises(actions.Refusal) as info:
+            actions.dispatch(rt, "rfc-0001-01", down)
+        assert info.value.code == "bank_unreachable"
+        passport = cl.get("/passport", headers=JSON).json()
+        assert {r["request_id"]: r["status"] for r in passport["requests"]}["rfc-0001-01"] == "refused"
+        assert [h["status"] for h in passport["sharing_history"]] == ["failed"]
+        page = cl.get("/requests/rfc-0001-01/dispatch", headers=JSON).json()
+        assert page["dispatch"]["outcome"] == "refused" and "could not be reached" in page["dispatch"]["refusal"]["reason"]
+        # the retry with a working bank reuses the same signed package
+        result = actions.dispatch(rt, "rfc-0001-01", actions.deliver_in_process(rt))
+        assert result["outcome"] == "success"
+        assert [h["status"] for h in cl.get("/passport", headers=JSON).json()["sharing_history"]] == ["acknowledged"]
+    finally:
+        cl.app.state.runtime.close()
+
+
+def test_correction_marks_the_investigation_out_of_date_and_restore_refuses_cleanly(client):
+    rt = client.app.state.runtime
+    case = load_case(client.case_number)
+    client.post(f"/requests/{client.rid}/run", headers=JSON)
+    fee = next(d["event"] for d in case["merchant_deliveries"] if d["event"]["kind"] == "fee")
+    corrected = copy.deepcopy(fee)
+    corrected.update({"event_id": fee["event_id"] + "-r2", "revision": 2, "amount_minor": fee["amount_minor"] + 1,
+                      "correction_reason": "fee restated"})
+    api.ingest_merchant_event(rt.store, cases.sign_event(cases.to_merchant_event(corrected), rt.keystore),
+                              registry=rt.registry, subject_ref=rt.subject_ref, now=NOW)
+    detail = client.get(f"/requests/{client.rid}", headers=JSON).json()
+    assert detail["investigation"]["status"] == "out_of_date"
+    assert any("out of date" in f["text"] for f in detail["flashes"])
+    step = next(s for s in detail["trace"] if s["question_id"] == "q.source_of_funds")
+    assert step["state"] == "invalidated" and step["status_reason"].startswith("INVALIDATED")
+    r = client.post(f"/requests/{client.rid}/restore", headers=JSON)
+    assert r.status_code == 409 and r.json()["code"] == "review_failed"
+    client.post(f"/requests/{client.rid}/run", headers=JSON)
+    assert client.get(f"/requests/{client.rid}", headers=JSON).json()["investigation"]["status"] == "complete"
+
+
+def test_period_package_reconciles_against_the_claimed_total(client):
+    rid_b = client.rid_b
+    client.post(f"/requests/{rid_b}/run", headers=JSON)
+    ap = client.get(f"/requests/{rid_b}", headers=JSON).json()["review"]["approval"]
+    client.post(f"/requests/{rid_b}/approve", headers=JSON,
+                data={"digest": ap["digest"], "audience": ap["audience"], "policy_version": ap["policy_version"]})
+    pid = dispatch_ok(client, rid_b)["package_id"]
+    data = client.get(f"/bank/bank_b/packages/{pid}", headers={**JSON, **TOKEN_B}).json()
+    recon = data["reconciliation"]
+    # Bank B's combined question is unresolved under the rules engine, so nothing is attached:
+    # the panel must say so instead of showing a red mismatch against a made-up target.
+    if not recon["lines"]:
+        assert recon["expression"].startswith("nothing to reconcile")
+        html = client.get(f"/bank/bank_b/packages/{pid}", headers=TOKEN_B).text
+        assert "nothing to reconcile" in html and "does not match" not in html
+    else:
+        assert recon["compared_to"]["label"].startswith("Claimed total") and recon["matches"] is True
+
+
+def test_reapproving_a_sent_body_is_refused_not_celebrated(client):
+    run_approve(client, client.rid)
+    dispatch_ok(client, client.rid)
+    ap = client.get(f"/requests/{client.rid}", headers=JSON).json()["review"]["approval"]
+    r = client.post(f"/requests/{client.rid}/approve", headers=JSON,
+                    data={"digest": ap["digest"], "audience": ap["audience"], "policy_version": ap["policy_version"]})
+    assert r.status_code == 409 and r.json()["code"] == "approval_consumed"
+
+
+def test_confirming_a_rule_rebuilds_the_draft(client):
+    client.post(f"/requests/{client.rid}/run", headers=JSON)
+    before = client.get(f"/requests/{client.rid}", headers=JSON).json()["review"]
+    r = client.post("/rules/interpret", data={"text": "don't share item names"}, headers=JSON).json()
+    confirmed = client.post(f"/rules/{r['rule_id']}/confirm", headers=JSON).json()
+    assert client.rid in confirmed["rebuilt"]
+    after = client.get(f"/requests/{client.rid}", headers=JSON).json()["review"]
+    assert after["draft_status"] == "pending" and after["approval"]["status"] == "pending"
+    assert after["approval"]["policy_version"].endswith("@v1") and after["approval"]["digest"] != before["approval"]["digest"]
+    assert any(w["field"] == "items.description" for w in after["withheld_fields"])
+    ap = after["approval"]
+    ok = client.post(f"/requests/{client.rid}/approve", headers=JSON,
+                     data={"digest": ap["digest"], "audience": ap["audience"], "policy_version": ap["policy_version"]})
+    assert ok.status_code == 200
+
+
+def test_rejected_package_exposes_nothing_in_json_or_inbox(client):
+    run_approve(client, client.rid)
+    dispatch_ok(client, client.rid)
+    raw = client.get(f"/requests/{client.rid}/export.json").json()
+    raw["package_id"] = "pkg_tampered000000000000001"
+    raw["body"]["expires_at"] = "2027-01-01T00:00:00Z"
+    assert client.post("/bank/bank_a/receive", content=canon.canonical_bytes(raw)).status_code == 422
+    data = client.get("/bank/bank_a/packages/pkg_tampered000000000000001", headers={**JSON, **TOKEN_A}).json()
+    assert data["package"]["txn_ids"] == [] and data["package"]["period"] is None
+    assert data["package"]["issued_at"] == "—" and data["package"]["expires_at"] == "—"
+    row = next(p for p in client.get("/bank/bank_a/inbox", headers={**JSON, **TOKEN_A}).json()["packages"]
+               if p["package_id"] == "pkg_tampered000000000000001")
+    assert row["claim_counts"] == {"supported": 0, "contradicted": 0, "unresolved": 0} and row["expires_at"] == "—"
+    assert client.post("/bank/bank_a/receive", content=b"not json").status_code == 400
+    assert client.post("/bank/bank_a/receive", content=b'{"package_id": "x"}').status_code == 400
+
+
+def test_source_page_and_404_escape_markup(client):
+    client.post(f"/requests/{client.rid}/run", headers=JSON)
+    page = client.get(f"/sources/rec-000{client.case_number}-020/1")
+    assert page.status_code == 200 and "<script" not in page.text and "Good news!" in page.text
+    evil = client.get("/txn/%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E")
+    assert evil.status_code == 404 and "<img" not in evil.text and "&lt;img" in evil.text
+    held = client.post("/rules/interpret", data={"text": "share everything & more with everyone"}, headers=JSON).json()
+    clarify = client.post(f"/rules/held/{held['rule_id']}/clarify", follow_redirects=False)
+    assert clarify.status_code == 303 and "%26" in clarify.headers["location"]

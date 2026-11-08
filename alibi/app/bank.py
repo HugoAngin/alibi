@@ -94,9 +94,15 @@ def receive_package(rt: Runtime, recipient: str, raw: bytes) -> tuple[int, dict[
     now = rt.now_text()
     try:
         obj = canon.parse_json(raw)
-    except Exception:  # noqa: BLE001 - the verifier reports malformed input as a rejection
+    except Exception:  # noqa: BLE001 - malformed bytes are refused, not kept
         obj = None
-    digest = canon.digest(obj) if isinstance(obj, dict) else canon.sha256_hex(raw)
+    if not isinstance(obj, dict) or not isinstance(obj.get("body"), dict):
+        # Not even the shape of a package: refuse without storing, so an unauthenticated client
+        # cannot fill the inbox with noise. Well-formed but invalid packages are kept as rejected.
+        rt.bank_audit(recipient, action="dispatch.refused", outcome="refused", target_id=None,
+                      detail="not a package object")
+        return 400, {"code": "not_a_package", "reason": "the delivery is not a JSON package object"}
+    digest = canon.digest(obj)
     package_id = obj.get("package_id") if isinstance(obj, dict) else None
     package_id = package_id if isinstance(package_id, str) and _IDENT.fullmatch(package_id) else None
     with rt.lock:
@@ -128,7 +134,7 @@ def receive_package(rt: Runtime, recipient: str, raw: bytes) -> tuple[int, dict[
         receipt = {"receipt_id": canon.make_id("rcpt", recipient, pid, digest), "package_id": pid,
                    "package_sha256": digest, "recipient": recipient, "received_at": now,
                    "accepted": accepted, "reasons": [r[:300] for r in reasons]}
-        record = {"package_id": pid, "request_id": request_id, "raw": obj if isinstance(obj, dict) else None,
+        record = {"package_id": pid, "request_id": request_id, "raw": obj if accepted else None,
                   "package_sha256": digest, "received_at": now, "accepted": accepted,
                   "verification": result.to_json_dict(), "receipt": receipt}
         _save_package(rt, recipient, record)
@@ -198,7 +204,8 @@ def inbox(rt: Runtime, recipient: str, flashes=None) -> dict[str, Any]:
     spec = RECIPIENTS[recipient]
     packages = []
     for record in sorted(_packages(rt, recipient).values(), key=lambda r: r["received_at"]):
-        raw = record.get("raw") or {}
+        accepted = record["accepted"]
+        raw = (record.get("raw") or {}) if accepted else {}    # a rejected package shows nothing of its body
         body = raw.get("body") or {}
         rfc = _request_for(rt, recipient, record.get("request_id") or "")
         disposition = _latest_disposition(rt, recipient, record["package_id"])
@@ -206,8 +213,9 @@ def inbox(rt: Runtime, recipient: str, flashes=None) -> dict[str, Any]:
             "package_id": record["package_id"], "request_id": record.get("request_id") or "unknown",
             "received_at": record["received_at"], "expires_at": body.get("expires_at", "—"),
             "subject_ref_masked": c.mask_subject(rfc["subject_ref"]) if rfc else "—",
-            "authentication": _auth_status(record["verification"], record["accepted"]),
-            "claim_counts": _claim_counts(record),
+            "authentication": _auth_status(record["verification"], accepted),
+            "claim_counts": (_claim_counts(record) if accepted
+                             else {"supported": 0, "contradicted": 0, "unresolved": 0}),
             "disposition": disposition["decision"] if disposition else None,
             "href": f"/bank/{recipient}/packages/{record['package_id']}",
         })
@@ -234,10 +242,14 @@ def _attachment_index(body: dict) -> dict[str, dict]:
     return out
 
 
-def _timing(body: dict, question_id: str) -> dict | None:
+def _timing(body: dict, question_id: str, cited: set[str] | None = None) -> dict | None:
+    """Settlement timing for one question, from the attachments its claim cites (all when
+    ``cited`` is None): the release to the platform balance, the bank settlement and the credit."""
     if question_id == "q.sales_refunds_in_period":
         return None
     atts = body.get("attachments", [])
+    if cited is not None:
+        atts = [a for a in atts if f"{a.get('ref', {}).get('ref_type')}:{a.get('ref', {}).get('ref_id')}" in cited]
     contents = [a.get("content", {}) for a in atts]
     settlement = next((x for x in contents if x.get("kind") == "settlement"), None)
     release = next((x for x in contents if x.get("kind") == "payout"), None)
@@ -255,39 +267,41 @@ def _timing(body: dict, question_id: str) -> dict | None:
 
 
 def _reconcile(body: dict, recipient_name: str) -> dict[str, Any]:
-    """Verifier-side arithmetic from attached amounts only: sales less refunds and fees against
-    the attached credit (or the claim's target when the credit is not attached)."""
+    """Verifier-side arithmetic from attached amounts only. With a bank credit attached: sales
+    less refunds and fees against the credit. Otherwise (a period package) the attached records
+    are summed with the signs the claim's calculation used and compared with the claimed total."""
     contents = [a.get("content", {}) for a in body.get("attachments", [])]
-    kinds = {"order": ("Sales", "+", 1), "refund": ("Refunds", "-", -1), "fee": ("Fees", "-", -1)}
+    labels = {"order": "Sales", "refund": "Refunds", "fee": "Fees", "receipt": "Purchases"}
+    credit = next((x for x in contents if "txn_id" in x and isinstance(x.get("amount_pence"), int)), None)
+    claim_calc = next((cl.get("calculation") for cl in body.get("claims", []) if cl.get("calculation")), None)
+    if credit is not None:
+        signs = {"order": 1, "refund": -1, "fee": -1}
+        target, target_label = credit["amount_pence"], f"Bank credit {credit.get('txn_id')}"
+    elif claim_calc:
+        signs = {t["kind"]: t["sign"] for t in claim_calc.get("terms", []) if t.get("kind") in labels}
+        target, target_label = claim_calc.get("total_pence"), f"Claimed total ({claim_calc.get('method')})"
+    else:
+        signs, target, target_label = {}, None, "nothing claimed"
     groups: dict[str, dict] = {}
-    currency = "GBP"
+    currency = (credit or claim_calc or {}).get("currency", "GBP")
     for x in contents:
         kind = x.get("kind")
-        if kind in kinds and isinstance(x.get("amount_pence"), int):
-            label, sign, mult = kinds[kind]
-            g = groups.setdefault(kind, {"label": label, "kind": kind, "sign": sign, "minor": 0, "source_ids": []})
+        if kind in signs and isinstance(x.get("amount_pence"), int):
+            g = groups.setdefault(kind, {"label": labels[kind], "kind": kind, "sign": "+" if signs[kind] > 0 else "-",
+                                         "minor": 0, "source_ids": []})
             g["minor"] += x["amount_pence"]
             g["source_ids"].append(f"{x.get('record_id')} r{x.get('revision')}")
-            currency = x.get("currency", currency)
-    total = sum(g["minor"] * (1 if g["sign"] == "+" else -1) for g in groups.values())
-    credit = next((x for x in contents if "txn_id" in x and isinstance(x.get("amount_pence"), int)), None)
-    target = credit["amount_pence"] if credit else None
-    if target is None:
-        for cl in body.get("claims", []):
-            calc = cl.get("calculation") or {}
-            if isinstance(calc.get("target_pence"), int):
-                target = calc["target_pence"]
-                break
-    lines = [{"label": g["label"], "kind": g["kind"], "sign": g["sign"], "amount": c.money(g["minor"], currency),
-              "source_ids": g["source_ids"]} for k, g in sorted(groups.items(), key=lambda kv: ["order", "refund", "fee"].index(kv[0]))]
-    expression = " ".join((f"{g['minor']}" if i == 0 and g["sign"] == "+" else f"{g['sign']} {g['minor']}")
-                          for i, g in enumerate(groups[k] for k in ["order", "refund", "fee"] if k in groups))
-    expression = f"{expression or '0'} = {total}"
+    order = [k for k in ("order", "refund", "fee", "receipt") if k in groups]
+    total = sum(groups[k]["minor"] * (1 if groups[k]["sign"] == "+" else -1) for k in order)
+    lines = [{"label": groups[k]["label"], "kind": k, "sign": groups[k]["sign"],
+              "amount": c.money(groups[k]["minor"], currency), "source_ids": groups[k]["source_ids"]} for k in order]
+    expression = " ".join((f"{groups[k]['minor']}" if i == 0 and groups[k]["sign"] == "+"
+                           else f"{groups[k]['sign']} {groups[k]['minor']}") for i, k in enumerate(order))
+    expression = f"{expression or '0'} = {total}" if lines else "nothing to reconcile: the package attaches no amounts"
     matches = target is not None and bool(lines) and total == target
-    return {"title": "Reconciliation (recomputed by the verifier)", "lines": lines, "expression": expression,
-            "result": c.money(total, currency),
-            "compared_to": {"label": f"Bank credit {credit.get('txn_id')}" if credit else "claimed target",
-                            "amount": c.money(target or 0, currency)},
+    return {"title": "Reconciliation (recomputed by the verifier from the attached amounts)", "lines": lines,
+            "expression": expression, "result": c.money(total, currency),
+            "compared_to": {"label": target_label, "amount": c.money(target or 0, currency)},
             "difference": c.money(total - (target or 0), currency), "matches": matches,
             "computed_by": f"{recipient_name} verifier (code)", "computed_at": None}
 
@@ -302,10 +316,10 @@ def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id
     spec = RECIPIENTS[recipient]
     verification = record["verification"]
     auth = verification.get("authentication", {})
-    raw = record.get("raw") or {}
+    accepted = record["accepted"]
+    raw = (record.get("raw") or {}) if accepted else {}        # a rejected package shows nothing of its body
     body = raw.get("body") or {}
     rfc = _request_for(rt, recipient, record.get("request_id") or "")
-    accepted = record["accepted"]
     ctx = _base(rt, recipient, f"Package {package_id}", "inbox", flashes)
     extra = [] if rfc else [f"request {record.get('request_id')} was not issued by {recipient}"]
     period = body.get("scope", {}).get("period") if body else None
@@ -366,7 +380,7 @@ def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id
                        f"{content.get('kind', ref['ref_type'])} · status {content.get('status', 'n/a')}")
             evidence.append({"attachment_id": row["attachment_id"] if row else "not attached",
                              "record_id": ref["ref_id"], "revision": ref["revision"],
-                             "trust": row["trust"] if row else ("bank_observed" if ref["ref_type"] == "txn" else "issuer_verified"),
+                             "trust": row["trust"] if row else ("bank_observed" if ref["ref_type"] == "txn" else "unknown"),
                              "summary": summary or "", "href": f"#trust-{row['attachment_id']}" if row else "#source-trust",
                              "attestation": row["attestation"] if row else "none",
                              "redacted": row["redacted"] if row else False})
@@ -380,7 +394,8 @@ def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id
         evidence_by_question.append({"question_id": qid, "question": questions.get(qid, qid),
                                      "claim": {"status": cl["status"], "rationale": cl["rationale"]},
                                      "evidence": evidence, "calculation": calc_view, "gap": cl.get("gap"),
-                                     "timing": _timing(body, qid)})
+                                     "timing": _timing(body, qid, {f"{r['ref_type']}:{r['ref_id']}"
+                                                                   for r in cl.get("evidence_refs", [])})})
         if cl["status"] == "contradicted":
             contradictions.append({"claim_id": f"claim-{qid}", "question_id": qid,
                                    "description": cl.get("gap") or cl["rationale"],

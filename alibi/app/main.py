@@ -9,9 +9,11 @@ Run: ``uv run --frozen python -m alibi.app [--host H] [--port P] [--timeout SECO
 
 from __future__ import annotations
 
+import html as htmlmod
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request
 from fastapi.encoders import jsonable_encoder
@@ -51,6 +53,23 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     app = FastAPI(title="Alibi", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runtime = rt
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.middleware("http")
+    async def same_origin_posts(request: Request, call_next):
+        """A page on another site must not drive the holder's or the analyst's actions. Browsers
+        send ``Sec-Fetch-Site`` and ``Origin`` on cross-site form posts; same-origin forms and
+        plain API clients (no such headers) pass. The bank delivery endpoint is exempt."""
+        if request.method == "POST" and not request.url.path.endswith("/receive"):
+            site = request.headers.get("sec-fetch-site", "").lower()
+            origin = request.headers.get("origin")
+            host = request.headers.get("host", "").lower()
+            origin_host = origin.split("//", 1)[-1].split("/", 1)[0].lower() if origin else None
+            cross = site in ("cross-site", "same-site") or (origin is not None and origin_host != host)
+            if cross:
+                return JSONResponse({"version": UI_VERSION, "code": "cross_site_post",
+                                     "reason": "state-changing posts are accepted from this site only"},
+                                    status_code=403)
+        return await call_next(request)
     deliver = (actions.deliver_over_http(settings.bank_url) if settings.bank_url
                else actions.deliver_in_process(rt))
 
@@ -96,7 +115,8 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     def not_found(request: Request, what: str) -> Response:
         if wants_json(request):
             return JSONResponse({"version": UI_VERSION, "code": "not_found", "reason": what}, status_code=404)
-        return HTMLResponse(f"<!doctype html><title>Not found · Alibi</title><h1>Not found</h1><p>{what}</p>", status_code=404)
+        return HTMLResponse(f"<!doctype html><title>Not found · Alibi</title><h1>Not found</h1>"
+                            f"<p>{htmlmod.escape(what)}</p>", status_code=404)
 
     # ------------------------------------------------------------------- health, root
 
@@ -131,12 +151,16 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         if wants_json(request):
             return JSONResponse(jsonable_encoder(ctx))
         item = ctx["record"]
-        rows = "".join(f"<tr><td>{k}</td><td><code>{json.dumps(v)}</code></td></tr>" for k, v in ctx["fields"].items())
-        html = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>{record_id} r{revision} · Alibi</title>"
-                f"<link rel='stylesheet' href='{settings.static_prefix}/alibi.css'></head><body class='area-holder'>"
-                f"<main class='page'><h1 class='page-title'>Record {record_id} r{revision}</h1>"
-                f"<p class='page-lede'>{item['summary']}</p><p class='muted small'>Trust {item['trust']} · connector "
-                f"{item['connector']} · revisions {ctx['revisions']}{' · superseded' if item['superseded'] else ''}</p>"
+        esc = htmlmod.escape   # record text is merchant-supplied data: escape every value
+        rows = "".join(f"<tr><td>{esc(str(k))}</td><td><code>{esc(json.dumps(v))}</code></td></tr>"
+                       for k, v in ctx["fields"].items())
+        title = esc(f"{record_id} r{revision}")
+        html = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>{title} · Alibi</title>"
+                f"<link rel='stylesheet' href='{esc(settings.static_prefix)}/alibi.css'></head><body class='area-holder'>"
+                f"<main class='page'><h1 class='page-title'>Record {title}</h1>"
+                f"<p class='page-lede'>{esc(item['summary'])}</p><p class='muted small'>Trust {esc(item['trust'])} · "
+                f"connector {esc(item['connector'])} · revisions {esc(str(ctx['revisions']))}"
+                f"{' · superseded' if item['superseded'] else ''}</p>"
                 f"<div class='table-wrap'><table class='table table--compact'><tbody>{rows}</tbody></table></div>"
                 f"<p><a href='/passport'>Back to the passport</a></p></main></body></html>")
         return HTMLResponse(html)
@@ -205,7 +229,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     def rules_clarify(request: Request, rule_id: str) -> Response:
         text = actions.held_text(rt, rule_id)
         actions.discard_held(rt, rule_id)
-        return redirect(request, f"/rules?prefill={text}#add-rule", payload={"text": text})
+        return redirect(request, f"/rules?prefill={quote(text, safe='')}#add-rule", payload={"text": text})
 
     @app.post("/rules/held/{rule_id}/discard")
     def rules_discard(request: Request, rule_id: str) -> Response:
@@ -331,11 +355,33 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
 
     # ------------------------------------------------------------------- bank service
 
-    def bank_auth(request: Request, recipient: str) -> tuple[str, str | None]:
+    def bank_auth(request: Request, recipient: str, *, allow_query: bool = False) -> tuple[str, str | None]:
         header = request.headers.get("authorization", "")
         bearer = header[7:].strip() if header.lower().startswith("bearer ") else None
+        query_token = request.query_params.get("token") if allow_query else None
         return bank.authenticate(rt, recipient, bearer=bearer, cookie=request.cookies.get(BANK_COOKIE),
-                                 query_token=request.query_params.get("token"))
+                                 query_token=query_token)
+
+    def bank_refused(request: Request, exc: Refusal) -> Response:
+        """Credential refusals: JSON for API clients, a plain escaped page for browsers."""
+        if wants_json(request):
+            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **exc.body()}), status_code=exc.status)
+        body = (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Refused · Alibi</title>"
+                f"<link rel='stylesheet' href='{htmlmod.escape(settings.static_prefix)}/alibi.css'></head>"
+                f"<body class='area-analyst'><main class='page'><div class='result result--refused'>"
+                f"<h2>Refused</h2><p>{htmlmod.escape(exc.code)}</p><pre class='result__reason'>"
+                f"{htmlmod.escape(exc.reason)}</pre></div></main></body></html>")
+        return HTMLResponse(body, status_code=exc.status)
+
+    @app.get("/bank/{recipient}/audit")
+    def bank_audit(request: Request, recipient: str) -> Response:
+        """The recipient's own audit entries (receipts, dispositions, refused access), JSON only."""
+        try:
+            who, _ = bank_auth(request, recipient)
+        except Refusal as exc:
+            return bank_refused(request, exc)
+        return JSONResponse(jsonable_encoder({"version": UI_VERSION, "recipient": who,
+                                              "entries": rt.bank_audit_entries(who)}))
 
     def bank_page(request: Request, template: str, ctx: dict, token: str | None, status: int = 200) -> Response:
         response = page(request, template, ctx, status)
@@ -352,17 +398,22 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     @app.get("/bank/{recipient}/inbox")
     def bank_inbox(request: Request, recipient: str) -> Response:
         try:
-            who, token = bank_auth(request, recipient)
+            who, token = bank_auth(request, recipient, allow_query=True)
         except Refusal as exc:
-            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **exc.body()}), status_code=exc.status)
-        return bank_page(request, "analyst/inbox.html", bank.inbox(rt, who, flashes_from(request)), token)
+            return bank_refused(request, exc)
+        if token:
+            # Start the session, then drop the credential from the address bar, history and referers.
+            response = RedirectResponse(f"/bank/{who}/inbox", status_code=303)
+            response.set_cookie(BANK_COOKIE, token, httponly=True, samesite="lax")
+            return response
+        return bank_page(request, "analyst/inbox.html", bank.inbox(rt, who, flashes_from(request)), None)
 
     @app.get("/bank/{recipient}/requests")
     def bank_requests(request: Request, recipient: str) -> Response:
         try:
             who, _ = bank_auth(request, recipient)
         except Refusal as exc:
-            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **exc.body()}), status_code=exc.status)
+            return bank_refused(request, exc)
         return JSONResponse(jsonable_encoder({"version": UI_VERSION, "recipient": who,
                                               "requests": bank.issued_requests(rt, who)}))
 
@@ -371,7 +422,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         try:
             who, token = bank_auth(request, recipient)
         except Refusal as exc:
-            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **exc.body()}), status_code=exc.status)
+            return bank_refused(request, exc)
         ctx = bank.package_view(rt, who, package_id, disposition_id=disposition or None, flashes=flashes_from(request))
         if ctx is None:
             return not_found(request, f"no package {package_id} for {who}")
@@ -382,7 +433,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         try:
             who, _ = bank_auth(request, recipient)
         except Refusal as exc:
-            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **exc.body()}), status_code=exc.status)
+            return bank_refused(request, exc)
         form = await request.form()
         back = f"/bank/{who}/packages/{package_id}#disposition"
         try:
@@ -406,7 +457,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
         try:
             who, _ = bank_auth(request, recipient)
         except Refusal as exc:
-            return JSONResponse(jsonable_encoder({"version": UI_VERSION, **exc.body()}), status_code=exc.status)
+            return bank_refused(request, exc)
         form = await request.form()
         parent = str(form.get("parent_request_id", ""))
         back = f"/bank/{who}/inbox#requests-sent"

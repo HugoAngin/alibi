@@ -109,7 +109,7 @@ def load_ref(store: Store, ref: EvidenceRef) -> EvidenceRecord | BankTxn | None:
 def trust_of(store: Store, ref: EvidenceRef) -> str:
     item = load_ref(store, ref)
     if item is None:
-        return "bank_observed" if ref.ref_type == "txn" else "issuer_verified"
+        return "bank_observed" if ref.ref_type == "txn" else "unknown"   # never badge as issuer-signed
     return item.source_trust.value
 
 
@@ -126,11 +126,21 @@ def latest_run_claims(store: Store, request_id: str) -> list[Claim]:
     return [c for c in claims if c.run_id == run_id]
 
 
-def latest_draft(store: Store, request_id: str) -> Draft | None:
-    """The request's current draft: the newest by ``created_at``; on a tie (a fixed clock) the
-    one saved last, because ``list_drafts`` returns rows in insertion order."""
+def latest_draft(store: Store, request_id: str, preferred: str | None = None) -> Draft | None:
+    """The request's current draft. ``preferred`` is the draft id the app recorded when it last
+    built a review (a rebuild with the same body returns an existing row, so insertion order is not
+    enough); otherwise the newest by ``created_at``, ties (a fixed clock) going to the row saved
+    last, because ``list_drafts`` returns rows in insertion order."""
     drafts = store.list_drafts(request_id=request_id)
+    if preferred:
+        for draft in drafts:
+            if draft.draft_id == preferred:
+                return draft
     return sorted(drafts, key=lambda d: d.created_at)[-1] if drafts else None
+
+
+def current_draft(rt, request_id: str) -> Draft | None:
+    return latest_draft(rt.store, request_id, rt.sidecar.get(f"draft:{request_id}"))
 
 
 def question_text(rfc: RequestForContext, question_id: str) -> str:

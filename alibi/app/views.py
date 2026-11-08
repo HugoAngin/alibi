@@ -63,9 +63,12 @@ def request_status(rt: Runtime, rfc: RequestForContext) -> str:
     store = rt.store
     if rt.clock() >= rfc.expires_at:
         return "expired"
-    if store.list_packages(request_id=rfc.request_id):
-        return "sent"
-    draft = c.latest_draft(store, rfc.request_id)
+    deliveries = [d for p in store.list_packages(request_id=rfc.request_id)
+                  for d in store.list_deliveries(package_id=p.package_id)]
+    if deliveries:
+        latest = sorted(deliveries, key=lambda d: d.delivered_at)[-1]
+        return "sent" if latest.status != "failed" else "refused"
+    draft = c.current_draft(rt, rfc.request_id)
     if draft is not None:
         if DraftStatus(draft.status) == DraftStatus.APPROVED:
             return "approved"
@@ -159,6 +162,8 @@ def sharing_history(rt: Runtime) -> list[dict[str, Any]]:
             status = "superseded"
         elif delivery is not None and delivery.status == "acknowledged":
             status = "acknowledged"
+        elif delivery is not None and delivery.status == "failed":
+            status = "failed"          # signed, but the recipient refused or was unreachable
         else:
             status = "delivered"
         rows.append({"package_id": pkg.package_id, "request_id": pkg.body.request_id,
@@ -342,9 +347,12 @@ def transaction_detail(rt: Runtime, txn_id: str, flashes=None) -> dict[str, Any]
     for rfc in store.list_requests(subject_ref=txn.subject_ref):
         for claim in c.latest_run_claims(store, rfc.request_id):
             if any(r.ref_type == "txn" and r.ref_id == txn.txn_id for r in claim.evidence_refs):
+                state = str(getattr(claim.state, "value", claim.state))
+                stale_note = f"INVALIDATED ({claim.invalidated_reason}). " if state != "active" else ""
                 claims.append({"claim_id": claim.claim_id, "question_id": claim.question_id,
                                "question": c.question_text(rfc, claim.question_id),
-                               "status": claim.status.value, "rationale": claim.rationale,
+                               "status": claim.status.value, "rationale": stale_note + claim.rationale,
+                               "state": state,
                                "request_id": rfc.request_id,
                                "href": f"/requests/{rfc.request_id}#trc_{claim.question_id}"})
     row = txn_row(rt, txn)
@@ -489,7 +497,10 @@ def _trace(rt: Runtime, rfc: RequestForContext) -> tuple[list[dict[str, Any]], d
             "sources": sources, "lookups": lookups,
             "calculation": c.calculation_view(claim.calculation, computed_at=claim.created_at),
             "status": claim.status.value,
-            "status_reason": (status_ev.reason if status_ev and status_ev.reason else claim.rationale)[:300],
+            "status_reason": ((f"INVALIDATED ({claim.invalidated_reason}); was: "
+                               if str(getattr(claim.state, "value", claim.state)) != "active" else "")
+                              + (status_ev.reason if status_ev and status_ev.reason else claim.rationale))[:300],
+            "state": str(getattr(claim.state, "value", claim.state)),
             "rationale": claim.rationale, "gap": claim.gap,
             "at": c.iso(status_ev.at if status_ev else claim.created_at),
         })
@@ -543,7 +554,7 @@ def _review(rt: Runtime, rfc: RequestForContext, draft: Draft | None) -> dict[st
                     item.kind.value, item.source_trust.value)
         if isinstance(item, BankTxn):
             return f"bank transaction {ref.ref_id} r{ref.revision}", "bank_txn", "bank_observed"
-        return f"{ref.ref_type} {ref.ref_id} r{ref.revision}", ref.ref_type, "issuer_verified"
+        return f"{ref.ref_type} {ref.ref_id} r{ref.revision}", ref.ref_type, "unknown"
 
     def questions_in(reason: str) -> str:
         marker = "cited by "
@@ -591,13 +602,19 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
     if rfc.subject_ref != rt.subject_ref:
         return None
     steps, meta = _trace(rt, rfc)
-    draft = c.latest_draft(store, request_id)
+    draft = c.current_draft(rt, request_id)
     signed = any("signed" in (e.detail or "") and "unsigned" not in (e.detail or "")
                  for e in store.list_audit(target_id=request_id) if e.action == "receive_rfc")
     status = request_status(rt, rfc)
     ran = bool(steps)
     last_run = rt.sidecar.get(f"run:{request_id}") or {}
-    inv_status = "failed" if last_run.get("failed") else ("complete" if ran else "not_started")
+    stale = [cl for cl in c.latest_run_claims(store, request_id) if str(getattr(cl.state, "value", cl.state)) != "active"]
+    inv_status = ("failed" if last_run.get("failed") else "out_of_date" if stale
+                  else "complete" if ran else "not_started")
+    if stale:
+        reasons = sorted({cl.invalidated_reason or "newer evidence arrived" for cl in stale})
+        flashes = [*(flashes or []), {"kind": "info", "text": "The investigation is out of date: "
+                                     + "; ".join(reasons) + ". Run it again before approving."}]
     roles = [{"name": "rules", "status": "complete" if ran else "not_started",
               "calls": meta.get("calls_used", 0) if ran else 0, "note": ROLE_NOTE}]
     roles += [{"name": role, "status": "skipped", "calls": 0,
@@ -680,7 +697,7 @@ def export_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] | 
     except NotFound:
         return None
     pkg = latest_package(rt, request_id)
-    draft = c.latest_draft(store, request_id)
+    draft = c.current_draft(rt, request_id)
     if pkg is None and draft is None:
         return None
     body = pkg.body if pkg is not None else draft.body
@@ -774,6 +791,8 @@ ROLE_BY_ACTOR = {"holder": "holder", "alibi": "backend", "rules": "investigation
 
 
 def audit_entries(rt: Runtime) -> list[dict[str, Any]]:
+    """The holder's audit: the passport's own events only. Bank-side entries (receipts,
+    dispositions, refused access) stay with the bank; a disposition is never shown to the holder."""
     rows = []
     for ev in rt.store.list_audit():
         target = ev.target_id
@@ -783,13 +802,6 @@ def audit_entries(rt: Runtime) -> list[dict[str, Any]]:
                      "action": ev.action, "request_id": target if is_request else None,
                      "event_id": None if is_request else target, "outcome": ev.outcome,
                      "detail": ev.detail or ""})
-    for ev in rt.bank_audit_entries():
-        target = ev.get("target_id")
-        is_request = bool(target) and str(target).startswith("rfc")
-        rows.append({"entry_id": ev["entry_id"], "at": ev["at"], "actor": ev["actor"], "role": ev["role"],
-                     "action": ev["action"], "request_id": target if is_request else None,
-                     "event_id": None if is_request else target, "outcome": ev["outcome"],
-                     "detail": ev.get("detail") or ""})
     rows.sort(key=lambda r: (r["at"] or "", r["entry_id"]), reverse=True)
     return rows
 

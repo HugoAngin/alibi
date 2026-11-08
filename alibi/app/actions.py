@@ -73,7 +73,8 @@ def run_investigation(rt: Runtime, request_id: str) -> dict[str, Any]:
             result = api.run_investigation(store, rfc.request_id, mode="rules",
                                            settlement_lookup=rt.settlement_lookup,
                                            registry=rt.registry, now=now)
-            draft = api.build_review(store, rfc.request_id, now=now)
+            removed = sorted(set(rt.sidecar.get(f"removed:{request_id}") or []))
+            draft = api.build_review(store, rfc.request_id, now=now, removed=removed)
         except (PackageError, StoreError, ValueError) as exc:
             rt.sidecar.set(f"run:{request_id}", {"failed": True, "failure_reason": str(exc)[:300],
                                                  "at": rt.now_text()})
@@ -81,6 +82,7 @@ def run_investigation(rt: Runtime, request_id: str) -> dict[str, Any]:
         rt.sidecar.set(f"run:{request_id}", {"failed": False, "run_id": result.run_id, "at": rt.now_text(),
                                              "mode": "rules", "calls_used": result.calls_used,
                                              "draft_id": draft.draft_id})
+        rt.sidecar.set(f"draft:{request_id}", draft.draft_id)
         return {"run_id": result.run_id, "mode": "rules", "calls_used": result.calls_used,
                 "claims": {cl.question_id: cl.status.value for cl in result.claims},
                 "draft_id": draft.draft_id, "unavailable": list(result.unavailable)}
@@ -91,7 +93,6 @@ def remove_item(rt: Runtime, request_id: str, ref_type: str, ref_id: str) -> dic
     any, no longer matches the new body, so dispatch will refuse until the holder approves again."""
     store = rt.store
     with rt.lock:
-        current = c.latest_draft(store, request_id)
         removed: set[str] = set(rt.sidecar.get(f"removed:{request_id}") or [])
         token = f"{ref_type}:{ref_id}"
         removed.add(token)
@@ -100,18 +101,41 @@ def remove_item(rt: Runtime, request_id: str, ref_type: str, ref_id: str) -> dic
             draft = api.build_review(store, request_id, now=rt.clock(), removed=sorted(removed))
         except PackageError as exc:
             raise Refusal("review_failed", str(exc)) from exc
-        if current is not None and current.draft_id == draft.draft_id:
-            # Same body (the item was not in it); nothing changed.
-            pass
+        rt.sidecar.set(f"draft:{request_id}", draft.draft_id)
         rt.audit(action="remove_item", outcome="ok", target_id=request_id,
                  detail=f"holder removed {token}; draft {draft.draft_id} (digest {draft.body_sha256[:12]})")
         return {"draft_id": draft.draft_id, "digest": f"sha256:{draft.body_sha256}", "removed": sorted(removed)}
 
 
 def restore_items(rt: Runtime, request_id: str) -> dict[str, Any]:
-    rt.sidecar.set(f"removed:{request_id}", [])
-    draft = api.build_review(rt.store, request_id, now=rt.clock())
+    """Put every removed item back: rebuild without removals and make that draft current."""
+    with rt.lock:
+        rt.sidecar.set(f"removed:{request_id}", [])
+        try:
+            draft = api.build_review(rt.store, request_id, now=rt.clock())
+        except PackageError as exc:
+            raise Refusal("review_failed", str(exc)) from exc
+        rt.sidecar.set(f"draft:{request_id}", draft.draft_id)
+        rt.audit(action="restore_items", outcome="ok", target_id=request_id,
+                 detail=f"holder restored removed items; draft {draft.draft_id}")
     return {"draft_id": draft.draft_id, "digest": f"sha256:{draft.body_sha256}"}
+
+
+def rebuild_reviews(rt: Runtime) -> list[str]:
+    """After a policy change: rebuild the review of every request that has one, keeping the
+    holder's removals, so the pages show the re-filtered draft instead of an invalidated one."""
+    rebuilt = []
+    for rfc in rt.store.list_requests(subject_ref=rt.subject_ref):
+        if not rt.store.list_drafts(request_id=rfc.request_id):
+            continue
+        removed = sorted(set(rt.sidecar.get(f"removed:{rfc.request_id}") or []))
+        try:
+            draft = api.build_review(rt.store, rfc.request_id, now=rt.clock(), removed=removed)
+        except PackageError:
+            continue        # the investigation itself is out of date; the page says so
+        rt.sidecar.set(f"draft:{rfc.request_id}", draft.draft_id)
+        rebuilt.append(rfc.request_id)
+    return rebuilt
 
 
 def approve(rt: Runtime, request_id: str, *, digest: str, audience: str, policy_version: str,
@@ -121,7 +145,7 @@ def approve(rt: Runtime, request_id: str, *, digest: str, audience: str, policy_
     store = rt.store
     with rt.lock:
         rfc = store.get_request(request_id)
-        draft = c.latest_draft(store, request_id)
+        draft = c.current_draft(rt, request_id)
         if draft is None:
             raise Refusal("draft_missing", f"approval refused: request {request_id} has no draft to approve; "
                                            "run the investigation first.")
@@ -145,6 +169,13 @@ def approve(rt: Runtime, request_id: str, *, digest: str, audience: str, policy_
             approval = api.approve(store, draft.draft_id, holder_id=holder, now=rt.clock())
         except ApprovalError as exc:
             raise Refusal(_code_for(exc.problems), "approval refused: " + "; ".join(exc.problems)) from exc
+        if ApprovalStatus(approval.status) == ApprovalStatus.CONSUMED:
+            raise Refusal("approval_consumed", "approval refused: this exact body was already approved and sent as "
+                                               f"package {approval.package_id}; nothing to approve again.")
+        if approval.expires_at <= rt.clock():
+            raise Refusal("approval_expired", "approval refused: the earlier approval of this body expired at "
+                                              f"{format_utc(approval.expires_at)}; remove or restore an item, or run "
+                                              "the investigation again, to get a fresh draft to approve.")
         return {"approval_id": approval.approval_id, "status": ApprovalStatus(approval.status).value,
                 "digest": f"sha256:{approval.body_sha256}", "audience": approval.audience,
                 "expires_at": format_utc(approval.expires_at)}
@@ -178,7 +209,7 @@ def dispatch(rt: Runtime, request_id: str, deliver) -> dict[str, Any]:
         rfc = store.get_request(request_id)
         now = rt.clock()
         attempted = rt.now_text()
-        current = c.latest_draft(store, request_id)
+        current = c.current_draft(rt, request_id)
         approval = _latest_approval(rt, request_id, current.body_sha256 if current else None)
         recipient = rt.recipient_name(rfc.audience)
         result: dict[str, Any] = {"outcome": "refused", "package_id": "none", "request_id": request_id,
@@ -354,7 +385,8 @@ def confirm_rule(rt: Runtime, rule_id: str) -> dict[str, Any]:
     except PolicyError as exc:
         raise Refusal("policy_rejected", str(exc)) from exc
     rt.sidecar.update("pending_rules", lambda cur: {k: v for k, v in (cur or {}).items() if k != rule_id})
-    return {"policy_version": saved.version_tag(), "rules": len(saved.rules)}
+    rebuilt = rebuild_reviews(rt)
+    return {"policy_version": saved.version_tag(), "rules": len(saved.rules), "rebuilt": rebuilt}
 
 
 def reject_rule(rt: Runtime, rule_id: str) -> None:
@@ -368,7 +400,8 @@ def retire_rule(rt: Runtime, rule_id: str) -> dict[str, Any]:
         raise Refusal("rule_not_active", f"no active rule {rule_id}", status=404)
     rules = [r.to_json_dict() for r in policy.rules if r.rule_id != rule_id]
     saved = api.record_policy(rt.store, rt.subject_ref, rules, confirmed=True, now=rt.clock())
-    return {"policy_version": saved.version_tag(), "rules": len(saved.rules)}
+    rebuilt = rebuild_reviews(rt)
+    return {"policy_version": saved.version_tag(), "rules": len(saved.rules), "rebuilt": rebuilt}
 
 
 def discard_held(rt: Runtime, rule_id: str) -> None:

@@ -91,6 +91,8 @@ def _parallel_capture(output: Path, cases: list[dict], isolation: dict, signatur
                     output=output / "capture-workers" / f"{mode}-{case['case_number']}",
                     scratch_parent=lane, denied_scratch=tuple(root for root in roots if root != lane),
                     capture_root=isolation.get("capture_root", output), deadline=isolation["deadline"],
+                    trusted_issuers_file=isolation.get('trusted_issuers_file'),
+                    trusted_issuers_sha256=isolation.get('trusted_issuers_sha256'),
                 )
             finally:
                 lanes.put(lane)
@@ -426,6 +428,7 @@ def main(argv: list[str] | None = None) -> None:
                         help="run the one authorized candidate-4 comparison on the reused pack")
     parser.add_argument("--original-manifest", type=Path, help="first capture's manifest for candidate 4")
     parser.add_argument("--public-rehearsal", type=Path, help="exact candidate-4 public Cases 1/2 capture")
+    parser.add_argument('--trusted-issuers-file', type=Path, help='explicit private synthetic trust setup')
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
     parser.add_argument("--checkpoint-at", type=_aware_deadline,
@@ -433,6 +436,8 @@ def main(argv: list[str] | None = None) -> None:
     for option in ("out", "cases", "gold", "manifest", "model_config", "private_root", "probes"):
         _path_argument(parser, option)
     args = parser.parse_args(argv)
+    if args.trusted_issuers_file is not None and not args.post_fix_second_look:
+        parser.error('trusted setup is only supported for the explicitly labelled second look')
     if args.post_fix_second_look:
         if (args.candidate_ref != SECOND_LOOK_TAG or args.dry_run or args.public_live
                 or args.original_manifest is None or args.public_rehearsal is None or args.workers != 4
@@ -519,8 +524,18 @@ def main(argv: list[str] | None = None) -> None:
                 parser.error(f"candidate-4 original capture verification failed ({type(exc).__name__})")
             kind = "post_fix_second_look"
             signature.update(kind=kind, original_run_sha256=original_digest)
+            trust_digest = None
+            if args.trusted_issuers_file is not None:
+                from agents.eval.trusted_setup import load
+                trust_digest = _digest(args.trusted_issuers_file)
+                trusted = load(args.trusted_issuers_file, trust_digest)
+                signature.update(trusted_setup_sha256=trust_digest,
+                                 trusted_public_key_fingerprints=trusted['public_key_fingerprints'])
+                isolation.update(trusted_issuers_file=args.trusted_issuers_file,
+                                 trusted_issuers_sha256=trust_digest)
             from agents.eval.second_look import public_gate
-            signature["public_rehearsal_files"] = public_gate(args.public_rehearsal, candidate)
+            signature["public_rehearsal_files"] = public_gate(args.public_rehearsal, candidate,
+                                                              trusted_issuers_sha256=trust_digest)
             # Reused-input development captures and the original frozen predictions
             # are siblings; the new worker must not be able to read any of them.
             isolation["capture_root"] = output.parent

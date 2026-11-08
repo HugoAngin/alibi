@@ -24,6 +24,15 @@ evidence, not a new unseen comparison.
   reads no gold, exports no record values and never changes issuer identities or trust.
   A native explicit trusted-fixture configuration patch is in preparation; arbitrary
   event-declared issuers must not become trusted automatically.
+- `ISSUER_CONFIG.patch` now supplies that explicit native API. All 108 native tests pass,
+  including the existing public gold checks. An independent synthetic bootstrap check
+  verifies the same fixed issuer mapping and signing seed reach all three modes, rejects
+  mismatched fingerprints before candidate execution and restores the three public control
+  claims. The private configuration comes from the original authoring setup's static
+  issuer declaration, with provenance and fingerprints; no event/gold-derived trust.
+- The unresolved-evidence prototype improves public rules safe-complete from 35 to 41/80,
+  but review found that it drops stale-evidence dependencies. It is being strengthened
+  before application; this provisional number is not a submitted or verified result.
 - Remaining app work: unresolved-answer evidence minimisation, one-pass question handling,
   same-clock draft ordering and a demo smoke port-release assertion. Cross-bank scoping
   landed at `354f9e0`; all 36 API tests pass. The separate ordering issue remains.

@@ -35,3 +35,18 @@ def test_public_gate_rejects_wrong_candidate_and_invalid_predictions(public_gate
                         lambda *a: SimpleNamespace(invalid={(1, '1'): 'schema'}, predictions={}))
     with pytest.raises(ValueError, match='schema or denominator'):
         second_look.public_gate(public_gate, 'fixed')
+
+
+def test_public_gate_binds_identical_trusted_setup(public_gate):
+    with pytest.raises(ValueError, match='six isolated workers'):
+        second_look.public_gate(public_gate, 'fixed', trusted_issuers_sha256='expected')
+    path = public_gate / 'run.json'
+    run = json.loads(path.read_text())
+    for worker in run['workers']:
+        worker.update(trusted_setup_sha256='expected', trusted_setup_verified=True)
+    path.write_text(json.dumps(run))
+    second_look.public_gate(public_gate, 'fixed', trusted_issuers_sha256='expected')
+    run['workers'][0]['trusted_setup_verified'] = False
+    path.write_text(json.dumps(run))
+    with pytest.raises(ValueError, match='six isolated workers'):
+        second_look.public_gate(public_gate, 'fixed', trusted_issuers_sha256='expected')

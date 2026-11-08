@@ -1,0 +1,435 @@
+diff --git a/alibi/connectors/keys.py b/alibi/connectors/keys.py
+--- a/alibi/connectors/keys.py
++++ b/alibi/connectors/keys.py
+@@ -21,11 +21,13 @@
+ its registry explicitly to every passport call (see ``alibi/NEEDS.md``).
+ """
+ 
++from collections.abc import Mapping
+ from pathlib import Path
++import re
+ from typing import Any
+ 
+ from alibi.core.schemas import KeyPurpose, SigningDomain
+-from alibi.core.signing import DEFAULT_KEY_DIR, DEMO_KEYS, DemoKeystore, TrustRegistry
++from alibi.core.signing import DEFAULT_KEY_DIR, DEMO_KEYS, DemoKeystore, SignatureError, TrustRegistry
+ 
+ __all__ = [
+     "APP_ISSUER_KIDS", "BANK_KIDS", "CASE_ISSUER", "CONNECTOR_KEYS", "MERCHANT_KID", "connector_keystore", "kid_for_issuer",
+@@ -47,11 +49,30 @@
+ 
+ 
+ def connector_keystore(root: Path | str = DEFAULT_KEY_DIR, *, seed: str | None = None,
+-                       ensure: bool = True) -> DemoKeystore:
++                       ensure: bool = True,
++                       trusted_issuers: Mapping[str, str] | None = None) -> DemoKeystore:
+     """The keystore the simulated services sign with: ``CONNECTOR_KEYS`` (the core's demo keys,
+     ``merchant_mock`` and the app's two issuer keys). ``seed`` derives keys deterministically
+-    (tests only)."""
+-    keystore = DemoKeystore(root, seed=seed, specs=CONNECTOR_KEYS)
++    (tests and disposable synthetic harnesses only). A private high-entropy seed allows
++    fresh isolated workers to share predeclared public-key pins. ``trusted_issuers`` adds
++    explicit ``kid -> issuer_id`` pins for synthetic
++    services. Only trusted harness setup may supply it; never derive it from case records.
++    New keys are record-signing only, cannot replace existing pins, and use safe filenames.
++    """
++    specs = dict(CONNECTOR_KEYS)
++    if trusted_issuers is not None:
++        if not isinstance(trusted_issuers, Mapping):
++            raise ValueError("trusted_issuers must map key ids to issuer ids")
++        for kid, issuer in trusted_issuers.items():
++            if not isinstance(kid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", kid):
++                raise ValueError("configured issuer key id must be a safe filename token")
++            if not isinstance(issuer, str) or not issuer or issuer != issuer.strip() \
++                    or any(ord(char) < 32 or ord(char) == 127 for char in issuer):
++                raise ValueError("configured issuer id must be a nonempty string without control characters")
++            if kid in specs or any(pin == issuer for _, pin in specs.values()):
++                raise ValueError("configured issuer key or issuer collides with an existing pin")
++            specs[kid] = (KeyPurpose.RECORD_SIGNING, issuer)
++    keystore = DemoKeystore(root, seed=seed, specs=specs)
+     return keystore.ensure() if ensure else keystore
+ 
+ 
+@@ -67,9 +88,20 @@
+ def sign_merchant_event(body: dict[str, Any], keystore: DemoKeystore,
+                         kid: str | None = None) -> dict[str, Any]:
+     """The wire shape the passport ingests: ``{"event": body, "signature": envelope}``, signed
+-    in the record domain. ``body`` is a core ``MerchantEvent`` as JSON (see case_source)."""
+-    if kid is None:   # the issuer's own key: a second-platform event is signed with second_platform
+-        kid = kid_for_issuer(body.get("issuer_id") if isinstance(body, dict) else None)
++    in the record domain. ``body`` is a core ``MerchantEvent`` as JSON (see case_source).
++    An event selects among already configured pins; it never creates or changes a pin.
++    Unknown issuers and explicitly mismatched keys fail closed before signing.
++    """
++    issuer = body.get("issuer_id") if isinstance(body, dict) else None
++    if not isinstance(issuer, str) or not issuer:
++        raise SignatureError("merchant issuer has no configured record-signing key")
++    if kid is None:
++        matches = sorted(key for key, spec in keystore.specs.items()
++                         if spec == (KeyPurpose.RECORD_SIGNING, issuer))
++        preferred = kid_for_issuer(issuer)
++        kid = preferred if preferred in matches else next(iter(matches), None)
++    if kid is None or keystore.specs.get(kid) != (KeyPurpose.RECORD_SIGNING, issuer):
++        raise SignatureError("merchant issuer has no matching configured record-signing key")
+     envelope = keystore.sign(body, kid=kid, domain=SigningDomain.RECORD)
+     return {"event": body, "signature": envelope.to_json_dict()}
+ 
+diff --git a/alibi/connectors/merchant.py b/alibi/connectors/merchant.py
+--- a/alibi/connectors/merchant.py
++++ b/alibi/connectors/merchant.py
+@@ -11,8 +11,9 @@
+   ``CaseClock.lookup``, so it serves exactly what the data layer defines, including lookup-only
+   records that appear at their ``available_from`` and corrections made through
+   ``POST /admin/correct``;
+-* signs everything with ``keys.sign_merchant_event`` (kid ``merchant_mock``, issuer
+-  ``mock-marketplace``). Pushes carry exactly ``{"event", "signature"}``; lookups return
++* signs everything with ``keys.sign_merchant_event`` using an already configured issuer pin
++  (by default ``merchant_mock`` for ``mock-marketplace``). Unknown issuers are refused.
++  Pushes carry exactly ``{"event", "signature"}``; lookups return
+   ``{"event", "signature", "extra"}``, where ``extra`` holds the case fields the core type cannot
+   hold (``payout_reference``, ``status_as_of``, ...) and never enters a signed payload.
+ 
+@@ -51,7 +52,7 @@
+ from alibi.connectors.plug import Sink
+ from alibi.core import canon
+ from alibi.core.schemas import format_utc
+-from alibi.core.signing import DemoKeystore
++from alibi.core.signing import DemoKeystore, SignatureError
+ 
+ __all__ = [
+     "CORRECTION_IDENTITY_FIELDS", "MAX_RANGE_DAYS", "OUTCOMES", "SERVICE_NAME", "Delivery",
+@@ -191,7 +192,13 @@
+                                 f"mapping failed: {exc}", {}, "")
+             self.pushed.append(delivery)
+             return delivery
+-        payload = keys.sign_merchant_event(body, self.keystore)
++        try:
++            payload = keys.sign_merchant_event(body, self.keystore)
++        except SignatureError:
++            delivery = Delivery(seq, body["event_id"], body["record_id"], body["revision"],
++                                received_at, "refused", "issuer has no configured signing key", {}, "")
++            self.pushed.append(delivery)
++            return delivery
+         sha = canon.digest(payload)
+         outcome = self.send(payload, received_at)
+         delivery = Delivery(seq, body["event_id"], body["record_id"], body["revision"],
+@@ -278,7 +285,10 @@
+     def envelope(self, case_event: dict[str, Any]) -> dict[str, Any]:
+         """``{"event", "signature", "extra"}`` for one case event."""
+         mapped = map_merchant_event(case_event)
+-        signed = keys.sign_merchant_event(mapped.body, self.keystore)
++        try:
++            signed = keys.sign_merchant_event(mapped.body, self.keystore)
++        except SignatureError:
++            raise Refusal("untrusted_issuer", "issuer has no configured signing key", status=422) from None
+         return {**signed, "extra": mapped.extra}
+ 
+     def current(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+@@ -457,7 +467,7 @@
+ 
+     ``sink`` receives every push; with ``passport_url`` instead, pushes go over HTTP
+     (``http_sink``); with neither they are recorded ``not_delivered``. ``keystore`` must hold
+-    ``merchant_mock`` (``keys.connector_keystore``). ``case_loader(n)`` returns a case without
++    each service issuer's record-signing key (``keys.connector_keystore``). ``case_loader(n)`` returns a case without
+     gold or raises ``KeyError`` (``404 unknown_case``). The admin credential for ``/admin/*`` is
+     ``admin_token``, else ``tokens["admin"]`` (the dict ``http.load_tokens`` returns, shared with
+     the bank), else a fresh random token; it is kept as ``app.state.admin_token``, never logged.
+diff --git a/alibi/adapter.py b/alibi/adapter.py
+--- a/alibi/adapter.py
++++ b/alibi/adapter.py
+@@ -41,7 +41,7 @@
+ import subprocess
+ import sys
+ import time
+-from collections.abc import Iterable
++from collections.abc import Iterable, Mapping
+ from datetime import datetime
+ from pathlib import Path
+ from typing import Any
+@@ -158,13 +158,19 @@
+ class _World:
+     """One fresh passport store and the two mock services wired to it in process."""
+ 
+-    def __init__(self, case: dict[str, Any], root: Path):
++    def __init__(self, case: dict[str, Any], root: Path, *,
++                 trusted_issuers: Mapping[str, str] | None = None,
++                 synthetic_key_seed: str | None = None):
++        if synthetic_key_seed is not None and (not isinstance(synthetic_key_seed, str)
++                                                or not synthetic_key_seed):
++            raise ValueError("synthetic_key_seed must be a nonempty trusted setup secret")
+         self.case = case
+         self.number = int(case["case_number"])
+         self.subject = case["subject_ref"]
+         self.root = root
+         root.mkdir(parents=True, exist_ok=True)
+-        self.keystore = keys.connector_keystore(root / "keys")
++        self.keystore = keys.connector_keystore(root / "keys", trusted_issuers=trusted_issuers,
++                                                seed=synthetic_key_seed)
+         self.registry = self.keystore.registry()
+         self.store = Store(root / "passport.db")
+         # Fresh bearer tokens per world; they never leave the process and are never printed.
+@@ -648,7 +654,9 @@
+ 
+ def run_case(case: int | dict[str, Any], mode: str = "rules", as_of: datetime | str | None = None,
+              *, client: Any = None, run_id: str | None = None, replay: bool | None = None,
+-             root: Path | str | None = None) -> list[dict[str, Any]]:
++             root: Path | str | None = None,
++             trusted_issuers: Mapping[str, str] | None = None,
++             synthetic_key_seed: str | None = None) -> list[dict[str, Any]]:
+     """Run one case in ``mode`` through the simulated services and return its predictions.
+ 
+     ``case`` is a case number (``agents.data.api.load_case``) or a case dict; gold is stripped.
+@@ -659,6 +667,11 @@
+     recorder is used (``ALIBI_REPLAY=1`` serves the recording instead). ``replay=True`` wraps a
+     given client in the recorder too. ``root`` moves the per-case store folder (default
+     ``data/alibi/adapter/<mode>/case_<n>``); it is emptied first, so every run starts fresh.
++    ``trusted_issuers`` is an optional ``kid -> issuer_id`` mapping from trusted synthetic
++    service setup. It is shared by all modes and never read from the case or its events.
++    ``synthetic_key_seed`` optionally derives repeatable keys for every simulated service
++    across fresh workers. It is secret key material from trusted setup, never case data;
++    use a private high-entropy random value and bind the public-key pins before capture.
+     """
+     mode = normalise_mode(mode)
+     case_dict = _load_case(case)
+@@ -678,7 +691,8 @@
+         return []
+     start = fixed if fixed is not None else parse_time(rfcs[0]["issued_at"], "issued_at")
+ 
+-    world = _World(case_dict, folder)
++    world = _World(case_dict, folder, trusted_issuers=trusted_issuers,
++                   synthetic_key_seed=synthetic_key_seed)
+     predictions: list[dict[str, Any]] = []
+     try:
+         engine_client, live = _client_for(mode, number, client, run_id, replay)
+@@ -751,12 +765,17 @@
+ 
+ def run_cases(cases: Iterable[dict[str, Any]], mode: str, *, out: Path, as_of: str | None = None,
+               run_id: str | None = None, client: Any = None, log=None,
+-              root: Path | str | None = None) -> dict[str, Any]:
++              root: Path | str | None = None,
++              trusted_issuers: Mapping[str, str] | None = None,
++              synthetic_key_seed: str | None = None) -> dict[str, Any]:
+     """Run every case in ``mode``, write ``<out>/<mode>.jsonl`` (system line first) and return the
+     summary ``{mode, cases, requests, failures, lookups, observed_inputs, model_calls, tokens}``.
+     A case whose run raises (a seeding problem, not a model failure) is written as one typed
+     ``error`` failure per RFC so the file stays complete. ``root`` is ``run_case``'s: the folder
+-    the per-case stores go under (default ``data/alibi/adapter/<mode>/``)."""
++    the per-case stores go under (default ``data/alibi/adapter/<mode>/``).
++    ``trusted_issuers`` forwards the same explicit synthetic service pins to every case.
++    ``synthetic_key_seed`` forwards the same private synthetic key seed to every case.
++    """
+     mode = normalise_mode(mode)
+     out.mkdir(parents=True, exist_ok=True)
+     path = out / f"{mode}.jsonl"
+@@ -775,7 +794,9 @@
+             started = time.perf_counter()
+             try:
+                 predictions = run_case(case, mode, as_of, client=live, run_id=run_id,
+-                                       replay=(mode != "rules" and client is None), root=root)
++                                       replay=(mode != "rules" and client is None), root=root,
++                                       trusted_issuers=trusted_issuers,
++                                       synthetic_key_seed=synthetic_key_seed)
+             except Exception as exc:  # noqa: BLE001 - reported as typed failures, never a crash
+                 predictions = []
+                 for rfc in sorted(case.get("rfcs", []), key=lambda r: r["issued_at"]):
+diff --git a/alibi/tests/test_trusted_synthetic_issuers.py b/alibi/tests/test_trusted_synthetic_issuers.py
+new file mode 100644
+--- /dev/null
++++ b/alibi/tests/test_trusted_synthetic_issuers.py
+@@ -0,0 +1,196 @@
++"""Public synthetic controls for explicitly configured mock-service issuer pins.
++
++No private pack, answer key, model, environment credential or capture is used.
++"""
++
++import copy
++
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi.adapter import _World, run_case, run_cases
++from alibi.connectors import keys
++from alibi.connectors.case_source import CaseClock, map_merchant_event
++from alibi.connectors.clients import ClientError
++from alibi.connectors.plug import webhook_sink
++from alibi.core.schemas import KeyPurpose, SigningDomain
++from alibi.core.signing import DemoKeystore, SignatureError, TrustRegistry
++from alibi.core.store import Store
++
++
++ISSUER = "public-synthetic-config-control"
++KID = "public_synthetic_config_control"
++TRUSTED = {KID: ISSUER}
++
++
++def public_case(issuer=None):
++    case = without_gold(load_case(1))
++    if issuer is not None:
++        for group in ("merchant_deliveries", "merchant_lookup"):
++            for entry in case[group]:
++                entry["event"]["issuer_id"] = issuer
++    return case
++
++
++def material(rows):
++    return [{"request_id": row["request_id"], "failure": row["failure"],
++             "links": row["links"], "lookups": row["retrieval"]["lookups"],
++             "claims": {qid: {key: claim[key] for key in
++                               ("status", "gap", "facts", "evidence_refs")}
++                        for qid, claim in row["claims"].items()}}
++            for row in rows]
++
++
++@pytest.fixture(scope="module")
++def public_runs(tmp_path_factory):
++    root = tmp_path_factory.mktemp("trusted-synthetic-issuers")
++    renamed = public_case(ISSUER)
++    # A field supplied by the case must not grant trust.
++    renamed["trusted_issuers"] = TRUSTED
++    before = copy.deepcopy(renamed)
++    runs = {
++        "default": run_case(public_case(), "rules", root=root / "default"),
++        "empty": run_case(public_case(), "rules", root=root / "empty", trusted_issuers={}),
++        "unknown": run_case(renamed, "rules", root=root / "unknown"),
++        "configured": run_case(renamed, "rules", root=root / "configured", trusted_issuers=TRUSTED),
++    }
++    assert renamed == before
++    return runs
++
++
++def test_explicit_setup_restores_public_reference_behavior(public_runs):
++    assert material(public_runs["configured"]) == material(public_runs["default"])
++    assert sum(c["status"] == "supported" for p in public_runs["configured"]
++               for c in p["claims"].values()) == 3
++    assert all(p["cost"]["model_calls"] == 0 for p in public_runs["configured"])
++
++
++def test_unknown_issuer_does_not_gain_trust_from_case_fields(public_runs):
++    rows = public_runs["unknown"]
++    assert len(rows) == 2
++    assert all(p["failure"] is None for p in rows)
++    assert all(c["status"] != "supported" for p in rows for c in p["claims"].values())
++    assert not any(ref.startswith("merchant:") for p in rows for c in p["claims"].values()
++                   for ref in c["evidence_refs"])
++
++
++def test_default_public_behavior_is_unchanged(public_runs):
++    assert material(public_runs["default"]) == material(public_runs["empty"])
++
++
++def test_unknown_pushes_and_lookup_are_refused_without_aborting_bootstrap(tmp_path):
++    case = public_case(ISSUER)
++    world = _World(case, tmp_path)
++    try:
++        clock = CaseClock(case, case["rfcs"][0]["issued_at"])
++        world.seed(clock)
++        assert world.store.list_sources(case["subject_ref"]) == []
++        deliveries = world.merchant.deliveries()
++        assert deliveries and all(d["outcome"] == "refused" for d in deliveries)
++        with pytest.raises(ClientError) as err:
++            world.merchant.lookup(record_id=case["merchant_deliveries"][0]["event"]["record_id"])
++        assert err.value.code == "untrusted_issuer"
++        assert err.value.status == 422
++    finally:
++        world.close()
++
++
++def test_configuration_is_copied_and_does_not_change_global_defaults(tmp_path):
++    original = dict(keys.CONNECTOR_KEYS)
++    configured = dict(TRUSTED)
++    keystore = keys.connector_keystore(tmp_path / "keys", trusted_issuers=configured)
++    configured[KID] = "changed-after-setup"
++    assert keystore.registry().get(KID).issuer_id == ISSUER
++    assert keys.CONNECTOR_KEYS == original
++    assert KID not in keys.connector_keystore(tmp_path / "other").specs
++
++
++@pytest.mark.parametrize("configured", [
++    {"merchant_mock": ISSUER}, {"bank_a": ISSUER}, {"alibi_demo": ISSUER},
++    {"new_kid": keys.CASE_ISSUER}, {"first": ISSUER, "second": ISSUER},
++    {"../escape": ISSUER}, {"/absolute": ISSUER}, {"a/b": ISSUER},
++    {"safe": ""}, {"safe": " bad "}, {"safe": "bad\nissuer"},
++    {"safe": (KeyPurpose.PACKAGE_SIGNING, ISSUER)}, [ISSUER],
++])
++def test_invalid_configuration_is_rejected_before_creating_keys(tmp_path, configured):
++    with pytest.raises(ValueError):
++        keys.connector_keystore(tmp_path / "keys", trusted_issuers=configured)
++    assert not (tmp_path / "keys").exists()
++
++
++def test_signing_refuses_unknown_issuer_wrong_pin_and_wrong_purpose(tmp_path):
++    body = map_merchant_event(public_case(ISSUER)["merchant_deliveries"][0]["event"]).body
++    default = keys.connector_keystore(tmp_path / "default")
++    configured = keys.connector_keystore(tmp_path / "configured", trusted_issuers=TRUSTED)
++    wrong_purpose = DemoKeystore(tmp_path / "wrong", specs={KID: (KeyPurpose.PACKAGE_SIGNING, ISSUER)})
++    with pytest.raises(SignatureError):
++        keys.sign_merchant_event(body, default)
++    with pytest.raises(SignatureError):
++        keys.sign_merchant_event(body, configured, kid=keys.MERCHANT_KID)
++    with pytest.raises(SignatureError):
++        keys.sign_merchant_event(body, wrong_purpose, kid=KID)
++
++
++def test_ingest_still_rejects_wrong_issuer_and_wrong_signature_domain(tmp_path):
++    case = public_case(ISSUER)
++    entry = case["merchant_deliveries"][0]
++    body = map_merchant_event(entry["event"]).body
++    keystore = keys.connector_keystore(tmp_path / "keys", trusted_issuers=TRUSTED)
++    with Store(tmp_path / "passport.db") as store:
++        sink = webhook_sink(store, keystore.registry(), subject_ref=case["subject_ref"])
++        wrong_pin = keystore.sign(body, kid=keys.MERCHANT_KID, domain=SigningDomain.RECORD)
++        wrong_domain = keystore.sign(body, kid="alibi_demo", domain=SigningDomain.PACKAGE)
++        for signature in (wrong_pin, wrong_domain):
++            outcome = sink({"event": body, "signature": signature.to_json_dict()}, entry["received_at"])
++            assert outcome["status"] == "refused"
++        assert store.list_sources(case["subject_ref"]) == []
++        payload = keys.sign_merchant_event(body, keystore)
++        assert payload["signature"]["kid"] == KID
++        assert sink(payload, entry["received_at"])["status"] == "inserted"
++
++
++def test_run_cases_passes_explicit_configuration(tmp_path):
++    # This public test seed is deliberately not a real harness secret.
++    seed = "public-test-only-synthetic-key-seed"
++    summary = run_cases([public_case(ISSUER)], "rules", out=tmp_path / "out",
++                        root=tmp_path / "stores", trusted_issuers=TRUSTED,
++                        synthetic_key_seed=seed, log=lambda _: None)
++    assert summary["requests"] == 2 and summary["failures"] == 0
++    import json
++    rows = [json.loads(line) for line in (tmp_path / "out" / "rules.jsonl").read_text().splitlines()][1:]
++    assert sum(c["status"] == "supported" for p in rows for c in p["claims"].values()) == 3
++    expected = keys.connector_keystore(tmp_path / "expected", seed=seed, trusted_issuers=TRUSTED).registry()
++    actual = TrustRegistry.load(tmp_path / "stores/case_1/keys/trust_registry.json")
++    assert actual.to_json() == expected.to_json()
++
++
++def test_trusted_seed_binds_the_same_registry_in_fresh_worlds(tmp_path):
++    seed = "public-test-only-synthetic-key-seed"
++    first = _World(public_case(ISSUER), tmp_path / "first", trusted_issuers=TRUSTED,
++                   synthetic_key_seed=seed)
++    second = _World(public_case(ISSUER), tmp_path / "second", trusted_issuers=TRUSTED,
++                    synthetic_key_seed=seed)
++    other = _World(public_case(ISSUER), tmp_path / "other", trusted_issuers=TRUSTED,
++                   synthetic_key_seed="different-public-test-seed")
++    try:
++        assert first.registry.to_json() == second.registry.to_json()
++        assert first.registry.get(KID).public_key != other.registry.get(KID).public_key
++    finally:
++        for world in (first, second, other):
++            world.close()
++
++
++def test_case_cannot_supply_the_synthetic_key_seed(tmp_path):
++    case = public_case()
++    case["synthetic_key_seed"] = "untrusted-case-value"
++    world = _World(case, tmp_path)
++    try:
++        assert world.keystore.seed is None
++    finally:
++        world.close()
++
++
++@pytest.mark.parametrize("seed", ["", 123, {}])
++def test_invalid_trusted_seed_is_rejected(tmp_path, seed):
++    with pytest.raises(ValueError, match="synthetic_key_seed"):
++        _World(public_case(), tmp_path, trusted_issuers=TRUSTED, synthetic_key_seed=seed)

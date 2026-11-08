@@ -109,11 +109,18 @@ def _drain_terminated_worker(child, timeout=2):
 
 
 def run_isolated(case, mode, *, candidate, private_root, credential, output, source_repo=REPO,
-                 scratch_parent=None, denied_scratch=(), capture_root=None, deadline=None):
+                 scratch_parent=None, denied_scratch=(), capture_root=None, deadline=None,
+                 trusted_issuers_file=None, trusted_issuers_sha256=None):
     """Run one case; retain raw predictions and logs before destroying the source copy."""
     if mode not in LIMITS:
         raise ValueError("unknown mode")
     payload = mapped_payload(case)
+    trusted = None
+    if trusted_issuers_file is not None or trusted_issuers_sha256 is not None:
+        if trusted_issuers_file is None or trusted_issuers_sha256 is None:
+            raise ValueError('trusted setup needs its private path and pinned digest')
+        from agents.eval.trusted_setup import load
+        trusted = load(Path(trusted_issuers_file), trusted_issuers_sha256)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     private_root = private_root.resolve(strict=True)
     credential = credential.resolve(strict=True)
@@ -135,6 +142,8 @@ def run_isolated(case, mode, *, candidate, private_root, credential, output, sou
         denied = (private_root, credential, capture_root or output.parent, source / "agents/data/out/cases",
                   source / ".env", source_repo / ".env", source_repo / "data", source_repo / "agents/data/out/cases",
                   *denied_scratch)
+        if trusted_issuers_file is not None:
+            denied = (*denied, Path(trusted_issuers_file))
         prefix = sandbox(denied, (source_repo, credential.parent))
         # Denial proof opens directories/descriptors only; it never reads protected contents.
         probe = """import os,sys
@@ -150,6 +159,12 @@ for p in sys.argv[1:]:
                         str(output), str(capture_root or output.parent), *map(str, denied_scratch)],
                        cwd=work, env=_worker_env(str(data), True), check=True, capture_output=True, timeout=10)
         command = [*prefix, sys.executable, "-c", BOOTSTRAP, str(source), mode]
+        if trusted is not None:
+            from agents.eval.trusted_setup import BOOTSTRAP as trusted_bootstrap
+            setup_path = work / 'trusted-setup.json'
+            with os.fdopen(os.open(setup_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as handle:
+                json.dump(trusted, handle)
+            command = [*prefix, sys.executable, '-c', trusted_bootstrap, str(source), mode, str(setup_path)]
         env = _worker_env(str(data), False)
         env.pop("ALIBI_LLM_CAP", None)  # candidate's pinned default, never inherited shell state
         if mode == "rules":
@@ -247,6 +262,10 @@ for p in sys.argv[1:]:
             from agents.eval.candidate_diagnostics import from_stderr
             metadata["failure_diagnostics"] = from_stderr(
                 stderr_path, failure=failure, returncode=child.returncode)
+        if trusted is not None:
+            metadata['trusted_setup_sha256'] = trusted_issuers_sha256
+            metadata['trusted_public_key_fingerprints'] = trusted['public_key_fingerprints']
+            metadata['trusted_setup_verified'] = failure is None
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2))
     return rows, metadata
 
@@ -260,6 +279,7 @@ def main():
     parser.add_argument("--case", type=int, action="append", required=True)
     parser.add_argument("--mode", choices=list(LIMITS), action="append")
     parser.add_argument("--restriction", action="store_true", help="public variant denying amount_pence")
+    parser.add_argument('--trusted-issuers-file', type=Path)
     args = parser.parse_args()
     if is_open() or any(not 1 <= n <= 80 for n in args.case):
         parser.error("public cases 1–80 only, with lockbox closed")
@@ -272,6 +292,7 @@ def main():
         for case in cases:
             case["privacy_policy"] = [{"rule_id": "public_amount_denial", "type": "deny", "fields": ["amount_pence"]}]
     modes = args.mode or list(LIMITS)
+    trust_digest = sha256(args.trusted_issuers_file.read_bytes()).hexdigest() if args.trusted_issuers_file else None
     from alibi.llm.client import load_api_key
     if any(mode != "rules" for mode in modes):
         load_api_key(args.credential)
@@ -280,7 +301,9 @@ def main():
         with (args.out / f"{mode}.jsonl").open("w") as handle:
             for case in cases:
                 rows, meta = run_isolated(case, mode, candidate=candidate, private_root=args.private_root,
-                                         credential=args.credential, output=args.out / f"{mode}-{case['case_number']}")
+                                         credential=args.credential, output=args.out / f"{mode}-{case['case_number']}",
+                                         trusted_issuers_file=args.trusted_issuers_file,
+                                         trusted_issuers_sha256=trust_digest)
                 for row in rows:
                     handle.write(json.dumps(row) + "\n")
                 handle.flush()

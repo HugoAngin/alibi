@@ -1,0 +1,2050 @@
+[
+  {
+    "case_number": 1,
+    "request_id": "rfc-0001-01",
+    "system": "rules",
+    "links": [
+      {
+        "txn_id": "txn-0001-004",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0001-021"
+        ],
+        "candidate_record_ids": [
+          "rec-0001-021"
+        ],
+        "method": "reference"
+      }
+    ],
+    "claims": {
+      "q.source_of_funds": {
+        "status": "supported",
+        "gap": null,
+        "facts": {
+          "payout_references": [
+            "PO-0001-01"
+          ],
+          "settled_at": [
+            "2026-10-27T16:00:00Z"
+          ]
+        },
+        "evidence_refs": [
+          "bank:txn-0001-004",
+          "merchant:rec-0001-021",
+          "merchant:rec-0001-001",
+          "merchant:rec-0001-003",
+          "merchant:rec-0001-006",
+          "merchant:rec-0001-008",
+          "merchant:rec-0001-010",
+          "merchant:rec-0001-013",
+          "merchant:rec-0001-015",
+          "merchant:rec-0001-017",
+          "merchant:rec-0001-005",
+          "merchant:rec-0001-012",
+          "merchant:rec-0001-002",
+          "merchant:rec-0001-004",
+          "merchant:rec-0001-007",
+          "merchant:rec-0001-009",
+          "merchant:rec-0001-011",
+          "merchant:rec-0001-014",
+          "merchant:rec-0001-016",
+          "merchant:rec-0001-018"
+        ],
+        "statement": "Credit txn-0001-004 of 216000 pence GBP is payout rec-0001-021 (reference PO-0001-01), settled (status settled) before the credit was booked.",
+        "rationale": "Matched by reference: the credit carries PO-0001-01, the payment reference of payout record:rec-0001-021@1 (216000 pence GBP, occurred 2026-10-26T09:00:00Z). The lookup for PO-0001-01 made for the credit's reference is reused. Settlement record:rec-0001-021@1 retrieved by follow-up lookup for PO-0001-01. Calculation in code: sales 240000 (rec-0001-001, rec-0001-003, rec-0001-006, rec-0001-008, rec-0001-010, rec-0001-013, rec-0001-015, rec-0001-017) - refunds 18000 (rec-0001-005, rec-0001-012) - fees 6000 (rec-0001-002, rec-0001-004, rec-0001-007, rec-0001-009, rec-0001-011, rec-0001-014, rec-0001-016, rec-0001-018) = 216000 pence GBP, against txn:txn-0001-004@1 at 216000: difference 0, balanced. Payout rec-0001-021 is 216000. Timing: payout record:rec-0001-021@1 status settled, observed 2026-10-26T09:00:00Z, effective 2026-10-27T16:00:00Z; credit booked 2026-10-28T06:30:00Z. Status settled, effective at or before the credit's booking time: settled in time to support the credit. References: the credit carries PO-0001-01, matching the payout and settlement.",
+        "calculation": {
+          "method": "net_payout",
+          "currency": "GBP",
+          "terms": [
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-001",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 30000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-003",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 25000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-006",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 40000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-008",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 35000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-010",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 20000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-013",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 45000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-015",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 15000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-017",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 30000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-005",
+                "revision": 1
+              },
+              "kind": "refund",
+              "sign": -1,
+              "amount_pence": 10000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-012",
+                "revision": 1
+              },
+              "kind": "refund",
+              "sign": -1,
+              "amount_pence": 8000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-002",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 750,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-004",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 625,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-007",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 1000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-009",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 875,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-011",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 500,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-014",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 1125,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-016",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 375,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-018",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 750,
+              "currency": "GBP"
+            }
+          ],
+          "total_pence": 216000,
+          "target_ref": {
+            "ref_type": "txn",
+            "ref_id": "txn-0001-004",
+            "revision": 1
+          },
+          "target_pence": 216000,
+          "difference_pence": 0,
+          "balanced": true,
+          "timing": {
+            "settlement_ref": {
+              "ref_type": "record",
+              "ref_id": "rec-0001-021",
+              "revision": 1
+            },
+            "credit_ref": {
+              "ref_type": "txn",
+              "ref_id": "txn-0001-004",
+              "revision": 1
+            },
+            "settlement_status": "settled",
+            "settlement_effective_at": "2026-10-27T16:00:00Z",
+            "status_observed_at": "2026-10-26T09:00:00Z",
+            "booked_at": "2026-10-28T06:30:00Z",
+            "ok": true,
+            "reason": "Status settled, effective at or before the credit's booking time: settled in time to support the credit."
+          },
+          "cited_refs": [
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-001",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-003",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-006",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-008",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-010",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-013",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-015",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-017",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-005",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-012",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-002",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-004",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-007",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-009",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-011",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-014",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-016",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-018",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-021",
+              "revision": 1
+            },
+            {
+              "ref_type": "txn",
+              "ref_id": "txn-0001-004",
+              "revision": 1
+            }
+          ]
+        }
+      },
+      "q.breakdown": {
+        "status": "supported",
+        "gap": null,
+        "facts": {
+          "breakdown_minor": {
+            "fees": 6000,
+            "net": 216000,
+            "refunds": 18000,
+            "sales": 240000
+          }
+        },
+        "evidence_refs": [
+          "bank:txn-0001-004",
+          "merchant:rec-0001-021",
+          "merchant:rec-0001-001",
+          "merchant:rec-0001-003",
+          "merchant:rec-0001-006",
+          "merchant:rec-0001-008",
+          "merchant:rec-0001-010",
+          "merchant:rec-0001-013",
+          "merchant:rec-0001-015",
+          "merchant:rec-0001-017",
+          "merchant:rec-0001-005",
+          "merchant:rec-0001-012",
+          "merchant:rec-0001-002",
+          "merchant:rec-0001-004",
+          "merchant:rec-0001-007",
+          "merchant:rec-0001-009",
+          "merchant:rec-0001-011",
+          "merchant:rec-0001-014",
+          "merchant:rec-0001-016",
+          "merchant:rec-0001-018"
+        ],
+        "statement": "Credit txn-0001-004 of 216000 pence GBP is made up of the records covered by payout rec-0001-021 (reference PO-0001-01): sales 240000 less refunds 18000 and fees 6000 = 216000 pence GBP, reconciled in code against the credit.",
+        "rationale": "Matched by reference: the credit carries PO-0001-01, the payment reference of payout record:rec-0001-021@1 (216000 pence GBP, occurred 2026-10-26T09:00:00Z). The lookup for PO-0001-01 made for the credit's reference is reused. Settlement record:rec-0001-021@1 retrieved by follow-up lookup for PO-0001-01. Calculation in code: sales 240000 (rec-0001-001, rec-0001-003, rec-0001-006, rec-0001-008, rec-0001-010, rec-0001-013, rec-0001-015, rec-0001-017) - refunds 18000 (rec-0001-005, rec-0001-012) - fees 6000 (rec-0001-002, rec-0001-004, rec-0001-007, rec-0001-009, rec-0001-011, rec-0001-014, rec-0001-016, rec-0001-018) = 216000 pence GBP, against txn:txn-0001-004@1 at 216000: difference 0, balanced. Payout rec-0001-021 is 216000. Timing: payout record:rec-0001-021@1 status settled, observed 2026-10-26T09:00:00Z, effective 2026-10-27T16:00:00Z; credit booked 2026-10-28T06:30:00Z. Status settled, effective at or before the credit's booking time: settled in time to support the credit. References: the credit carries PO-0001-01, matching the payout and settlement.",
+        "calculation": {
+          "method": "net_payout",
+          "currency": "GBP",
+          "terms": [
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-001",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 30000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-003",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 25000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-006",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 40000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-008",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 35000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-010",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 20000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-013",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 45000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-015",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 15000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-017",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 30000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-005",
+                "revision": 1
+              },
+              "kind": "refund",
+              "sign": -1,
+              "amount_pence": 10000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-012",
+                "revision": 1
+              },
+              "kind": "refund",
+              "sign": -1,
+              "amount_pence": 8000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-002",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 750,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-004",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 625,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-007",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 1000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-009",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 875,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-011",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 500,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-014",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 1125,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-016",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 375,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-018",
+                "revision": 1
+              },
+              "kind": "fee",
+              "sign": -1,
+              "amount_pence": 750,
+              "currency": "GBP"
+            }
+          ],
+          "total_pence": 216000,
+          "target_ref": {
+            "ref_type": "txn",
+            "ref_id": "txn-0001-004",
+            "revision": 1
+          },
+          "target_pence": 216000,
+          "difference_pence": 0,
+          "balanced": true,
+          "timing": {
+            "settlement_ref": {
+              "ref_type": "record",
+              "ref_id": "rec-0001-021",
+              "revision": 1
+            },
+            "credit_ref": {
+              "ref_type": "txn",
+              "ref_id": "txn-0001-004",
+              "revision": 1
+            },
+            "settlement_status": "settled",
+            "settlement_effective_at": "2026-10-27T16:00:00Z",
+            "status_observed_at": "2026-10-26T09:00:00Z",
+            "booked_at": "2026-10-28T06:30:00Z",
+            "ok": true,
+            "reason": "Status settled, effective at or before the credit's booking time: settled in time to support the credit."
+          },
+          "cited_refs": [
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-001",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-003",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-006",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-008",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-010",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-013",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-015",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-017",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-005",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-012",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-002",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-004",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-007",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-009",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-011",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-014",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-016",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-018",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-021",
+              "revision": 1
+            },
+            {
+              "ref_type": "txn",
+              "ref_id": "txn-0001-004",
+              "revision": 1
+            }
+          ]
+        }
+      }
+    },
+    "package": {
+      "request_id": "rfc-0001-01",
+      "audience": "bank_a",
+      "empty": false,
+      "attachments": [
+        {
+          "ref": "merchant:rec-0001-001",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 30000,
+            "currency": "GBP",
+            "event_id": "evt-0001-001",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 1"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-05T10:00:00Z",
+            "record_id": "rec-0001-001",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-002",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 750,
+            "currency": "GBP",
+            "event_id": "evt-0001-002",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-05T10:01:00Z",
+            "record_id": "rec-0001-002",
+            "related_record_ids": [
+              "rec-0001-001"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-003",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 25000,
+            "currency": "GBP",
+            "event_id": "evt-0001-003",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 2"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-06T16:00:00Z",
+            "record_id": "rec-0001-003",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-004",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 625,
+            "currency": "GBP",
+            "event_id": "evt-0001-004",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-06T16:01:00Z",
+            "record_id": "rec-0001-004",
+            "related_record_ids": [
+              "rec-0001-003"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-005",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 10000,
+            "currency": "GBP",
+            "event_id": "evt-0001-005",
+            "issuer_id": "mock-marketplace",
+            "kind": "refund",
+            "occurred_at": "2026-10-07T12:00:00Z",
+            "record_id": "rec-0001-005",
+            "related_record_ids": [
+              "rec-0001-003"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-006",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 40000,
+            "currency": "GBP",
+            "event_id": "evt-0001-006",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 3"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-07T22:00:00Z",
+            "record_id": "rec-0001-006",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-007",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 1000,
+            "currency": "GBP",
+            "event_id": "evt-0001-007",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-07T22:01:00Z",
+            "record_id": "rec-0001-007",
+            "related_record_ids": [
+              "rec-0001-006"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-008",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 35000,
+            "currency": "GBP",
+            "event_id": "evt-0001-008",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 4"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-09T04:00:00Z",
+            "record_id": "rec-0001-008",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-009",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 875,
+            "currency": "GBP",
+            "event_id": "evt-0001-009",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-09T04:01:00Z",
+            "record_id": "rec-0001-009",
+            "related_record_ids": [
+              "rec-0001-008"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-010",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 20000,
+            "currency": "GBP",
+            "event_id": "evt-0001-010",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 5"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-10T10:00:00Z",
+            "record_id": "rec-0001-010",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-011",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 500,
+            "currency": "GBP",
+            "event_id": "evt-0001-011",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-10T10:01:00Z",
+            "record_id": "rec-0001-011",
+            "related_record_ids": [
+              "rec-0001-010"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-012",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 8000,
+            "currency": "GBP",
+            "event_id": "evt-0001-012",
+            "issuer_id": "mock-marketplace",
+            "kind": "refund",
+            "occurred_at": "2026-10-11T06:00:00Z",
+            "record_id": "rec-0001-012",
+            "related_record_ids": [
+              "rec-0001-010"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-013",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 45000,
+            "currency": "GBP",
+            "event_id": "evt-0001-013",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 6"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-11T16:00:00Z",
+            "record_id": "rec-0001-013",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-014",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 1125,
+            "currency": "GBP",
+            "event_id": "evt-0001-014",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-11T16:01:00Z",
+            "record_id": "rec-0001-014",
+            "related_record_ids": [
+              "rec-0001-013"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-015",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 15000,
+            "currency": "GBP",
+            "event_id": "evt-0001-015",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 7"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-12T22:00:00Z",
+            "record_id": "rec-0001-015",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-016",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 375,
+            "currency": "GBP",
+            "event_id": "evt-0001-016",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-12T22:01:00Z",
+            "record_id": "rec-0001-016",
+            "related_record_ids": [
+              "rec-0001-015"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-017",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 30000,
+            "currency": "GBP",
+            "event_id": "evt-0001-017",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 8"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-14T04:00:00Z",
+            "record_id": "rec-0001-017",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-018",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 750,
+            "currency": "GBP",
+            "event_id": "evt-0001-018",
+            "issuer_id": "mock-marketplace",
+            "kind": "fee",
+            "occurred_at": "2026-10-14T04:01:00Z",
+            "record_id": "rec-0001-018",
+            "related_record_ids": [
+              "rec-0001-017"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-021",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 216000,
+            "currency": "GBP",
+            "effective_at": "2026-10-27T16:00:00Z",
+            "event_id": "evt-0001-021",
+            "issuer_id": "mock-marketplace",
+            "kind": "payout",
+            "occurred_at": "2026-10-26T09:00:00Z",
+            "payment_ref": "PO-0001-01",
+            "record_id": "rec-0001-021",
+            "related_record_ids": [
+              "rec-0001-001",
+              "rec-0001-003",
+              "rec-0001-006",
+              "rec-0001-008",
+              "rec-0001-010",
+              "rec-0001-013",
+              "rec-0001-015",
+              "rec-0001-017",
+              "rec-0001-005",
+              "rec-0001-012",
+              "rec-0001-002",
+              "rec-0001-004",
+              "rec-0001-007",
+              "rec-0001-009",
+              "rec-0001-011",
+              "rec-0001-014",
+              "rec-0001-016",
+              "rec-0001-018"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "settled",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "bank:txn-0001-004",
+          "form": "redacted_extract",
+          "source_trust": "bank_observed",
+          "content": {
+            "amount_pence": 216000,
+            "booked_at": "2026-10-28T06:30:00Z",
+            "currency": "GBP",
+            "description": "MOCK MARKETPLACE PAYOUT PO-0001-01",
+            "refs": [
+              "PO-0001-01"
+            ],
+            "revision": 1,
+            "source_trust": "bank_observed",
+            "txn_id": "txn-0001-004"
+          },
+          "fields": [
+            "amount_pence",
+            "booked_at",
+            "currency",
+            "description",
+            "refs",
+            "revision",
+            "source_trust",
+            "txn_id"
+          ]
+        }
+      ]
+    },
+    "proposed_package": {
+      "request_id": "rfc-0001-01",
+      "audience": "bank_a",
+      "empty": false,
+      "attachments": [
+        {
+          "ref": "bank:txn-0001-004"
+        },
+        {
+          "ref": "merchant:rec-0001-021"
+        },
+        {
+          "ref": "merchant:rec-0001-001"
+        },
+        {
+          "ref": "merchant:rec-0001-003"
+        },
+        {
+          "ref": "merchant:rec-0001-006"
+        },
+        {
+          "ref": "merchant:rec-0001-008"
+        },
+        {
+          "ref": "merchant:rec-0001-010"
+        },
+        {
+          "ref": "merchant:rec-0001-013"
+        },
+        {
+          "ref": "merchant:rec-0001-015"
+        },
+        {
+          "ref": "merchant:rec-0001-017"
+        },
+        {
+          "ref": "merchant:rec-0001-005"
+        },
+        {
+          "ref": "merchant:rec-0001-012"
+        },
+        {
+          "ref": "merchant:rec-0001-002"
+        },
+        {
+          "ref": "merchant:rec-0001-004"
+        },
+        {
+          "ref": "merchant:rec-0001-007"
+        },
+        {
+          "ref": "merchant:rec-0001-009"
+        },
+        {
+          "ref": "merchant:rec-0001-011"
+        },
+        {
+          "ref": "merchant:rec-0001-014"
+        },
+        {
+          "ref": "merchant:rec-0001-016"
+        },
+        {
+          "ref": "merchant:rec-0001-018"
+        }
+      ],
+      "claims": [
+        {
+          "question_id": "q.source_of_funds",
+          "status": "supported",
+          "evidence_refs": [
+            "bank:txn-0001-004",
+            "merchant:rec-0001-021",
+            "merchant:rec-0001-001",
+            "merchant:rec-0001-003",
+            "merchant:rec-0001-006",
+            "merchant:rec-0001-008",
+            "merchant:rec-0001-010",
+            "merchant:rec-0001-013",
+            "merchant:rec-0001-015",
+            "merchant:rec-0001-017",
+            "merchant:rec-0001-005",
+            "merchant:rec-0001-012",
+            "merchant:rec-0001-002",
+            "merchant:rec-0001-004",
+            "merchant:rec-0001-007",
+            "merchant:rec-0001-009",
+            "merchant:rec-0001-011",
+            "merchant:rec-0001-014",
+            "merchant:rec-0001-016",
+            "merchant:rec-0001-018"
+          ]
+        },
+        {
+          "question_id": "q.breakdown",
+          "status": "supported",
+          "evidence_refs": [
+            "bank:txn-0001-004",
+            "merchant:rec-0001-021",
+            "merchant:rec-0001-001",
+            "merchant:rec-0001-003",
+            "merchant:rec-0001-006",
+            "merchant:rec-0001-008",
+            "merchant:rec-0001-010",
+            "merchant:rec-0001-013",
+            "merchant:rec-0001-015",
+            "merchant:rec-0001-017",
+            "merchant:rec-0001-005",
+            "merchant:rec-0001-012",
+            "merchant:rec-0001-002",
+            "merchant:rec-0001-004",
+            "merchant:rec-0001-007",
+            "merchant:rec-0001-009",
+            "merchant:rec-0001-011",
+            "merchant:rec-0001-014",
+            "merchant:rec-0001-016",
+            "merchant:rec-0001-018"
+          ]
+        }
+      ]
+    },
+    "exclusions": [
+      {
+        "ref": "merchant:rec-0001-019",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-020",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-001",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-002",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-003",
+        "reason": "not needed to answer the questions"
+      }
+    ],
+    "cost": {
+      "model_calls": 0,
+      "tool_calls": 6,
+      "tokens": 0,
+      "latency_ms": 42.983,
+      "cost_usd_estimate": 0.0
+    },
+    "cost_note": "cost_usd_estimate is 0: no price list is pinned; tokens are reported",
+    "retrieval": {
+      "lookups": 1,
+      "observed_inputs": 25,
+      "strategy": "deterministic: list the subject's records and bank entries; when no stored payout settles the credit, look up the settlement for the payout reference the credit carries or the subject's own records name; one call per reference"
+    },
+    "failure": null,
+    "issued_at": "2026-11-02T09:00:00Z",
+    "package_claims": [
+      {
+        "question_id": "q.source_of_funds",
+        "status": "supported",
+        "gap": null,
+        "evidence_refs": [
+          "merchant:rec-0001-001",
+          "merchant:rec-0001-002",
+          "merchant:rec-0001-003",
+          "merchant:rec-0001-004",
+          "merchant:rec-0001-005",
+          "merchant:rec-0001-006",
+          "merchant:rec-0001-007",
+          "merchant:rec-0001-008",
+          "merchant:rec-0001-009",
+          "merchant:rec-0001-010",
+          "merchant:rec-0001-011",
+          "merchant:rec-0001-012",
+          "merchant:rec-0001-013",
+          "merchant:rec-0001-014",
+          "merchant:rec-0001-015",
+          "merchant:rec-0001-016",
+          "merchant:rec-0001-017",
+          "merchant:rec-0001-018",
+          "merchant:rec-0001-021",
+          "bank:txn-0001-004"
+        ],
+        "changed": null
+      },
+      {
+        "question_id": "q.breakdown",
+        "status": "supported",
+        "gap": null,
+        "evidence_refs": [
+          "merchant:rec-0001-001",
+          "merchant:rec-0001-002",
+          "merchant:rec-0001-003",
+          "merchant:rec-0001-004",
+          "merchant:rec-0001-005",
+          "merchant:rec-0001-006",
+          "merchant:rec-0001-007",
+          "merchant:rec-0001-008",
+          "merchant:rec-0001-009",
+          "merchant:rec-0001-010",
+          "merchant:rec-0001-011",
+          "merchant:rec-0001-012",
+          "merchant:rec-0001-013",
+          "merchant:rec-0001-014",
+          "merchant:rec-0001-015",
+          "merchant:rec-0001-016",
+          "merchant:rec-0001-017",
+          "merchant:rec-0001-018",
+          "merchant:rec-0001-021",
+          "bank:txn-0001-004"
+        ],
+        "changed": null
+      }
+    ]
+  },
+  {
+    "case_number": 1,
+    "request_id": "rfc-0001-02",
+    "system": "rules",
+    "links": [
+      {
+        "txn_id": "txn-0001-004",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0001-021"
+        ],
+        "candidate_record_ids": [
+          "rec-0001-021"
+        ],
+        "method": "reference"
+      }
+    ],
+    "claims": {
+      "q.sales_refunds_in_period": {
+        "status": "supported",
+        "gap": null,
+        "facts": {
+          "refund_count": 2,
+          "refunds_minor": 18000,
+          "sale_count": 8,
+          "sales_minor": 240000
+        },
+        "evidence_refs": [
+          "merchant:rec-0001-001",
+          "merchant:rec-0001-003",
+          "merchant:rec-0001-005",
+          "merchant:rec-0001-006",
+          "merchant:rec-0001-008",
+          "merchant:rec-0001-010",
+          "merchant:rec-0001-012",
+          "merchant:rec-0001-013",
+          "merchant:rec-0001-015",
+          "merchant:rec-0001-017"
+        ],
+        "statement": "Documented sales total 240000 pence GBP across 8 records and refunds total 18000 pence GBP across 2 records over [2026-10-01T00:00:00Z, 2026-11-01T00:00:00Z); each total is stated separately, and the signed sum of the same records (sales - refunds) is 222000 pence GBP.",
+        "rationale": "Summed in code from the passport records dated in [2026-10-01T00:00:00Z, 2026-11-01T00:00:00Z): sales 240000 from 8 records (rec-0001-001 30000, rec-0001-003 25000, rec-0001-006 40000, rec-0001-008 35000, rec-0001-010 20000, rec-0001-013 45000, rec-0001-015 15000, rec-0001-017 30000); refunds 18000 from 2 records (rec-0001-005 10000, rec-0001-012 8000). Total 222000 pence GBP.",
+        "calculation": {
+          "method": "documented_totals",
+          "currency": "GBP",
+          "terms": [
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-001",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 30000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-003",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 25000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-005",
+                "revision": 1
+              },
+              "kind": "refund",
+              "sign": -1,
+              "amount_pence": 10000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-006",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 40000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-008",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 35000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-010",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 20000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-012",
+                "revision": 1
+              },
+              "kind": "refund",
+              "sign": -1,
+              "amount_pence": 8000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-013",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 45000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-015",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 15000,
+              "currency": "GBP"
+            },
+            {
+              "ref": {
+                "ref_type": "record",
+                "ref_id": "rec-0001-017",
+                "revision": 1
+              },
+              "kind": "order",
+              "sign": 1,
+              "amount_pence": 30000,
+              "currency": "GBP"
+            }
+          ],
+          "total_pence": 222000,
+          "cited_refs": [
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-001",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-003",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-005",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-006",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-008",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-010",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-012",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-013",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-015",
+              "revision": 1
+            },
+            {
+              "ref_type": "record",
+              "ref_id": "rec-0001-017",
+              "revision": 1
+            }
+          ]
+        }
+      }
+    },
+    "package": {
+      "request_id": "rfc-0001-02",
+      "audience": "bank_b",
+      "empty": false,
+      "attachments": [
+        {
+          "ref": "merchant:rec-0001-001",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 30000,
+            "currency": "GBP",
+            "event_id": "evt-0001-001",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 1"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-05T10:00:00Z",
+            "record_id": "rec-0001-001",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-003",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 25000,
+            "currency": "GBP",
+            "event_id": "evt-0001-003",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 2"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-06T16:00:00Z",
+            "record_id": "rec-0001-003",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-005",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 10000,
+            "currency": "GBP",
+            "event_id": "evt-0001-005",
+            "issuer_id": "mock-marketplace",
+            "kind": "refund",
+            "occurred_at": "2026-10-07T12:00:00Z",
+            "record_id": "rec-0001-005",
+            "related_record_ids": [
+              "rec-0001-003"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-006",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 40000,
+            "currency": "GBP",
+            "event_id": "evt-0001-006",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 3"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-07T22:00:00Z",
+            "record_id": "rec-0001-006",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-008",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 35000,
+            "currency": "GBP",
+            "event_id": "evt-0001-008",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 4"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-09T04:00:00Z",
+            "record_id": "rec-0001-008",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-010",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 20000,
+            "currency": "GBP",
+            "event_id": "evt-0001-010",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 5"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-10T10:00:00Z",
+            "record_id": "rec-0001-010",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-012",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 8000,
+            "currency": "GBP",
+            "event_id": "evt-0001-012",
+            "issuer_id": "mock-marketplace",
+            "kind": "refund",
+            "occurred_at": "2026-10-11T06:00:00Z",
+            "record_id": "rec-0001-012",
+            "related_record_ids": [
+              "rec-0001-010"
+            ],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-013",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 45000,
+            "currency": "GBP",
+            "event_id": "evt-0001-013",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 6"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-11T16:00:00Z",
+            "record_id": "rec-0001-013",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-015",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 15000,
+            "currency": "GBP",
+            "event_id": "evt-0001-015",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 7"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-12T22:00:00Z",
+            "record_id": "rec-0001-015",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        },
+        {
+          "ref": "merchant:rec-0001-017",
+          "form": "full_record",
+          "source_trust": "issuer_verified",
+          "content": {
+            "amount_pence": 30000,
+            "currency": "GBP",
+            "event_id": "evt-0001-017",
+            "issuer_id": "mock-marketplace",
+            "items": [
+              {
+                "description": "second-hand clothing lot 8"
+              }
+            ],
+            "kind": "order",
+            "occurred_at": "2026-10-14T04:00:00Z",
+            "record_id": "rec-0001-017",
+            "related_record_ids": [],
+            "revision": 1,
+            "schema_version": "alibi.merchant_event.v1",
+            "status": "completed",
+            "subject_ref": "maya-001"
+          }
+        }
+      ]
+    },
+    "proposed_package": {
+      "request_id": "rfc-0001-02",
+      "audience": "bank_b",
+      "empty": false,
+      "attachments": [
+        {
+          "ref": "merchant:rec-0001-001"
+        },
+        {
+          "ref": "merchant:rec-0001-003"
+        },
+        {
+          "ref": "merchant:rec-0001-005"
+        },
+        {
+          "ref": "merchant:rec-0001-006"
+        },
+        {
+          "ref": "merchant:rec-0001-008"
+        },
+        {
+          "ref": "merchant:rec-0001-010"
+        },
+        {
+          "ref": "merchant:rec-0001-012"
+        },
+        {
+          "ref": "merchant:rec-0001-013"
+        },
+        {
+          "ref": "merchant:rec-0001-015"
+        },
+        {
+          "ref": "merchant:rec-0001-017"
+        }
+      ],
+      "claims": [
+        {
+          "question_id": "q.sales_refunds_in_period",
+          "status": "supported",
+          "evidence_refs": [
+            "merchant:rec-0001-001",
+            "merchant:rec-0001-003",
+            "merchant:rec-0001-005",
+            "merchant:rec-0001-006",
+            "merchant:rec-0001-008",
+            "merchant:rec-0001-010",
+            "merchant:rec-0001-012",
+            "merchant:rec-0001-013",
+            "merchant:rec-0001-015",
+            "merchant:rec-0001-017"
+          ]
+        }
+      ]
+    },
+    "exclusions": [
+      {
+        "ref": "merchant:rec-0001-002",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-004",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-007",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-009",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-011",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-014",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-016",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-018",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-019",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-020",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "merchant:rec-0001-021",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-001",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-002",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-003",
+        "reason": "not needed to answer the questions"
+      },
+      {
+        "ref": "bank:txn-0001-004",
+        "reason": "not needed to answer the questions"
+      }
+    ],
+    "cost": {
+      "model_calls": 0,
+      "tool_calls": 1,
+      "tokens": 0,
+      "latency_ms": 13.916,
+      "cost_usd_estimate": 0.0
+    },
+    "cost_note": "cost_usd_estimate is 0: no price list is pinned; tokens are reported",
+    "retrieval": {
+      "lookups": 0,
+      "observed_inputs": 25,
+      "strategy": "deterministic: list the subject's records and bank entries; when no stored payout settles the credit, look up the settlement for the payout reference the credit carries or the subject's own records name; one call per reference"
+    },
+    "failure": null,
+    "issued_at": "2026-11-04T14:00:00Z",
+    "package_claims": [
+      {
+        "question_id": "q.sales_refunds_in_period",
+        "status": "supported",
+        "gap": null,
+        "evidence_refs": [
+          "merchant:rec-0001-001",
+          "merchant:rec-0001-003",
+          "merchant:rec-0001-005",
+          "merchant:rec-0001-006",
+          "merchant:rec-0001-008",
+          "merchant:rec-0001-010",
+          "merchant:rec-0001-012",
+          "merchant:rec-0001-013",
+          "merchant:rec-0001-015",
+          "merchant:rec-0001-017"
+        ],
+        "changed": null
+      }
+    ]
+  }
+]

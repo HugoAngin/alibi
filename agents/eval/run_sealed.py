@@ -2,17 +2,23 @@
 
 import argparse
 from collections import Counter
+from contextlib import ExitStack
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
+from queue import Queue
+import subprocess
+from tempfile import TemporaryDirectory
 
 from agents.data.api import load_case, load_cases
 from agents.eval.freeze_pack import _private_path
+from agents.eval.capture_reporting import summarize_capture
 from agents.eval.headline import summarize as headline_evidence
 from agents.eval.probe_capture import missing_demo_probe_kinds, probe_receipt, probe_receipt_path
 from agents.eval.score_capture import score_capture
-from agents.eval.sealed_worker import MODES, REPO, case_payload, run_case_worker, verify_adapter, verify_file_isolation
+from agents.eval.sealed_worker import MODES, REPO, case_payload, failure_rows, run_case_worker, verify_adapter, verify_file_isolation
 from agents.execution.api import probe_ids
 from alibi.eval import common, scorer, seal
 from alibi.llm import client
@@ -48,8 +54,74 @@ def _probe_rows(path: Path | None) -> list[dict]:
     return rows
 
 
+def _extra_capture_files(output: Path) -> dict:
+    paths = [output / "scheduling.json", output / "progress.json"]
+    paths += sorted(path for path in (output / "capture-workers").rglob("*") if path.is_file())
+    return {str(path.relative_to(output)): _digest(path) for path in paths}
+
+
+def _parallel_capture(output: Path, cases: list[dict], isolation: dict) -> None:
+    # Imported only after module initialization: isolated_candidate also uses score_saved.
+    from agents.eval.isolated_candidate import LIMITS, run_isolated
+    from agents.eval.parallel_capture import schedule
+
+    systems = {mode: dict(attempted=0, completed=0, failed=0, not_started=0) for mode in MODES}
+    with ExitStack() as stack:
+        roots = [Path(stack.enter_context(TemporaryDirectory(prefix="alibi-capture-lane-")))
+                 for _ in range(isolation["workers"])]
+        lanes = Queue()
+        for root in roots:
+            lanes.put(root)
+        destinations = {mode: stack.enter_context((output / filename).open("x", encoding="utf-8"))
+                        for mode, filename in PREDICTION_FILES.items()}
+
+        def run_job(job):
+            mode, case = job
+            lane = lanes.get()
+            try:
+                return run_isolated(
+                    case, mode, candidate=isolation["candidate"], private_root=isolation["private_root"],
+                    credential=isolation["credential"],
+                    output=output / "capture-workers" / f"{mode}-{case['case_number']}",
+                    scratch_parent=lane, denied_scratch=tuple(root for root in roots if root != lane),
+                    capture_root=output, deadline=isolation["deadline"],
+                )
+            finally:
+                lanes.put(lane)
+
+        def progress(outcome, aggregate):
+            mode, case = outcome["job"]
+            counts = systems[mode]
+            if outcome["status"] == "not_started":
+                counts["not_started"] += 1
+                detail = ("capture_integrity: infrastructure failure stopped new jobs"
+                          if outcome["reason"] == "capture_integrity" else "deadline reached before job started")
+                rows = failure_rows(case, mode, "unavailable", detail)
+            else:
+                counts["attempted"] += 1
+                if outcome["status"] == "error":
+                    rows = failure_rows(case, mode, "error", "isolated worker raised " + outcome["error"])
+                else:
+                    rows, _metadata = outcome["result"]
+                counts["failed" if any(row.get("failure") for row in rows) else "completed"] += 1
+            for row in rows:
+                destinations[mode].write(json.dumps(row, allow_nan=False) + "\n")
+            destinations[mode].flush()
+            snapshot = {"aggregate": aggregate, "systems": systems}
+            common.write_json(output / "progress.json", snapshot)
+            print(json.dumps({"capture_progress": snapshot}, sort_keys=True), flush=True)
+
+        jobs = [(mode, case) for case in cases for mode in MODES]
+        result = schedule(jobs, run_job, workers=isolation["workers"],
+                          deadline=isolation["deadline"], progress=progress, stop_on_error=True)
+        summary = {"aggregate": result["metadata"], "systems": systems, "limits": LIMITS}
+        common.write_json(output / "progress.json", summary)
+        common.write_json(output / "scheduling.json", summary)
+
+
 def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool, timeout: float,
-                  blocked: tuple[Path, ...], probes: Path | None, lock: Path | None = None) -> None:
+                  blocked: tuple[Path, ...], probes: Path | None, lock: Path | None = None,
+                  isolation: dict | None = None) -> None:
     files = (*PREDICTION_FILES.values(), PROBE_FILE)
     frozen = not dry and lock is not None
     if frozen:
@@ -63,8 +135,12 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         record = common.load_json(marker)
         if record.get("input") != signature or record.get("files") != {name: _digest(output / name) for name in files}:
             raise RuntimeError("retained capture or its inputs changed")
+        if isolation is not None and record.get("extra_files") != _extra_capture_files(output):
+            raise RuntimeError("retained worker evidence changed")
         return
 
+    if isolation is not None and isolation["deadline"] <= datetime.now(timezone.utc):
+        raise ValueError("capture deadline has already passed")
     probe_rows = _probe_rows(probes)
     if frozen:
         if probes is None or not probe_rows or not probe_receipt_path(probes).is_file():
@@ -76,14 +152,15 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         if missing:
             raise ValueError(f"candidate evidence needs definite demo outcomes for {', '.join(sorted(missing))}")
     if not dry:
-        env_source = os.environ.get("ALIBI_EVAL_ENV_FILE")
+        env_source = isolation["credential"] if isolation is not None else os.environ.get("ALIBI_EVAL_ENV_FILE")
         if env_source:
             credential_file = Path(env_source).resolve()
             client.load_api_key(credential_file)
             blocked = (*blocked, credential_file)
         else:
             client.load_api_key()
-        verify_adapter(blocked)
+        if isolation is None:
+            verify_adapter(blocked)
     for case in cases:
         case_payload(case)
     if lock is not None:
@@ -97,15 +174,21 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
     common.write_jsonl(output / PROBE_FILE, probe_rows)
     if frozen:
         common.write_json(output / PROBE_RECEIPT, receipt)
-    for mode, filename in PREDICTION_FILES.items():
-        with (output / filename).open("x", encoding="utf-8") as destination:
-            for case in cases:
-                rows = run_case_worker(case, mode, dry_run=dry, timeout=timeout, blocked=blocked)
-                for row in rows:
-                    destination.write(json.dumps(row, allow_nan=False) + "\n")
-                destination.flush()
+    if isolation is not None:
+        _parallel_capture(output, cases, isolation)
+    else:
+        for mode, filename in PREDICTION_FILES.items():
+            with (output / filename).open("x", encoding="utf-8") as destination:
+                for case in cases:
+                    rows = run_case_worker(case, mode, dry_run=dry, timeout=timeout, blocked=blocked)
+                    for row in rows:
+                        destination.write(json.dumps(row, allow_nan=False) + "\n")
+                    destination.flush()
     temporary = output / "run.tmp"
-    common.write_json(temporary, {"input": signature, "files": {name: _digest(output / name) for name in files}})
+    record = {"input": signature, "files": {name: _digest(output / name) for name in files}}
+    if isolation is not None:
+        record["extra_files"] = _extra_capture_files(output)
+    common.write_json(temporary, record)
     temporary.replace(marker)
 
 
@@ -176,6 +259,7 @@ def _measured_costs(score: scorer.SystemScore) -> None:
 
 def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kind: str) -> dict:
     systems = [scorer.load_predictions(output / filename, mode) for mode, filename in PREDICTION_FILES.items()]
+    retained = summarize_capture(output, systems)
     probe_file = output / PROBE_FILE
     probe_rows = common.read_jsonl(probe_file)
     outcomes = scorer.load_probe_results(probe_file)
@@ -196,6 +280,25 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
     ) + " |"
     coverage = None
     report = scorer.markdown_report(official)
+    scope = ("Headline correctness measures investigation (draft-evidence) claims. "
+             "It does not establish recipient correctness after policy review. "
+             "The frozen baselines have unequal retrieval access.")
+    table += "\n\n" + scope
+    report += "\n\n" + scope + "\n"
+    for system in systems:
+        divergence = retained["claim_divergence_by_system"][system.name]
+        line = (f"{system.name}: package_claims differ on {divergence['differing_rfcs']} RFCs; "
+                f"{divergence['policy_filtering_rfcs']} have an explicit policy-filtering reason, "
+                f"{divergence['unknown_reason_rfcs']} have an unknown reason. "
+                f"{divergence['unknown_comparison_rfcs']} RFC comparisons have unavailable fields.")
+        table += "\n\n" + line
+        report += "\n" + line + "\n"
+    if (output / "scheduling.json").exists():
+        retained["scheduling"] = common.load_json(output / "scheduling.json")
+        if retained["scheduling"]["aggregate"].get("aborted"):
+            warning = "Capture stopped on an infrastructure error; this is an incomplete capture, not a completed candidate comparison."
+            table += "\n\n" + warning
+            report += "\n" + warning + "\n"
     if probes:
         counts = Counter(row["outcome"] for row in probe_rows)
         coverage = {"catalogue": len(probe_rows), "observed": len(outcomes),
@@ -209,6 +312,7 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
     (output / "report.md").write_text(report, encoding="utf-8")
     common.write_json(output / "scores.json", {
         "mode": kind,
+        "retained_capture": retained,
         "headline": headline_evidence(official, attack_scores, independent, outcomes if probes else {}, kind),
         "probe_coverage": coverage,
         "official": {score.system.name: score.metrics for score in official}, "independent": independent,
@@ -218,6 +322,8 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
     headline = scorer.results_line(official[0])
     for baseline in official[1:]:
         headline.update({f"{baseline.system.name}_{key}": value for key, value in scorer.results_line(baseline).items()})
+    for system in systems:
+        headline[f"{system.name}_package_claims_divergent_rfcs"] = retained["claim_divergence_by_system"][system.name]["differing_rfcs"]
     return headline
 
 
@@ -227,6 +333,30 @@ def _path_argument(parser, option):
     parser.add_argument(f"--{flag}", type=Path, default=Path(env) if env else None)
 
 
+def _aware_deadline(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("deadline must be an aware ISO datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise argparse.ArgumentTypeError("deadline must include a timezone")
+    return parsed
+
+
+def _pinned_candidate(ref: str) -> tuple[str, str]:
+    """Bind a clean evaluator checkout separately from the immutable app tag."""
+    def git(*args):
+        return subprocess.check_output(["git", *args], cwd=REPO, text=True).strip()
+
+    if git("status", "--porcelain", "--untracked-files=all"):
+        raise ValueError("the evaluator checkout must be clean")
+    candidate = git("rev-parse", "--verify", f"{ref}^{{commit}}")
+    tagged = git("rev-parse", "--verify", "refs/tags/sealed-candidate^{commit}")
+    if candidate != tagged:
+        raise ValueError("candidate-ref must resolve to the sealed-candidate tag")
+    return candidate, git("rev-parse", "HEAD")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     public = parser.add_mutually_exclusive_group()
@@ -234,6 +364,9 @@ def main(argv: list[str] | None = None) -> None:
     public.add_argument("--public-live", action="store_true", help="run public cases through the real adapter")
     parser.add_argument("--case", type=int, action="append", help="public case selection")
     parser.add_argument("--timeout", type=float, default=90, help="seconds per case and system")
+    parser.add_argument("--candidate-ref", help="run the sealed-candidate source with isolated parallel workers")
+    parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
+    parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
     for option in ("out", "cases", "gold", "manifest", "model_config", "private_root", "probes"):
         _path_argument(parser, option)
     args = parser.parse_args(argv)
@@ -243,6 +376,20 @@ def main(argv: list[str] | None = None) -> None:
     blocked = ()
     adversarial = []
     lock = None
+    isolation = None
+    candidate = evaluator = None
+    if args.candidate_ref:
+        if args.dry_run or args.deadline is None or args.private_root is None:
+            parser.error("candidate-ref requires a live capture, private root and aware deadline")
+        try:
+            candidate, evaluator = _pinned_candidate(args.candidate_ref)
+        except (ValueError, subprocess.CalledProcessError) as exc:
+            parser.error(str(exc))
+        credential = os.environ.get("ALIBI_EVAL_ENV_FILE")
+        if not credential:
+            parser.error("isolated captures require ALIBI_EVAL_ENV_FILE")
+        isolation = {"candidate": candidate, "private_root": _private_path(args.private_root),
+                     "credential": Path(credential).resolve(), "workers": args.workers, "deadline": args.deadline}
     kind = "frozen"
     if args.dry_run:
         kind = "public_rehearsal"
@@ -256,6 +403,8 @@ def main(argv: list[str] | None = None) -> None:
         if not root.is_dir() or output.is_relative_to(root):
             parser.error("use an existing private root and a separate run directory")
         commit, dirty = seal.git_commit("HEAD")
+        if candidate is not None:
+            commit = candidate
         if dirty:
             parser.error("run the public live check from a clean candidate checkout")
         cases = [load_case(number) for number in dict.fromkeys(args.case)]
@@ -273,6 +422,8 @@ def main(argv: list[str] | None = None) -> None:
             parser.error("the private root must cover the cases and gold and exclude the run directory")
         manifest = common.load_json(args.manifest)
         commit, dirty = seal.git_commit("HEAD")
+        if candidate is not None:
+            commit = candidate
         if manifest.get("purpose") != "sealed" or dirty or manifest["candidate"]["commit"] != commit:
             parser.error("run from the clean sealed candidate checkout")
         problems, _ = seal.verify_manifest(args.manifest, input_path, gold_path, args.model_config)
@@ -287,8 +438,13 @@ def main(argv: list[str] | None = None) -> None:
         signature = {"dry": False, "commit": commit, "manifest": _digest(args.manifest), "timeout": args.timeout}
         lock = gold_path.parent / f"capture-{manifest['set_sha256']}.json"
 
+    if isolation is not None:
+        from agents.eval.isolated_candidate import LIMITS
+        signature.update({"candidate": candidate, "evaluator_commit": evaluator,
+                          "workers": args.workers, "deadline": args.deadline.isoformat(),
+                          "limits": dict(LIMITS), "inherited_llm_cap": False})
     _capture_once(output, cases, signature, dry=args.dry_run, timeout=args.timeout, blocked=blocked,
-                  probes=args.probes, lock=lock)
+                  probes=args.probes, lock=lock, isolation=isolation)
     if kind == "frozen":
         problems, _ = seal.verify_manifest(args.manifest, input_path, gold_path, args.model_config)
         if problems or _digest(args.manifest) != signature["manifest"]:

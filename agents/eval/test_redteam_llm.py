@@ -51,7 +51,6 @@ def generate(client, role, *, budget=None):
         pytest.param("policy_parse", policy_answer(confidence=float("nan")), id="policy-nonfinite-confidence"),
     ],
 )
-@pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason="S3a accepts out-of-contract role output")
 def test_s3a_rejects_untyped_role_output(tmp_path, role, answer):
     client = client_for(tmp_path, lambda *_: RawResponse(text=json.dumps(answer)))
     with pytest.raises(SchemaValidationError):
@@ -59,7 +58,6 @@ def test_s3a_rejects_untyped_role_output(tmp_path, role, answer):
 
 
 @pytest.mark.parametrize(("process_cap", "task_cap"), [(1, 3), (3, 1)], ids=["process", "task"])
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="S3a retries spend no budget")
 def test_s3a_retries_respect_each_transport_attempt_budget(tmp_path, process_cap, task_cap):
     calls = []
 
@@ -76,7 +74,6 @@ def test_s3a_retries_respect_each_transport_attempt_budget(tmp_path, process_cap
     assert len(calls) == 1
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="S3a replays invalid cached data")
 def test_s3a_does_not_replay_schema_invalid_cached_challenger_output(tmp_path):
     answer = challenger_answer()
     client = client_for(tmp_path, lambda *_: RawResponse(text=json.dumps(answer)))

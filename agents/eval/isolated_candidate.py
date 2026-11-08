@@ -7,6 +7,7 @@ cost presentation occur outside it. This CLI never opens the lockbox.
 import argparse
 from contextlib import redirect_stdout
 from copy import deepcopy
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
 import os
@@ -75,7 +76,8 @@ def normalize_cost(rows, mode):
     return rows
 
 
-def run_isolated(case, mode, *, candidate, private_root, credential, output, source_repo=REPO):
+def run_isolated(case, mode, *, candidate, private_root, credential, output, source_repo=REPO,
+                 scratch_parent=None, denied_scratch=(), capture_root=None, deadline=None):
     """Run one case; retain raw predictions and logs before destroying the source copy."""
     if mode not in LIMITS:
         raise ValueError("unknown mode")
@@ -87,7 +89,7 @@ def run_isolated(case, mode, *, candidate, private_root, credential, output, sou
     if output.is_relative_to(private_root) or output.is_relative_to(source_repo.resolve()):
         raise ValueError("capture must be outside the private input root and checkout")
     start = perf_counter()
-    with TemporaryDirectory(prefix="alibi-isolated-") as temp:
+    with TemporaryDirectory(prefix="alibi-isolated-", dir=scratch_parent) as temp:
         work = Path(temp).resolve()
         source, data = work / "source", work / "runtime"
         source.mkdir()
@@ -98,8 +100,9 @@ def run_isolated(case, mode, *, candidate, private_root, credential, output, sou
         with tarfile.open(archive) as bundle:
             bundle.extractall(source, filter="data")
         archive.unlink()
-        denied = (private_root, credential, output.parent, source / "agents/data/out/cases",
-                  source / ".env", source_repo / "data", source_repo / "agents/data/out/cases")
+        denied = (private_root, credential, capture_root or output.parent, source / "agents/data/out/cases",
+                  source / ".env", source_repo / "data", source_repo / "agents/data/out/cases",
+                  *denied_scratch)
         prefix = sandbox(denied, (source_repo, credential.parent))
         # Denial proof opens directories/descriptors only; it never reads protected contents.
         probe = """import os,sys
@@ -111,21 +114,39 @@ for p in sys.argv[1:]:
     else:
         os.close(fd);sys.exit(1)
 """
-        subprocess.run([*prefix, sys.executable, "-c", probe, str(private_root), str(credential), str(output)],
+        subprocess.run([*prefix, sys.executable, "-c", probe, str(private_root), str(credential),
+                        str(output), *map(str, denied_scratch)],
                        cwd=work, env=_worker_env(str(data), True), check=True, capture_output=True, timeout=10)
         command = [*prefix, sys.executable, "-c", BOOTSTRAP, str(source), mode]
         env = _worker_env(str(data), False)
+        env.pop("ALIBI_LLM_CAP", None)  # candidate's pinned default, never inherited shell state
         if mode == "rules":
             env.pop("GEMINI_API_KEY", None)
+        timeout = LIMITS[mode]
+        if deadline is not None:
+            timeout = min(timeout, max(0, (deadline - datetime.now(timezone.utc)).total_seconds()))
+        if timeout <= 0:
+            raise TimeoutError("capture deadline reached during worker setup")
         with subprocess.Popen(command, cwd=work, env=env, text=True, stdin=subprocess.PIPE,
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True) as child:
             failure = None
             try:
-                stdout, _ = child.communicate(json.dumps(payload), timeout=LIMITS[mode])
+                stdout, _ = child.communicate(json.dumps(payload), timeout=timeout)
             except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 child.communicate()
                 failure = "timeout"
+            except BaseException:
+                if child.poll() is None:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                child.communicate()
+                raise
             if failure is None and child.returncode:
                 failure = "error"
             if failure:
@@ -134,6 +155,7 @@ for p in sys.argv[1:]:
                 try:
                     raw = _complete_rows(json.loads(stdout), case, mode)
                 except (ValueError, TypeError):
+                    failure = "invalid_output"
                     raw = failure_rows(case, mode, "invalid_output", "invalid candidate predictions")
         log = output / "llm_log.jsonl"
         log_paths = sorted(data.rglob("*.jsonl"))
@@ -141,15 +163,42 @@ for p in sys.argv[1:]:
         with log.open("wb") as handle:
             for path in log_paths:
                 handle.write(path.read_bytes())
-        usage = summarise_log(log) if log.stat().st_size else {"totals": {
+        # Preserve the case even when a terminated call leaves a partial log row.
+        (output / "raw.json").write_text(json.dumps(raw, indent=2))
+        usage = {"totals": {
             "model_calls": 0 if mode == "rules" and not failure else None,
             "tokens": 0 if mode == "rules" and not failure else None,
             "cost_usd_estimate": 0 if mode == "rules" and not failure else None}}
+        if log.stat().st_size:
+            try:
+                usage = summarise_log(log)
+            except (ValueError, OSError):
+                usage["usage_error"] = "retained log could not be fully parsed; totals unknown"
+        if failure and mode != "rules":
+            usage["partial_totals"] = usage["totals"]
+            usage["totals"] = {key: None for key in ("model_calls", "tokens", "cost_usd_estimate")}
+            usage["usage_error"] = "worker did not complete; retained completed-call usage is partial"
         # Raw outputs and replay evidence are retained privately; later workers cannot read them.
         replay = source / "alibi/fixtures/replays" / f"case{case['case_number']}_{mode}.json"
+        rate_limited = False
         if replay.is_file() and mode != "rules":
             shutil.copyfile(replay, output / "replay.json")
-        (output / "raw.json").write_text(json.dumps(raw, indent=2))
+            # Read error messages only, never infer throttling from generated answer text.
+            try:
+                recorded = json.loads(replay.read_text())
+                entries = recorded.get("calls", recorded.get("entries", []))
+                rate_limited = any("429" in str(e.get("message", "")) or "RESOURCE_EXHAUSTED" in str(e.get("message", ""))
+                                   for e in entries if e.get("error"))
+            except (ValueError, AttributeError, TypeError):
+                pass
+        # Retried requests can include 429/503 responses absent from the final log status.
+        retry_observed = False
+        for line in log.read_text().splitlines():
+            try:
+                retry_observed |= json.loads(line).get("attempts", 1) > 1
+            except (ValueError, TypeError, AttributeError):
+                pass
+        rate_limited = rate_limited or retry_observed
         rows = normalize_cost(raw, mode)
         (output / "predictions.json").write_text(json.dumps(rows, indent=2))
         (output / "usage.json").write_text(json.dumps(usage, indent=2))
@@ -158,6 +207,8 @@ for p in sys.argv[1:]:
                     "requests": len(rows), "packages": sum(isinstance(r.get("package"), dict) for r in rows),
                     "failures": [r["failure"]["type"] for r in rows if r.get("failure")],
                     "isolation_preflight": "passed", "policy_alias_mapped": "privacy_policy" in case,
+                    "rate_limited": rate_limited, "effective_timeout_seconds": round(timeout, 3),
+                    "retry_based_throttle": retry_observed, "call_cap": "candidate default (120)",
                     "usage_log_sha256": sha256(log.read_bytes()).hexdigest()}
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2))
     return rows, metadata

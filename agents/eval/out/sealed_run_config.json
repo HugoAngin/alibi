@@ -1,0 +1,47 @@
+{
+  "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+  "models": {
+    "one_pass": {
+      "model": "gemini-3.8-flash",
+      "thinking": "low"
+    },
+    "agents": {
+      "flash": "gemini-3.8-flash",
+      "flash_thinking": "low",
+      "frontier": "gemini-4-argon",
+      "frontier_thinking": "medium"
+    }
+  },
+  "temperature": "provider default; not overridden",
+  "call_cap_per_process": 120,
+  "retry_status": [
+    429,
+    503
+  ],
+  "retry_backoff_seconds": [
+    2,
+    6
+  ],
+  "workers": 4,
+  "retry_throttle_workers": 2,
+  "retry_throttle_note": "Any retry evidence conservatively reduces concurrency; successful retry logs do not identify status, so it may be 503 rather than 429.",
+  "limits_seconds": {
+    "agents": 180,
+    "one_pass": 90,
+    "rules": 30
+  },
+  "deadline": "2026-11-08T11:50:00+00:00",
+  "policy_alias": "privacy_policy mapped to holder_policy",
+  "headline_scope": "investigation (draft-evidence) correctness; package_claims divergence reported separately; no post-policy recipient correctness claim",
+  "retrieval": "frozen unequal configured baselines; no equal-retrieval claim",
+  "authoring_calibration": "Prepared synthetic held-out pack was calibrated with rules during authoring; not untouched by every system.",
+  "unknown_usage": "Unknown remains null; retained partial completed-call usage reported separately",
+  "capture": "one exclusive capture, fresh candidate archive and scratch per case/system; no model rerun on replay",
+  "source_sha256": {
+    "alibi/adapter.py": "b909871969442aadabf8b2f3cb499862f77f0a4e378786bc98785dbd043f5dae",
+    "alibi/llm/config.py": "9e327b85cef634a2f938a41f5a9d81fd29ce5713f269fb7bead9f4ec8f0b8f25",
+    "alibi/llm/prompts.py": "5829faef889bf151c3d19414667774c3f3a8babc1bb4da2ae83e5d9cf3c39dda",
+    "alibi/llm/schema.py": "e883b5c5bff108e6843c80d089faaa8322278bb36d60f770930361a51443a27e",
+    "alibi/llm/client.py": "91ee500a4ec74188b6a3309e08bc879c55c024cf5145d36b3054d24a54ddd8e5"
+  }
+}

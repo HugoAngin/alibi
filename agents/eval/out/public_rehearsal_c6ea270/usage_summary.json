@@ -1,0 +1,17 @@
+{
+  "agents": {
+    "model_calls": 13,
+    "tokens": 111836,
+    "cost_usd_estimate": 0.2330655
+  },
+  "one_pass": {
+    "model_calls": 4,
+    "tokens": 43586,
+    "cost_usd_estimate": 0.0481935
+  },
+  "rules": {
+    "model_calls": 0,
+    "tokens": 0,
+    "cost_usd_estimate": 0
+  }
+}

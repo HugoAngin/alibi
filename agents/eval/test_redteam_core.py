@@ -41,7 +41,6 @@ def investigate(passport, request_id, lookup):
                                  registry=passport.registry, now=NOW)
 
 
-@pytest.mark.xfail(strict=True, reason="S1 dispatch does not bind consent to the latest investigation")
 def test_rerunning_investigation_with_changed_rationale_revokes_old_consent(passport, monkeypatch):
     from alibi.core import investigate_rules
 
@@ -68,7 +67,6 @@ def test_rerunning_investigation_with_changed_rationale_revokes_old_consent(pass
         api.sign_and_package(passport.store, approval.approval_id, keystore=passport.keys, now=NOW)
 
 
-@pytest.mark.xfail(strict=True, reason="S1 stores external RFC IDs in one global namespace")
 def test_independent_banks_can_reuse_their_own_external_request_id(passport):
     load(passport)
     bank_a, bank_b = maya.build_fixture("supported")["rfcs"]
@@ -77,7 +75,6 @@ def test_independent_banks_can_reuse_their_own_external_request_id(passport):
     assert passport.store.get_request(bank_a["request_id"]).issuer == "bank_a"
 
 
-@pytest.mark.xfail(strict=True, reason="S1 validates follow-up parent identity but allows scope widening")
 def test_followup_cannot_widen_parent_period(passport):
     load(passport)
     parent = maya.build_fixture("supported")["rfcs"][1]
@@ -87,7 +84,6 @@ def test_followup_cannot_widen_parent_period(passport):
         intake(passport, followup)
 
 
-@pytest.mark.xfail(strict=True, reason="S1 uses the five-day window for the payout search, not settlement timing")
 def test_valid_issuer_settlement_more_than_five_days_before_credit_cannot_support_it(passport):
     load(passport)
     data = maya.build_fixture("supported")
@@ -102,7 +98,6 @@ def test_valid_issuer_settlement_more_than_five_days_before_credit_cannot_suppor
     assert SUPPORTED not in [claim.status for claim in (*result.claims, *package.body.claims)]
 
 
-@pytest.mark.xfail(strict=True, reason="S1 package verification cannot bind extracts to an expected subject")
 def test_redacted_bank_package_cannot_verify_for_a_different_subject(passport):
     fixture = load(passport)
     request = maya.build_fixture("supported")["rfcs"][1]
@@ -121,7 +116,6 @@ def test_redacted_bank_package_cannot_verify_for_a_different_subject(passport):
     assert not api.verify_package(package, expected_subject="subj_other", **options).accepted
 
 
-@pytest.mark.xfail(strict=True, reason="S1 emits prose gaps rather than the pinned gap code")
 def test_pending_settlement_uses_published_gap_code(passport):
     fixture = load(passport, "contradiction")
     original = maya.build_fixture("contradiction")["rfcs"][0]
@@ -144,7 +138,6 @@ def test_exact_five_day_boundary_still_supports_the_credit(passport):
     assert result.claims and all(claim.status == SUPPORTED for claim in result.claims)
 
 
-@pytest.mark.xfail(strict=True, reason="S1 trusts an unrelated pinned issuer in the stored settlement path")
 def test_other_issuer_cannot_supply_settlement_proof_for_original_payout(passport):
     load(passport)
     fixture = maya.build_fixture("supported")
@@ -156,7 +149,6 @@ def test_other_issuer_cannot_supply_settlement_proof_for_original_payout(passpor
     assert all(claim.status != SUPPORTED for claim in result.claims)
 
 
-@pytest.mark.xfail(strict=True, reason="S1 deduplicates payouts inside a run but misses reuse across RFCs")
 def test_one_payout_cannot_support_two_distinct_credits_in_separate_requests(passport):
     loaded = load(passport)
     fixture = maya.build_fixture("supported")

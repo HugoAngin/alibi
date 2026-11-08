@@ -1,0 +1,90 @@
+{
+  "kind": "public-live",
+  "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+  "restriction_variant": false,
+  "limits": {
+    "agents": 180,
+    "one_pass": 90,
+    "rules": 30
+  },
+  "workers": [
+    {
+      "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+      "case_number": 1,
+      "system": "agents",
+      "wall_seconds": 81.792,
+      "timeout_seconds": 180,
+      "requests": 2,
+      "packages": 2,
+      "failures": [],
+      "isolation_preflight": "passed",
+      "policy_alias_mapped": false,
+      "usage_log_sha256": "3f355fe3ec4d876a12221e3ee9c405d147a3404991150970533a00885640dcc6"
+    },
+    {
+      "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+      "case_number": 2,
+      "system": "agents",
+      "wall_seconds": 85.399,
+      "timeout_seconds": 180,
+      "requests": 2,
+      "packages": 2,
+      "failures": [],
+      "isolation_preflight": "passed",
+      "policy_alias_mapped": false,
+      "usage_log_sha256": "bad5c3a3e3fa35b865ae42c9d0c96ba0437af6add7c40e9c1644ed9b0a3e765d"
+    },
+    {
+      "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+      "case_number": 1,
+      "system": "one_pass",
+      "wall_seconds": 19.941,
+      "timeout_seconds": 90,
+      "requests": 2,
+      "packages": 2,
+      "failures": [],
+      "isolation_preflight": "passed",
+      "policy_alias_mapped": false,
+      "usage_log_sha256": "1ce79d18c7b769126fbca1b29e44652c1536fe2db9e41333ce7a40062f7787fc"
+    },
+    {
+      "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+      "case_number": 2,
+      "system": "one_pass",
+      "wall_seconds": 19.383,
+      "timeout_seconds": 90,
+      "requests": 2,
+      "packages": 2,
+      "failures": [],
+      "isolation_preflight": "passed",
+      "policy_alias_mapped": false,
+      "usage_log_sha256": "03d23346190f4df0e06cf2c3dc7ae9140416ea276969cf2f89b7e3e8093b72e8"
+    },
+    {
+      "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+      "case_number": 1,
+      "system": "rules",
+      "wall_seconds": 1.423,
+      "timeout_seconds": 30,
+      "requests": 2,
+      "packages": 2,
+      "failures": [],
+      "isolation_preflight": "passed",
+      "policy_alias_mapped": false,
+      "usage_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "candidate": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8",
+      "case_number": 2,
+      "system": "rules",
+      "wall_seconds": 1.177,
+      "timeout_seconds": 30,
+      "requests": 2,
+      "packages": 2,
+      "failures": [],
+      "isolation_preflight": "passed",
+      "policy_alias_mapped": false,
+      "usage_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

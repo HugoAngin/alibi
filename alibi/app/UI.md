@@ -638,3 +638,46 @@ Section ids in order: `#summary`, `#checks` (contains the panels `section.panel.
   - `consent_note` str, shown in a `banner banner--info` above the form
 
 Forms: POST `disposition_form.action` with `decision`, `reason`, `question_ids[]`, `requested_evidence` (button "Record disposition", `btn btn--primary`; omitted when `final`); POST `followup_form.action` with `parent_request_id`, `disposition_id`, `scope`, `txn_ids`, `period_from`, `period_to`, `question` (button "Send follow-up through the bank connection", `btn btn--primary`). Neither form renders when `rejected` is true.
+
+## Routes, JSON and credentials (S4 wiring)
+
+Served by `alibi/app/main.py` (`uv run --frozen python -m alibi.app [--port 8100] [--timeout S]`). Every holder and analyst route renders its template context as HTML, or as JSON (the same dict plus `version: "alibi-ui/1"` and `template`) when the request's first `Accept` media type is `application/json`. Form posts redirect (303) in HTML mode and answer `{"version", "ok": true, "location", ...result}` in JSON mode. Refusals answer with a 4xx status and `{"code": <snake_case>, "reason": <the backend's sentence>}`; the HTML path shows the same sentence verbatim (a flash banner, or the dispatch result page).
+
+| Method and path | Template | Notes |
+| --- | --- | --- |
+| `GET /health` | JSON | `status`, `case`, `mode` (`rules-only`), `replay`, `now`, `db`, `bank_url` |
+| `GET /passport` (and `/`) | `passport/home.html` | |
+| `GET /txn/{txn_id}` | `passport/transaction.html` | |
+| `GET /sources/{record_id}/{revision}` | inline | JSON `{record, fields, revisions}`; a minimal HTML page without a template |
+| `GET /alerts` | `passport/alerts.html` | |
+| `POST /alerts/lookup` (`query`) | `passport/alerts.html` | mock registry check via `agents.data.api.merchant_lookup`; unknown is `unverified` |
+| `POST /tick` | redirect `/alerts` | re-runs the monitor; JSON `{raised, resolved, kept, at}` |
+| `GET /rules[?interp=<rule_id>&prefill=<text>]` | `passport/rules.html` | |
+| `POST /rules/interpret` (`text`) | redirect | resolved: `/rules?interp=<rule_id>`; unresolved: held for clarification |
+| `POST /rules/{rule_id}/confirm` · `/reject` · `/retire` | redirect `/rules` | confirm and retire save a new policy version through `record_policy` |
+| `POST /rules/held/{rule_id}/clarify` · `/discard` | redirect `/rules` | clarify prefills the form with the held text |
+| `GET /requests` | JSON list | HTML redirects to `/passport#requests` |
+| `GET /requests/{request_id}` | `requests/detail.html` | |
+| `POST /requests/{request_id}/run` | redirect `#trace` | `run_investigation(mode="rules")` then `build_review`; JSON `{run_id, mode, calls_used, claims, draft_id}` |
+| `POST /requests/{request_id}/remove/{ref_type}/{ref_id}` | redirect `#review` | rebuilds the draft with the source removed; an earlier approval no longer matches |
+| `POST /requests/{request_id}/restore` | redirect `#review` | clears the removals |
+| `POST /requests/{request_id}/approve` (`digest`, `audience`, `policy_version`) | redirect `#approval` | refuses `approval_digest_not_current`, `approval_audience_mismatch`, `policy_version_changed` before calling `approve` |
+| `GET /requests/{request_id}/dispatch` | `requests/dispatch.html` | the last dispatch result for the request |
+| `POST /requests/{request_id}/dispatch` | `requests/dispatch.html` | revalidates the approval against the current draft, signs (`sign_and_package`), delivers to `ALIBI_BANK_URL` (`POST {url}/bank/{audience}/receive`) or to this process's bank service when unset; a refusal renders with the refusal's status |
+| `GET /requests/{request_id}/export` | `requests/export.html` | the signed package, or the unsigned current draft before dispatch |
+| `GET /requests/{request_id}/export.json` | file | the signed package as canonical JSON (404 before dispatch) |
+| `GET /audit[?q=&actor=&page=]` | `audit/list.html` | passport audit plus the bank-side entries |
+| `POST /bank/{recipient}/receive` | JSON | the bank connection's delivery endpoint; verifies with `verify_package` bound to the request the bank issued; 200 receipt, 422 `package_rejected`, 409 `package_id_reused` |
+| `GET /bank/{recipient}/inbox[?token=]` | `analyst/inbox.html` | credential required (below) |
+| `GET /bank/{recipient}/requests` | JSON | the requests this recipient issued (case RFCs and follow-ups) |
+| `GET /bank/{recipient}/packages/{package_id}[?disposition=<id>]` | `analyst/package.html` | 404 for another recipient's package |
+| `POST /bank/{recipient}/packages/{package_id}/disposition` (`decision`, `reason`, `question_ids[]`, `requested_evidence`) | redirect | `analyst` comes from the credential; `request_more` redirects to the follow-up form; a second decision after `clear`/`escalate` is `disposition_final` |
+| `POST /bank/{recipient}/requests` (`parent_request_id`, `disposition_id`, `scope`, `txn_ids`, `period_from`, `period_to`, `question`) | redirect `#requests-sent` | issues a signed follow-up RFC through `receive_rfc`; scope defaults to the parent's and may not widen (`scope_wider_than_parent`) |
+
+Recipient credentials: `Authorization: Bearer <token>` (`ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`; demo defaults `demo-token-bank-a`, `demo-token-bank-b`), or the `alibi_bank` session cookie that `?token=<credential>` sets on the inbox. No credential is 401 `not_authenticated`; a credential for the other recipient is 403 `recipient_mismatch` (audited as `access.refused`). The URL never grants access.
+
+Refusal codes used: `approval_missing`, `approval_digest_mismatch`, `approval_digest_not_current`, `approval_audience_mismatch`, `approval_expired`, `request_expired`, `policy_version_changed`, `source_revision_changed`, `approval_request_mismatch`, `package_id_reused`, `package_rejected`, `scope_wider_than_parent`, `disposition_final`, `not_authenticated`, `recipient_mismatch`, `draft_missing`, `reason_required`, `bad_decision`, `bad_period`, `question_required`, `parent_not_found`, `package_not_found`, `rule_not_pending`, `rule_not_active`, `investigation_failed`, `review_failed`, `not_dispatched` (dispatch page before any attempt).
+
+Environment: `ALIBI_CASE` (1), `ALIBI_DATA_DIR` (`data/alibi/app`), `ALIBI_KEY_DIR` (`data/alibi/keys`), `ALIBI_NOW` (fixed UTC clock; the RFCs expire 2026-11-09T09:00Z and 2026-11-11T14:00Z), `ALIBI_REPLAY=1` (banner), `ALIBI_BANK_URL`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_HOLDER_NAME`, `ALIBI_MASTER_KEY` (store encryption; never printed). Reset the demo by deleting `data/alibi/app/case_<n>.db`, `case_<n>.state.json` and `master.key` next to them.
+
+Investigation mode: `rules` only. The investigation card shows the badge `rules-only`; the four Gemini roles are listed as `skipped` and nothing is presented as an agent result.

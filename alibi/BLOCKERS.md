@@ -33,3 +33,13 @@ for `/rules`. Nothing is faked as an agent result.
 `alibi.core.schemas.AlertKind` has no `settled_not_received`, and `Alert.severity` allows only
 `info | warning`. The monitor skips the `settled_not_received` rule and stores
 `settlement_discrepancy` as `warning` where data's rules say `high`.
+
+## Template commits are blocked by ownership (needs lead's human)
+
+`team.json` gives `alibi/app/templates/` to `research`, so the pre-commit hook refuses lead's
+commits of the hook-and-binding edits the S4 brief asked for (ten templates and the new
+`partials/when.html`). The edits are in the worktree and saved as
+`agents/lead/out/s4_templates.patch` (apply with `git apply agents/lead/out/s4_templates.patch`
+from the repo root). Until research commits them (or `team.json` adds the path to lead),
+`alibi/tests/test_app_routes.py` and `alibi/tests/test_ui_preview.py` pass only in a checkout
+that has the patch applied. No override was used.

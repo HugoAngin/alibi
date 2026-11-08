@@ -1,0 +1,389 @@
+--- a/alibi/bank/service.py
++++ b/alibi/bank/service.py
+@@ -10,11 +10,11 @@
+ Every issued request (a case RFC or a follow-up) is forwarded to the holder's passport: through
+ the in-process ``rfc_sink`` (``alibi.connectors.plug.RfcSink``), or, with ``rfc_url``, over HTTP
+ to the passport app's ``POST /connect/bank/rfc`` with the body ``{rfc, recipient, account_refs,
+-now}`` and the recipient's own bearer token (``http_rfc_sink``). The outcome is recorded as
+-``forwarded`` either way.
++now}`` and the recipient's own bearer token (``http_rfc_sink``). An identical re-issue uses the
++stored signature and retries delivery until the holder confirms acceptance.
+ 
+-The recipient and analyst come from the token only; posted ``recipient``, ``analyst`` or
+-``analyst_name`` fields are ignored. The ``/admin/*`` routes take the shared admin bearer
++The recipient and analyst come from the token only. An RFC's declared identity must match
++that recipient. The ``/admin/*`` routes take the shared admin bearer
+ (``alibi.connectors.http.admin_guard``: ``ALIBI_ADMIN_TOKEN``, else the ``admin`` entry of the
+ tokens file, else ``admin_token=``) from a loopback client only. Every refusal is an
+ ``alibi.connectors.http.Refusal`` whose reason names ids, fields and codes only. Tokens and keys
+@@ -126,6 +126,14 @@
+         raise Refusal("invalid_request", "request.questions must be a list")
+ 
+ 
++def _check_rfc_identity(request: dict[str, Any], recipient: str) -> None:
++    for field, code in (("issuer", "issuer_mismatch"), ("audience", "recipient_mismatch"),
++                        ("recipient", "recipient_mismatch")):
++        if field in request and request[field] != recipient:
++            raise Refusal(code, f"the declared {field} must match the authenticated bank {recipient}",
++                          status=403)
++
++
+ def _scope_of(request_body: dict[str, Any]) -> dict[str, Any]:
+     """``{"txn_ids": [...]}`` or ``{"period": {...}}`` from a core request body."""
+     if request_body.get("txn_ids"):
+@@ -206,9 +214,13 @@
+         if not isinstance(answer, dict):
+             answer = {}
+         if 200 <= response.status_code < 300:
+-            if answer.get("status") not in ("accepted", "refused"):
++            status = answer.get("status")
++            if status not in ("accepted", "refused"):
+                 return {"status": "error", "reason": f"HTTP {response.status_code} without a status"}
+-            return {k: v for k, v in answer.items() if k in ("status", "reason", "request_id", "audience")}
++            fields = {"status", "reason", "request_id", "audience"}
++            if status == "refused":
++                fields.add("code")
++            return {k: v for k, v in answer.items() if k in fields}
+         if 400 <= response.status_code < 500:
+             result = {"status": "refused", "reason": _clip(answer.get("reason") or f"HTTP {response.status_code}")}
+             if answer.get("code") is not None:
+@@ -370,6 +382,26 @@
+                 raise Refusal(code, f"request_id {request_id} is not available")
+         return request_id
+ 
++    def _forward_request(self, record: SentRequest, recipient: str, now: str) -> dict[str, Any] | None:
++        if record.accepted_forward is not None:
++            return copy.deepcopy(record.accepted_forward)
++        if self.rfc_sink is None:
++            return None
++        try:
++            result = self.rfc_sink(copy.deepcopy(record.rfc), recipient,
++                                   list(record.account_refs or []), now)
++        except Exception as exc:  # noqa: BLE001 - a sink failure is an outcome, not a 500
++            return {"status": "error", "reason": f"the rfc_sink raised {type(exc).__name__}"}
++        if not isinstance(result, dict) or result.get("status") not in ("accepted", "refused", "error"):
++            return {"status": "error", "reason": "the rfc_sink returned an invalid outcome"}
++        if result["status"] == "accepted":
++            record.accepted_forward = {"status": "accepted"}
++            if result.get("request_id") == record.request_id:
++                record.accepted_forward["request_id"] = record.request_id
++            if result.get("audience") == recipient:
++                record.accepted_forward["audience"] = recipient
++        return result
++
+     def _issue(self, recipient: str, case_rfc: dict[str, Any], *,
+                source: str) -> tuple[SentRequest, dict[str, Any] | None, bool]:
+         """Map, check the clock (not issued in the future, not expired), sign and store one
+@@ -388,27 +420,26 @@
+         if clock.as_of >= parse_time(body["expires_at"], "expires_at"):
+             raise Refusal("request_expired", f"request {request_id} expired at {body['expires_at']}; "
+                                              f"the clock is at {clock.as_of_text}")
+-        signed = keys.sign_request(body, self.keystore, kid=keys.BANK_KIDS[recipient])
++        account_ref = self.state.account_ref
++        account_refs = [account_ref] if account_ref else []
++        for txn_id in body.get("txn_ids", []):
++            row = self.feed_server().latest(txn_id)
++            if row is None or row.get("account_ref") not in account_refs:
++                raise Refusal("txn_out_of_feed", "txn_ids include a transaction outside the bank's feed",
++                              status=400)
+         existing = sent.requests.get(request_id)
+         if existing is not None:
+-            if existing.rfc["request"] != signed["request"]:
++            if existing.rfc["request"] != body:
+                 raise Refusal("invalid_request", f"request {request_id} was already issued with "
+                                                  "different content")
+-            return existing, None, False
+-        account_refs = [self.state.account_ref] if self.state.account_ref else []
++            return existing, self._forward_request(existing, recipient, clock.as_of_text), False
++        signed = keys.sign_request(body, self.keystore, kid=keys.BANK_KIDS[recipient])
+         record = SentRequest(
+             request_id=request_id, rfc=signed, account_refs=account_refs,
+             parent_request_id=body.get("parent_request_id"), issued_at=body["issued_at"],
+             expires_at=body["expires_at"], scope=_scope_of(body),
+             question_ids=[q["question_id"] for q in body["questions"]], source=source)
+-        forwarded = None
+-        if self.rfc_sink is not None:
+-            try:
+-                forwarded = self.rfc_sink(copy.deepcopy(signed), recipient, list(account_refs),
+-                                          clock.as_of_text)
+-            except Exception as exc:  # noqa: BLE001 - a sink failure is an outcome, not a 500
+-                forwarded = {"status": "error",
+-                             "reason": f"the rfc_sink raised {type(exc).__name__}"}
++        forwarded = self._forward_request(record, recipient, clock.as_of_text)
+         sent.requests[request_id] = record
+         return record, forwarded, True
+ 
+@@ -419,10 +450,12 @@
+         sent = self._recipient(recipient)
+         hint = body.get("request_id") if isinstance(body.get("request_id"), str) else None
+         with self.audited(recipient, recipient, "issue_request", request_id=hint) as entry:
++            _check_rfc_identity(body, recipient)
+             if "request" in body:
+                 custom = body["request"]
+                 if not isinstance(custom, dict):
+                     raise Refusal("invalid_request", "request must be a JSON object")
++                _check_rfc_identity(custom, recipient)
+                 case_rfc = {**custom, "issuer": recipient, "audience": recipient}
+                 if case_rfc.get("subject_ref") != self.state.subject_ref:
+                     raise Refusal("invalid_request", "request.subject_ref must be the case subject")
+--- a/alibi/bank/state.py
++++ b/alibi/bank/state.py
+@@ -6,7 +6,8 @@
+ 
+ * ``requests``: Requests for Context this recipient issued, in issue order, by ``request_id``
+   (the signed ``{"request", "signature"}`` dict, the account refs, the parent, times, scope,
+-  question ids, the source ``case | follow_up | custom`` and the packages that answered it);
++  question ids, the source ``case | follow_up | custom``, the holder's acceptance and the
++  packages that answered it);
+ * ``inbox``: delivered Context Packages by ``package_id``. A ``verified`` entry keeps the raw
+   package dict and the full verification report; a ``rejected`` entry keeps the receipt, the
+   reasons and digest, and of the verification report only ``authentication`` and ``errors``:
+@@ -48,6 +49,7 @@
+     question_ids: list[str]
+     source: str                         # case | follow_up | custom
+     answered_by: list[str] = field(default_factory=list)
++    accepted_forward: dict[str, Any] | None = None
+ 
+     def summary(self) -> dict[str, Any]:
+         """The ``GET /rfc`` listing shape."""
+@@ -114,14 +116,22 @@
+     @classmethod
+     def from_json(cls, data: dict[str, Any]) -> "RecipientState":
+         state = cls()
++        state.audit = list(data.get("audit", []))
++        # Older banks recorded successful case/custom forwarding only in the audit.
++        issued_and_forwarded = {
++            (entry.get("request_id"), entry.get("detail")) for entry in state.audit
++            if entry.get("action") == "issue_request" and entry.get("outcome") == "ok"
++        }
+         for raw in data.get("requests", []):
+             request = SentRequest(**raw)
++            legacy_detail = f"issued {request.source} request {request.request_id}; forwarded accepted"
++            if "accepted_forward" not in raw and (request.request_id, legacy_detail) in issued_and_forwarded:
++                request.accepted_forward = {"status": "accepted", "request_id": request.request_id}
+             state.requests[request.request_id] = request
+         for raw in data.get("inbox", []):
+             entry = InboxEntry(**raw)
+             state.inbox[entry.package_id] = entry
+         state.dispositions = list(data.get("dispositions", []))
+-        state.audit = list(data.get("audit", []))
+         return state
+ 
+ 
+--- a/alibi/connectors/SERVICES.md
++++ b/alibi/connectors/SERVICES.md
+@@ -137,7 +137,7 @@
+ | `POST /admin/seed?case=N&as_of=` | admin, loopback | Load the case: subject, account_ref, bank rows (feed), RFCs. Reset all recipient state. Set the clock. | `{case_number, subject_ref, account_ref, as_of, recipients: ["bank_a", "bank_b"]}`; `401 unauthenticated`, `403 forbidden` |
+ | `POST /admin/advance?as_of=` | admin, loopback | Clock forward only. | `{as_of}`; `409 clock_backwards` |
+ | `GET /whoami` | recipient | | `{recipient, analyst}` |
+-| `POST /rfc` body `{}` or `{"request_id"}` or `{"request": {...}}` | recipient | Issue a Request for Context. `{}`: the case's first unissued RFC whose audience is this recipient. `request_id`: that case RFC (must have this audience, else `404 unknown_request`, same reason as a missing id). `request`: a custom request body; `issuer` and `audience` are forced to this recipient, `subject_ref` must be the case subject, scope rule applies. Mapped with `map_rfc`, signed with this bank's key (request domain). Refused with `409 request_expired` when the clock is at or past `expires_at`. Re-issuing an issued id returns the stored bytes (200). Forwarded to the `rfc_sink` when configured. | `201 {recipient, request_id, rfc: {request, signature}, account_refs: [account_ref], forwarded}` |
++| `POST /rfc` body `{}` or `{"request_id"}` or `{"request": {...}}` | recipient | Issue a Request for Context. `{}`: the case's first unissued RFC whose audience is this recipient. `request_id`: that case RFC (must have this audience, else `404 unknown_request`, same reason as a missing id). `request`: a custom request body; `issuer` and `audience` default to the authenticated recipient. A conflicting `issuer` returns `403 issuer_mismatch`; a conflicting `audience` or `recipient` returns `403 recipient_mismatch`. `subject_ref` must be the case subject. Each transaction’s latest visible revision must belong to the account feed, else `400 txn_out_of_feed`. Mapped with `map_rfc`, signed with this bank's key (request domain). Refused with `409 request_expired` when the clock is at or past `expires_at`. Re-issuing an issued id returns the stored bytes (200). Forwarded to the `rfc_sink` when configured. | `201 {recipient, request_id, rfc: {request, signature}, account_refs: [account_ref], forwarded}` |
+ | `GET /rfc` | recipient | Requests this recipient sent. | `{requests: [{request_id, parent_request_id, issued_at, expires_at, scope: {txn_ids} or {period}, question_ids, source: case | follow_up | custom, answered_by: [package_id]}]}` |
+ | `GET /rfc/{request_id}` | recipient | One sent request. | `{request_id, rfc, account_refs}`; `404 not_found` |
+ | `POST /deliver` body = signed Context Package JSON | recipient | 1. Strict JSON object with `package_id` (`400 invalid_package`). 2. `digest = canon.digest(raw)`. Same `package_id` already in this inbox: same digest returns the stored receipt and status (200 or 422 as first time); different digest `409 package_id_reused`, nothing stored. 3. `body.audience != recipient`: `409 audience_mismatch`. 4. `body.request_id` not issued by this recipient: `409 unknown_request`. 5. `alibi.api.verify_package(raw, expected_audience=recipient, registry, now=clock, expected_subject=rfc.subject_ref, expected_request_id=rfc.request_id)`. Receipt bound to `package_id` and digest: `Receipt(receipt_id = make_id("rcp", recipient, package_id, digest), package_id, package_sha256 = digest, recipient, received_at = clock, accepted, reasons)`. Rejections (steps 3 to 5) store an inbox entry with status `rejected`, the receipt and reasons, no bytes. Audit every outcome. | accepted: `200 {status: "verified", receipt, authentication, sources, claims}`; rejected: `422 package_rejected` (or `409 audience_mismatch` / `409 unknown_request`) with `{code, reason, receipt, rejection: {authentication, errors}}` |
+--- a/alibi/tests/test_bank_service.py
++++ b/alibi/tests/test_bank_service.py
+@@ -172,6 +172,7 @@
+ 
+     again = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
+     assert again.status_code == 200 and again.json()["rfc"] == out["rfc"]
++    assert again.json()["forwarded"] == out["forwarded"]
+     assert len(sink.calls) == 1
+ 
+     wrong = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_b"))
+@@ -188,15 +189,15 @@
+     none_left = client.post("/rfc", json={}, headers=auth("bank_b"))
+     assert none_left.status_code == 404 and none_left.json()["code"] == "unknown_request"
+ 
+-    custom = {"request_id": "rfc-custom-01", "subject_ref": SUBJECT, "issuer": "bank_b",
+-              "audience": "bank_b", "txn_ids": ["txn-0001-004"],
++    custom = {"request_id": "rfc-custom-01", "subject_ref": SUBJECT, "issuer": "bank_a",
++              "audience": "bank_a", "txn_ids": ["txn-0001-004"],
+               "questions": [{"question_id": "q.custom", "text": "Where did this credit come from?"}],
+               "issued_at": AS_OF, "expires_at": "2026-11-12T09:00:00Z"}
+-    forced = client.post("/rfc", json={"request": custom}, headers=auth("bank_a"))
+-    assert forced.status_code == 201, forced.json()
+-    forced_request = forced.json()["rfc"]["request"]
+-    assert forced_request["issuer"] == forced_request["audience"] == "bank_a"
+-    assert forced.json()["rfc"]["signature"]["kid"] == "bank_a"
++    issued = client.post("/rfc", json={"request": custom}, headers=auth("bank_a"))
++    assert issued.status_code == 201, issued.json()
++    issued_request = issued.json()["rfc"]["request"]
++    assert issued_request["issuer"] == issued_request["audience"] == "bank_a"
++    assert issued.json()["rfc"]["signature"]["kid"] == "bank_a"
+     other_subject = client.post("/rfc", json={"request": {**custom, "subject_ref": "someone-else"}},
+                                 headers=auth("bank_a"))
+     assert other_subject.status_code == 400 and other_subject.json()["code"] == "invalid_request"
+@@ -214,6 +215,55 @@
+     assert one.status_code == 200 and one.json()["rfc"] == out["rfc"]
+     assert client.get(f"/rfc/{RFC_B}", headers=auth("bank_a")).json()["code"] == "not_found"
+     assert len(sink.calls) == 3
++
++
++def test_request_intake_refuses_before_signing_forwarding_or_recording(built, monkeypatch):
++    case = load_case_without_gold(1)
++    own_row = case["bank_deliveries"][0]["row"]
++    case["bank_deliveries"].extend([
++        {"received_at": AS_OF, "row": {**own_row, "txn_id": "txn-other-account",
++                                      "account_ref": "acct-other"}},
++        {"received_at": AS_OF, "row": {**own_row, "account_ref": "acct-other",
++                                      "revision": own_row["revision"] + 1}},
++        {"received_at": "2026-11-05T09:00:00Z", "row": {**own_row, "txn_id": "txn-future"}},
++    ])
++    sink = SinkStub()
++    client = TestClient(create_bank_app(keystore=built.keystore, registry=built.registry,
++                                       tokens=TOKENS, rfc_sink=sink, case_loader=lambda _: case))
++    assert client.post("/admin/seed", headers=auth("admin"), params={"as_of": AS_OF}).status_code == 200
++
++    def unexpected_sign(*args, **kwargs):
++        pytest.fail("a refused request must not be signed")
++
++    monkeypatch.setattr(keys, "sign_request", unexpected_sign)
++    base = {"request_id": "rfc-custom-intake", "subject_ref": SUBJECT, "period": OCTOBER,
++            "questions": [{"question_id": "q.custom", "text": "Please explain the credit."}],
++            "issued_at": AS_OF, "expires_at": "2026-11-12T09:00:00Z"}
++    cases = [
++        ("bank_b", {"request": {**base, "issuer": "bank_a", "audience": "bank_b"}},
++         403, "issuer_mismatch"),
++        ("bank_b", {"request": {**base, "issuer": "bank_b", "audience": "bank_a"}},
++         403, "recipient_mismatch"),
++        ("bank_b", {"request": {**base, "recipient": "bank_a"}}, 403, "recipient_mismatch"),
++        ("bank_a", {"request_id": RFC_A, "issuer": "bank_b"}, 403, "issuer_mismatch"),
++    ]
++    for txn_id in ("txn-0002-001", "txn-other-account", "txn-future", own_row["txn_id"]):
++        cases.append(("bank_a", {"request": {**base, "period": None,
++                                              "txn_ids": ["txn-0001-004", txn_id]}},
++                      400, "txn_out_of_feed"))
++    for recipient, payload, status, code in cases:
++        response = client.post("/rfc", json=payload, headers=auth(recipient))
++        assert response.status_code == status, response.json()
++        assert response.json()["code"] == code, response.json()
++        audit = client.get("/audit", headers=auth(recipient)).json()["entries"][-1]
++        assert audit["outcome"] == "refused" and audit["detail"] == f"{code}: {response.json()['reason']}"
++        assert client.get("/rfc", headers=auth(recipient)).json() == {"requests": []}
++    assert sink.calls == []
++
++    monkeypatch.undo()
++    control = client.post("/rfc", json={"request": {**base, "issuer": "bank_b", "audience": "bank_b"}},
++                          headers=auth("bank_b"))
++    assert control.status_code == 201 and control.json()["forwarded"]["status"] == "accepted"
+ 
+ 
+ def test_case_requests_are_issuable_only_once_their_issued_at_has_passed(built):
+@@ -789,8 +839,13 @@
+ 
+ 
+ def test_a_failing_rfc_sink_is_reported_and_audited(built):
++    signed_calls = []
++
+     def exploding_sink(signed, recipient, account_refs, now):
+-        raise RuntimeError("boom")
++        signed_calls.append(canon.canonical_bytes(signed))
++        if len(signed_calls) == 1:
++            raise RuntimeError("boom")
++        return {"status": "accepted", "request_id": signed["request"]["request_id"]}
+ 
+     client = make_app(built, sink=exploding_sink)
+     issued = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
+@@ -802,10 +857,31 @@
+     assert audit[-1]["action"] == "issue_request" and audit[-1]["outcome"] == "ok"
+     assert "forwarded error" in audit[-1]["detail"]
+ 
++    retried = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
++    assert retried.status_code == 200
++    assert retried.json()["forwarded"] == {"status": "accepted", "request_id": RFC_A}
++    assert signed_calls == [canon.canonical_bytes(issued.json()["rfc"])] * 2
+ 
++
+ # --------------------------------------------------------------------------- persistence
+ 
+ 
++def test_legacy_audit_preserves_an_already_accepted_forward(built, tmp_path):
++    state_path = tmp_path / "state.json"
++    sink = SinkStub()
++    first = make_app(built, state_path=state_path, sink=sink)
++    issued = first.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
++    assert issued.status_code == 201 and len(sink.calls) == 1
++    state = json.loads(state_path.read_text())
++    del state["recipients"]["bank_a"]["requests"][0]["accepted_forward"]
++    state_path.write_text(json.dumps(state))
++
++    restarted = make_app(built, state_path=state_path, sink=sink, seed=False)
++    repeat = restarted.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
++    assert repeat.status_code == 200 and repeat.json() == issued.json()
++    assert len(sink.calls) == 1
++
++
+ def test_state_persists_across_apps_and_never_holds_tokens(built, tmp_path):
+     state_path = tmp_path / "bank" / "state.json"
+     first = make_app(built, state_path=state_path)
+--- a/alibi/tests/test_app_integration.py
++++ b/alibi/tests/test_app_integration.py
+@@ -24,6 +24,7 @@
+ from alibi.connectors import keys
+ from alibi.connectors.http import load_tokens
+ from alibi.connectors.merchant import create_merchant_app, http_sink
++from alibi.core import canon
+ from alibi.core.schemas import SigningDomain
+ from alibi.core.signing import DemoKeystore, TrustRegistry, verify
+ 
+@@ -139,8 +140,59 @@
+ 
+ 
+ # --------------------------------------------------------------------------- the whole path
++
++
++@pytest.mark.parametrize("legacy", [False, True])
++def test_relay_refusal_retries_the_stored_request_after_bank_restart(stack: Stack, legacy, monkeypatch):
++    stack.seed()
++    # The holder has yet to sync the transaction needed for this RFC.
++    issued = stack.bank_client.post("/rfc", json={"request_id": RID}, headers=TOKEN_A)
++    assert issued.status_code == 201
++    assert issued.json()["forwarded"]["status"] == "refused"
++    assert issued.json()["forwarded"]["code"] == "rfc_refused"
++    assert stack.client.get(f"/requests/{RID}", headers=JSON).status_code == 404
++
++    state_path = stack.root / "bank" / "state.json"
++    if legacy:
++        state = json.loads(state_path.read_text())
++        del state["recipients"]["bank_a"]["requests"][0]["accepted_forward"]
++        state_path.write_text(json.dumps(state))
++
++    class RecordingForward(_Forward):
++        def __init__(self, stack):
++            super().__init__(stack)
++            self.signed = []
++
++        def post(self, url, *, json, headers):
++            self.signed.append(canon.canonical_bytes(json["rfc"]))
++            assert headers["Authorization"] == TOKEN_A["authorization"]
++            return super().post(url, json=json, headers=headers)
+ 
++    forward = RecordingForward(stack)
+ 
++    def restart_bank():
++        return TestClient(create_bank_app(
++            keystore=stack.keystore, registry=stack.keystore.registry(), tokens=TOKENS,
++            rfc_url=f"{APP_URL}/connect/bank/rfc", http_client=forward, state_path=state_path))
++
++    def reject_resigning(*args, **kwargs):
++        pytest.fail("retries must not sign another request")
++
++    stack.sync()
++    monkeypatch.setattr(keys, "sign_request", reject_resigning)
++    client = restart_bank()
++    retried = client.post("/rfc", json={"request_id": RID}, headers=TOKEN_A)
++    assert retried.status_code == 200
++    assert retried.json()["forwarded"]["status"] == "accepted"
++    assert retried.json()["rfc"] == issued.json()["rfc"]
++    assert forward.signed == [canon.canonical_bytes(issued.json()["rfc"])]
++    assert stack.client.get(f"/requests/{RID}", headers=JSON).status_code == 200
++
++    again = restart_bank().post("/rfc", json={"request_id": RID}, headers=TOKEN_A)
++    assert again.status_code == 200 and again.json() == retried.json()
++    assert len(forward.signed) == 1
++
++
+ def test_case_one_travels_through_the_connect_routes(stack: Stack):
+     health = stack.client.get("/health").json()
+     assert health["seed"] == "connectors" and health["bank_url"] == BANK_URL and health["merchant_url"] == MERCHANT_URL

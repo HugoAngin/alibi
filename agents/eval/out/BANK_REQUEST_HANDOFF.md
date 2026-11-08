@@ -33,7 +33,23 @@ On a fresh archive of `58bf0d4` with the same clock and router, the public Case 
 
 The SP-24 request was absent from Bank A's inbox. The bank replaced the declared issuer with Bank B before signing. The contract still requires a refusal for that mismatched declaration. For SP-23, the holder blocked delivery, but the bank had already signed the request and still recorded it as sent.
 
-The bank-service fix belongs in `BankService.issue_request` before it calls `_issue`. Check any declared issuer and audience against the authenticated bank before filling defaults, and use the account-scoped feed at the current clock to validate custom transaction IDs. Return the contract's `issuer_mismatch` or `txn_out_of_feed` response before signing, forwarding or recording a sent request. Keep the two positive controls when checking a fix. The original probe results still record both bank-intake failures.
+Check declared issuer and audience in `BankService.issue_request` before filling defaults. Validate transaction IDs against the account and clock in `_issue` before signing, forwarding or recording a sent request. Keep the two positive controls when checking a fix. The original probe results still record both bank-intake failures.
+
+## Combined bank service patch
+
+`BANK_RFC_HARDENING.patch` applies the intake checks and retries delivery of a previously issued request. It uses the latest clock-visible transaction revision for scope. An explicit retry sends the stored signed envelope while delivery is unconfirmed. Once the holder accepts, further retries return the recorded acceptance. The patch loads legacy state and recovers prior successful sends from the bank audit. Keep the pre-patch state snapshot if an old binary may need to read the store during rollback.
+
+On a disposable checkout including the new demo director (`a1f834a`), 95 focused tests passed. A separate test over real HTTP got `400 txn_out_of_feed` and `403 issuer_mismatch` with no bank or holder records. After a synthetic relay timeout, the same Bank A request returned `201/error`, then `200/accepted` with an identical signed envelope and exactly one sent record. The holder readback moved from 404 to 200. The intake worker also checked that all 94 stock RFCs across the 80 public cases still issue at their own clocks.
+
+The application owner can apply and verify the patch from the repo root.
+
+```bash
+git apply --check --whitespace=error agents/eval/out/BANK_RFC_HARDENING.patch
+git apply agents/eval/out/BANK_RFC_HARDENING.patch
+uv run --frozen python -m pytest -q alibi/tests/test_bank_service.py \
+  alibi/tests/test_app_integration.py alibi/tests/test_connectors_bank_feed.py \
+  alibi/tests/test_demo_director.py agents/research/deploy/test_router.py
+```
 
 ## Recovering an already-recorded request
 

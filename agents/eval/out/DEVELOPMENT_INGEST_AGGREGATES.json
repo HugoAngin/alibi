@@ -1,0 +1,282 @@
+{
+  "completion_receipt_present": true,
+  "invalid_rows": 0,
+  "refused_imports_also_count_as_skipped": true,
+  "retained_prediction_files": 44,
+  "semantics": "sums_of_request_snapshots_not_unique_inputs",
+  "systems": {
+    "agents": {
+      "collection_errors": 0,
+      "invalid_count_fields": 0,
+      "missing_count_fields": 0,
+      "prediction_rows": 0,
+      "request_snapshot_sums": {
+        "available": {
+          "bank_observed": 0,
+          "issuer_verified": 0,
+          "self_supplied": 0
+        },
+        "imports": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 0,
+            "skipped": 0
+          },
+          "reasons": {
+            "import_refused": 0,
+            "unsupported_kind": 0
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        },
+        "merchant": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 0,
+            "skipped": 0
+          },
+          "reasons": {
+            "corrected": 0,
+            "duplicate": 0,
+            "ingest_refused": 0,
+            "inserted": 0,
+            "mapping_error": 0,
+            "not_delivered": 0,
+            "other_error": 0,
+            "stale": 0,
+            "untrusted_issuer": 0
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        }
+      },
+      "requests_with_refused_imports": 0,
+      "requests_with_refused_merchant": 0,
+      "requests_without_issuer_verified": 0,
+      "telemetry_invalid": 0,
+      "telemetry_missing": 0,
+      "telemetry_valid": 0
+    },
+    "one_pass": {
+      "collection_errors": 0,
+      "invalid_count_fields": 0,
+      "missing_count_fields": 0,
+      "prediction_rows": 0,
+      "request_snapshot_sums": {
+        "available": {
+          "bank_observed": 0,
+          "issuer_verified": 0,
+          "self_supplied": 0
+        },
+        "imports": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 0,
+            "skipped": 0
+          },
+          "reasons": {
+            "import_refused": 0,
+            "unsupported_kind": 0
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        },
+        "merchant": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 0,
+            "skipped": 0
+          },
+          "reasons": {
+            "corrected": 0,
+            "duplicate": 0,
+            "ingest_refused": 0,
+            "inserted": 0,
+            "mapping_error": 0,
+            "not_delivered": 0,
+            "other_error": 0,
+            "stale": 0,
+            "untrusted_issuer": 0
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        }
+      },
+      "requests_with_refused_imports": 0,
+      "requests_with_refused_merchant": 0,
+      "requests_without_issuer_verified": 0,
+      "telemetry_invalid": 0,
+      "telemetry_missing": 0,
+      "telemetry_valid": 0
+    },
+    "rules": {
+      "collection_errors": 0,
+      "invalid_count_fields": 0,
+      "missing_count_fields": 0,
+      "prediction_rows": 92,
+      "request_snapshot_sums": {
+        "available": {
+          "bank_observed": 0,
+          "issuer_verified": 666,
+          "self_supplied": 0
+        },
+        "imports": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 81,
+            "skipped": 81
+          },
+          "reasons": {
+            "import_refused": 0,
+            "unsupported_kind": 81
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 81
+          }
+        },
+        "merchant": {
+          "outcomes": {
+            "accepted": 664,
+            "refused": 157,
+            "skipped": 0
+          },
+          "reasons": {
+            "corrected": 4,
+            "duplicate": 0,
+            "ingest_refused": 0,
+            "inserted": 660,
+            "mapping_error": 0,
+            "not_delivered": 0,
+            "other_error": 0,
+            "stale": 0,
+            "untrusted_issuer": 157
+          },
+          "visible_by_kind": {
+            "fee": 263,
+            "message": 61,
+            "order": 266,
+            "payout": 51,
+            "receipt": 92,
+            "refund": 88,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        }
+      },
+      "requests_with_refused_imports": 78,
+      "requests_with_refused_merchant": 32,
+      "requests_without_issuer_verified": 32,
+      "telemetry_invalid": 0,
+      "telemetry_missing": 0,
+      "telemetry_valid": 92
+    },
+    "unknown": {
+      "collection_errors": 0,
+      "invalid_count_fields": 0,
+      "missing_count_fields": 0,
+      "prediction_rows": 0,
+      "request_snapshot_sums": {
+        "available": {
+          "bank_observed": 0,
+          "issuer_verified": 0,
+          "self_supplied": 0
+        },
+        "imports": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 0,
+            "skipped": 0
+          },
+          "reasons": {
+            "import_refused": 0,
+            "unsupported_kind": 0
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        },
+        "merchant": {
+          "outcomes": {
+            "accepted": 0,
+            "refused": 0,
+            "skipped": 0
+          },
+          "reasons": {
+            "corrected": 0,
+            "duplicate": 0,
+            "ingest_refused": 0,
+            "inserted": 0,
+            "mapping_error": 0,
+            "not_delivered": 0,
+            "other_error": 0,
+            "stale": 0,
+            "untrusted_issuer": 0
+          },
+          "visible_by_kind": {
+            "fee": 0,
+            "message": 0,
+            "order": 0,
+            "payout": 0,
+            "receipt": 0,
+            "refund": 0,
+            "settlement": 0,
+            "unsupported": 0
+          }
+        }
+      },
+      "requests_with_refused_imports": 0,
+      "requests_with_refused_merchant": 0,
+      "requests_without_issuer_verified": 0,
+      "telemetry_invalid": 0,
+      "telemetry_missing": 0,
+      "telemetry_valid": 0
+    }
+  },
+  "version": 1
+}

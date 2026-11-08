@@ -1,0 +1,152 @@
+{
+  "label": "SYNTHETIC - local reference run against agents.eval BankInbox, not the live HTTP bank service",
+  "observations": [
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp32-valid",
+      "probe_id": "SP-32",
+      "outcome": "accepted",
+      "code": null,
+      "created": true,
+      "digest": "sha256:a5f84606a6ef0b8db3e1c3ee1ebb795421a9e11827d14c8777bb6ddd128046de",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp31-identical-retry",
+      "probe_id": "SP-31",
+      "outcome": "accepted",
+      "code": null,
+      "created": false,
+      "digest": "sha256:a5f84606a6ef0b8db3e1c3ee1ebb795421a9e11827d14c8777bb6ddd128046de",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp31-reuse-id",
+      "probe_id": "SP-31",
+      "outcome": "refused",
+      "code": "package_id_conflict",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp25-body-edit",
+      "probe_id": "SP-25",
+      "outcome": "refused",
+      "code": "bad_signature",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp25-raw-flip",
+      "probe_id": "SP-25",
+      "outcome": "refused",
+      "code": "bad_signature",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp26-wrong-inbox",
+      "probe_id": "SP-26",
+      "outcome": "refused",
+      "code": "wrong_recipient",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp27-expired",
+      "probe_id": "SP-27",
+      "outcome": "refused",
+      "code": "expired",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp28-unknown-key",
+      "probe_id": "SP-28",
+      "outcome": "refused",
+      "code": "unknown_key",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp28-merchant-key",
+      "probe_id": "SP-28",
+      "outcome": "refused",
+      "code": "wrong_key_purpose",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp29-bad-issuer-sig",
+      "probe_id": "SP-29",
+      "outcome": "refused",
+      "code": "source_signature_invalid",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp29-missing-issuer-sig",
+      "probe_id": "SP-29",
+      "outcome": "refused",
+      "code": "source_signature_missing",
+      "detail": ""
+    },
+    {
+      "case_number": 1,
+      "request_id": "rfc-0001-01",
+      "step_id": "sp30-self-supplied",
+      "probe_id": "SP-30",
+      "outcome": "accepted",
+      "code": null,
+      "created": true,
+      "digest": "sha256:b2dd23066875dfc382dea2cc7858d4a7c967ddc8288557565ee7ee93f81f6410",
+      "detail": ""
+    }
+  ],
+  "checks": {
+    "bank_a_lists": [
+      "pkg-ref-sp30-self-supplied",
+      "pkg-ref-valid"
+    ],
+    "bank_b_lists": [],
+    "refusals_stored_nothing": true
+  },
+  "score": {
+    "observed": {
+      "SP-32": "accepted",
+      "SP-31": "refused",
+      "SP-25": "refused",
+      "SP-26": "refused",
+      "SP-27": "refused",
+      "SP-28": "refused",
+      "SP-29": "refused",
+      "SP-30": "accepted"
+    },
+    "missing_steps": 0,
+    "error_steps": 0,
+    "incorrect_steps": 0,
+    "incomplete_probes": []
+  },
+  "metrics": {
+    "verifier_ref_probes": 8,
+    "verifier_ref_passed": 8,
+    "verifier_ref_steps": 12,
+    "verifier_ref_incorrect_steps": 0,
+    "verifier_ref_error_steps": 0,
+    "verifier_ref_evidence_problems": 0,
+    "verifier_ref_checks_passed": 1
+  }
+}

@@ -650,7 +650,45 @@ pres.addSection({ title: 'Testing on unseen data' });
   s.addNotes('Intervals and cost from eval (PH-38, PH-39). Failure case from eval, trace and cause from research (PH-40).');
 }
 
-// 15. Adaptive retrieval
+// 15. What could fool us
+{
+  const s = content(
+    'Testing on unseen data',
+    R.testing,
+    'What could fool us, and what we did about it',
+    'The obvious ways this evaluation could flatter Alibi, each with its guard.',
+  );
+  const cell = (t, o = {}) => ({ text: runs(t, { fontSize: 12, color: PALETTE.ink, ...o }), options: { valign: 'top' } });
+  const head = ['Threat', 'Guard'].map((t) => ({
+    text: t,
+    options: { bold: true, color: PALETTE.white, fill: { color: PALETTE.navy } },
+  }));
+  const rows = [
+    [
+      'Development gold follows the same rules as the rules baseline, so a baseline can score 100% there by design',
+      'Only sealed cases are reported: {{PH-03}} cases in {{PH-04}} families, plus {{PH-05}} adversarial, written by eval from separate scenario families',
+    ],
+    [
+      'We studied the development cases while building',
+      'Sealed cases stayed out of the repo until the candidate froze at {{PH-15}}; commitments to inputs and gold {{PH-16}}',
+    ],
+    ['Variants of one scenario are not independent', 'Uncertainty by family resampling, or paired win/tie/loss per family {{PH-38}}'],
+    ['Gemini output varies between runs', 'Pinned models and settings; every rerun disclosed {{PH-17}}; a recorded replay is labelled'],
+  ].map(([a, b]) => [cell(a, { color: PALETTE.soft }), cell(b)]);
+  s.addTable([head, ...rows], {
+    x: M,
+    y: 1.7,
+    w: W - 2 * M,
+    colW: [4.1, 4.9],
+    fontSize: 12,
+    fontFace: FONT.body,
+    border: { type: 'solid', pt: 0.75, color: PALETTE.line },
+    margin: 0.07,
+  });
+  s.addNotes('Threat 1 from data’s honesty note (agents/data/out/data_card.md). Sealing method from agents/eval/CASE_FORMAT.md. Counts and commitments PH-03 to PH-05, PH-15 to PH-17 and PH-38 from eval’s freeze record.');
+}
+
+// 16. Adaptive retrieval
 {
   const s = content(
     'Testing on unseen data',
@@ -677,7 +715,7 @@ pres.addSection({ title: 'Testing on unseen data' });
   s.addNotes('PH-43 and PH-44 from eval (split on requires_retrieval; keys safe_complete_rate, lookups, observed_inputs). PH-42 is a screenshot or log line from research’s live run. If the gap is zero or negative, say so.');
 }
 
-// 16. Limits
+// 17. Limits
 pres.addSection({ title: 'Close' });
 {
   const s = content('Close', 'Limits', 'What this does not show', 'The results measure a simulated task on synthetic records.');
@@ -698,7 +736,7 @@ pres.addSection({ title: 'Close' });
   s.addNotes('Source: SPEC Prototype boundaries. PH-45 from lead’s integration status; eval adds sample-size caveats.');
 }
 
-// 17. Close
+// 18. Close
 {
   const s = pres.addSlide({ masterName: 'ALIBI_DARK', sectionTitle: 'Close' });
   s.addText('Evidence that is ready, disclosure that is chosen', { placeholder: 'title', fontSize: 34 });

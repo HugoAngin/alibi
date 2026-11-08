@@ -17,10 +17,10 @@ Every team is scored from the deck alone, so each rubric row needs evidence a ju
 | Rubric row | Weight | Slides |
 | --- | --- | --- |
 | Traceable reasoning | 25% | 6, 7 (also 13) |
-| Testing on unseen data | 25% | 4, 12, 13, 14 |
+| Testing on unseen data | 25% | 4, 12, 13, 14, 15 |
 | Relevance and impact | 20% | 2, 3, 8, 11 |
 | Risk controls and oversight | 15% | 9, 10 (also 8, 11) |
-| Ambition and technical quality | 15% | 5, 15 (also 3, 6) |
+| Ambition and technical quality | 15% | 5, 16 (also 3, 6) |
 
 | TASK.md required slide | Slide |
 | --- | --- |
@@ -28,7 +28,7 @@ Every team is scored from the deck alone, so each rubric row needs evidence a ju
 | Data | 4 |
 | Benchmark | 12 |
 | Results | 13, 14 |
-| Limits | 16 |
+| Limits | 17 |
 | Controls | 9, 10 |
 
 ## Slides
@@ -147,21 +147,32 @@ Every team is scored from the deck alone, so each rubric row needs evidence a ju
 - **Evidence:** 95% intervals by case-family resampling, or paired win/tie/loss counts if there are too few families `{{PH-38}}`. Per-case latency, model calls, tool calls, tokens and cost, marked observed or estimate `{{PH-39}}`. One representative failure with its trace `{{PH-40}}`. Sample size stated as cases and as independent families.
 - **Supplied by:** eval (intervals, cost, failure), research (failure trace and cause).
 
-### 15. What adaptive retrieval adds (Ambition 15%)
+### 15. What could fool us (Testing 25%)
+
+- **Working title:** What could fool us, and what we did about it.
+- **Claim:** The obvious ways this evaluation could flatter Alibi, each with the guard against it.
+- **Evidence:** Four rows, threat then guard:
+  1. The development gold follows the same pinned rules as the rules baseline, so a baseline can score 100% there by design (data card, honesty note). Guard: only sealed cases are reported, `{{PH-03}}` cases in `{{PH-04}}` families plus `{{PH-05}}` adversarial, authored by eval from separate scenario families.
+  2. We studied the development cases while building. Guard: the sealed set stayed outside the tracked tree until the candidate froze at `{{PH-15}}`, with commitments to inputs and gold `{{PH-16}}`.
+  3. Variants of one scenario are not independent. Guard: uncertainty by case-family resampling or paired win/tie/loss per family `{{PH-38}}`.
+  4. Gemini output varies between runs. Guard: pinned models and configuration, every rerun disclosed `{{PH-17}}`, a recorded replay labelled as such.
+- **Supplied by:** eval (sealing method and counts, `agents/eval/CASE_FORMAT.md`), data (honesty note in `agents/data/out/data_card.md`).
+
+### 16. What adaptive retrieval adds (Ambition 15%)
 
 - **Working title:** Choosing the next lookup is where the model earns its place.
 - **Claim:** `{{PH-41}}`, written from the measured gap between one-pass Gemini and full Alibi on cases whose answer needs a lookup. If the gap is zero or negative, say so.
 - **Evidence:** Live Gemini tool selection: the Challenger picks the payout lookup by reference from free text (screenshot or log line `{{PH-42}}`). Safe-complete on lookup-dependent sealed cases, one-pass vs Alibi `{{PH-43}}`. Lookup counts per system `{{PH-44}}`. What the LLM is not credited with: detecting `status: pending`, parsing exact references, arithmetic (SPEC "What must earn the LLM's place").
 - **Supplied by:** eval (split results), research (role traces), alibi/ build sessions (live run).
 
-### 16. Limits (TASK: limits)
+### 17. Limits (TASK: limits)
 
 - **Working title:** What this does not show.
 - **Claim:** Results measure a simulated task on synthetic records. Real bank acceptance and fewer account restrictions are unmeasured.
 - **Evidence:** Both connections are simulated services, not live integrations. The app holds the encryption key, and Gemini can read the synthetic data sent to it. Monitoring covers observable activity and verification gaps, not a bank's AML system. Not a W3C Verifiable Credential. Untested or replayed features listed by name `{{PH-45}}`.
 - **Supplied by:** lead and research from SPEC "Prototype boundaries", eval (sample-size caveats).
 
-### 17. Close
+### 18. Close
 
 - **Working title:** Evidence that is ready, disclosure that is chosen.
 - **Claim:** Maya answers each bank with the minimum supported evidence, approves every disclosure herself, and reuses her history without starting again.
@@ -184,7 +195,7 @@ Every team is scored from the deck alone, so each rubric row needs evidence a ju
 | 1:50–2:25 | 8, 9 |
 | 2:25–2:45 | 10 |
 | 2:45–3:10 | 11 |
-| 3:10–4:00 | 13, 14, 16 |
+| 3:10–4:00 | 13, 14, 15, 17 |
 
 ## Claims the deck must not make
 
@@ -203,9 +214,9 @@ Each placeholder is filled from a verified record or an artefact. `Key` is the m
 | --- | --- | --- | --- | --- | --- | --- |
 | PH-01 | 1 | Final commit and links | git, `docs/SUBMISSION.md` | | | lead |
 | PH-02 | 3 | Dashboard with pre-RFC alert | screenshot | Alibi | demo | lead |
-| PH-03 | 4 | Sealed case count | eval freeze record | | lockbox | eval |
-| PH-04 | 4 | Sealed family count | eval freeze record | | lockbox | eval |
-| PH-05 | 4 | Adversarial case count | eval freeze record | | lockbox | eval |
+| PH-03 | 4, 15 | Sealed case count | eval freeze record | | lockbox | eval |
+| PH-04 | 4, 15 | Sealed family count | eval freeze record | | lockbox | eval |
+| PH-05 | 4, 15 | Adversarial case count | eval freeze record | | lockbox | eval |
 | PH-06 | 5, 12 | Role-to-model mapping and config (IDs pinned in `docs/TASK.md`) | `alibi/llm/config.py` | all | | research |
 | PH-07 | 6 | Claim-to-source trace | screenshot | Alibi | demo | lead |
 | PH-08 | 7 | Invalidation on correction | SP-06 outcome | Alibi | dev | execution |
@@ -215,9 +226,9 @@ Each placeholder is filled from a verified record or an artefact. `Key` is the m
 | PH-12 | 9 | Controls allowed | `agents.execution.api.summarise` | Alibi | lockbox | eval |
 | PH-13 | 10 | Analyst console | screenshot | Alibi | demo | lead |
 | PH-14 | 11 | Portability checks | eval portability report | Alibi | demo | eval |
-| PH-15 | 12 | Frozen candidate commit | freeze record | | | eval |
-| PH-16 | 12 | Commitments to inputs and gold | freeze record | | | eval |
-| PH-17 | 12 | Reruns disclosed | freeze record | | | eval |
+| PH-15 | 12, 15 | Frozen candidate commit | freeze record | | | eval |
+| PH-16 | 12, 15 | Commitments to inputs and gold | freeze record | | | eval |
+| PH-17 | 12, 15 | Reruns disclosed | freeze record | | | eval |
 | PH-18 | 13 | Results headline | written after PH-20–37 | | lockbox | research |
 | PH-20–22 | 13 | Safe-complete / cases | `safe_complete`, `cases`, `safe_complete_rate` | rules, one-pass, Alibi | lockbox | eval |
 | PH-23–25 | 13 | Match precision, recall, unmatched | `match_precision`, `match_recall`, `unmatched` | rules, one-pass, Alibi | lockbox | eval |
@@ -225,14 +236,14 @@ Each placeholder is filled from a verified record or an artefact. `Key` is the m
 | PH-29–31 | 13 | Gap recall | `gap_recall` | rules, one-pass, Alibi | lockbox | eval |
 | PH-32–34 | 13 | Forbidden and unnecessary items | `forbidden_items`, `unnecessary_items` | rules, one-pass, Alibi | lockbox | eval |
 | PH-35–37 | 13 | Pre-policy unsafe proposals | `unsafe_proposals` | rules, one-pass, Alibi | lockbox | eval |
-| PH-38 | 14 | Intervals or win/tie/loss | eval report | all | lockbox | eval |
+| PH-38 | 14, 15 | Intervals or win/tie/loss | eval report | all | lockbox | eval |
 | PH-39 | 14 | Latency, calls, tokens, cost | `model_calls`, `tokens`, `cost_usd_estimate` | all | lockbox | eval |
 | PH-40 | 14 | One representative failure | case number and trace | Alibi | lockbox | eval, research |
-| PH-41 | 15 | Adaptive retrieval headline | written after PH-43 | | lockbox | research |
-| PH-42 | 15 | Live tool selection | screenshot or log | Alibi | demo | research |
-| PH-43 | 15 | Safe-complete on lookup-dependent cases | `safe_complete_rate` on cases with non-empty `requires_retrieval` | one-pass, Alibi | lockbox | eval |
-| PH-44 | 15 | Lookup counts and records read | `lookups`, `observed_inputs` | all | lockbox | eval |
-| PH-45 | 16 | Untested or replayed features | integration status | | | lead |
+| PH-41 | 16 | Adaptive retrieval headline | written after PH-43 | | lockbox | research |
+| PH-42 | 16 | Live tool selection | screenshot or log | Alibi | demo | research |
+| PH-43 | 16 | Safe-complete on lookup-dependent cases | `safe_complete_rate` on cases with non-empty `requires_retrieval` | one-pass, Alibi | lockbox | eval |
+| PH-44 | 16 | Lookup counts and records read | `lookups`, `observed_inputs` | all | lockbox | eval |
+| PH-45 | 17 | Untested or replayed features | integration status | | | lead |
 
 ## Gaps raised and closed
 

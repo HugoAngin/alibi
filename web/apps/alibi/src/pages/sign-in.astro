@@ -1,0 +1,28 @@
+---
+/** `/sign-in/`: Clerk's sign-in on the product site's frame. */
+import { SignIn } from '@clerk/astro/components';
+
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import IslandHeader from '@/components/site/IslandHeader.astro';
+import { clerkAppearance } from '@/lib/clerk';
+---
+
+<BaseLayout title="Sign in" description="Sign in to Alibi.">
+  <IslandHeader />
+  <main id="main" class="auth">
+    <div class="fields" aria-hidden="true"></div>
+    <div class="panel">
+      <h1>Welcome back.</h1>
+      <SignIn
+        appearance={clerkAppearance}
+        routing="hash"
+        signUpUrl="/sign-up/"
+        fallbackRedirectUrl="/app/"
+      />
+    </div>
+  </main>
+</BaseLayout>
+
+<style>
+  @import '../styles/auth.css';
+</style>

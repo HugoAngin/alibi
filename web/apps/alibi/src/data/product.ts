@@ -1,65 +1,60 @@
 /**
- * What the landing page says. Copy lives here, not in components, so it can
- * be rewritten without touching layout. Draft wording; the design pass and the
- * deck will refine it (agents/research/out/DECK.md).
+ * What the product site says. Copy lives here, not in components, so it can
+ * be rewritten without touching layout. Facts about Maya come from case 1.
  */
 
 export const product = {
   name: 'Alibi',
   tagline: 'Your money’s alibi, ready before anyone asks.',
-  lede: 'Alibi is a financial passport you control. It links your bank payments to the sales, refunds and payouts that explain them, so when your bank asks about a payment you can answer in minutes and share only what the question needs.',
+  lede: 'Alibi keeps the evidence behind your payments ready: it links what lands in your bank to the sales, refunds and payouts that explain it, so when a bank asks, you answer in minutes and share only what the question needs.',
 } as const;
 
-export const features = [
-  {
-    title: 'Evidence before the question',
-    body: 'Connect your marketplace and your bank once. Alibi matches payouts to credits in the background and warns you about anything it cannot yet explain.',
-  },
-  {
-    title: 'Challenged, not just matched',
-    body: 'Matching amounts are not proof. Alibi checks that a payout actually reached your bank, and when, before it calls an explanation supported.',
-  },
-  {
-    title: 'You approve every disclosure',
-    body: 'Your bank sees the smallest package that answers its question. You see exactly what is included, what is left out and why, and you approve it for one named bank.',
-  },
-  {
-    title: 'One passport, many requests',
-    body: 'A second bank with a different question gets its own tailored answer from the same history, with no re-uploading and a fresh approval.',
-  },
-] as const;
+export interface CoreFeature {
+  id: string;
+  index: string;
+  eyebrow: string;
+  title: string;
+  body: string;
+  points: string[];
+}
 
-/** How Alibi differs from what people do today. */
-export const differentiation = [
+/** The three things that set Alibi apart, in order of importance. */
+export const core: CoreFeature[] = [
   {
-    today: 'Screenshots and statements sent by email',
-    alibi: 'Signed records the bank can verify itself',
+    id: 'engine',
+    index: '01',
+    eyebrow: 'The Alibi engine',
+    title: 'Four agents investigate. Code decides.',
+    body: 'When a bank asks about a payment, four Gemini agents work on your passport. They read messy merchant messages, look for counter-evidence and fetch the one record that settles the question. Then code checks every reference, date and penny before anything is called true.',
+    points: [
+      'Matcher links payouts to bank credits when the references are messy',
+      'Detective turns the bank’s question into claims and spots what is missing',
+      'Challenger hunts for counter-evidence and fetches the deciding record',
+      'Curator proposes the smallest set of evidence that answers the question',
+    ],
   },
   {
-    today: 'Share everything and hope it is enough',
-    alibi: 'Share only what the question needs',
+    id: 'integrations',
+    index: '02',
+    eyebrow: 'Merchant and bank integration',
+    title: 'Two buttons connect the whole loop.',
+    body: 'Merchants add “Connect to my alibi” to account settings or checkout, and their signed records flow into your passport in the background. Banks add “Request customer’s alibi” to their fraud tools and get a precise, verifiable answer instead of a pile of screenshots.',
+    points: [
+      'Signed records from merchants, read-only data from your bank',
+      'A bank asks a specific question about a specific payment',
+      'The answer arrives signed, so the bank can verify it itself',
+    ],
   },
   {
-    today: 'An amount that happens to match',
-    alibi: 'A payout traced to the credit, with its timing checked',
+    id: 'control',
+    index: '03',
+    eyebrow: 'You stay in control',
+    title: 'Your financial context, on your terms.',
+    body: 'Everything that explains your money lives in one passport you own. You see exactly what each bank would receive and what stays private, and nothing leaves until you approve it, one named bank at a time.',
+    points: [
+      'Approve the exact package for one named bank',
+      'Rent, groceries and anything you mark private stay out',
+      'Answer the next bank from the same history, with a fresh approval',
+    ],
   },
-  {
-    today: 'Start from scratch for every request',
-    alibi: 'Reuse one history, with a new approval each time',
-  },
-] as const;
-
-export const audiences = [
-  {
-    title: 'For people',
-    body: 'Resellers, freelancers and anyone paid through a platform, whose bank asks them to explain money coming in.',
-  },
-  {
-    title: 'For merchants',
-    body: 'Add “Connect to my Alibi” to account settings or checkout so customers can carry your records to their bank.',
-  },
-  {
-    title: 'For banks',
-    body: 'Add “Request customer’s Alibi” to your case tools and receive verifiable, minimal answers instead of document dumps.',
-  },
-] as const;
+];

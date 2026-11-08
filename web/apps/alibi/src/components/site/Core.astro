@@ -1,0 +1,360 @@
+---
+/**
+ * Core: the three things that set Alibi apart, each with its own visual.
+ * Copy in src/data/product.ts. The integration visual uses the real shared
+ * buttons from packages/ui, so they work from here too.
+ */
+import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
+import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
+import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
+
+import { core } from '@/data/product';
+
+const origin = Astro.url.origin;
+const roles = [
+  { name: 'Matcher', does: 'links the £2,160 credit to payout PO-0001-01' },
+  { name: 'Detective', does: '“released to seller balance” is not a bank transfer' },
+  { name: 'Challenger', does: 'fetches PO-0001-01: settled 27 Oct, before the credit' },
+  { name: 'Curator', does: 'picks 20 records; rent and purchases stay private' },
+];
+const [engine, integrations, control] = core;
+---
+
+<section id="core" class="core" aria-labelledby="core-title">
+  <div class="s-wrap">
+    <header class="core-head" data-reveal>
+      <p class="s-eyebrow">Core</p>
+      <h2 id="core-title" class="s-h2">
+        Three things no statement export can do.
+      </h2>
+    </header>
+
+    <!-- 01 The Alibi engine -->
+    <article class="feature" aria-labelledby="f-engine">
+      <div class="text" data-reveal>
+        <p class="index">{engine.index}</p>
+        <p class="s-eyebrow">{engine.eyebrow}</p>
+        <h3 id="f-engine">{engine.title}</h3>
+        <p class="s-lede">{engine.body}</p>
+      </div>
+      <div class="visual" data-reveal style="--reveal-delay: 120ms">
+        <ol class="roles">
+          {roles.map((r, i) => (
+            <li style={`--i:${i}`}>
+              <span class="role">{r.name}</span>
+              <span class="does">{r.does}</span>
+            </li>
+          ))}
+        </ol>
+        <div class="verdict">
+          <span class="check" aria-hidden="true">
+            ✓
+          </span>
+          <div>
+            <strong>Supported</strong>
+            <span>240000 − 18000 − 6000 = 216000, checked in code</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 02 Merchant and bank integration -->
+    <article class="feature feature--flip" id="integrations" aria-labelledby="f-integrations">
+      <div class="text" data-reveal>
+        <p class="index">{integrations.index}</p>
+        <p class="s-eyebrow">{integrations.eyebrow}</p>
+        <h3 id="f-integrations">{integrations.title}</h3>
+        <p class="s-lede">{integrations.body}</p>
+      </div>
+      <div class="visual windows" data-reveal style="--reveal-delay: 120ms">
+        <div class="window">
+          <p class="chrome">
+            <span></span>
+            <span></span>
+            <span></span> Mock Marketplace · Account settings
+          </p>
+          <div class="window-body">
+            <p class="muted">Connected services</p>
+            <ConnectAlibiButton
+              alibiOrigin={origin}
+              merchantId="mock-marketplace"
+              returnTo={`${origin}/#integrations`}
+              context="account"
+            />
+          </div>
+        </div>
+        <div class="window window--bank">
+          <p class="chrome">
+            <span></span>
+            <span></span>
+            <span></span> Bank A · Financial Crime Operations
+          </p>
+          <div class="window-body">
+            <p class="muted">Case FC-0147 · £2,160.00 credit under review</p>
+            <RequestAlibiButton href="/simulate/" />
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- 03 You stay in control -->
+    <article class="feature" aria-labelledby="f-control">
+      <div class="text" data-reveal>
+        <p class="index">{control.index}</p>
+        <p class="s-eyebrow">{control.eyebrow}</p>
+        <h3 id="f-control">{control.title}</h3>
+        <p class="s-lede">{control.body}</p>
+      </div>
+      <div class="visual" data-reveal style="--reveal-delay: 120ms">
+        <div class="approval">
+          <LiquidGlassSurface
+            id="approval-glass"
+            class="approval-glass"
+            radius={6}
+            bezel={2}
+            fillRefraction
+            interiorLens="fisheye"
+            frosted={7}
+          />
+          <div class="approval-content">
+            <p class="muted">Your private review · Bank A</p>
+            <p class="row">
+              <span class="dot dot--ok"></span>Sent to Bank A <strong>20 records</strong>
+            </p>
+            <p class="row">
+              <span class="dot dot--bad"></span>Not sent{' '}
+              <strong>Rent, 2 card payments, your purchase</strong>
+            </p>
+            <p class="row">
+              <span class="dot"></span>Bank B will need its own approval
+            </p>
+            <span class="approve">Approve for Bank A</span>
+          </div>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<style>
+  .core {
+    padding-block: var(--s-section);
+  }
+
+  .core-head {
+    max-width: 44rem;
+    margin-bottom: clamp(3rem, 6vw, 6rem);
+  }
+
+  .feature {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(2rem, 5vw, 5rem);
+    align-items: center;
+    padding-block: clamp(2.5rem, 5vw, 5rem);
+    border-top: 1px solid var(--s-line);
+  }
+
+  .feature--flip .text {
+    order: 2;
+  }
+
+  .index {
+    font: 700 0.9rem/1 var(--s-font-display);
+    color: var(--s-ink-faint);
+    margin-bottom: 1rem;
+  }
+
+  h3 {
+    font: 700 var(--s-t-h3) / 1.15 var(--s-font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.4rem);
+    letter-spacing: -0.03em;
+    margin: 0.6rem 0 1rem;
+  }
+
+  .muted {
+    color: var(--s-ink-faint);
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem;
+  }
+
+  /* Engine */
+  .roles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .roles li {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.95rem 1.1rem;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: var(--s-shadow);
+    transform: translateX(calc(var(--i) * 14px));
+  }
+
+  .role {
+    font: 700 1rem/1 var(--s-font-display);
+  }
+
+  .does {
+    color: var(--s-ink-soft);
+    font-size: 0.92rem;
+  }
+
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 1rem 1.2rem;
+    border-radius: 18px;
+    background: var(--s-ink);
+    color: var(--s-paper);
+  }
+
+  .verdict div {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .verdict span:not(.check) {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    opacity: 0.8;
+  }
+
+  .check {
+    display: grid;
+    place-items: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    background: var(--s-ok);
+    font-weight: 700;
+  }
+
+  /* Integrations */
+  .windows {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .window {
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: var(--s-shadow);
+    overflow: hidden;
+  }
+
+  .window--bank {
+    margin-left: clamp(0rem, 4vw, 3rem);
+  }
+
+  .chrome {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.78rem;
+    color: var(--s-ink-faint);
+    border-bottom: 1px solid var(--s-line);
+    background: var(--s-paper-2);
+  }
+
+  .chrome span {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: rgb(15 17 21 / 0.14);
+  }
+
+  .window-body {
+    padding: 1.4rem 1.2rem 1.5rem;
+  }
+
+  /* Control */
+  .approval {
+    position: relative;
+    border-radius: 28px;
+    background:
+      radial-gradient(60% 70% at 10% 10%, var(--s-field-a), transparent 70%),
+      radial-gradient(60% 70% at 90% 90%, var(--s-field-b), transparent 70%), var(--s-field-c);
+    padding: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .approval-glass {
+    position: absolute;
+    inset: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .approval-content {
+    position: relative;
+    z-index: 1;
+    padding: 1.6rem;
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  .row strong {
+    font-weight: 600;
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--s-ink-faint);
+    flex: none;
+    align-self: center;
+  }
+
+  .dot--ok {
+    background: var(--s-ok);
+    border-color: var(--s-ok);
+  }
+
+  .dot--bad {
+    border-style: dashed;
+    border-color: var(--s-bad);
+  }
+
+  .approve {
+    justify-self: start;
+    margin-top: 0.6rem;
+    padding: 0.85rem 1.4rem;
+    border-radius: 999px;
+    background: var(--s-ink);
+    color: var(--s-paper);
+    font-weight: 600;
+  }
+
+  @media (max-width: 900px) {
+    .feature {
+      grid-template-columns: 1fr;
+    }
+    .feature--flip .text {
+      order: 0;
+    }
+    .roles li {
+      grid-template-columns: 1fr;
+      gap: 0.3rem;
+      transform: none;
+    }
+  }
+</style>

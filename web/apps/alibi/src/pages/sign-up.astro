@@ -1,0 +1,32 @@
+---
+/**
+ * `/sign-up/`: Join. Clerk's sign-up, on the product site's frame. After
+ * signing up, people land in their passport.
+ */
+import { SignUp } from '@clerk/astro/components';
+
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import IslandHeader from '@/components/site/IslandHeader.astro';
+import { clerkAppearance } from '@/lib/clerk';
+---
+
+<BaseLayout title="Join" description="Create your Alibi account.">
+  <IslandHeader current="join" />
+  <main id="main" class="auth">
+    <div class="fields" aria-hidden="true"></div>
+    <div class="panel">
+      <h1>Start living with an alibi.</h1>
+      <p>Create your account. You can explore Maya’s demo passport straight away.</p>
+      <SignUp
+        appearance={clerkAppearance}
+        routing="hash"
+        signInUrl="/sign-in/"
+        fallbackRedirectUrl="/app/"
+      />
+    </div>
+  </main>
+</BaseLayout>
+
+<style>
+  @import '../styles/auth.css';
+</style>

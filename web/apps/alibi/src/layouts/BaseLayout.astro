@@ -1,9 +1,11 @@
 ---
 /**
- * The HTML shell for every Alibi page, landing or app. Head, stylesheet and
- * the synthetic-data banner are declared once here.
+ * The HTML shell for every Alibi page, product site or app. The site view
+ * loads the site's fonts, design layer and motion (Lenis smooth scroll and
+ * scroll reveals); the app view keeps the synthetic-data banner on top.
  */
 import '@alibi/ui/base.css';
+import '@/styles/site.css';
 
 import { product } from '@/data/product';
 
@@ -11,12 +13,14 @@ interface Props {
   /** Page title without the product suffix. Omit on the landing page. */
   title?: string;
   description?: string;
-  /** `app` tunes the page for a phone home screen. */
+  /** `app` tunes the page for a phone home screen; `site` is the product site. */
   view?: 'site' | 'app';
 }
 
 const { title, description = product.lede, view = 'site' } = Astro.props;
 const pageTitle = title ? `${title} · ${product.name}` : `${product.name} — ${product.tagline}`;
+const fonts =
+  'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700;800&family=Inter:wght@400;500;600&display=swap';
 ---
 
 <!doctype html>
@@ -28,9 +32,16 @@ const pageTitle = title ? `${title} · ${product.name}` : `${product.name} — $
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    {view === 'site' && (
+      <>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link rel="stylesheet" href={fonts} />
+      </>
+    )}
     {view === 'app' && (
       <>
-        <meta name="theme-color" content="#1f3a5f" />
+        <meta name="theme-color" content="#0f1115" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content={product.name} />
       </>
@@ -41,9 +52,12 @@ const pageTitle = title ? `${title} · ${product.name}` : `${product.name} — $
     <a class="skip-link" href="#main">
       Skip to content
     </a>
-    <p class="simulated">
-      Hackathon prototype. Every person, account and record here is synthetic.
-    </p>
+    {view === 'app' && (
+      <p class="simulated">
+        Hackathon prototype. Every person, account and record here is synthetic.
+      </p>
+    )}
     <slot />
+    {view === 'site' && <script src="../scripts/motion.ts" />}
   </body>
 </html>

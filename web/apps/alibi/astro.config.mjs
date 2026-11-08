@@ -1,12 +1,14 @@
 // @ts-check
+import clerk from '@clerk/astro';
 import { defineConfig, envField, sessionDrivers } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 
 // The Alibi site: the product landing page and the app, on one Cloudflare
-// Worker. Pages are prerendered by default; the few that read the request
-// (`/`, which picks landing or app, and `/connect`) opt out with
-// `export const prerender = false`.
+// Worker. Every page renders per request, because Clerk (sign-up for Join)
+// reads the session on each one.
 export default defineConfig({
+  output: 'server',
+  integrations: [clerk()],
   site: process.env.ALIBI_ORIGIN ?? 'http://localhost:4321',
   adapter: cloudflare({
     // No image transforms yet, so no Cloudflare Images binding is provisioned.

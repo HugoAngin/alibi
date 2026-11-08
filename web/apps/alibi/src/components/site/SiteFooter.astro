@@ -1,0 +1,56 @@
+---
+/** Footer for the product site. Says plainly what this is. */
+---
+
+<footer class="footer">
+  <div class="s-wrap inner">
+    <span class="wordmark">alibi</span>
+    <p>
+      A hackathon prototype for AgentVerse 2026, Finance Track. Every person, account, merchant and
+      bank shown here is synthetic, and both connections are simulated services.
+    </p>
+    <nav aria-label="Footer">
+      <a href="/#core">Core</a>
+      <a href="/simulate/">Simulate</a>
+      <a href="/sign-up/">Join</a>
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--s-line);
+    padding-block: 3rem;
+    color: var(--s-ink-faint);
+    font-size: 0.9rem;
+  }
+
+  .inner {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  .wordmark {
+    font: 800 1.3rem/1 var(--s-font-display);
+    letter-spacing: -0.04em;
+    color: var(--s-ink);
+  }
+
+  p {
+    margin: 0;
+    max-width: 44rem;
+  }
+
+  nav {
+    display: flex;
+    gap: 1.2rem;
+  }
+
+  @media (max-width: 760px) {
+    .inner {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

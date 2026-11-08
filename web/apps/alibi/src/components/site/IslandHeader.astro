@@ -1,0 +1,146 @@
+---
+/**
+ * The floating island header: a small liquid-glass capsule centred at the
+ * top, not a full-width bar. The wordmark on the left, then Core, Simulate
+ * and Join. Signed-in visitors see "Open app" and their account instead of Join.
+ */
+import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
+import { Show, UserButton } from '@clerk/astro/components';
+
+interface Props {
+  /** Which link is current, if any. */
+  current?: 'core' | 'simulate' | 'join';
+}
+
+const { current } = Astro.props;
+---
+
+<header class="island-wrap">
+  <div class="island">
+    <LiquidGlassSurface
+      id="island-glass"
+      class="island-glass"
+      radius="capsule"
+      bezel={1}
+      fillRefraction
+      interiorLens="fisheye"
+      deformationX={3}
+      deformationY={3}
+      frosted={5}
+      frostedTint="white"
+    />
+    <nav class="island-content" aria-label="Main">
+      <a class="wordmark" href="/">
+        alibi
+      </a>
+      <div class="links">
+        <a href="/#core" aria-current={current === 'core' ? 'page' : undefined}>
+          Core
+        </a>
+        <a href="/simulate/" aria-current={current === 'simulate' ? 'page' : undefined}>
+          Simulate
+        </a>
+        <Show when="signed-out">
+          <a class="join" href="/sign-up/" aria-current={current === 'join' ? 'page' : undefined}>
+            Join
+          </a>
+        </Show>
+        <Show when="signed-in">
+          <a class="join" href="/app/">
+            Open app
+          </a>
+          <span class="account">
+            <UserButton />
+          </span>
+        </Show>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .island-wrap {
+    position: fixed;
+    top: 16px;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    display: flex;
+    justify-content: center;
+    padding-inline: 16px;
+    pointer-events: none;
+  }
+
+  .island {
+    position: relative;
+    width: min(34rem, 100%);
+    height: 58px;
+    pointer-events: auto;
+    border-radius: 999px;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.6) inset,
+      0 10px 30px rgb(15 17 21 / 0.12);
+  }
+
+  .island-glass {
+    position: absolute;
+    inset: 0;
+  }
+
+  .island-content {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 24px;
+  }
+
+  .wordmark {
+    font: 800 1.45rem/1 var(--s-font-display);
+    letter-spacing: -0.04em;
+    color: var(--s-ink);
+    text-decoration: none;
+  }
+
+  .links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .links a {
+    padding: 0.55rem 0.9rem;
+    border-radius: 999px;
+    font: 500 0.95rem/1 var(--s-font-body);
+    color: var(--s-ink);
+    text-decoration: none;
+    transition: background 0.2s;
+  }
+
+  .links a:hover,
+  .links a[aria-current='page'] {
+    background: rgb(255 255 255 / 0.55);
+  }
+
+  .links a.join {
+    background: var(--s-ink);
+    color: var(--s-paper);
+    padding-inline: 1.15rem;
+  }
+
+  .account {
+    display: inline-flex;
+    padding-inline: 6px;
+  }
+
+  @media (max-width: 420px) {
+    .island-content {
+      padding-left: 18px;
+    }
+    .links a {
+      padding-inline: 0.6rem;
+    }
+  }
+</style>

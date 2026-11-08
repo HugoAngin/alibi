@@ -1,0 +1,278 @@
+---
+/**
+ * The hero's 3D visual: a frosted-glass passport card, and three evidence
+ * tiles from Maya's case (the bank credit, the payout, the sales) that start
+ * scattered and dock onto the card as the visitor scrolls. That is the
+ * product in one image: evidence gathered before anyone asks.
+ *
+ * three.js loads only on this page, the scene renders only while visible,
+ * and a single still frame is drawn when the visitor prefers reduced motion.
+ */
+---
+
+<div class="scene" data-hero-scene>
+  <canvas aria-hidden="true"></canvas>
+  <noscript>
+    <p class="fallback">Maya’s passport, with her evidence attached.</p>
+  </noscript>
+</div>
+
+<style>
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 420px;
+  }
+
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .fallback {
+    position: absolute;
+    bottom: 0;
+    color: var(--s-ink-soft);
+  }
+</style>
+
+<script>
+  import {
+    ACESFilmicToneMapping,
+    CanvasTexture,
+    Color,
+    Group,
+    Mesh,
+    MeshBasicMaterial,
+    MeshPhysicalMaterial,
+    MeshStandardMaterial,
+    PerspectiveCamera,
+    PlaneGeometry,
+    PMREMGenerator,
+    Scene,
+    SphereGeometry,
+    SRGBColorSpace,
+    Vector3,
+    WebGLRenderer,
+  } from 'three';
+  import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+  import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+
+  const host = document.querySelector<HTMLElement>('[data-hero-scene]');
+  const canvas = host?.querySelector('canvas');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /** Draws text onto a transparent canvas for a label plane. */
+  function label(
+    lines: { text: string; font: string; color: string; y: number }[],
+    w: number,
+    h: number,
+  ) {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d')!;
+    for (const l of lines) {
+      ctx.font = l.font;
+      ctx.fillStyle = l.color;
+      ctx.fillText(l.text, 48, l.y);
+    }
+    const tex = new CanvasTexture(c);
+    tex.colorSpace = SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  }
+
+  async function start(host: HTMLElement, canvas: HTMLCanvasElement) {
+    await document.fonts.ready;
+
+    const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = ACESFilmicToneMapping;
+    renderer.outputColorSpace = SRGBColorSpace;
+
+    const scene = new Scene();
+    const pmrem = new PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    const camera = new PerspectiveCamera(32, 1, 0.1, 100);
+    camera.position.set(0, 0, 11);
+
+    // Colour behind the glass, so the card visibly refracts.
+    const fields: [number, Vector3, number][] = [
+      [0x8ea2ff, new Vector3(-0.7, 0.9, -1.6), 0.95],
+      [0xffc2a1, new Vector3(0.8, -0.8, -1.9), 1.05],
+      [0xa6ecd2, new Vector3(0.7, 1.4, -2.4), 0.7],
+    ];
+    for (const [color, pos, r] of fields) {
+      const m = new Mesh(
+        new SphereGeometry(r, 48, 48),
+        new MeshStandardMaterial({ color, roughness: 0.6 }),
+      );
+      m.position.copy(pos);
+      scene.add(m);
+    }
+
+    // The passport card.
+    const card = new Group();
+    const glass = new Mesh(
+      new RoundedBoxGeometry(3.3, 4.5, 0.14, 8, 0.3),
+      new MeshPhysicalMaterial({
+        color: new Color(0xffffff),
+        transmission: 1,
+        roughness: 0.22,
+        thickness: 0.8,
+        ior: 1.35,
+        clearcoat: 1,
+        clearcoatRoughness: 0.1,
+      }),
+    );
+    card.add(glass);
+    const face = new Mesh(
+      new PlaneGeometry(3.3, 4.5),
+      new MeshBasicMaterial({
+        transparent: true,
+        map: label(
+          [
+            { text: 'alibi', font: '800 92px "Inter Tight", sans-serif', color: '#0f1115', y: 140 },
+            {
+              text: 'FINANCIAL PASSPORT',
+              font: '600 30px Inter, sans-serif',
+              color: '#4a4f57',
+              y: 200,
+            },
+            { text: 'Maya', font: '700 64px "Inter Tight", sans-serif', color: '#0f1115', y: 1010 },
+            {
+              text: 'maya-001 · synthetic',
+              font: '500 30px Inter, sans-serif',
+              color: '#4a4f57',
+              y: 1060,
+            },
+          ],
+          792,
+          1080,
+        ),
+      }),
+    );
+    face.position.z = 0.075;
+    card.add(face);
+    scene.add(card);
+
+    // Evidence tiles from case 1.
+    const tiles = [
+      { title: '£2,160.00 credit', sub: 'Bank feed · 28 Oct', accent: '#2b4cff' },
+      { title: 'Payout PO-0001-01', sub: 'Settled 27 Oct · marketplace', accent: '#1f7a4a' },
+      { title: '8 sales · £2,400.00', sub: 'Less £180 refunds, £60 fees', accent: '#b45f2d' },
+    ].map((t, i) => {
+      const g = new Group();
+      const body = new Mesh(
+        new RoundedBoxGeometry(2.5, 0.78, 0.08, 6, 0.18),
+        new MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.35, clearcoat: 0.6 }),
+      );
+      const text = new Mesh(
+        new PlaneGeometry(2.5, 0.78),
+        new MeshBasicMaterial({
+          transparent: true,
+          map: label(
+            [
+              {
+                text: t.title,
+                font: '700 58px "Inter Tight", sans-serif',
+                color: '#0f1115',
+                y: 92,
+              },
+              { text: t.sub, font: '500 34px Inter, sans-serif', color: t.accent, y: 148 },
+            ],
+            800,
+            250,
+          ),
+        }),
+      );
+      text.position.z = 0.045;
+      g.add(body, text);
+      scene.add(g);
+      return {
+        g,
+        // Scattered around the card at the top of the page...
+        from: [
+          new Vector3(-1.75, 1.75, 1.2),
+          new Vector3(1.8, 0.35, 1.6),
+          new Vector3(-1.6, -1.85, 1.0),
+        ][i],
+        fromRot: [
+          new Vector3(0.2, 0.5, -0.18),
+          new Vector3(-0.15, -0.55, 0.14),
+          new Vector3(0.25, 0.4, 0.12),
+        ][i],
+        // ...and docked on its face once the visitor scrolls.
+        to: new Vector3(0, 0.95 - i * 0.92, 0.2),
+      };
+    });
+
+    let progress = reduced ? 1 : 0;
+    let pointerX = 0;
+    let pointerY = 0;
+    let visible = true;
+
+    const resize = () => {
+      const { width, height } = host.getBoundingClientRect();
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      // Keep the card comfortably inside narrow frames.
+      camera.position.z = width / height < 0.9 ? 15 : 12.5;
+      camera.updateProjectionMatrix();
+    };
+
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const render = (time = 0) => {
+      const p = ease(progress);
+      const sway = reduced ? 0 : Math.sin(time / 2600) * 0.06;
+      card.rotation.set(-0.08 + pointerY * 0.08, -0.45 * (1 - p) + sway + pointerX * 0.12, 0);
+      for (const t of tiles) {
+        t.g.position.lerpVectors(t.from, t.to, p);
+        t.g.rotation.set(
+          t.fromRot.x * (1 - p) + card.rotation.x,
+          t.fromRot.y * (1 - p) + card.rotation.y,
+          t.fromRot.z * (1 - p),
+        );
+        // Docked tiles ride on the card's surface.
+        if (p > 0) t.g.position.applyAxisAngle(new Vector3(0, 1, 0), card.rotation.y * p);
+      }
+      renderer.render(scene, camera);
+    };
+
+    resize();
+    window.addEventListener('resize', () => {
+      resize();
+      render(performance.now());
+    });
+
+    if (reduced) {
+      render();
+      return;
+    }
+
+    window.addEventListener('alibi:scroll', (e) => {
+      const { scroll } = (e as CustomEvent<{ scroll: number }>).detail;
+      progress = Math.min(1, Math.max(0, scroll / (host.offsetHeight * 0.75)));
+    });
+    window.addEventListener('pointermove', (e) => {
+      pointerX = (e.clientX / window.innerWidth) * 2 - 1;
+      pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+    });
+    new IntersectionObserver(([entry]) => (visible = entry.isIntersecting)).observe(host);
+
+    const loop = (time: number) => {
+      if (visible) render(time);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  if (host && canvas) start(host, canvas);
+</script>

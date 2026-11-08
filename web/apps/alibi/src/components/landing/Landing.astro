@@ -1,14 +1,15 @@
 ---
 /**
- * The product landing page: what Alibi is, what it does, and how it differs.
- * Composition only; the copy is in src/data/product.ts.
+ * The product landing page: island header, hero with the 3D passport, Core
+ * (engine, integrations, control), a way into the case study, and Join.
+ * Composition only; copy lives in src/data/product.ts.
  */
-import Logomark from '@alibi/ui/Logomark.astro';
+import { Show } from '@clerk/astro/components';
 
-import Hero from './Hero.astro';
-import FeatureGrid from './FeatureGrid.astro';
-import Comparison from './Comparison.astro';
-import Audiences from './Audiences.astro';
+import IslandHeader from '@/components/site/IslandHeader.astro';
+import Hero from '@/components/site/Hero.astro';
+import Core from '@/components/site/Core.astro';
+import SiteFooter from '@/components/site/SiteFooter.astro';
 
 interface Props {
   /** The visitor is on a phone but chose the website; offer the way back. */
@@ -18,90 +19,92 @@ interface Props {
 const { offerApp = false } = Astro.props;
 ---
 
-{offerApp && (
-  <p class="back-to-app">
-    <a href="/?view=app">Back to the Alibi app</a>
-  </p>
-)}
-
-<header class="site-header">
-  <a class="brand" href="/">
-    <Logomark height="1.6rem" />
-  </a>
-  <nav aria-label="Main">
-    <a href="#features">Features</a>
-    <a href="#why">Why Alibi</a>
-    <a class="phone-switch" href="/phone/">
-      View on a phone
-    </a>
-  </nav>
-</header>
+<IslandHeader />
 
 <main id="main">
   <Hero />
-  <FeatureGrid />
-  <Comparison />
-  <Audiences />
+  <Core />
+
+  <section class="simulate s-wrap" aria-labelledby="simulate-title">
+    <div class="simulate-card" data-reveal>
+      <div>
+        <p class="s-eyebrow">Simulate</p>
+        <h2 id="simulate-title" class="s-h2">
+          Walk through Maya’s case.
+        </h2>
+        <p class="s-lede">
+          A student reseller’s bank asks about a £2,160 credit. Watch the passport answer it step by
+          step, on the real app, from the alert to a second bank’s request.
+        </p>
+      </div>
+      <a class="s-btn s-btn--primary" href="/simulate/">
+        Start the simulation
+      </a>
+    </div>
+  </section>
+
+  <section class="join s-wrap" aria-labelledby="join-title">
+    <h2 id="join-title" class="join-title" data-reveal>
+      Start living with an alibi.
+    </h2>
+    <p class="actions" data-reveal style="--reveal-delay: 100ms">
+      <Show when="signed-out">
+        <a class="s-btn s-btn--primary" href="/sign-up/">
+          Join
+        </a>
+        <a class="s-btn s-btn--ghost" href="/sign-in/">
+          Sign in
+        </a>
+      </Show>
+      <Show when="signed-in">
+        <a class="s-btn s-btn--primary" href="/app/">
+          Open your passport
+        </a>
+      </Show>
+    </p>
+    {offerApp && (
+      <p>
+        <a href="/?view=app">Back to the Alibi app</a>
+      </p>
+    )}
+  </section>
 </main>
 
-<footer class="site-footer">
-  <p>
-    Alibi is a hackathon prototype for AgentVerse 2026, Finance Track. Both connections are
-    simulated services; no real bank or marketplace is involved.
-  </p>
-</footer>
+<SiteFooter />
 
 <style>
-  .site-header,
-  .site-footer,
-  main {
-    max-width: var(--page-max);
-    margin-inline: auto;
-    padding-inline: var(--gutter);
+  .simulate {
+    padding-block: var(--s-section) 0;
   }
 
-  .site-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-sm);
-    padding-block: var(--space-sm);
-  }
-
-  .brand {
-    color: var(--c-alibi);
-  }
-
-  .back-to-app {
-    margin: 0;
-    padding: var(--space-2xs) var(--gutter);
-    background: var(--c-alibi);
-    color: var(--c-alibi-ink);
-    text-align: center;
-    font-weight: 600;
-  }
-
-  nav {
+  .simulate-card {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-sm);
-    font-size: var(--t-sm);
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 2rem;
+    padding: clamp(2rem, 5vw, 4rem);
+    border-radius: var(--s-radius-card);
+    background: #fff;
+    box-shadow: var(--s-shadow);
   }
 
-  /* The switch to the simulated phone viewport (/phone/). */
-  .phone-switch {
-    padding: var(--space-3xs) var(--space-xs);
-    border: 1px solid var(--c-alibi);
-    border-radius: var(--radius-pill);
-    color: var(--c-alibi);
-    font-weight: 600;
-    text-decoration: none;
+  .join {
+    padding-block: var(--s-section);
+    text-align: center;
   }
 
-  .site-footer {
-    padding-block: var(--space-xl);
-    color: var(--c-ink-faint);
-    font-size: var(--t-sm);
+  .join-title {
+    font: 800 var(--s-t-hero) / 1 var(--s-font-display);
+    letter-spacing: -0.045em;
+    margin: 0 auto 2rem;
+    max-width: 16ch;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
   }
 </style>

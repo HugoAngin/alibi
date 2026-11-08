@@ -1,0 +1,132 @@
+/* ---------------------------------------------------------------------------
+ * The Alibi product site's design layer, on top of packages/ui tokens.
+ * Landing, Core, Simulate and Join use it; the phone app keeps the shared
+ * tokens. Every value on a site page comes from here.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --s-paper: #f6f5f1;
+  --s-paper-2: #efede6;
+  --s-ink: #0f1115;
+  --s-ink-soft: #4a4f57;
+  --s-ink-faint: #6b7079;
+  --s-line: rgb(15 17 21 / 0.09);
+  --s-accent: #2b4cff;
+  --s-accent-soft: #e6eaff;
+  --s-ok: #1f7a4a;
+  --s-bad: #b4322d;
+
+  /* Colour fields behind the glass, so the refraction has something to bend. */
+  --s-field-a: #8ea2ff;
+  --s-field-b: #ffc2a1;
+  --s-field-c: #a6ecd2;
+
+  --s-font-display: 'Inter Tight', 'Inter', system-ui, sans-serif;
+  --s-font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --s-t-hero: clamp(2.6rem, 1.4rem + 5.2vw, 5.6rem);
+  --s-t-h2: clamp(1.9rem, 1.2rem + 2.6vw, 3.2rem);
+  --s-t-h3: clamp(1.2rem, 1rem + 0.7vw, 1.5rem);
+  --s-t-lede: clamp(1.05rem, 0.95rem + 0.5vw, 1.3rem);
+
+  --s-radius-card: 28px;
+  --s-shadow: 0 1px 2px rgb(15 17 21 / 0.04), 0 12px 40px rgb(15 17 21 / 0.08);
+  --s-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --s-section: clamp(5rem, 3rem + 8vw, 10rem);
+  --s-max: 72rem;
+}
+
+html[data-view='site'] body {
+  background: var(--s-paper);
+  color: var(--s-ink);
+  font-family: var(--s-font-body);
+}
+
+html[data-view='site'] {
+  scroll-padding-top: 6rem;
+}
+
+/* Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* Scroll reveal: elements fade up once as they enter. */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.9s var(--s-ease),
+    transform 0.9s var(--s-ease);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+[data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+.s-wrap {
+  max-width: var(--s-max);
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 40px);
+}
+
+.s-eyebrow {
+  font: 600 0.8rem/1 var(--s-font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--s-accent);
+}
+
+.s-h2 {
+  font: 700 var(--s-t-h2) / 1.05 var(--s-font-display);
+  letter-spacing: -0.03em;
+  margin: 0.6rem 0 1rem;
+}
+
+.s-lede {
+  font-size: var(--s-t-lede);
+  line-height: 1.55;
+  color: var(--s-ink-soft);
+  max-width: 38rem;
+}
+
+.s-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  min-height: 48px;
+  padding: 0 1.4rem;
+  border-radius: 999px;
+  font: 600 1rem/1 var(--s-font-body);
+  text-decoration: none;
+  transition:
+    transform 0.25s var(--s-ease),
+    background 0.25s var(--s-ease);
+}
+.s-btn:hover {
+  transform: translateY(-1px);
+}
+.s-btn--primary {
+  background: var(--s-ink);
+  color: var(--s-paper);
+}
+.s-btn--ghost {
+  background: rgb(255 255 255 / 0.7);
+  color: var(--s-ink);
+  border: 1px solid var(--s-line);
+}

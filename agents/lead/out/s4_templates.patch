@@ -595,7 +595,7 @@ index 0000000..379d8d6
 +{%- if ts %}<time class="when" datetime="{{ ts }}">{{ ts }}</time>{% else %}<span class="muted">—</span>{% endif -%}
 +{%- endmacro %}
 diff --git a/alibi/app/templates/passport/alerts.html b/alibi/app/templates/passport/alerts.html
-index f78f1ce..d19a9ed 100644
+index f78f1ce..677e17c 100644
 --- a/alibi/app/templates/passport/alerts.html
 +++ b/alibi/app/templates/passport/alerts.html
 @@ -11,6 +11,7 @@
@@ -636,7 +636,19 @@ index f78f1ce..d19a9ed 100644
                </tr>
                {% endfor %}
              </tbody>
-@@ -103,7 +104,7 @@
+@@ -76,6 +77,11 @@
+     {% endif %}
+   </section>
+ 
++  <form method="post" action="{{ tick_action }}" class="btn-row no-print">
++    <button type="submit" class="btn">Re-run checks now</button>
++    <span class="muted small">Last checked {% if last_tick %}{{ when(last_tick) }}{% else %}at start{% endif %}. Checks also run on every start.</span>
++  </form>
++
+   <section id="merchant-lookup" class="card section-anchor" aria-labelledby="lookup-heading">
+     <div class="card__head">
+       <h2 id="lookup-heading">Merchant lookup</h2>
+@@ -103,7 +109,7 @@
        <dt>Registry</dt>
        <dd>{{ result.registry }}</dd>
        <dt>Checked at</dt>

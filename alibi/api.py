@@ -581,7 +581,7 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                       holder_claim: Any = None) -> InvestigationResult:
     """Investigate a stored request and save its links, claims and trace.
 
-    ``holder_claim`` (rules mode) is the holder's own untrusted account of a credit,
+    ``holder_claim`` (rules and one-pass modes) is the holder's own untrusted account of a credit,
     ``{txn_id, stated_minor}``; it is checked against the records and never used as evidence.
 
     ``request`` is a request_id together with ``audience`` (the bank that sent it; without it a
@@ -622,7 +622,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
             from alibi.baselines import one_pass
             result = one_pass.run_investigation(
                 store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
-                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now)
+                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now,
+                holder_claim=holder_claim)
             actor = one_pass.ACTOR
         answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
                             for claim in result.claims)

@@ -39,6 +39,10 @@ LOOKUP_KEYS = ("payout_reference", "record_id", "covers_record_id", "payout_date
 CONNECTOR_ACTOR = "connector"
 # A lookup key value travels in a path or a query string: one line, no path syntax, bounded.
 _KEY_VALUE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$")   # the core Ident pattern
+# A key sent only as a query parameter (encoded by the HTTP client, never part of the path) may
+# also carry the inner spaces the core ``Ref`` pattern allows, such as ``SPLAT W32 2695``.
+_QUERY_KEY_VALUE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.:@ -]{0,62}[A-Za-z0-9_.:@-])?$")
+_QUERY_KEYS = frozenset({"payout_reference"})
 # What the trace summary keeps of a merchant answer: short scalars only (``_summary``).
 SUMMARY_TEXT_LIMIT = 64
 MAX_SAFE_INT = 2**53
@@ -203,7 +207,8 @@ class MerchantClient:
         if len(given) != 1 or next(iter(given)) not in LOOKUP_KEYS:
             raise ValueError(f"give exactly one of {', '.join(LOOKUP_KEYS)}")
         (name, value), = given.items()
-        if not isinstance(value, str) or not _KEY_VALUE.match(value):
+        pattern = _QUERY_KEY_VALUE if name in _QUERY_KEYS else _KEY_VALUE
+        if not isinstance(value, str) or not pattern.match(value) or "  " in value:
             raise ValueError(f"{name} must be a short identifier without path characters")
         if name == "payout_reference":
             path, params = "/settlements", {"payout_reference": value}

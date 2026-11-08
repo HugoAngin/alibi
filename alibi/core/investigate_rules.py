@@ -226,6 +226,9 @@ _FACT_KEYS = {RecordKind.ORDER: ("sales_minor", "sale_count"),
 _REF_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9-]{3,}")
 _REF_PREFIX = re.compile(r"[A-Z]+")
 _REF = TypeAdapter(Ref)
+# A reference written in issuer text: four or more letters, digits and hyphens as a whole token
+# (same shape as the one-pass baseline's fixed retrieval); a letter and a digit are required.
+_TEXT_REF = re.compile(r"(?<![\w-])[A-Za-z0-9][A-Za-z0-9-]{3,}(?![\w-])")
 _ORIGIN = "the credit's origin remains unresolved"
 
 
@@ -389,6 +392,9 @@ class _Outcome:
     components: list[EvidenceRecord] | None = None   # the linked payout's components, when read
     payout: EvidenceRecord | None = None
     settlement: EvidenceRecord | None = None
+    # (gap code, sentence) the breakdown reports when the source is established without the
+    # payout's component records (``_Run.source_only``).
+    breakdown_gap: tuple[str, str] | None = None
 
 
 @dataclass
@@ -422,6 +428,10 @@ class _Run:
         self.combined: dict[str, _Outcome] = {}   # after the one-payout-one-credit rule
         self.bank: dict[str, BankTxn] = {}
         self.fetched: dict[str, EvidenceRecord] = {}   # payment_ref -> lookup result, reused
+        # txn_id -> (payout record_id, issuer-verified records whose text named its reference)
+        self.attested: dict[str, tuple[str, list[EvidenceRecord]]] = {}
+        self.waiting: dict[str, list[EvidenceRecord]] = {}   # txn_id -> named pending payouts
+        self.text_dependencies: dict[str, list[EvidenceRef]] = {}  # private clue/read revisions
         self.question_id: str | None = None
         log_step = getattr(gateway, "log_step", None)
         self.log_step = log_step if callable(log_step) else None
@@ -490,7 +500,11 @@ class _Run:
             question_id=question.question_id,
             statement=_clip(outcome.statement), status=outcome.status,
             rationale=_clip(rationale), evidence_refs=answered_refs(outcome.status, outcome.evidence),
-            examined_refs=examined_refs(outcome.status, outcome.evidence, outcome.calculation),
+            examined_refs=_unique([
+                *examined_refs(outcome.status, outcome.evidence, outcome.calculation),
+                *(ref for txn_id in self.request.txn_ids or []
+                  for ref in self.text_dependencies.get(txn_id, [])
+                  if found.category in (SOURCE_OF_FUNDS, BREAKDOWN))]),
             calculation=answered_calculation(outcome.status, outcome.calculation),
             gap=_clip(outcome.gap) if outcome.gap else None,
             gap_detail=_clip(outcome.detail) if outcome.detail else None,
@@ -585,9 +599,13 @@ class _Run:
                      + " is not established from the available records.")
         detail = ("The breakdown cannot be verified because the credit's source is not "
                   f"established: {base.detail or base.rationale}")
+        gap = base.gap or GAP_SETTLEMENT_NOT_FOUND
+        if getattr(base, "breakdown_gap", None) is not None:
+            gap, missing = base.breakdown_gap
+            detail = f"The breakdown cannot be verified from records: {missing}"
         return _Outcome(ClaimStatus.UNRESOLVED, statement, base.rationale,
                         f"Breakdown follows the source of funds: {base.reason}",
-                        gap=base.gap or GAP_SETTLEMENT_NOT_FOUND, detail=detail,
+                        gap=gap, detail=detail,
                         evidence=list(base.evidence), calculation=base.calculation)
 
     def credit_outcome(self, txn_id: str) -> _Outcome:
@@ -689,6 +707,28 @@ class _Run:
             if fetched is not None:
                 found.append(fetched)
                 match = _match(txn, found, self.window)
+        if match.payout is None and match.state == LinkState.UNMATCHED and not match.excluded:
+            named = self.fetch_by_issuer_text(txn, found)
+            # A named payout still pending is not a source (it had not settled when last
+            # observed); one that fits the credit is kept only to name that gap.
+            waiting = {rid: pair for rid, pair in named.items()
+                       if pair[0].status in PENDING_STATUSES}
+            named = {rid: pair for rid, pair in named.items() if rid not in waiting}
+            fits = [record for record, _ in waiting.values()
+                    if record.amount_pence == txn.amount_pence and _compatible(record, txn)
+                    and txn.booked_at - record.occurred_at <= self.window]
+            if fits:
+                self.waiting[txn.txn_id] = fits
+            if named:
+                found += [record for record, _ in named.values()]
+                match = _match(txn, found, self.window)
+                if match.payout is not None and match.payout.record_id in named:
+                    record, sources = named[match.payout.record_id]
+                    self.attested[txn.txn_id] = (record.record_id, sources)
+                    match.signals.append(
+                        f"{_ids(sources, keys=True)} (issuer-verified) "
+                        f"name{'s' if len(sources) == 1 else ''} {record.payment_ref}, the payment "
+                        f"reference of {record.ref().key()}, retrieved by settlement lookup.")
         link = Link(
             link_id=make_id("lnk", self.run_id, txn.txn_id), txn_ref=txn.ref(),
             link_state=match.state, record_ref=match.payout.ref() if match.payout else None,
@@ -749,6 +789,82 @@ class _Run:
                 return record
         return None
 
+    def fetch_by_issuer_text(self, txn: BankTxn, found: list[EvidenceRecord]
+                             ) -> dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]]:
+        """Bounded retrieval from explicit issuer references: when nothing in the passport or
+        on the credit matches, the payout references written in the text of this subject's
+        issuer-verified records (messages, notices, statements) are looked up as written, at
+        most ``MAX_REFERENCE_LOOKUPS`` of them. A text line that also carries one of the
+        credit's own references is read first (an issuer statement mapping the bank's
+        reference to its payout), then records in observed order. Self-supplied text never
+        opens a lookup, the gateway still checks scope and signer, and a returned record is a
+        candidate only when it is an issuer-verified payout of this subject carrying exactly
+        that reference; it must still match the credit by amount, currency and date. Returns
+        ``record_id -> (payout, records naming it)``."""
+        records, _ = self.read("list_records", "list_records messages",
+                               lambda: self.gateway.list_records(kinds=[RecordKind.MESSAGE]))
+        texts = sorted((r for r in records or [] if r.subject_ref == self.request.subject_ref
+                        and r.source_trust == SourceTrust.ISSUER_VERIFIED and r.text),
+                       key=lambda r: (r.occurred_at, r.record_id))
+        if not texts:
+            return {}
+        carried = reference_tokens(txn)
+        known = {p.payment_ref.upper() for p in found if p.payment_ref} | carried \
+            | set(self.fetched)
+        ranked: dict[str, tuple[int, list[EvidenceRecord]]] = {}
+        order = 0
+        for record in texts:
+            own = {ref.upper() for ref in (record.payment_ref, record.settlement_ref,
+                                           record.withdrawal_ref) if ref}
+            for line in (record.text or "").splitlines():
+                tokens = [t for t in _TEXT_REF.findall(line)
+                          if re.search(r"[A-Za-z]", t) and re.search(r"\d", t)]
+                mapped = any(t.upper() in carried for t in tokens)
+                for token in tokens:
+                    key = token.upper()
+                    if key in known or key in own or not _is_ref(token):
+                        continue
+                    rank, sources = ranked.get(token, ((0 if mapped else 1, order), []))
+                    if mapped:
+                        rank = (0, rank[1])
+                    if record not in sources:
+                        sources.append(record)
+                    ranked[token] = (rank, sources)
+                    order += 1
+        chosen = sorted(ranked, key=lambda t: ranked[t][0])[:MAX_REFERENCE_LOOKUPS]
+        out: dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]] = {}
+        for token in chosen:
+            sources = ranked[token][1]
+            # The clue affects retrieval even when the lookup finds no record. Retain it
+            # privately so a corrected reference invalidates the old conclusion and consent.
+            self.text_dependencies.setdefault(txn.txn_id, []).extend(s.ref() for s in sources)
+            record, err = self.read("lookup_settlement", f"lookup_settlement {token}",
+                                    lambda token=token: self.gateway.lookup_settlement(token))
+            if record is None:
+                if err is None:
+                    self.note("note", tool="lookup_settlement", refs=[s.ref() for s in sources],
+                              reason=f"The lookup for {token}, named by issuer text, returned "
+                                     "no record.", args={"payment_ref": token})
+                continue
+            record = self.current(record)
+            if record.subject_ref != self.request.subject_ref or not record.payment_ref \
+                    or record.payment_ref != token or record.kind != RecordKind.PAYOUT \
+                    or record.source_trust != SourceTrust.ISSUER_VERIFIED \
+                    or any(s.issuer_id != record.issuer_id for s in sources):
+                continue
+            self.fetched[record.payment_ref] = record
+            out[record.record_id] = (record, sources)
+            self.text_dependencies[txn.txn_id].append(record.ref())
+            self.note("validation", tool="lookup_settlement",
+                      refs=[txn.ref(), *(s.ref() for s in sources), record.ref()],
+                      reason=(f"The lookup for {token}, named by issuer-verified "
+                              f"{_ids(sources, keys=True)}, returned payout {record.ref().key()}, "
+                              "which is taken as a candidate."),
+                      args={"payment_ref": token},
+                      result={"record_id": record.record_id, "revision": record.revision,
+                              "kind": record.kind.value, "status": record.status or "none"})
+        return out
+
     def unlinked(self, txn: BankTxn, match: _Match) -> _Outcome:
         if match.state == LinkState.AMBIGUOUS:
             how = "by reference" if match.method == METHOD_REFERENCE else "by amount and date"
@@ -773,8 +889,49 @@ class _Run:
                             f"{'s' if len(match.excluded) != 1 else ''} with the same amount "
                             "occurred after the booking and cannot explain it.")
                 code = GAP_SETTLEMENT_NOT_FOUND
+                waiting = self.waiting.get(txn.txn_id) if not match.excluded else None
+                if waiting:
+                    code = GAP_PENDING_AT_BOOKING
+                    gap += (" Payout " + "; ".join(
+                        f"{p.ref().key()} ({p.payment_ref}, "
+                        f"{_money(p.amount_pence, p.currency)}) was {p.status} when "
+                        f"observed at {format_utc(p.occurred_at)}" for p in waiting)
+                        + "; the available records do not establish settlement by the credit's booking.")
             evidence = [txn.ref(), *(p.ref() for p in match.excluded)]
             reason = "No payout matched the credit."
+            # Refine only the diagnostic, never the matching or support verdict. A failed
+            # revision observed later is not evidence of a successful late settlement.
+            failed = [p for p in match.excluded
+                      if p.source_trust == SourceTrust.ISSUER_VERIFIED
+                      and p.status in FAILED_STATUSES]
+            late = [p for p in match.excluded
+                    if p.source_trust == SourceTrust.ISSUER_VERIFIED
+                    and p.status in reconcile.SETTLED_STATUSES
+                    and reconcile.settlement_effective_time(p) is not None
+                    and reconcile.settlement_effective_time(p) > txn.booked_at]
+            if failed:
+                code = GAP_SETTLEMENT_FAILED
+                gap = "The examined payout has an explicit failed status; it cannot establish the credit's source."
+            elif late:
+                code = GAP_SETTLEMENT_AFTER
+                gap = "The examined payout settled after the credit was booked; a later settlement cannot explain it."
+            elif code == GAP_SETTLEMENT_NOT_FOUND and not match.excluded:
+                records, err = self.read("list_records", "list_records for unresolved diagnostic",
+                                         lambda: self.gateway.list_records(kinds=list(RecordKind)))
+                if records is not None:
+                    merchant = [r for r in records if r.subject_ref == txn.subject_ref
+                                and r.source_trust == SourceTrust.ISSUER_VERIFIED]
+                    releases = [r for r in merchant if r.kind == RecordKind.MESSAGE
+                                and r.amount_pence == txn.amount_pence and r.currency == txn.currency
+                                and timedelta(0) <= txn.booked_at - r.occurred_at <= self.window
+                                and re.search(r"\b(?:seller|platform) balance\b", r.text or "", re.I)]
+                    if releases:
+                        code = GAP_BALANCE_RELEASE
+                        gap = "An issuer message reports funds in the platform balance, but no bank settlement is established."
+                        evidence.extend(r.ref() for r in releases)
+                    elif not merchant:
+                        code = GAP_NO_RECORDS
+                        gap = "No issuer-verified merchant records are available to establish this credit's source."
         return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), match.summary,
                         reason, gap=code, detail=gap, evidence=evidence)
 
@@ -826,6 +983,11 @@ class _Run:
             return _Outcome(ClaimStatus.CONTRADICTED, statement + ".", " ".join(parts), reason,
                             gap=code, detail=" ".join(filter(None, [gap, problem])), **base)
         gaps = [_no_settlement_gap(payout, notes)] if settlement is None else []
+        if problem and problem_code == GAP_MISSING_CITED and settlement is not None and not own:
+            projected = self.source_only(txn, payout, settlement, statement, parts)
+            if projected is not None:
+                projected.breakdown_gap = (problem_code, " ".join(gaps + [problem]))
+                return projected
         if problem:
             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), problem,
                             gap=problem_code, detail=" ".join(gaps + [problem]), **base)
@@ -837,7 +999,10 @@ class _Run:
                             "No settlement record for the linked payout.", gap=code,
                             detail=" ".join(gaps), **base)
         assert calc is not None
-        status, reason, code, gap, refs_text = _verdict(txn, payout, settlement, calc, self.window)
+        attested = self.attested.get(txn.txn_id)
+        sources = attested[1] if attested and attested[0] == payout.record_id else []
+        status, reason, code, gap, refs_text = _verdict(txn, payout, settlement, calc, self.window,
+                                                        attested=sources)
         if refs_text:
             parts.append(refs_text)
         if status == ClaimStatus.SUPPORTED and own:
@@ -859,6 +1024,50 @@ class _Run:
                      "settled_at": [format_utc(effective)] if effective is not None else []}
         return _Outcome(status, statement + ".", " ".join(parts), reason, gap=code, detail=gap,
                         facts=facts, **base)
+
+    def source_only(self, txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
+                    statement: str, parts: list[str]) -> _Outcome | None:
+        """The source of funds when the payout's component records are missing: supported only
+        from the issuer-verified payout and settlement themselves, when both are for exactly the
+        credit's amount and currency, the settlement was effective in time, and the credit
+        carries their reference with no competing one. No arithmetic over components is
+        claimed or disclosed; the breakdown stays unresolved (``breakdown_gap``). None when any
+        check fails, so the caller's unresolved answer stands."""
+        records = [payout] if settlement.record_id == payout.record_id else [payout, settlement]
+        if any(r.source_trust != SourceTrust.ISSUER_VERIFIED for r in records):
+            return None
+        if any((r.amount_pence, r.currency) != (txn.amount_pence, txn.currency) for r in records):
+            return None
+        try:
+            timing = reconcile.check_settlement_timing(settlement, txn, window=self.window)
+        except ReconcileError:
+            return None
+        if not timing.ok or timing.settlement_effective_at is None:
+            return None
+        tokens = reference_tokens(txn)
+        if _conflicting_refs(tokens, payout, settlement):
+            return None
+        named = sorted({r for r in (payout.payment_ref, settlement.payment_ref,
+                                    settlement.settlement_ref) if r and r.upper() in tokens})
+        if not named:
+            return None
+        ref = payout.payment_ref
+        settled = (f"settled (status {settlement.status}) before the credit was booked"
+                   if settlement.record_id == payout.record_id
+                   else f"settled as {settlement.record_id} before the credit was booked")
+        reason = (f"Settlement {settlement.ref().key()} is {settlement.status} by the booking, "
+                  f"is for exactly the credit's amount and the credit carries {', '.join(named)}; "
+                  "the payout's component records are incomplete, so no breakdown is claimed.")
+        self.note("note", reason=_clip(reason, 300), refs=[r.ref() for r in records],
+                  result={"projection": "source_only"})
+        return _Outcome(
+            ClaimStatus.SUPPORTED, f"{statement}, {settled}.",
+            " ".join([*parts, timing.reason or "", f"References: the credit carries "
+                      f"{', '.join(named)}, matching the payout and settlement."]).strip(),
+            reason, evidence=[txn.ref(), *(r.ref() for r in records)], payout=payout,
+            settlement=settlement,
+            facts={"payout_references": [ref] if ref else [],
+                   "settled_at": [format_utc(timing.settlement_effective_at)]})
 
     def linked_batch(self, txn: BankTxn, match: _Match) -> _Outcome:
         """A credit matched to an issuer's settlement batch: several issuer-verified payouts of
@@ -1488,7 +1697,7 @@ def _conflict(txn: BankTxn, payout: EvidenceRecord,
 
 
 def _verdict(txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
-             calc: Calculation, window: timedelta
+             calc: Calculation, window: timedelta, *, attested: list[EvidenceRecord] = ()
              ) -> tuple[ClaimStatus, str, str | None, str | None, str | None]:
     """Claim status for a linked credit with no explicit conflict (``_conflict``), from
     explicit fields only.
@@ -1546,6 +1755,21 @@ def _verdict(txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
                 f"References: the credit carries {listed}, not {settlement.settlement_ref}.")
     named = sorted({r for r in (payout.payment_ref, settlement.payment_ref,
                                 settlement.settlement_ref) if r and r.upper() in tokens})
+    if not named and attested and payout.source_trust == SourceTrust.ISSUER_VERIFIED \
+            and settlement.source_trust == SourceTrust.ISSUER_VERIFIED \
+            and all(s.issuer_id == payout.issuer_id for s in attested):
+        # The issuer's own signed text names the payout's reference; the payout it returned
+        # matches the credit uniquely by amount, currency and date, and settled in time.
+        refs_text = (f"References: the credit carries none, but issuer-verified "
+                     f"{_ids(list(attested), keys=True)} names {payout.payment_ref}, and that "
+                     "payout is the only one matching the credit's amount and date.")
+        if reconcile.credit_supported(calc, window=window):
+            return (ClaimStatus.SUPPORTED,
+                    f"Settlement {stl} is {status} by the booking, the amounts reconcile and the "
+                    f"issuer's own record names {payout.payment_ref}.", None, None, refs_text)
+        return (ClaimStatus.UNRESOLVED, "The reconciliation does not support the credit.",
+                GAP_SETTLEMENT_NOT_FOUND, "The reconciliation does not support the credit.",
+                refs_text)
     if not named:
         return (ClaimStatus.UNRESOLVED, "Only amounts and dates tie the credit to the payout.",
                 GAP_SETTLEMENT_NOT_FOUND,

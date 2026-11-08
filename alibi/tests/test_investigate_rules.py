@@ -850,7 +850,9 @@ def test_a_bundled_payout_is_read_in_one_call_within_the_default_budget(passport
     assert "get_source" not in tools(gateway) and result.calls_used == 5
 
 
-@pytest.mark.parametrize("settlement_status, expected", [("settled", UNRESOLVED),
+# A settled, issuer-verified payout for exactly the credit establishes the source on its own
+# (no arithmetic claimed); the missing component then leaves only the breakdown unresolved.
+@pytest.mark.parametrize("settlement_status, expected", [("settled", SUPPORTED),
                                                          ("reversed", CONTRADICTED)])
 def test_a_missing_component_is_named_and_never_hides_a_conflict(passport, keystore, now,
                                                                  settlement_status, expected):
@@ -863,7 +865,13 @@ def test_a_missing_component_is_named_and_never_hides_a_conflict(passport, keyst
     result, _ = investigate(store, fx, keystore, now)
     claim = claim_of(result)
     assert claim.status == expected
-    assert "ord_1099" in claim.gap_detail and claim.calculation is None
+    assert claim.calculation is None
+    if expected == SUPPORTED:
+        # Only the credit, payout and settlement are cited; no component is claimed.
+        cited = keys(claim.evidence_refs)
+        assert "record:stl_88001@1" in cited and not any("ord_" in k for k in cited)
+        return
+    assert "ord_1099" in claim.gap_detail
     if expected == CONTRADICTED:
         assert "status reversed" in claim.gap_detail and "record:stl_88001@1" in keys(claim.evidence_refs)
 

@@ -182,13 +182,15 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
                       gateway: Any | None = None, settlement_lookup: Callable | None = None,
                       txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
                       registry: Any | None = None, now: datetime | None = None,
-                      model: str | None = None) -> InvestigationResult:
+                      model: str | None = None, holder_claim: Any = None) -> InvestigationResult:
     """Run the one-pass baseline for a stored request and return the saved result
     (``mode="single_call"``). Same arguments as ``alibi.api.run_investigation`` plus
-    ``client`` (``GeminiClient`` or ``FakeClient``) and an optional ``model`` id."""
+    ``client`` (``GeminiClient`` or ``FakeClient``) and an optional ``model`` id;
+    ``holder_claim`` is the holder's untrusted account, as in ``run_one_pass``."""
     return run_one_pass(store, request, client=client, gateway=gateway,
                         settlement_lookup=settlement_lookup, txn_refresh=txn_refresh,
-                        budget=budget, registry=registry, now=now, model=model).result
+                        budget=budget, registry=registry, now=now, model=model,
+                        holder_claim=holder_claim).result
 
 
 def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,

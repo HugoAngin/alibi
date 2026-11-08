@@ -281,9 +281,10 @@ def test_an_rfc_is_answered_before_later_data_lands_and_the_next_one_sees_it(tmp
     assert b["issued_at"] == case["rfcs"][1]["issued_at"]
 
     # Bank A at 2026-11-02: the settlement is not yet available to the merchant lookup, so the
-    # engine looks (lookups 1) and finds nothing; the answer is unresolved with the pinned gap.
+    # engine looks (lookups 1) and finds nothing. Only the balance-release message is there, so
+    # the pinned gap names it: a release to the seller balance is not a bank settlement.
     source = a["claims"][Q_SOURCE]
-    assert source["status"] == "unresolved" and source["gap"] == "settlement_not_found"
+    assert source["status"] == "unresolved" and source["gap"] == "balance_release_not_settlement"
     assert a["retrieval"]["lookups"] == 1
     assert a["links"] and a["links"][0]["state"] != "linked"
     text_a = json.dumps(a, sort_keys=True)

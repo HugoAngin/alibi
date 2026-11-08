@@ -140,7 +140,11 @@ def test_exactly_five_days_before_the_credit_still_supports_it(passport, keystor
      "settlement_after_credit", "after the credit was booked"),
     ("supported", lambda fx: fx["lookup_events"][0].update(amount_pence=200000), UNRESOLVED,
      "amount_mismatch", "200000 pence GBP, but the credit is 216000"),
-    ("supported", lambda fx: record_of(fx, "po_5001")["related_record_ids"].append("ord_1099"),
+    # A missing component with a pending settlement: the source stays unresolved, and the
+    # pending conflict-free gap is the missing record (a settled one is covered by
+    # test_investigate_rules' missing-component test, where only the breakdown is unresolved).
+    ("supported", lambda fx: (record_of(fx, "po_5001")["related_record_ids"].append("ord_1099"),
+                              fx["lookup_events"][0].update(status="on_hold")),
      UNRESOLVED, "missing_cited_record", "ord_1099"),
     ("supported", lambda fx: (record_of(fx, "po_5001").update(status="released_to_balance"),
                               fx["lookup_events"].clear()), UNRESOLVED,
@@ -570,7 +574,7 @@ def test_the_rules_engine_asks_for_the_credits_own_reference_when_nothing_matche
     result, _ = real_run(store2, RFC_A, registry, now, lookup=lambda ref: asked.append(ref))
     claim = claim_of(result)
     assert asked == ["PO-5001", "STL-88001"]
-    assert (claim.status, claim.gap) == (UNRESOLVED, "settlement_not_found")
+    assert (claim.status, claim.gap) == (UNRESOLVED, "balance_release_not_settlement")
     assert result.links[0].link_state == LinkState.UNMATCHED
 
 

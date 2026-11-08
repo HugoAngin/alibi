@@ -33,6 +33,19 @@ For native bank checks SP-25 to SP-32, issue a real Bank A request and approve a
 
 For consent probes against the native bank, set `fixtures.consent_bank_service` to the service key containing that bank origin. The default inbox, package view and raw envelope routes are `/inbox`, `/packages/{package_id}` and `/packages/{package_id}/raw`. A successful dispatch control checks the approval against the signed body's digest and the dispatch receipt against the signed envelope's separate digest. Leave this fixture unset when using the legacy app-hosted bank view.
 
+After dispatching one public Case 1 package to each bank, generate the native
+profile from the signed receipts and the holder's source view. Supply a private
+base config with the disposable loopback origins and synthetic bearer tokens.
+The generator writes an owner-only file and preserves explicit overrides.
+
+```bash
+uv run --frozen python -m agents.eval.probe_profile --config "$ALIBI_BASE_PROBES" \
+  --key-dir "$ALIBI_DEMO_KEYS" --out "$ALIBI_LIVE_PROBES"
+```
+
+This prepares SP-17, SP-18, SP-20, SP-21 and SP-25 through SP-32. Supply the
+remaining route and fixture settings in the base config for the full catalogue.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash

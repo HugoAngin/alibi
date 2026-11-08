@@ -1,0 +1,44 @@
+{
+  "case_or_gold_reads": 0,
+  "failed_groups": {
+    "agents": 34,
+    "one_pass": 34,
+    "rules": 34
+  },
+  "failed_groups_without_stderr": {
+    "agents": 17,
+    "one_pass": 16,
+    "rules": 16
+  },
+  "groups": [
+    {
+      "distinct_cases": 5,
+      "exception_class": "alibi.core.ingest.IngestError",
+      "file": "alibi/connectors/self_supplied.py",
+      "function": "import_record",
+      "line": 126,
+      "masked_message": "import refused: event [MASKED] has a kind that is not a case kind",
+      "system_groups": {
+        "agents": 4,
+        "one_pass": 5,
+        "rules": 5
+      }
+    },
+    {
+      "distinct_cases": 13,
+      "exception_class": "alibi.core.ingest.IngestError",
+      "file": "alibi/core/ingest.py",
+      "function": "import_self_supplied",
+      "line": 402,
+      "masked_message": "payload failed schema validation: kind [enum mismatch]; extra fields rejected",
+      "system_groups": {
+        "agents": 13,
+        "one_pass": 13,
+        "rules": 13
+      }
+    }
+  ],
+  "kind": "sanitised import-error summary; dynamic values omitted",
+  "scope": "Observed retained failures only; absent original stderr remains unknown. No retry justification is inferred.",
+  "unclassified_groups": {}
+}

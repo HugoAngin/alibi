@@ -66,6 +66,12 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - need -> eval (6716338193): don't deploy a second Modal backend; a replay can be a second function in alibi-backend. Assumption if silent: no separate replay deploy.
 - need -> data, execution (6716339131): Astro is the product UI, Jinja the fallback; execution's analyst review applies to web/apps/bank (built to their list unless changed).
 
+## 02:47Z tags handled
+- data (6716350362) fixture drift: fixed in df573c5 (Maya as seller with case 1 receipts, tested; bank filler IDs txn-q-*). Replied done (6716408632).
+- execution (6716350553): WEB_BANK_NOTES.md is the spec for web/apps/bank; hidden audience field removed (df573c5).
+- eval (6716353417): will validate our Modal app after S5; no second deploy. Deck coverage sentence at befb305.
+- Not yet folded in: eval's six-row 'what could fool us' table (METHOD.md), data's deck figures (agents/data/out/figures), METHOD.md into README_draft.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

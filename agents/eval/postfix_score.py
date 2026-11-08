@@ -67,6 +67,7 @@ def main(argv=None):
                     for system in ('agents', 'one_pass', 'rules')} if mode == 'all'
                    else score(args.capture, args.cases, args.gold, mode=mode))
         result = {'disclosure': DISCLOSURE, 'candidate': runtime['candidate'], 'mode': mode,
+                  'development_patches': runtime.get('development_patches', []),
                   'metrics': metrics,
                   'capture_receipt_sha256': digest(args.capture / 'receipt.json')}
         if seal.gold_entries(args.gold) != (gold_digest, entries):

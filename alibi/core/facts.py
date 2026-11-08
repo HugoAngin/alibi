@@ -26,6 +26,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from alibi.core import investigate_rules as rules
+from alibi.core.answered import answered_calculation, answered_refs  # noqa: F401  (re-export)
 from alibi.core.reconcile import is_settlement_evidence, settlement_effective_time
 from alibi.core.schemas import (
     Calculation,
@@ -39,7 +40,7 @@ from alibi.core.schemas import (
 )
 from alibi.core.store import NotFound
 
-__all__ = ["derive_facts"]
+__all__ = ["answered_calculation", "answered_refs", "derive_facts"]
 
 _PERIOD = frozenset({rules.SALES_TOTAL, rules.REFUNDS_TOTAL, rules.FEES_TOTAL, rules.NET_TOTAL,
                      rules.DOCUMENTED_TOTALS, rules.SEVERAL_TOTALS})

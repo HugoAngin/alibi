@@ -212,7 +212,10 @@ def test_case_2_agents_pending_payout_is_never_supported_and_names_the_pending_g
     for claim in claims.values():
         assert claim.status in (ClaimStatus.UNRESOLVED, ClaimStatus.CONTRADICTED)
         assert claim.gap is not None and claim.gap.startswith(f"{GAP_PENDING_AT_BOOKING}:")
-        assert "record:rec-0002-021@1" in keys(claim)
+        if claim.status == ClaimStatus.UNRESOLVED:
+            assert keys(claim) == set()   # minimum disclosure: an unresolved claim cites no record
+        else:
+            assert "record:rec-0002-021@1" in keys(claim)
         assert "pending" in claim.gap and "settlement not retrieved" not in text(claim)
     # The reference came from the issuer's message text, so the lookup was allowed and ran.
     stats = run_stats(result)
@@ -252,7 +255,7 @@ def test_payout_without_status_stays_unresolved_in_agents_mode(make):
         assert claim.status == ClaimStatus.UNRESOLVED
         assert claim.gap.startswith((f"{GAP_SETTLEMENT_NOT_FOUND}:", "balance_release_not_settlement:"))
         assert "no status" in claim.gap
-        assert "record:rec-0001-021@1" in keys(claim)
+        assert keys(claim) == set()  # minimum disclosure: an unresolved claim cites no record
     (link,) = result.links
     assert link.link_state == LinkState.UNMATCHED and [r.ref_id for r in link.candidates] == ["rec-0001-021"]
     # The gateway refuses a payout with no settlement status as a lookup result.
@@ -309,7 +312,7 @@ def test_one_pass_case_2_pushed_pending_payout_is_unresolved_with_the_pending_ga
     claim = by_question(out.result)[Q_SOURCE]
     assert claim.status == ClaimStatus.UNRESOLVED
     assert claim.gap.startswith(f"{GAP_PENDING_AT_BOOKING}:") and "pending" in claim.gap
-    assert "record:rec-0002-021@1" in keys(claim)
+    assert keys(claim) == set()  # minimum disclosure: an unresolved claim cites no record
     assert "settlement not retrieved" not in text(claim)
     assert out.lookups == 1
     assert out.unsafe_proposals >= 1   # supported was proposed, the code verdict is not supported

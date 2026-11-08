@@ -62,7 +62,7 @@ from alibi.agents.roles import call_cost
 from alibi.core import investigate_rules as core_rules
 from alibi.core import reconcile
 from alibi.core.canon import make_id
-from alibi.core.facts import derive_facts
+from alibi.core.facts import answered_calculation, answered_refs, derive_facts
 from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES, classify_question
 from alibi.core.package import PackageError, build_body
 from alibi.core.policy import CompiledPolicy, compile_policy
@@ -509,7 +509,8 @@ class _Run:
             claim_id=make_id("clm", self.run_id, question.question_id),
             request_id=self.rfc.request_id, audience=self.rfc.audience, question_id=question.question_id,
             statement=_clip(statement), status=outcome.status, rationale=_clip(outcome.rationale),
-            evidence_refs=_unique(evidence), calculation=outcome.calculation,
+            evidence_refs=answered_refs(outcome.status, evidence),
+            calculation=answered_calculation(outcome.status, outcome.calculation),
             gap=_clip(outcome.gap) if outcome.gap else None, run_id=self.run_id,
             facts=derive_facts(self.store, self.rfc, question, outcome.status,
                                outcome.evidence, outcome.calculation),

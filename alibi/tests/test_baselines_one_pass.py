@@ -133,9 +133,9 @@ def test_maya_message_names_no_reference_so_zero_lookups_and_unresolved(ctx):
     assert c.gap.startswith("settlement_not_found")
     assert "balance_release_not_settlement" in c.gap
     assert "stl_88001" not in {r.ref_id for r in c.evidence_refs}, "the settlement was never retrieved"
-    # Unsafe: the supported proposal, and the disclosure of stl_88001, which was never retrieved
-    # (po_5001 is cited by the unresolved claim, so the gate attaches it).
-    assert out.unsafe_proposals == 2
+    # Unsafe: the supported proposal, the disclosure of stl_88001 (never retrieved), and po_5001,
+    # which the unresolved claim no longer cites, so the gate does not attach it.
+    assert out.unsafe_proposals == 3
     assert c.statement != SUPPORTED_STATEMENT
     note = counts_note(out.result)
     assert note.result["lookups"] == 0 and note.result["fixed_retrieval"] == FIXED_RETRIEVAL
@@ -206,8 +206,9 @@ def test_ambiguous_candidates_stay_unresolved(ctx):
     (link,) = out.result.links
     assert link.link_state == LinkState.AMBIGUOUS
     assert sorted(r.ref_id for r in link.candidates) == ["po_5001", "po_5002"]
-    # The supported proposal plus the stl_88001 disclosure (never retrieved on this fixture).
-    assert out.lookups == 0 and out.unsafe_proposals == 2
+    # The supported proposal, the stl_88001 disclosure (never retrieved on this fixture) and the
+    # candidate payout, which the unresolved claim no longer cites.
+    assert out.lookups == 0 and out.unsafe_proposals == 3
 
 
 # --------------------------------------------------------------------------- validation and gate

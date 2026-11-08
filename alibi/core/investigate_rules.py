@@ -66,6 +66,7 @@ from alibi.core.reconcile import (
     SIGN_BY_KIND,
     ReconcileError,
 )
+from alibi.core.answered import answered_calculation, answered_refs
 from alibi.core.schemas import (
     BankTxn,
     Calculation,
@@ -467,8 +468,8 @@ class _Run:
             request_id=self.request.request_id, audience=self.request.audience,
             question_id=question.question_id,
             statement=_clip(outcome.statement), status=outcome.status,
-            rationale=_clip(rationale), evidence_refs=_unique(outcome.evidence),
-            calculation=outcome.calculation,
+            rationale=_clip(rationale), evidence_refs=answered_refs(outcome.status, outcome.evidence),
+            calculation=answered_calculation(outcome.status, outcome.calculation),
             gap=_clip(outcome.gap) if outcome.gap else None,
             gap_detail=_clip(outcome.detail) if outcome.detail else None,
             facts=dict(outcome.facts),

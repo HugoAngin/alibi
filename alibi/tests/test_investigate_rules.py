@@ -337,7 +337,7 @@ def test_supported_credit_links_by_reference_and_q1_is_supported(passport, keyst
     assert claim.status == SUPPORTED and claim.gap is None
     gold = fx["expected"]["claims"][RFC_A]["q1"]
     assert claim.status.value in gold["statuses"]
-    assert set(gold["evidence"]) <= keys(claim.evidence_refs)
+    assert (keys(claim.evidence_refs) == set()) if claim.status == UNRESOLVED else (set(gold["evidence"]) <= keys(claim.evidence_refs))
     assert "record:stl_88001@1" in keys(claim.evidence_refs)
     assert set(maya.COMPONENT_IDS) <= {ref.ref_id for ref in claim.evidence_refs}
     calc = claim.calculation
@@ -385,7 +385,7 @@ def test_ambiguous_payouts_leave_q1_unresolved(passport, keystore, now):
     claim = claim_of(result)
     assert claim.status == UNRESOLVED
     assert claim.status.value in fx["expected"]["claims"][RFC_A]["q1"]["statuses"]
-    assert keys(claim.evidence_refs) == set(fx["expected"]["claims"][RFC_A]["q1"]["evidence"])
+    assert keys(claim.evidence_refs) == set()  # minimum disclosure: an unresolved claim cites no record
     # The gap gives the number of candidates, not their contents.
     assert claim.gap_detail.startswith("2 payout records")
     assert not any(word in claim.gap_detail for word in ("po_500", "PO-500", "216000"))
@@ -449,7 +449,7 @@ def test_a_settlement_already_in_the_passport_is_used_when_the_lookup_is_unavail
 
     claim = claim_of(result)
     assert claim.status == expected
-    assert "record:stl_88001@1" in keys(claim.evidence_refs)
+    assert ("record:stl_88001@1" in keys(claim.evidence_refs)) == (expected != UNRESOLVED)
     assert "already in the passport" in claim.rationale
     paths = [e.result.get("path") for e in result.trace if e.actor == "rules"]
     assert "passport" in paths
@@ -520,7 +520,7 @@ def test_explicit_settlement_fields_decide_the_status(passport, keystore, now, c
     result, _ = investigate(store, fx, keystore, now)
     claim = claim_of(result)
     assert claim.status == expected
-    assert "record:stl_88001@1" in keys(claim.evidence_refs)
+    assert ("record:stl_88001@1" in keys(claim.evidence_refs)) == (expected != UNRESOLVED)
     assert claim.gap
     if "occurred_at" in change and change.get("status") != "pending":
         assert "after the credit was booked" in claim.gap_detail and "remains unresolved" in claim.gap_detail
@@ -603,7 +603,7 @@ def test_a_debit_is_unresolved_without_a_link(passport, keystore, now):
     result, _ = investigate(store, fx, keystore, now, "rfc_d_001")
     claim = claim_of(result)
     assert claim.status == UNRESOLVED and "debit" in claim.gap_detail
-    assert result.links == [] and keys(claim.evidence_refs) == {"txn:txn_9002@1"}
+    assert result.links == [] and keys(claim.evidence_refs) == set()  # minimum disclosure: an unresolved claim cites no record
 
 
 def test_several_transactions_share_one_claim_and_the_worst_status_wins(passport, keystore, now):
@@ -615,7 +615,7 @@ def test_several_transactions_share_one_claim_and_the_worst_status_wins(passport
     result, _ = investigate(store, fx, keystore, now, "rfc_e_001")
     claim = claim_of(result)
     assert claim.status == UNRESOLVED and "debit" in claim.gap_detail
-    assert {"txn:txn_9001@1", "record:stl_88001@1", "txn:txn_9002@1"} <= keys(claim.evidence_refs)
+    assert keys(claim.evidence_refs) == set()  # minimum disclosure: an unresolved claim cites no record
     assert "txn_9001" in claim.statement and "txn_9002" in claim.statement
     assert [link.txn_ref.ref_id for link in result.links] == ["txn_9001"]
 
@@ -800,7 +800,7 @@ def test_an_unrecognised_status_leaves_the_total_unresolved(passport, keystore, 
     for claim in (sales, net):  # never a supported partial total
         assert claim.status == UNRESOLVED and claim.calculation is None
         assert "ord_1003 (on_hold)" in claim.gap_detail
-        assert keys(claim.evidence_refs) == {"record:ord_1003@1"}
+        assert keys(claim.evidence_refs) == set()  # minimum disclosure: an unresolved claim cites no record
     assert (refunds.status, refunds.calculation.total_pence) == (SUPPORTED, 18000)
     assert (fees.status, fees.calculation.total_pence) == (SUPPORTED, 6000)
 
@@ -974,7 +974,7 @@ def test_a_self_supplied_payout_and_settlement_never_support(passport, keystore,
     if state == LinkState.LINKED:
         assert link.record_ref == rref("self_po_9")
         assert "self-supplied" in claim.gap_detail and "self-supplied" in claim.rationale
-        assert "record:self_stl_9@1" in keys(claim.evidence_refs)
+        assert keys(claim.evidence_refs) == set()  # minimum disclosure: an unresolved claim cites no record
 
 
 def test_a_self_supplied_settlement_neither_supports_nor_overrides_issuer_evidence(
@@ -988,7 +988,7 @@ def test_a_self_supplied_settlement_neither_supports_nor_overrides_issuer_eviden
     result, _ = investigate(store, fx, keystore, now, lookup=False)
     claim = claim_of(result)
     assert claim.status == UNRESOLVED and "self-supplied" in claim.gap_detail
-    assert "record:self_stl_88001@1" in keys(claim.evidence_refs)
+    assert keys(claim.evidence_refs) == set()  # minimum disclosure: an unresolved claim cites no record
 
     # An issuer-verified pending settlement is not shadowed by a later self-supplied one.
     store, fx = passport("contradiction", "shadow.db")
@@ -1152,7 +1152,7 @@ def test_integration_rfc_a_matches_the_gold(real, name):
     gold = fx["expected"]["claims"][RFC_A]["q1"]
     claim = claim_of(result)
     assert claim.status.value in gold["statuses"]
-    assert set(gold["evidence"]) <= keys(claim.evidence_refs)
+    assert (keys(claim.evidence_refs) == set()) if claim.status == UNRESOLVED else (set(gold["evidence"]) <= keys(claim.evidence_refs))
     if name == "contradiction":
         assert claim.status != SUPPORTED
     assert result.calls_used == gateway.calls_used

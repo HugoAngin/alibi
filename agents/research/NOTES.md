@@ -44,6 +44,7 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Merchant sim renamed ResaleHub -> Mock Marketplace (`mock-marketplace`) to match case 1.
 
 ## Next
+- data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.
 - Refresh README_draft verbatim sections and deck screenshots (wired app on case 1) when they land; fill placeholders only from eval-verified records.
 - Work loop: `board.py wait` in the background, act on posts addressed to research.

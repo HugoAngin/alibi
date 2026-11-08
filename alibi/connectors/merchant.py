@@ -1,8 +1,8 @@
 """The mock resale platform: the merchant side of the simulated services (SERVICES.md, "Mock
 merchant").
 
-``create_merchant_app(sink=None, *, keystore, passport_url=None, case_loader=...)`` builds a
-FastAPI app that
+``create_merchant_app(sink=None, *, keystore, passport_url=None, admin_token=None, tokens=None,
+case_loader=...)`` builds a FastAPI app that
 
 * loads one team case without gold (``POST /admin/seed``), keeps a ``CaseClock``, and pushes
   every visible ``merchant_deliveries`` entry to the passport in arrival order, duplicates,
@@ -22,8 +22,10 @@ are recorded with outcome ``not_delivered`` and the lookup routes still work.
 
 State lives on ``app.state.merchant`` (``MerchantState``): the clock, the delivery log with the
 exact signed payload of each push and its canonical sha256 (for ``/admin/retry``), the
-corrections, and the served-lookups log (eval's ``lookups`` count). Admin routes are
-unauthenticated local demo controls. Nothing here logs tokens or keys.
+corrections, and the served-lookups log (eval's ``lookups`` count). The ``/admin/*`` routes are
+local demo controls: they take the shared admin bearer (``alibi.connectors.http.admin_guard``,
+the same ``admin`` token the mock bank uses) from a loopback client only. Nothing here logs
+tokens or keys.
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import httpx
-from fastapi import Body, FastAPI, Query
+from fastapi import Body, Depends, FastAPI, Query
 
 from alibi.connectors import keys
 from alibi.connectors.case_source import (
@@ -45,7 +47,7 @@ from alibi.connectors.case_source import (
     map_merchant_event,
     parse_time,
 )
-from alibi.connectors.http import Refusal, install_refusals
+from alibi.connectors.http import Refusal, admin_guard, install_refusals, resolve_admin_token
 from alibi.connectors.plug import Sink
 from alibi.core import canon
 from alibi.core.schemas import format_utc
@@ -448,14 +450,17 @@ def http_sink(url: str, client: httpx.Client | None = None) -> Sink:
 
 
 def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
-                        passport_url: str | None = None,
+                        passport_url: str | None = None, admin_token: str | None = None,
+                        tokens: dict[str, str] | None = None,
                         case_loader: CaseLoader = load_case_without_gold) -> FastAPI:
     """The mock marketplace as a FastAPI app (routes in SERVICES.md, "Mock merchant").
 
     ``sink`` receives every push; with ``passport_url`` instead, pushes go over HTTP
     (``http_sink``); with neither they are recorded ``not_delivered``. ``keystore`` must hold
     ``merchant_mock`` (``keys.connector_keystore``). ``case_loader(n)`` returns a case without
-    gold or raises ``KeyError`` (``404 unknown_case``).
+    gold or raises ``KeyError`` (``404 unknown_case``). The admin credential for ``/admin/*`` is
+    ``admin_token``, else ``tokens["admin"]`` (the dict ``http.load_tokens`` returns, shared with
+    the bank), else a fresh random token; it is kept as ``app.state.admin_token``, never logged.
     """
     if sink is None and passport_url:
         sink = http_sink(passport_url)
@@ -463,6 +468,8 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
     install_refusals(app)
     state = MerchantState(keystore=keystore, sink=sink)
     app.state.merchant = state
+    app.state.admin_token = resolve_admin_token(admin_token, tokens)
+    require_admin = admin_guard(app)
 
     def load(case_number: int) -> dict[str, Any]:
         try:
@@ -481,7 +488,8 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
                 "as_of": None if clock is None else clock.as_of_text}
 
     @app.post("/admin/seed")
-    def seed(case: int = Query(1), as_of: str | None = Query(None)) -> dict[str, Any]:
+    def seed(case: int = Query(1), as_of: str | None = Query(None),
+             _: None = Depends(require_admin)) -> dict[str, Any]:
         loaded = load(case)
         state.seed(loaded, _as_of(as_of))
         clock = state.require_clock()
@@ -491,7 +499,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
                 "pushed": [d.summary() for d in pushed], "counts": _counts(pushed)}
 
     @app.post("/admin/advance")
-    def advance(as_of: str = Query(...)) -> dict[str, Any]:
+    def advance(as_of: str = Query(...), _: None = Depends(require_admin)) -> dict[str, Any]:
         clock = state.require_clock()
         normalised = _as_of(as_of)
         moment = parse_time(normalised, "as_of")
@@ -504,7 +512,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
                 "counts": _counts(pushed)}
 
     @app.post("/admin/retry")
-    def retry(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def retry(body: dict[str, Any] = Body(...), _: None = Depends(require_admin)) -> dict[str, Any]:
         state.require_clock()
         event_id = body.get("event_id") if isinstance(body, dict) else None
         if not isinstance(event_id, str) or not event_id:
@@ -512,7 +520,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
         return state.retry(event_id)
 
     @app.post("/admin/correct")
-    def correct(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    def correct(body: dict[str, Any] = Body(...), _: None = Depends(require_admin)) -> dict[str, Any]:
         state.require_clock()
         record_id = body.get("record_id") if isinstance(body, dict) else None
         if not isinstance(record_id, str) or not record_id:
@@ -576,11 +584,11 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
         return state.serve("/payouts", given, state.current(found))
 
     @app.get("/admin/lookups")
-    def lookups() -> dict[str, Any]:
+    def lookups(_: None = Depends(require_admin)) -> dict[str, Any]:
         return {"lookups": [entry.summary() for entry in state.lookups]}
 
     @app.get("/admin/deliveries")
-    def deliveries() -> dict[str, Any]:
+    def deliveries(_: None = Depends(require_admin)) -> dict[str, Any]:
         """The webhook log with the exact pushed payloads, in push order, so a passport that
         was not reachable at seed time can replay the pushes (``clients.bootstrap``)."""
         return {"as_of": None if state.clock is None else state.clock.as_of_text,
@@ -588,7 +596,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
                                for d in state.pushed]}
 
     @app.get("/admin/state")
-    def admin_state() -> dict[str, Any]:
+    def admin_state(_: None = Depends(require_admin)) -> dict[str, Any]:
         return state.snapshot()
 
     return app

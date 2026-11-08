@@ -166,11 +166,30 @@ def _summary(envelopes: Iterable[dict[str, Any]]) -> tuple[dict[str, Any], list[
 
 
 class MerchantClient:
-    """The passport's view of the mock merchant (``SERVICES.md``, "Mock merchant")."""
+    """The passport's view of the mock merchant (``SERVICES.md``, "Mock merchant").
 
-    def __init__(self, client, *, headers: dict[str, str] | None = None):
+    ``headers`` go on every call. ``admin_token`` is the merchant's admin bearer: it is sent
+    on the ``/admin/*`` calls only (``seed``, ``advance``, ``retry``, ``correct``,
+    ``deliveries``, ``state``), never on lookups or ``identity``. Without it the admin calls
+    reach the service unauthenticated and raise ``ClientError(401, "unauthenticated")``.
+    """
+
+    def __init__(self, client, *, headers: dict[str, str] | None = None,
+                 admin_token: str | None = None):
         self.client = client
         self.headers = dict(headers or {})
+        self._admin_token = admin_token
+
+    def __repr__(self) -> str:  # never show the token
+        return f"MerchantClient(admin={'yes' if self._admin_token else 'no'})"
+
+    @property
+    def admin_headers(self) -> dict[str, str]:
+        """The common headers plus the admin bearer when one was given."""
+        headers = dict(self.headers)
+        if self._admin_token:
+            headers["Authorization"] = f"Bearer {self._admin_token}"
+        return headers
 
     # ----------------------------------------------------------------------- lookups
 
@@ -238,30 +257,31 @@ class MerchantClient:
         params: dict[str, Any] = {"case": case}
         if as_of is not None:
             params["as_of"] = as_of if isinstance(as_of, str) else format_utc(as_of)
-        return _raise_for(self.client.post("/admin/seed", params=params, headers=self.headers))
+        return _raise_for(self.client.post("/admin/seed", params=params,
+                                           headers=self.admin_headers))
 
     def advance(self, as_of: datetime | str) -> dict[str, Any]:
         value = as_of if isinstance(as_of, str) else format_utc(as_of)
         return _raise_for(self.client.post("/admin/advance", params={"as_of": value},
-                                           headers=self.headers))
+                                           headers=self.admin_headers))
 
     def retry(self, event_id: str) -> dict[str, Any]:
         return _raise_for(self.client.post("/admin/retry", json={"event_id": event_id},
-                                           headers=self.headers))
+                                           headers=self.admin_headers))
 
     def correct(self, record_id: str, changes: dict[str, Any], reason: str) -> dict[str, Any]:
         return _raise_for(self.client.post(
             "/admin/correct", json={"record_id": record_id, "changes": changes,
-                                    "correction_reason": reason}, headers=self.headers))
+                                    "correction_reason": reason}, headers=self.admin_headers))
 
     def deliveries(self) -> list[dict[str, Any]]:
         """The merchant's webhook log with the exact pushed payloads (``GET /admin/deliveries``),
         for a passport that pulls instead of receiving pushes."""
-        response = self.client.get("/admin/deliveries", headers=self.headers)
+        response = self.client.get("/admin/deliveries", headers=self.admin_headers)
         return _list_of_dicts(_raise_for(response), "deliveries", response.status_code)
 
     def state(self) -> dict[str, Any]:
-        return _raise_for(self.client.get("/admin/state", headers=self.headers))
+        return _raise_for(self.client.get("/admin/state", headers=self.admin_headers))
 
 
 # --------------------------------------------------------------------------- bank
@@ -269,18 +289,26 @@ class MerchantClient:
 
 class BankClient:
     """One recipient identity (``bank_a`` or ``bank_b``) of the mock bank, or the holder's feed
-    connection, driven with its bearer token."""
+    connection, driven with its bearer token. ``admin_token`` is the bank's admin bearer, sent
+    on ``seed`` and ``advance`` only; the recipient token never reaches an admin route and the
+    admin token never reaches a recipient route."""
 
-    def __init__(self, client, token: str, *, recipient: str | None = None):
+    def __init__(self, client, token: str, *, recipient: str | None = None,
+                 admin_token: str | None = None):
         self.client = client
         self._token = token
+        self._admin_token = admin_token
         self.recipient = recipient
 
     @property
     def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"}
 
-    def __repr__(self) -> str:  # never show the token
+    @property
+    def admin_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._admin_token}"} if self._admin_token else {}
+
+    def __repr__(self) -> str:  # never show the tokens
         return f"BankClient(recipient={self.recipient!r})"
 
     def whoami(self) -> dict[str, Any]:
@@ -290,11 +318,13 @@ class BankClient:
         params: dict[str, Any] = {"case": case}
         if as_of is not None:
             params["as_of"] = as_of if isinstance(as_of, str) else format_utc(as_of)
-        return _raise_for(self.client.post("/admin/seed", params=params))
+        return _raise_for(self.client.post("/admin/seed", params=params,
+                                           headers=self.admin_headers))
 
     def advance(self, as_of: datetime | str) -> dict[str, Any]:
         value = as_of if isinstance(as_of, str) else format_utc(as_of)
-        return _raise_for(self.client.post("/admin/advance", params={"as_of": value}))
+        return _raise_for(self.client.post("/admin/advance", params={"as_of": value},
+                                           headers=self.admin_headers))
 
     def issue_rfc(self, request_id: str | None = None,
                   request: dict[str, Any] | None = None) -> dict[str, Any]:

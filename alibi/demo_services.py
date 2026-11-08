@@ -6,9 +6,11 @@ Both apps share one connector keystore (``data/alibi/keys`` by default, five dem
 seeded with the case at ``--as-of`` (default: the case's first RFC ``issued_at``). The merchant
 pushes its webhooks to ``--passport-url`` when given; without it the pushes are recorded as
 ``not_delivered`` and a passport pulls them with ``GET /admin/deliveries``
-(``alibi.connectors.clients.bootstrap`` does that). Bank tokens come from the environment
-(``ALIBI_BANK_A_TOKEN``, ``ALIBI_BANK_B_TOKEN``, ``ALIBI_FEED_TOKEN``) or ``data/alibi/bank_tokens.json``;
-only the file's path is printed, never a token.
+(``alibi.connectors.clients.bootstrap`` does that). Tokens come from the environment
+(``ALIBI_BANK_A_TOKEN``, ``ALIBI_BANK_B_TOKEN``, ``ALIBI_FEED_TOKEN``, ``ALIBI_ADMIN_TOKEN``) or
+``data/alibi/bank_tokens.json`` (``alibi.connectors.http.load_tokens``); the ``admin`` token is
+the one credential for the ``/admin/*`` routes of both services, and the runner seeds through it.
+Only the file's path is printed, never a token.
 
 The URL line is printed only once both servers listen; a server that cannot bind its port (a
 previous demo still running, say) is reported at once as ``{"stopped": true, "failed": [...]}``
@@ -67,7 +69,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def build_apps(args: argparse.Namespace) -> dict[str, Any]:
     """Create both apps with one keystore and seed them. Returns the apps and the seed results.
     Separated from ``serve`` so tests can build without binding a port."""
-    from alibi.bank.service import create_bank_app, load_tokens
+    from alibi.bank.service import create_bank_app
+    from alibi.connectors.http import ADMIN, load_tokens
     from alibi.connectors.merchant import create_merchant_app
 
     if args.as_of is not None:
@@ -76,8 +79,9 @@ def build_apps(args: argparse.Namespace) -> dict[str, Any]:
         except MappingError as exc:
             raise SystemExit(f"invalid --as-of: {exc} (invalid_time)") from None
     keystore = connector_keystore(args.keys)
-    tokens = load_tokens(args.tokens)
-    merchant = create_merchant_app(keystore=keystore, passport_url=args.passport_url)
+    tokens = load_tokens(args.tokens)      # one file: bank_a, bank_b, feed and admin
+    merchant = create_merchant_app(keystore=keystore, passport_url=args.passport_url,
+                                   admin_token=tokens[ADMIN])
     bank = create_bank_app(keystore=keystore, registry=keystore.registry(), tokens=tokens,
                            state_path=args.state)
     seeds: dict[str, Any] = {}
@@ -85,13 +89,14 @@ def build_apps(args: argparse.Namespace) -> dict[str, Any]:
         params: dict[str, Any] = {"case": args.case}
         if args.as_of:
             params["as_of"] = args.as_of
+        admin = {"Authorization": f"Bearer {tokens[ADMIN]}"}
         with TestClient(merchant) as client:
-            response = client.post("/admin/seed", params=params)
+            response = client.post("/admin/seed", params=params, headers=admin)
             seeds["merchant"] = response.json()
             if response.status_code >= 400:
                 raise SystemExit(f"merchant seed failed: {response.json()}")
         with TestClient(bank) as client:
-            response = client.post("/admin/seed", params=params)
+            response = client.post("/admin/seed", params=params, headers=admin)
             seeds["bank"] = response.json()
             if response.status_code >= 400:
                 raise SystemExit(f"bank seed failed: {response.json()}")

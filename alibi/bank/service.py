@@ -8,15 +8,16 @@ records analyst dispositions whose ``request_more`` creates a signed follow-up r
 ``feed`` token serves the holder's read-only bank feed (``alibi/connectors/bank_feed.py``).
 
 The recipient and analyst come from the token only; posted ``recipient``, ``analyst`` or
-``analyst_name`` fields are ignored. Every refusal is an ``alibi.connectors.http.Refusal`` whose
-reason names ids, fields and codes only. Tokens and keys are never logged or stored in state.
+``analyst_name`` fields are ignored. The ``/admin/*`` routes take the shared admin bearer
+(``alibi.connectors.http.admin_guard``: ``ALIBI_ADMIN_TOKEN``, else the ``admin`` entry of the
+tokens file, else ``admin_token=``) from a loopback client only. Every refusal is an
+``alibi.connectors.http.Refusal`` whose reason names ids, fields and codes only. Tokens and keys
+are never logged or stored in state.
 """
 
 from __future__ import annotations
 
 import copy
-import json
-import os
 import secrets
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -38,7 +39,17 @@ from alibi.connectors.case_source import (
     map_rfc,
     parse_time,
 )
-from alibi.connectors.http import Refusal, install_refusals
+from alibi.connectors.http import (
+    ADMIN,
+    DEFAULT_TOKENS_PATH,
+    TOKEN_ENV,
+    Refusal,
+    admin_guard,
+    bearer_token,
+    install_refusals,
+    load_tokens,
+    resolve_admin_token,
+)
 from alibi.connectors.plug import RfcSink
 from alibi.core import canon
 from alibi.core.canon import CanonError
@@ -54,8 +65,8 @@ __all__ = [
 SERVICE = "mock-bank"
 FEED = "feed"
 ANALYSTS = {"bank_a": "analyst_a1", "bank_b": "analyst_b1"}
-TOKEN_ENV = {"bank_a": "ALIBI_BANK_A_TOKEN", "bank_b": "ALIBI_BANK_B_TOKEN", FEED: "ALIBI_FEED_TOKEN"}
-DEFAULT_TOKENS_PATH = Path("data/alibi/bank_tokens.json")
+# The bank's own identities; ``admin`` (also in ``TOKEN_ENV``) is the shared demo control token.
+RECIPIENT_TOKENS = tuple(name for name in TOKEN_ENV if name != ADMIN)
 DECISIONS = ("clear", "escalate", "request_more")
 TERMINAL_DECISIONS = ("clear", "escalate")
 FOLLOW_UP_TTL = timedelta(days=7)
@@ -69,53 +80,8 @@ _IDENT = TypeAdapter(Ident)
 CaseLoader = Callable[[int], dict[str, Any]]
 
 
-# --------------------------------------------------------------------------- tokens
-
-
-def _read_tokens_file(path: Path) -> dict[str, str]:
-    with open(path, encoding="utf-8") as handle:
-        data = json.load(handle)
-    if not isinstance(data, dict) or not all(isinstance(v, str) for v in data.values()):
-        raise ValueError(f"the tokens file {path.as_posix()} must map identities to strings")
-    return data
-
-
-def _write_tokens_file(path: Path, tokens: dict[str, str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
-    fd = os.open(path, flags, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(tokens, handle, indent=1, sort_keys=True)
-        handle.write("\n")
-    os.chmod(path, 0o600)
-
-
-def load_tokens(path: Path | str | None = None) -> dict[str, str]:
-    """The bearer tokens for ``bank_a``, ``bank_b`` and ``feed``.
-
-    Environment variables (``ALIBI_BANK_A_TOKEN``, ``ALIBI_BANK_B_TOKEN``, ``ALIBI_FEED_TOKEN``)
-    win. Identities without one come from the JSON file at ``path`` (default
-    ``data/alibi/bank_tokens.json``), which is created with ``secrets.token_urlsafe(32)`` per
-    missing identity and mode 0600. Values are never logged.
-    """
-    tokens: dict[str, str] = {}
-    from_env = {name: os.environ.get(var) for name, var in TOKEN_ENV.items()}
-    missing = [name for name, value in from_env.items() if not value]
-    if missing:
-        file_path = DEFAULT_TOKENS_PATH if path is None else Path(path)
-        stored = _read_tokens_file(file_path) if file_path.exists() else {}
-        created = False
-        for name in TOKEN_ENV:
-            if not stored.get(name):
-                stored[name] = secrets.token_urlsafe(32)
-                created = True
-        if created:
-            _write_tokens_file(file_path, stored)
-        tokens.update({name: stored[name] for name in TOKEN_ENV})
-    for name, value in from_env.items():
-        if value:
-            tokens[name] = value
-    return tokens
+# Tokens: ``load_tokens``, ``TOKEN_ENV`` and ``DEFAULT_TOKENS_PATH`` live in
+# ``alibi.connectors.http`` (shared with the mock merchant) and are re-exported here.
 
 
 # --------------------------------------------------------------------------- helpers
@@ -821,40 +787,42 @@ class BankService:
 
 
 def create_bank_app(*, keystore: DemoKeystore, registry: TrustRegistry,
-                    tokens: dict[str, str] | None = None, state_path: Path | str | None = None,
-                    rfc_sink: RfcSink | None = None,
+                    tokens: dict[str, str] | None = None, admin_token: str | None = None,
+                    state_path: Path | str | None = None, rfc_sink: RfcSink | None = None,
                     case_loader: CaseLoader = load_case_without_gold) -> FastAPI:
     """The mock bank as a FastAPI app (SERVICES.md, "Mock bank").
 
-    ``tokens`` maps ``bank_a``, ``bank_b`` and ``feed`` to bearer tokens; without it
-    ``load_tokens()`` reads the environment or ``data/alibi/bank_tokens.json``. State lives in
-    memory, or at ``state_path`` as JSON (loaded when the file exists, replaced atomically on
-    every write). ``rfc_sink`` receives every issued request (``plug.RfcSink``). The service
-    object is reachable as ``app.state.bank``.
+    ``tokens`` maps ``bank_a``, ``bank_b`` and ``feed`` (and optionally ``admin``) to bearer
+    tokens; without it ``load_tokens()`` reads the environment or
+    ``data/alibi/bank_tokens.json``. The admin credential for ``/admin/*`` is ``admin_token``,
+    else ``tokens["admin"]``, else a fresh random token; whichever applies is kept as
+    ``app.state.admin_token`` and never logged. State lives in memory, or at ``state_path`` as
+    JSON (loaded when the file exists, replaced atomically on every write). ``rfc_sink``
+    receives every issued request (``plug.RfcSink``). The service object is reachable as
+    ``app.state.bank``.
     """
     resolved = dict(tokens) if tokens is not None else load_tokens()
-    missing = [name for name in TOKEN_ENV if not resolved.get(name)]
+    missing = [name for name in RECIPIENT_TOKENS if not resolved.get(name)]
     if missing:
         raise ValueError(f"tokens are missing for {', '.join(missing)}")
+    admin = resolve_admin_token(admin_token, resolved)
+    resolved.pop(ADMIN, None)      # the admin token is never a recipient or feed identity
     bank = BankService(keystore=keystore, registry=registry, tokens=resolved,
                        state_path=state_path, rfc_sink=rfc_sink, case_loader=case_loader)
     app = FastAPI(title="Alibi mock bank", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.bank = bank
+    app.state.admin_token = admin
     install_refusals(app)
-
-    def _bearer(request: Request) -> str | None:
-        header = request.headers.get("authorization") or ""
-        scheme, _, token = header.partition(" ")
-        return token.strip() if scheme.lower() == "bearer" and token.strip() else None
+    require_admin = admin_guard(app)
 
     def require_recipient(request: Request) -> str:
-        identity = bank.identity(_bearer(request))
+        identity = bank.identity(bearer_token(request))
         if identity not in RECIPIENTS:
             raise Refusal("unauthenticated", "a valid recipient bearer token is required")
         return identity
 
     def require_feed(request: Request) -> str:
-        identity = bank.identity(_bearer(request))
+        identity = bank.identity(bearer_token(request))
         if identity != FEED:
             raise Refusal("unauthenticated", "a valid feed bearer token is required")
         return identity
@@ -866,11 +834,12 @@ def create_bank_app(*, keystore: DemoKeystore, registry: TrustRegistry,
         return bank.identity_view()
 
     @app.post("/admin/seed")
-    def admin_seed(case: int = 1, as_of: str | None = None) -> dict[str, Any]:
+    def admin_seed(case: int = 1, as_of: str | None = None,
+                   _: None = Depends(require_admin)) -> dict[str, Any]:
         return bank.seed(case, as_of)
 
     @app.post("/admin/advance")
-    def admin_advance(as_of: str | None = None) -> dict[str, Any]:
+    def admin_advance(as_of: str | None = None, _: None = Depends(require_admin)) -> dict[str, Any]:
         return bank.advance(as_of)
 
     @app.get("/whoami")

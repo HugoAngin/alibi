@@ -88,6 +88,10 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Fixed alibi.css: `.page-title` overflow-wrap (export pages were 419px at 390px). pytest alibi: 5 failed, none CSS (3 await Elio's s5_templates_on_main.patch).
 - No s5_static.patch exists. Next: 11:15Z fresh-clone RUNBOOK run in replay mode, no key; then the final demo_script.
 
+- Lead 10:52Z (post 6720581992): demo_script must show the follow-up only on the native bank console route. On the Jinja fallback, skip the follow-up beat (the passport proxy POST /bank/bank_a/requests is a known limit).
+
+- 11:15Z fresh-clone RUNBOOK run done: out/fresh_clone_1115.md. The RUNBOOK's two-process start never connects to the services (seed case_adapter, in-process bank); `alibi.demo` is still marked pending. Replay needs ALIBI_MODE=agents. Both banks delivered; verify_package exit 0. Next: final demo_script.md on `ALIBI_MODE=agents alibi.demo --replay` plus the clock advance before Send.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

@@ -1,0 +1,333 @@
+--- a/alibi/bank/state.py
++++ b/alibi/bank/state.py
+@@ -51,6 +51,10 @@
+     answered_by: list[str] = field(default_factory=list)
+     accepted_forward: dict[str, Any] | None = None
+ 
++    @property
++    def delivery_confirmed(self) -> bool:
++        return self.accepted_forward is not None or bool(self.answered_by)
++
+     def summary(self) -> dict[str, Any]:
+         """The ``GET /rfc`` listing shape."""
+         return {
+@@ -62,6 +66,7 @@
+             "question_ids": list(self.question_ids),
+             "source": self.source,
+             "answered_by": list(self.answered_by),
++            "delivery_confirmed": self.delivery_confirmed,
+         }
+ 
+ 
+--- a/alibi/connectors/SERVICES.md
++++ b/alibi/connectors/SERVICES.md
+@@ -138,10 +138,10 @@
+ | `POST /admin/advance?as_of=` | admin, loopback | Clock forward only. | `{as_of}`; `409 clock_backwards` |
+ | `GET /whoami` | recipient | | `{recipient, analyst}` |
+ | `POST /rfc` body `{}` or `{"request_id"}` or `{"request": {...}}` | recipient | Issue a Request for Context. `{}`: the case's first unissued RFC whose audience is this recipient. `request_id`: that case RFC (must have this audience, else `404 unknown_request`, same reason as a missing id). `request`: a custom request body; `issuer` and `audience` default to the authenticated recipient. A conflicting `issuer` returns `403 issuer_mismatch`; a conflicting `audience` or `recipient` returns `403 recipient_mismatch`. `subject_ref` must be the case subject. Each transaction’s latest visible revision must belong to the account feed, else `400 txn_out_of_feed`. Mapped with `map_rfc`, signed with this bank's key (request domain). Refused with `409 request_expired` when the clock is at or past `expires_at`. Re-issuing an issued id returns the stored bytes (200). Forwarded to the `rfc_sink` when configured. | `201 {recipient, request_id, rfc: {request, signature}, account_refs: [account_ref], forwarded}` |
+-| `GET /rfc` | recipient | Requests this recipient sent. | `{requests: [{request_id, parent_request_id, issued_at, expires_at, scope: {txn_ids} or {period}, question_ids, source: case | follow_up | custom, answered_by: [package_id]}]}` |
++| `GET /rfc` | recipient | Requests this recipient issued. `delivery_confirmed` is true after holder acceptance or a verified answer. | `{requests: [{request_id, parent_request_id, issued_at, expires_at, scope: {txn_ids} or {period}, question_ids, source: case | follow_up | custom, answered_by: [package_id], delivery_confirmed: bool}]}` |
+ | `GET /rfc/{request_id}` | recipient | One sent request. | `{request_id, rfc, account_refs}`; `404 not_found` |
+ | `POST /deliver` body = signed Context Package JSON | recipient | 1. Strict JSON object with `package_id` (`400 invalid_package`). 2. `digest = canon.digest(raw)`. Same `package_id` already in this inbox: same digest returns the stored receipt and status (200 or 422 as first time); different digest `409 package_id_reused`, nothing stored. 3. `body.audience != recipient`: `409 audience_mismatch`. 4. `body.request_id` not issued by this recipient: `409 unknown_request`. 5. `alibi.api.verify_package(raw, expected_audience=recipient, registry, now=clock, expected_subject=rfc.subject_ref, expected_request_id=rfc.request_id)`. Receipt bound to `package_id` and digest: `Receipt(receipt_id = make_id("rcp", recipient, package_id, digest), package_id, package_sha256 = digest, recipient, received_at = clock, accepted, reasons)`. Rejections (steps 3 to 5) store an inbox entry with status `rejected`, the receipt and reasons, no bytes. Audit every outcome. | accepted: `200 {status: "verified", receipt, authentication, sources, claims}`; rejected: `422 package_rejected` (or `409 audience_mismatch` / `409 unknown_request`) with `{code, reason, receipt, rejection: {authentication, errors}}` |
+-| `GET /inbox` | recipient | | `{recipient, as_of, packages: [{package_id, request_id, received_at, status: verified | rejected, package_sha256, receipt_id, expires_at?, disposition: decision or null, reasons? (rejected only)}], requests_sent: [...]}` |
++| `GET /inbox` | recipient | `requests_sent` uses the same summaries as `GET /rfc`. | `{recipient, as_of, packages: [{package_id, request_id, received_at, status: verified | rejected, package_sha256, receipt_id, expires_at?, disposition: decision or null, reasons? (rejected only)}], requests_sent: [...]}` |
+ | `GET /packages/{package_id}` | recipient | Only this recipient's inbox. Unknown or another recipient's: `404 not_found`, reason "no package {id} in this inbox" either way. | verified: `{status: "verified", receipt, authentication, sources, claims, package: {package_id, issued_at, body_sha256, body: {request_id, parent_request_id, audience, case_ref, scope, questions, claims, expires_at, attachments: [metadata only: attachment_id, ref, form, source_trust, issuer_id, generalised_fields]}}, dispositions: [...], follow_ups: [request_id]}`; rejected: `{status: "rejected", receipt, rejection: {reasons}}` and no other key |
+ | `GET /packages/{package_id}/attachments` | recipient | Full attachments with content and issuer signatures. | verified: `{package_id, attachments: [...]}`; rejected: `409 package_rejected`; `404 not_found` |
+ | `GET /packages/{package_id}/raw` | recipient | The exact stored package JSON, for the independent verifier. | verified only; else as above |
+--- a/alibi/demo_director.py
++++ b/alibi/demo_director.py
+@@ -156,7 +156,8 @@
+                                             sort_keys=True, default=str).encode()).hexdigest()[:16]
+         req_id = self.steps["requests"]["bank_a"]
+         bank_a = bank.state.recipient("bank_a") if bank is not None else None
+-        requested = bool(bank_a and req_id in bank_a.requests)
++        request = bank_a.requests.get(req_id) if bank_a else None
++        requested = request is not None and request.delivery_confirmed
+         received = [e.package_id for e in (bank_a.inbox.values() if bank_a else [])
+                     if e.request_id == req_id and e.status == "verified"]
+         withdrawn = bool(as_of and as_of >= self.steps["withdraw"][0])
+--- a/alibi/tests/test_app_integration.py
++++ b/alibi/tests/test_app_integration.py
+@@ -13,7 +13,9 @@
+ from __future__ import annotations
+ 
+ import json
++from contextlib import nullcontext
+ from datetime import datetime, timezone
++from types import SimpleNamespace
+ 
+ import pytest
+ from fastapi.testclient import TestClient
+@@ -27,6 +29,7 @@
+ from alibi.core import canon
+ from alibi.core.schemas import SigningDomain
+ from alibi.core.signing import DemoKeystore, TrustRegistry, verify
++from alibi.demo_director import Director
+ 
+ NOW = datetime(2026, 11, 5, 15, 0, tzinfo=timezone.utc)      # the holder app clock: 25 h after the feed as_of, so the unexplained-credit alert is due
+ AS_OF = "2026-11-04T14:00:00Z"                                # the services' clock: both case RFCs visible
+@@ -151,6 +154,8 @@
+     assert issued.json()["forwarded"]["status"] == "refused"
+     assert issued.json()["forwarded"]["code"] == "rfc_refused"
+     assert stack.client.get(f"/requests/{RID}", headers=JSON).status_code == 404
++    first_inbox = stack.bank_client.get("/inbox", headers=TOKEN_A).json()
++    assert first_inbox["requests_sent"][0]["delivery_confirmed"] is False
+ 
+     state_path = stack.root / "bank" / "state.json"
+     if legacy:
+@@ -181,12 +186,19 @@
+     stack.sync()
+     monkeypatch.setattr(keys, "sign_request", reject_resigning)
+     client = restart_bank()
++    director = Director(SimpleNamespace(
++        bank_service=lambda: client.app.state.bank, urls={"app": APP_URL}, holder_headers=dict))
++    monkeypatch.setattr(director, "_client", lambda: nullcontext(stack.client))
++    assert director.state()["steps"]["requested"] is False
+     retried = client.post("/rfc", json={"request_id": RID}, headers=TOKEN_A)
+     assert retried.status_code == 200
+     assert retried.json()["forwarded"]["status"] == "accepted"
+     assert retried.json()["rfc"] == issued.json()["rfc"]
+     assert forward.signed == [canon.canonical_bytes(issued.json()["rfc"])]
+     assert stack.client.get(f"/requests/{RID}", headers=JSON).status_code == 200
++    accepted_inbox = client.get("/inbox", headers=TOKEN_A).json()
++    assert accepted_inbox["requests_sent"][0]["delivery_confirmed"] is True
++    assert director.state()["steps"]["requested"] is True
+ 
+     again = restart_bank().post("/rfc", json={"request_id": RID}, headers=TOKEN_A)
+     assert again.status_code == 200 and again.json() == retried.json()
+--- a/alibi/tests/test_bank_service.py
++++ b/alibi/tests/test_bank_service.py
+@@ -864,6 +864,7 @@
+     state_path.write_text(json.dumps(state))
+ 
+     restarted = make_app(built, state_path=state_path, sink=sink, seed=False)
++    assert restarted.get("/rfc", headers=auth("bank_a")).json()["requests"][0]["delivery_confirmed"] is True
+     repeat = restarted.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
+     assert repeat.status_code == 200 and repeat.json() == issued.json()
+     assert len(sink.calls) == 1
+--- a/web/apps/bank/src/lib/bankApi.ts
++++ b/web/apps/bank/src/lib/bankApi.ts
+@@ -98,6 +98,7 @@
+     issued_at: string;
+     question_ids?: string[];
+     answered_by?: string[];
++    delivery_confirmed?: boolean;
+   }[];
+ }
+ 
+@@ -401,7 +402,12 @@
+       request_id: r.request_id,
+       parent_request_id: r.parent_request_id,
+       sent_at: r.issued_at,
+-      status: (r.answered_by ?? []).length > 0 ? 'answered' : 'awaiting_answer',
++      status:
++        (r.answered_by ?? []).length > 0
++          ? 'answered'
++          : r.delivery_confirmed === false
++            ? 'delivery_unconfirmed'
++            : 'awaiting_answer',
+       question_count: (r.question_ids ?? []).length,
+     })),
+   };
+--- a/web/apps/bank/src/lib/caseState.ts
++++ b/web/apps/bank/src/lib/caseState.ts
+@@ -1,8 +1,8 @@
+ /**
+  * Where each case stands with Alibi, from the bank service's own inbox: nothing asked yet, a
+- * request waiting for the customer, or a package received. Without a live inbox (the built-in
+- * preview) nothing has been sent, so every case starts at "not requested" and the full request
+- * flow stays visible.
++ * request with unconfirmed delivery, a request waiting for the customer, or a package received.
++ * Without a live inbox (the built-in preview) every eligible case starts at "not requested"
++ * and the full request flow stays visible.
+  */
+ import type { FraudCase } from '../data/cases';
+ 
+@@ -14,6 +14,7 @@
+   | { kind: 'unavailable' }
+   | { kind: 'closed' }
+   | { kind: 'not_requested' }
++  | { kind: 'delivery_unconfirmed' }
+   | { kind: 'requested'; requestId: string; sentAt: string }
+   | { kind: 'received'; requestId: string; packageId: string; href: string; receivedAt: string };
+ 
+@@ -21,7 +22,11 @@
+   if (c.status === 'closed') return { kind: 'closed' };
+   if (!c.request) return { kind: 'unavailable' };
+   const id = c.request.id;
+-  const pkg = inbox?.packages.find((p) => p.request_id === id);
++  const sent = inbox?.requests_sent.find((r) => r.request_id === id);
++  const unconfirmed = sent?.status === 'delivery_unconfirmed';
++  const pkg = inbox?.packages.find(
++    (p) => p.request_id === id && (!unconfirmed || p.authentication === 'valid'),
++  );
+   if (pkg)
+     return {
+       kind: 'received',
+@@ -30,11 +35,15 @@
+       href: pkg.href,
+       receivedAt: pkg.received_at,
+     };
+-  const sent = inbox?.requests_sent.find((r) => r.request_id === id);
++  if (unconfirmed) return { kind: 'delivery_unconfirmed' };
+   if (sent) return { kind: 'requested', requestId: id, sentAt: sent.sent_at };
+   return { kind: 'not_requested' };
+ }
+ 
++export function canSendAlibiRequest(s: AlibiState | undefined): boolean {
++  return s?.kind === 'not_requested' || s?.kind === 'delivery_unconfirmed';
++}
++
+ /** The status column's words; never colour alone. */
+ export function statusLabel(c: FraudCase, s: AlibiState): string {
+   if (s.kind === 'received') return 'Alibi received';
+--- a/web/apps/bank/src/components/CaseQueue.astro
++++ b/web/apps/bank/src/components/CaseQueue.astro
+@@ -12,7 +12,7 @@
+ import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
+ 
+ import { day, formatGBP, when, type FraudCase } from '@/data/cases';
+-import { statusLabel } from '@/lib/caseState';
++import { canSendAlibiRequest, statusLabel } from '@/lib/caseState';
+ import type { Queue } from '@/lib/queue';
+ 
+ interface Props {
+@@ -142,7 +142,8 @@
+   const s = queue.states[c.id]!;
+   const isOpen = openId === c.id;
+   const label = statusLabel(c, s);
+-  const canRequest = s.kind === 'not_requested';
++  const canRequest = canSendAlibiRequest(s);
++  const isRetry = s.kind === 'delivery_unconfirmed';
+   return (
+     <aside
+       class="drawer"
+@@ -296,14 +297,26 @@
+         <footer class="drawer-foot">
+           {canRequest && c.request && (
+             <>
+-              <RequestAlibiButton
+-                href={`/cases/${c.id}/request/`}
+-                variant="solid"
+-                block
+-                data-request={c.id}
+-              />
++              {isRetry ? (
++                <a
++                  class="btn btn--alibi btn--block"
++                  href={`/cases/${c.id}/request/`}
++                  data-request={c.id}
++                >
++                  Retry Alibi request
++                </a>
++              ) : (
++                <RequestAlibiButton
++                  href={`/cases/${c.id}/request/`}
++                  variant="solid"
++                  block
++                  data-request={c.id}
++                />
++              )}
+               <p class="foot-note">
+-                {c.customer} chooses what to share. You receive a signed package you can verify.
++                {isRetry
++                  ? 'Delivery is unconfirmed. Retrying uses the same request.'
++                  : `${c.customer} chooses what to share. You receive a signed package you can verify.`}
+               </p>
+             </>
+           )}
+@@ -430,12 +443,12 @@
+               <input type="hidden" name="case_id" value={c.id} />
+               <input type="hidden" name="return_to" value={`/cases/${c.id}/`} />
+               <button type="submit" class="btn btn--alibi btn--block" disabled={!queue.live}>
+-                Send request
++                {isRetry ? 'Retry request' : 'Send request'}
+               </button>
+             </form>
+             <p class="foot-note">
+               {queue.live
+-                ? `Sent through Bank A’s Alibi connection as ${c.request.id}.`
++                ? `Request ID ${c.request.id} · Bank A’s Alibi connection`
+                 : 'Preview: the bank service is not connected here, so sending is off.'}
+             </p>
+           </footer>
+--- a/web/apps/bank/src/pages/cases/[id]/request.astro
++++ b/web/apps/bank/src/pages/cases/[id]/request.astro
+@@ -9,6 +9,7 @@
+ import CaseQueue from '@/components/CaseQueue.astro';
+ import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
+ import { findCase } from '@/data/cases';
++import { canSendAlibiRequest } from '@/lib/caseState';
+ import { loadQueue } from '@/lib/queue';
+ 
+ export const prerender = false;
+@@ -21,7 +22,7 @@
+ // In the live demo Maya's case only exists once her payout is flagged (src/lib/queue.ts).
+ if (!loaded.queue.cases.some((c) => c.id === fraudCase.id)) return Astro.redirect('/', 303);
+ // Only a case that can still be asked has a request step.
+-if (loaded.queue.states[fraudCase.id]?.kind !== 'not_requested')
++if (!canSendAlibiRequest(loaded.queue.states[fraudCase.id]))
+   return Astro.redirect(`/cases/${fraudCase.id}/`, 303);
+ Astro.response.headers.set('Cache-Control', 'private, no-store');
+ ---
+--- a/web/apps/bank/src/pages/inbox.astro
++++ b/web/apps/bank/src/pages/inbox.astro
+@@ -119,7 +119,7 @@
+       </section>
+ 
+       <section aria-labelledby="sent-title">
+-        <h2 id="sent-title">Requests sent</h2>
++        <h2 id="sent-title">Alibi requests</h2>
+         <ul class="plain">
+           {loaded.data.requests_sent.map((r) => (
+             <li>
+--- a/web/apps/bank/tests/request.test.ts
++++ b/web/apps/bank/tests/request.test.ts
+@@ -7,8 +7,8 @@
+ 
+ import { cases, findCase } from '../src/data/cases';
+ import { handleAct, planAction, type Forward } from '../src/lib/actions';
+-import { bankTarget } from '../src/lib/bankApi';
+-import { alibiState, statusLabel } from '../src/lib/caseState';
++import { bankTarget, toAnalystInbox } from '../src/lib/bankApi';
++import { alibiState, canSendAlibiRequest, statusLabel } from '../src/lib/caseState';
+ import type { AnalystInbox } from '../src/lib/types';
+ 
+ const SITE = 'https://bank.example.test';
+@@ -124,6 +124,28 @@
+     expect(statusLabel(maya, s)).toBe('Awaiting customer');
+   });
+ 
++  it.each([
++    [false, 'delivery_unconfirmed', true],
++    [true, 'requested', false],
++    [undefined, 'requested', false],
++  ])('gates sending when the bank returns delivery_confirmed %s', (confirmed, kind, canSend) => {
++    const wire = {
++      recipient: 'bank_a',
++      packages: [],
++      requests_sent: [
++        {
++          request_id: 'rfc-0001-01',
++          parent_request_id: null,
++          issued_at: '2026-11-02T09:00:00Z',
++          delivery_confirmed: confirmed,
++        },
++      ],
++    };
++    const s = alibiState(maya, toAnalystInbox(wire, inbox({}).recipient));
++    expect(s.kind).toBe(kind);
++    expect(canSendAlibiRequest(s)).toBe(canSend);
++  });
++
+   it('links a received package to its review page', () => {
+     const s = alibiState(
+       maya,
+@@ -144,6 +166,7 @@
+     );
+     expect(s).toMatchObject({ kind: 'received', href: '/packages/pkg-1/' });
+     expect(statusLabel(maya, s)).toBe('Alibi received');
++    expect(canSendAlibiRequest(s)).toBe(false);
+   });
+ 
+   it('never offers a request for a closed case or a case without one', () => {

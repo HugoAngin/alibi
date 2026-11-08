@@ -53,6 +53,12 @@ uv run --frozen python -m pytest -q alibi/tests/test_bank_service.py \
   alibi/tests/test_demo_director.py agents/research/deploy/test_router.py
 ```
 
+## Analyst retry control
+
+Apply `BANK_RFC_UI_RETRY.patch` after `BANK_RFC_HARDENING.patch`. Native bank responses expose `delivery_confirmed`, and the demo director moves to the requested stage after confirmation. The analyst can retry an unconfirmed send from the existing case review. The same request ID reaches the director, so the bank reuses the signed envelope. Confirmed sends keep the waiting state, and a Worker reading an older backend payload still recognises its legacy state. Apply `bank-request-delivery.patch` for the confirmation and refusal messages on both send paths.
+
+The retry companion passed 50 Worker tests and the Bank Astro check. A separate combined run passed all 40 native bank, holder and director tests, including the director's live socket walkthrough. That run checked the patch together with the current bank hardening and candidate 4 changes. Lead owns the native service and director. Execution owns the bank Worker.
+
 ## Recovering an already-recorded request
 
 On a disposable `58bf0d4` stack, an injected first Bank A forwarding refusal returned 201 and left Maya's request page at 404. Running the existing driver on that same signed request returned `reissued: true` and `forwarded.status: accepted` via its direct relay fallback. The holder readback then returned 200 for the same request ID.

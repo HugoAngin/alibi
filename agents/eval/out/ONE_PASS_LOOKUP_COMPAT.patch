@@ -1,0 +1,25 @@
+diff --git a/alibi/tests/test_agents_payout_settlement.py b/alibi/tests/test_agents_payout_settlement.py
+--- a/alibi/tests/test_agents_payout_settlement.py
++++ b/alibi/tests/test_agents_payout_settlement.py
+@@ -320,15 +320,16 @@
+     assert note.result["proposed_statuses"] == {Q_SOURCE: "supported"}
+ 
+ 
+-def test_one_pass_case_2_lookup_only_payout_is_never_seen_and_never_supported(make):
+-    # Case 2 as published: no pushed payout names the reference, so the fixed retrieval looks
+-    # nothing up and the baseline stays honest about having no payout at all.
++def test_one_pass_case_2_lookup_only_pending_payout_is_examined_but_not_disclosed(make):
++    # The issuer's message names the lookup-only payout. Fixed retrieval examines it once;
++    # its pending state still cannot support the source or disclose unresolved evidence.
+     world = make(2)
+     out = world.one_pass(FakeClient({"*": one_pass_answer(2)}))
+     claim = by_question(out.result)[Q_SOURCE]
+     assert claim.status == ClaimStatus.UNRESOLVED
+-    assert "rec-0002-021" not in {r.ref_id for r in claim.evidence_refs}
+-    assert out.lookups == 0
++    assert claim.evidence_refs == [] and claim.calculation is None
++    assert "rec-0002-021" in {r.ref_id for r in claim.examined_refs}
++    assert out.lookups == 1
+ 
+ 
+ def test_one_pass_pending_payout_not_looked_up_stays_provisional_and_honest(make):

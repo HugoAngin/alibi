@@ -1,6 +1,8 @@
+Integration update: rebased onto the current answered-helper imports. Apply together with UNRESOLVED_EVIDENCE.patch: the unresolved breakdown keeps its source outcome as private dependencies; the paired claim builder removes public citations/calculation while retaining examined_refs. These two fields are dependency preservation, not disclosed evidence.
+
 # One-pass question classification: proposed fix (public cases only)
 
-The native change is staged for the application owner. The original public checks used `f77b141`. `CLASSIFICATION.patch` now applies to `1b5c21a`, preserving candidate 4's minimum-disclosure helpers. The combined issuer, classification, bank, draft order, and port probe patches passed 167 targeted tests in a disposable copy.
+The native change is staged for the application owner. The original public checks used `f77b141`. The patch now applies to the current answered-helper imports and must be paired with `UNRESOLVED_EVIDENCE.patch`. The earlier issuer, classification, bank, draft-order and port-probe combination passed 167 targeted tests in a disposable copy; the newer dependency, classification and lookup combination passed 357 targeted tests.
 
 ## Finding
 

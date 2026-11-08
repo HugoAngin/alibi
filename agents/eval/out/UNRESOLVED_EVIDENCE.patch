@@ -1,0 +1,583 @@
+diff --git a/alibi/agents/runner.py b/alibi/agents/runner.py
+--- a/alibi/agents/runner.py
++++ b/alibi/agents/runner.py
+@@ -73,6 +73,7 @@
+ from alibi.core import reconcile
+ from alibi.core.canon import make_id
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
++from alibi.core.answered import examined_refs
+ from alibi.core.investigate_rules import (
+     COMPONENT_KINDS,
+     COUNTED_STATUSES,
+@@ -1111,12 +1112,13 @@
+                           question_id=question.question_id, statement=_clip(outcome.statement, 4000),
+                           status=outcome.status, rationale=_clip(outcome.rationale, 4000),
+                           evidence_refs=answered_refs(outcome.status, outcome.evidence),
++                          examined_refs=examined_refs(outcome.status, outcome.evidence, outcome.calculation),
+                           calculation=answered_calculation(outcome.status, outcome.calculation),
+                           gap=_clip(outcome.gap, 4000) if outcome.gap else None, run_id=self.run_id,
+                           facts=derive_facts(self.store, self.rfc, question, outcome.status,
+                                              outcome.evidence, outcome.calculation),
+                           created_at=self.now)
+-            self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
++            self.note("status_change", reason=outcome.reason, refs=[*claim.evidence_refs, *claim.examined_refs],
+                       result={"claim_id": claim.claim_id, "status": claim.status.value, "final": True})
+             built.append(claim)
+         self.question_id = None
+diff --git a/alibi/api.py b/alibi/api.py
+--- a/alibi/api.py
++++ b/alibi/api.py
+@@ -25,7 +25,7 @@
+ """
+ 
+ import copy
+-from collections.abc import Collection, Mapping
++from collections.abc import Collection, Iterable, Mapping
+ from datetime import datetime, timezone
+ from pathlib import Path
+ from typing import Any
+@@ -102,6 +102,7 @@
+     RevisionConflict,
+     Store,
+     StoreError,
++    dependency_refs,
+ )
+ from alibi.fixtures import maya
+ from alibi.gateway import (
+@@ -399,13 +400,20 @@
+     run cannot be packaged (no claims, or claims invalidated by newer evidence)."""
+     try:
+         claims = _latest_claims(store, rfc)
+-        refs = core_package.cited_refs(claims, request_id=rfc.request_id)
++        refs = _claim_dependencies(claims)
++        if refs != core_approval.merge_refs(draft.source_revisions):
++            return None  # the examined inputs changed, even if the recipient text did not
+         evidence = [_load_ref(store, ref) for ref in refs]
+         body, _ = core_package.build_body(rfc, claims, evidence, compiled, now=draft.created_at,
+                                           removed=_removed_by_holder(draft))
+     except (PackageError, NotFound):
+         return None
+     return body
++
++
++def _claim_dependencies(claims: Iterable[Claim]) -> list[EvidenceRef]:
++    """All private revision pins, including examined sources an unresolved answer withholds."""
++    return core_approval.merge_refs(*(dependency_refs(claim) for claim in claims))
+ 
+ 
+ _VOLATILE_BODY_FIELDS = ("expires_at", "issued_at")
+@@ -443,7 +451,9 @@
+             approved12=old.body_sha256[:12], current12=current.body_sha256[:12]))
+     for approval in store.list_approvals(request_id=request_id,
+                                          status=ApprovalStatus.PENDING.value):
+-        if approval.audience != audience or approval.body_sha256 == current.body_sha256:
++        if approval.audience != audience or (approval.body_sha256 == current.body_sha256
++                and core_approval.merge_refs(approval.source_revisions)
++                == core_approval.merge_refs(current.source_revisions)):
+             continue
+         store.update_approval(Approval.model_validate({
+             **approval.to_json_dict(), "status": ApprovalStatus.INVALIDATED.value,
+@@ -709,8 +719,7 @@
+     try:
+         with store.transaction():
+             claims = _latest_claims(store, rfc)
+-            refs = core_package.cited_refs(claims, request_id=rfc.request_id,
+-                                           audience=rfc.audience)
++            refs = _claim_dependencies(claims)
+             evidence = [_load_ref(store, ref) for ref in refs]
+             _, compiled = _current_policy(store, rfc.subject_ref)
+             body, review = core_package.build_body(rfc, claims, evidence, compiled, now=at,
+@@ -721,7 +730,8 @@
+             fingerprint = _body_fingerprint(draft.body)
+             same_body = [d for d in _live_drafts(store, rfc.request_id, rfc.audience)
+                          if _body_fingerprint(d.body) == fingerprint
+-                         and d.policy_version == draft.policy_version]
++                         and d.policy_version == draft.policy_version
++                         and core_approval.merge_refs(d.source_revisions) == refs]
+             if same_body:
+                 return same_body[-1]   # built already (any clock): keep it and its status
+             taken = {d.draft_id for d in store.list_drafts(request_id=rfc.request_id)}
+diff --git a/alibi/baselines/one_pass.py b/alibi/baselines/one_pass.py
+--- a/alibi/baselines/one_pass.py
++++ b/alibi/baselines/one_pass.py
+@@ -60,6 +60,7 @@
+ from alibi.agents.models import OnePassClaim, OnePassOutput, parse_output, undeclared_fields, validate_refs
+ from alibi.agents.roles import call_cost
+ from alibi.core import investigate_rules as core_rules
++from alibi.core.answered import examined_refs
+ from alibi.core import reconcile
+ from alibi.core.canon import make_id
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
+@@ -510,12 +511,13 @@
+             request_id=self.rfc.request_id, audience=self.rfc.audience, question_id=question.question_id,
+             statement=_clip(statement), status=outcome.status, rationale=_clip(outcome.rationale),
+             evidence_refs=answered_refs(outcome.status, evidence),
++            examined_refs=examined_refs(outcome.status, evidence, outcome.calculation),
+             calculation=answered_calculation(outcome.status, outcome.calculation),
+             gap=_clip(outcome.gap) if outcome.gap else None, run_id=self.run_id,
+             facts=derive_facts(self.store, self.rfc, question, outcome.status,
+                                outcome.evidence, outcome.calculation),
+             created_at=self.now)
+-        self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
++        self.note("status_change", reason=outcome.reason, refs=[*claim.evidence_refs, *claim.examined_refs],
+                   result={"claim_id": claim.claim_id, "status": claim.status.value,
+                           "proposed_status": proposed.status if proposed else None})
+         return claim
+diff --git a/alibi/core/answered.py b/alibi/core/answered.py
+--- a/alibi/core/answered.py
++++ b/alibi/core/answered.py
+@@ -2,8 +2,8 @@
+ 
+ Minimum disclosure applied at the claim: a claim that is ``supported`` or ``contradicted``
+ cites the records it rests on; an ``unresolved`` claim rests on nothing established, so it
+-cites no evidence record. It keeps its calculation, and its gap code and gap sentence say what
+-is missing; the investigation trace still records every read and check. Because
++cites no evidence record or calculation. Its private examined refs retain every source
++dependency for corrections and approval checks; the gap and trace explain what is missing. Because
+ the package attaches only what claims cite, a request whose questions are all unresolved
+ sends the bank no records at all.
+ 
+@@ -17,7 +17,7 @@
+ 
+ from alibi.core.schemas import Calculation, ClaimStatus, EvidenceRef
+ 
+-__all__ = ["answered_calculation", "answered_refs", "is_answered"]
++__all__ = ["answered_calculation", "answered_refs", "examined_refs", "is_answered"]
+ 
+ 
+ def is_answered(status: Any) -> bool:
+@@ -39,6 +39,22 @@
+ 
+ 
+ def answered_calculation(status: Any, calculation: Calculation | None) -> Calculation | None:
+-    """The calculation, kept for every claim so the arithmetic behind an unresolved answer
+-    (for example amounts that do not reconcile) stays visible."""
+-    return calculation
++    """Only an answered claim discloses a calculation; unresolved arithmetic stays in trace."""
++    return calculation if is_answered(status) else None
++
++
++def examined_refs(status: Any, refs: Iterable[EvidenceRef],
++                  calculation: Calculation | None) -> list[EvidenceRef]:
++    """Private dependencies captured before unresolved citations/calculations are removed."""
++    if is_answered(status):
++        return []
++    dependencies = list(refs)
++    if calculation is not None:
++        dependencies.extend(calculation.cited_refs)
++        dependencies.extend(term.ref for term in calculation.terms)
++        if calculation.target_ref is not None:
++            dependencies.append(calculation.target_ref)
++        if calculation.timing is not None:
++            dependencies.extend((calculation.timing.settlement_ref, calculation.timing.credit_ref))
++    unique = {ref.key(): ref for ref in dependencies}
++    return [unique[key] for key in sorted(unique)]
+diff --git a/alibi/core/investigate_rules.py b/alibi/core/investigate_rules.py
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -66,7 +66,7 @@
+     SIGN_BY_KIND,
+     ReconcileError,
+ )
+-from alibi.core.answered import answered_calculation, answered_refs
++from alibi.core.answered import answered_calculation, answered_refs, examined_refs
+ from alibi.core.schemas import (
+     BankTxn,
+     Calculation,
+@@ -469,12 +469,13 @@
+             question_id=question.question_id,
+             statement=_clip(outcome.statement), status=outcome.status,
+             rationale=_clip(rationale), evidence_refs=answered_refs(outcome.status, outcome.evidence),
++            examined_refs=examined_refs(outcome.status, outcome.evidence, outcome.calculation),
+             calculation=answered_calculation(outcome.status, outcome.calculation),
+             gap=_clip(outcome.gap) if outcome.gap else None,
+             gap_detail=_clip(outcome.detail) if outcome.detail else None,
+             facts=dict(outcome.facts),
+             run_id=self.run_id, created_at=self.now)
+-        self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
++        self.note("status_change", reason=outcome.reason, refs=[*claim.evidence_refs, *claim.examined_refs],
+                   result={"claim_id": claim.claim_id, "status": claim.status.value,
+                           "gap": claim.gap or "none"})
+         return claim
+@@ -548,8 +549,7 @@
+         return _Outcome(ClaimStatus.UNRESOLVED, statement, base.rationale,
+                         f"Breakdown follows the source of funds: {base.reason}",
+                         gap=base.gap or GAP_SETTLEMENT_NOT_FOUND, detail=detail,
+-                        calculation=base.calculation if base.status != ClaimStatus.SUPPORTED
+-                        else None)
++                        evidence=list(base.evidence), calculation=base.calculation)
+ 
+     def credit_outcome(self, txn_id: str) -> _Outcome:
+         """The source-of-funds outcome for one credit, after the one-payout-one-credit rule.
+diff --git a/alibi/core/package.py b/alibi/core/package.py
+--- a/alibi/core/package.py
++++ b/alibi/core/package.py
+@@ -219,8 +219,8 @@
+     """Every ref the active claims cite (evidence and calculation refs), sorted by key.
+ 
+     ``request_id`` and ``audience`` (both, since request ids are per bank) keep only one
+-    request's claims. Pass the result to ``make_draft(source_revisions=...)`` so a correction to
+-    any cited source, shared or not, invalidates the draft and its approval.
++    request's claims. This is the disclosure set, not the complete dependency set: a draft
++    must also retain each claim's private ``examined_refs`` through ``store.dependency_refs``.
+     """
+     refs: list[EvidenceRef] = []
+     for claim in claims:
+@@ -880,7 +880,8 @@
+                now: datetime | None = None, sequence: int = 0) -> Draft:
+     """A pending draft of ``body`` for the holder to review.
+ 
+-    ``source_revisions`` is required: pass ``cited_refs(claims)`` so a correction to any
++    ``source_revisions`` is required: merge ``store.dependency_refs(claim)`` for all claims,
++    including private examined refs, so a correction to any
+     source the answers depend on, shared or withheld, invalidates the draft and its approval.
+     It is merged with every ref the body cites. The draft id is deterministic in the request,
+     body digest, policy and time; ``sequence`` (0 by default) distinguishes a rebuilt draft of
+diff --git a/alibi/core/schemas.py b/alibi/core/schemas.py
+--- a/alibi/core/schemas.py
++++ b/alibi/core/schemas.py
+@@ -558,6 +558,9 @@
+     status: ClaimStatus
+     rationale: LongText
+     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
++    # Passport-only dependencies: persisted for correction/consent invalidation, never
++    # copied to PackageClaim or treated as disclosure citations.
++    examined_refs: list[EvidenceRef] = Field(default_factory=list)
+     calculation: Calculation | None = None
+     gap: LongText | None = None
+     gap_detail: LongText | None = None
+diff --git a/alibi/core/store.py b/alibi/core/store.py
+--- a/alibi/core/store.py
++++ b/alibi/core/store.py
+@@ -253,14 +253,15 @@
+ def dependency_refs(obj: Link | Claim | Draft | Approval | ContextPackage) -> list[EvidenceRef]:
+     """Revision-pinned refs a derived object depends on, sorted and de-duplicated.
+ 
+-    Link: txn_ref, record_ref, candidates. Claim: evidence_refs plus every calculation ref.
++    Link: txn_ref, record_ref, candidates. Claim: evidence_refs, private examined_refs and
++    every calculation ref.
+     Draft: source_revisions plus the body's refs. Approval: source_revisions. Package: the
+     body's attachment refs and claim evidence/calculation refs.
+     """
+     if isinstance(obj, Link):
+         refs = [obj.txn_ref, obj.record_ref, *obj.candidates]
+     elif isinstance(obj, Claim):
+-        refs = [*obj.evidence_refs, *_calc_refs(obj.calculation)]
++        refs = [*obj.evidence_refs, *obj.examined_refs, *_calc_refs(obj.calculation)]
+     elif isinstance(obj, Draft):
+         refs = [*obj.source_revisions, *_body_refs(obj.body)]
+     elif isinstance(obj, Approval):
+diff --git a/alibi/tests/test_agents_runner.py b/alibi/tests/test_agents_runner.py
+--- a/alibi/tests/test_agents_runner.py
++++ b/alibi/tests/test_agents_runner.py
+@@ -262,7 +262,8 @@
+     (claim,) = result.claims
+     assert result.links[0].link_state == LinkState.LINKED and result.links[0].method == "rule"
+     assert claim.status == ClaimStatus.UNRESOLVED and "carries no reference" in claim.gap
+-    assert claim.calculation is not None and claim.calculation.balanced is True
++    assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
++    assert [e.result for e in result.trace if e.step == "calculation"][-1]["balanced"] is True
+ 
+ 
+ def test_rfc_b_period_totals_are_computed_in_code(make):
+@@ -417,7 +418,8 @@
+         assert claim.gap.startswith("challenger_unresolved:")
+         assert "challenger_contradicted" not in claim_text(claim)
+         assert any("without an explicit-field conflict" in (e.reason or "") for e in result.trace)
+-        assert claim.calculation is not None and claim.calculation.balanced is True
++        assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
++        assert [e.result for e in result.trace if e.step == "calculation"][-1]["balanced"] is True
+     # Without any validated conflicting ref the same proposal is treated the same way.
+     ctx = make("supported")
+     result = ctx.run(client_for(challenger_script=lookup_then(
+diff --git a/alibi/tests/test_bank_service.py b/alibi/tests/test_bank_service.py
+--- a/alibi/tests/test_bank_service.py
++++ b/alibi/tests/test_bank_service.py
+@@ -282,9 +282,6 @@
+ # --------------------------------------------------------------------------- delivery
+ 
+ 
+-@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
+-                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
+-                   "no record) it carries no attachments; rebuild the fixture on the supported path")
+ def test_delivery_verifies_and_is_idempotent_on_identical_bytes(client, built):
+     issue_both(client)
+     p1 = built.p1
+@@ -299,8 +296,10 @@
+     assert receipt["received_at"] == AS_OF
+     assert out["authentication"]["valid"] is True
+     assert isinstance(out["sources"], list) and isinstance(out["claims"], list)
+-    assert out["sources"] and all({"claimed_trust", "attestation"} <= set(s) for s in out["sources"])
++    # Without the lookup-only settlement both answers are unresolved, so P1 shares nothing.
++    assert out["sources"] == [] and p1["body"]["attachments"] == []
+     assert {c["question_id"] for c in out["claims"]} == {"q.source_of_funds", "q.breakdown"}
++    assert all(c["status"] == "unresolved" and not c.get("evidence_refs") for c in p1["body"]["claims"])
+ 
+     retry = client.post("/deliver", json=p1, headers=auth("bank_a"))
+     assert retry.status_code == 200 and retry.json()["receipt"]["receipt_id"] == receipt["receipt_id"]
+@@ -355,15 +354,13 @@
+     return found
+ 
+ 
+-@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
+-                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
+-                   "no record) it carries no attachments; rebuild the fixture on the supported path")
+ def test_tampered_package_is_rejected_and_keeps_no_contents(built, tmp_path):
+     state_path = tmp_path / "state.json"
+     client = make_app(built, state_path=state_path)
+     issue_both(client)
+-    tampered = copy.deepcopy(built.p1)
+-    tampered["body"]["attachments"][0]["content"]["amount_pence"] += 1
++    tampered = copy.deepcopy(built.p1)   # P1 shares nothing, so tamper with its claim text
++    changed = "TAMPERED-CLAIM-TEXT"
++    tampered["body"]["claims"][0]["statement"] += f" {changed}"
+     rejected = client.post("/deliver", json=tampered, headers=auth("bank_a"))
+     assert rejected.status_code == 422 and rejected.json()["code"] == "package_rejected"
+     assert rejected.json()["receipt"]["package_sha256"] == canon.digest(tampered)
+@@ -373,11 +370,11 @@
+     assert [(p["package_id"], p["status"]) for p in inbox] == [(pid, "rejected")]
+     view = client.get(f"/packages/{pid}", headers=auth("bank_a")).json()
+     assert view["status"] == "rejected" and "package" not in view
+-    assert "216001" not in json.dumps(view) and "amount_pence" not in json.dumps(view)
++    assert changed not in json.dumps(view) and "amount_pence" not in json.dumps(view)
+     for suffix in ("/attachments", "/raw"):
+         response = client.get(f"/packages/{pid}{suffix}", headers=auth("bank_a"))
+         assert response.status_code == 409 and response.json()["code"] == "package_rejected"
+-    assert "216001" not in json.dumps(client.get("/audit", headers=auth("bank_a")).json())
++    assert changed not in json.dumps(client.get("/audit", headers=auth("bank_a")).json())
+ 
+     # The replay of a rejected delivery returns the stored receipt and the same 422.
+     replay = client.post("/deliver", json=tampered, headers=auth("bank_a"))
+@@ -398,7 +395,7 @@
+     assert texts, "the fixture package carries claim text to check against"
+     for sample in texts:
+         assert sample not in text
+-    assert "216001" not in text and "q.source_of_funds" not in json.dumps(entry)
++    assert changed not in text and "q.source_of_funds" not in json.dumps(entry)
+ 
+     # Another recipient's genuine package is kept the same way after an audience mismatch.
+     other = client.post("/deliver", json=built.p3, headers=auth("bank_a"))
+@@ -545,32 +542,31 @@
+ # --------------------------------------------------------------------------- views
+ 
+ 
+-@pytest.mark.xfail(strict=False, reason="fixture builds Bank A's case 1 package from an "
+-                   "unresolved investigation; under minimum disclosure (unresolved claims cite "
+-                   "no record) it carries no attachments; rebuild the fixture on the supported path")
+ def test_verified_package_view_attachments_and_raw(client, built):
+     issue_both(client)
+-    p1 = built.p1
+-    assert client.post("/deliver", json=p1, headers=auth("bank_a")).status_code == 200
+-    view = client.get(f"/packages/{p1['package_id']}", headers=auth("bank_a")).json()
++    p3 = built.p3   # P1's answers are unresolved and share nothing; P3 carries the records
++    assert client.post("/deliver", json=p3, headers=auth("bank_b")).status_code == 200
++    view = client.get(f"/packages/{p3['package_id']}", headers=auth("bank_b")).json()
+     assert view["status"] == "verified" and view["receipt"]["accepted"] is True
+     assert view["authentication"]["valid"] is True
+     assert view["sources"] and view["claims"]
++    assert all({"claimed_trust", "attestation"} <= set(s) for s in view["sources"])
+     package = view["package"]
+-    assert package["package_id"] == p1["package_id"] and package["body_sha256"] == p1["body_sha256"]
+-    assert package["issued_at"] == p1["issued_at"]
+-    assert package["body"]["scope"] == {"txn_ids": ["txn-0001-004"]}
+-    assert package["body"]["request_id"] == RFC_A and package["body"]["audience"] == "bank_a"
++    assert package["package_id"] == p3["package_id"] and package["body_sha256"] == p3["body_sha256"]
++    assert package["issued_at"] == p3["issued_at"]
++    assert package["body"]["scope"] == {"period": {"from": "2026-10-01T00:00:00Z",
++                                                   "to": "2026-11-01T00:00:00Z"}}
++    assert package["body"]["request_id"] == RFC_B and package["body"]["audience"] == "bank_b"
+     assert package["body"]["attachments"]
+     for attachment in package["body"]["attachments"]:
+         assert "content" not in attachment and "issuer_signature" not in attachment
+         assert {"attachment_id", "ref", "form", "source_trust"} <= set(attachment)
+     assert view["dispositions"] == [] and view["follow_ups"] == []
+-    full = client.get(f"/packages/{p1['package_id']}/attachments", headers=auth("bank_a")).json()
+-    assert full["package_id"] == p1["package_id"]
+-    assert full["attachments"] == p1["body"]["attachments"]
+-    assert full["attachments"][0]["content"]["amount_pence"] == 216000
+-    assert client.get(f"/packages/{p1['package_id']}/raw", headers=auth("bank_a")).json() == p1
++    full = client.get(f"/packages/{p3['package_id']}/attachments", headers=auth("bank_b")).json()
++    assert full["package_id"] == p3["package_id"]
++    assert full["attachments"] == p3["body"]["attachments"]
++    assert full["attachments"][0]["content"]["amount_pence"] == 30000   # rec-0001-001, a sale
++    assert client.get(f"/packages/{p3['package_id']}/raw", headers=auth("bank_b")).json() == p3
+ 
+ 
+ # --------------------------------------------------------------------------- dispositions
+diff --git a/alibi/tests/test_core_investigation_fixes.py b/alibi/tests/test_core_investigation_fixes.py
+--- a/alibi/tests/test_core_investigation_fixes.py
++++ b/alibi/tests/test_core_investigation_fixes.py
+@@ -111,8 +111,9 @@
+     assert result.links[0].link_state == LinkState.LINKED      # the reference still links it
+     assert claim.status == UNRESOLVED and claim.gap == "settlement_not_found"
+     assert "more than 5 days before the booking" in claim.gap_detail
+-    assert claim.calculation.balanced is True and claim.calculation.timing.ok is False
+-    assert "more than 5 days before" in claim.calculation.timing.reason
++    assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
++    calc = [e.result for e in result.trace if e.step == "calculation"][-1]
++    assert calc["balanced"] is True and calc["timing_ok"] is False
+     assert claim.facts == {}
+ 
+ 
+diff --git a/alibi/tests/test_investigate_rules.py b/alibi/tests/test_investigate_rules.py
+--- a/alibi/tests/test_investigate_rules.py
++++ b/alibi/tests/test_investigate_rules.py
+@@ -489,7 +489,9 @@
+ 
+     assert result.links[0].method == "amount_date"
+     claim = claim_of(result)
+-    assert claim.calculation.balanced is True and claim.calculation.timing.ok is True
++    assert claim.calculation is None and claim.evidence_refs == [] and claim.examined_refs
++    calc = [e.result for e in result.trace if e.step == "calculation"][-1]
++    assert calc["balanced"] is True and calc["timing_ok"] is True
+     assert claim.status == UNRESOLVED
+     assert "alone" in claim.gap_detail
+ 
+diff --git a/alibi/tests/test_unresolved_dependencies.py b/alibi/tests/test_unresolved_dependencies.py
+new file mode 100644
+--- /dev/null
++++ b/alibi/tests/test_unresolved_dependencies.py
+@@ -0,0 +1,143 @@
++"""Public fixtures: minimal unresolved disclosures still invalidate on examined changes."""
++
++import json
++from types import SimpleNamespace
++
++import pytest
++
++from alibi import api
++from alibi.core.answered import answered_calculation, answered_refs, examined_refs
++from alibi.core.schemas import ClaimStatus, DerivedState, SigningDomain
++from alibi.core.store import dependency_refs
++
++
++RFC = "rfc_a_001"
++
++
++@pytest.fixture
++def unresolved(tmp_path, keystore, registry, now):
++    path = tmp_path / "passport.db"
++    store = api.open_store(path)
++    fx = api.load_fixture(store, "pending_correction", keystore=keystore, now=now)
++    body = dict(fx["corrections"][0]["event"])
++    body["occurred_at"] = "2026-11-03T08:00:00Z"  # pending before the requested credit
++    body.pop("effective_at", None)
++    correction = {"event": body, "signature": keystore.sign(
++        body, kid="merchant_demo", domain=SigningDomain.RECORD).to_json_dict()}
++    api.ingest_merchant_event(store, correction, registry=registry, now=now)
++    result = api.run_investigation(store, RFC, audience="bank_a", registry=registry,
++                                   settlement_lookup=fx["settlement_lookup"], now=now)
++    (claim,) = result.claims
++    assert claim.status == ClaimStatus.UNRESOLVED
++    yield SimpleNamespace(store=store, path=path, claim=claim, result=result, fx=fx,
++                          keystore=keystore, registry=registry, now=now)
++    store.close()
++
++
++def revise(ctx):
++    body = ctx.store.get_source("stl_88001").to_event().to_json_dict()
++    body.update(event_id="public-dependency-correction-3", revision=3, corrects_revision=2,
++                correction_reason="Public synthetic correction", status="settled")
++    payload = {"event": body, "signature": ctx.keystore.sign(
++        body, kid="merchant_demo", domain=SigningDomain.RECORD).to_json_dict()}
++    return api.ingest_merchant_event(ctx.store, payload, registry=ctx.registry, now=ctx.now)
++
++
++def review(ctx):
++    draft = api.build_review(ctx.store, RFC, audience="bank_a", now=ctx.now)
++    approval = api.approve(ctx.store, draft.draft_id, holder_id="holder_maya", now=ctx.now)
++    return draft, approval
++
++
++def test_empty_package_keeps_private_dependencies_and_scrubs_examined_identifiers(unresolved):
++    ctx = unresolved
++    assert ctx.claim.evidence_refs == [] and ctx.claim.calculation is None
++    keys = {ref.key() for ref in ctx.claim.examined_refs}
++    assert "record:stl_88001@2" in keys and "txn:txn_9001@1" in keys
++    assert dependency_refs(ctx.claim) == ctx.claim.examined_refs
++    draft, approval = review(ctx)
++    assert {ref.key() for ref in draft.source_revisions} == keys
++    assert {ref.key() for ref in approval.source_revisions} == keys
++    assert draft.body.attachments == []
++    for claim in draft.body.claims:
++        assert claim.evidence_refs == [] and claim.calculation is None
++    text = json.dumps(draft.body.to_json_dict())
++    assert "examined_refs" not in text
++    assert all(value not in text for value in ("stl_88001", "po_5001", "PO-5001"))
++    package = api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore, now=ctx.now)
++    assert package.body.attachments == []
++    assert api.verify_package(package.to_json_dict(), expected_audience="bank_a",
++                              registry=ctx.registry, now=ctx.now).accepted
++
++
++def test_examined_correction_invalidates_claim_draft_and_approval_after_restart(unresolved):
++    ctx = unresolved
++    draft, approval = review(ctx)
++    ctx.store.close()
++    ctx.store = api.open_store(ctx.path)
++    stored = ctx.store.list_claims(request_id=RFC, audience="bank_a")[0]
++    assert stored.examined_refs == ctx.claim.examined_refs
++    put = revise(ctx)
++    assert ctx.claim.claim_id in put.invalidated["claims"]
++    assert draft.draft_id in put.invalidated["drafts"]
++    assert approval.approval_id in put.invalidated["approvals"]
++    assert ctx.store.list_claims(request_id=RFC, audience="bank_a") == []
++    assert ctx.store.get_draft(draft.draft_id).status == api.DraftStatus.INVALIDATED
++    assert ctx.store.get_approval(approval.approval_id).status == api.ApprovalStatus.INVALIDATED
++    with pytest.raises(api.ApprovalError):
++        api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore, now=ctx.now)
++    with pytest.raises(api.PackageError, match="out of date"):
++        api.build_review(ctx.store, RFC, audience="bank_a", now=ctx.now)
++    assert ctx.store.list_packages() == [] and ctx.store.list_deliveries() == []
++
++
++def test_late_save_with_old_examined_revision_is_invalidated(unresolved):
++    ctx = unresolved
++    revise(ctx)
++    late = ctx.claim.model_copy(update={"claim_id": "late-unresolved", "run_id": "late-run"})
++    ctx.store.save_claim(late)
++    stored = next(c for c in ctx.store.list_claims(state=None) if c.claim_id == late.claim_id)
++    assert stored.state == DerivedState.INVALIDATED
++
++
++@pytest.mark.parametrize("build_new_review", [False, True])
++def test_changed_private_dependencies_revoke_same_body_consent(unresolved, build_new_review):
++    ctx = unresolved
++    draft, approval = review(ctx)
++    # Another run examines one additional source while leaving recipient-facing answers alone.
++    subject = ctx.store.get_request(RFC).subject_ref
++    extra = next(record.ref() for record in ctx.store.list_sources(subject)
++                 if record.ref() not in ctx.claim.examined_refs)
++    newer = ctx.claim.model_copy(update={"claim_id": "newer-unresolved", "run_id": "newer-run",
++                                         "examined_refs": [*ctx.claim.examined_refs, extra]})
++    ctx.store.save_claim(newer)
++    if build_new_review:
++        rebuilt = api.build_review(ctx.store, RFC, audience="bank_a", now=ctx.now)
++        assert rebuilt.body_sha256 == draft.body_sha256
++        assert rebuilt.draft_id != draft.draft_id
++        assert extra in rebuilt.source_revisions
++        assert ctx.store.get_approval(approval.approval_id).status == api.ApprovalStatus.INVALIDATED
++    with pytest.raises(api.ApprovalError):
++        api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore, now=ctx.now)
++    assert ctx.store.list_packages() == [] and ctx.store.list_deliveries() == []
++
++
++def test_supported_and_contradicted_helpers_keep_disclosed_evidence(unresolved):
++    refs = unresolved.claim.examined_refs
++    for status in (ClaimStatus.SUPPORTED, ClaimStatus.CONTRADICTED):
++        assert answered_refs(status, refs) == refs
++        assert examined_refs(status, refs, None) == []
++        assert answered_calculation(status, None) is None
++
++
++def test_breakdown_carries_source_dependencies_before_disclosure_filter(unresolved):
++    from alibi.core.investigate_rules import _Run
++    from types import SimpleNamespace
++    refs = unresolved.claim.examined_refs
++    base = SimpleNamespace(status=ClaimStatus.UNRESOLVED, calculation=None, evidence=refs,
++                           rationale="Missing settlement", reason="Missing settlement",
++                           detail="Missing settlement", gap="settlement_not_found")
++    fake = SimpleNamespace(credit_outcome=lambda _: base, bank={})
++    outcome = _Run.breakdown_outcome(fake, "txn_9001")
++    assert outcome.evidence == refs
++    assert examined_refs(outcome.status, outcome.evidence, outcome.calculation) == refs

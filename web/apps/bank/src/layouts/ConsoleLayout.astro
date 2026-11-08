@@ -8,6 +8,8 @@
  */
 import '@alibi/ui/base.css';
 
+import { ALIBI_DEMO_ORIGIN, ALIBI_DEMO_TOKEN } from 'astro:env/server';
+
 import { analyst, bank } from '@/data/cases';
 
 interface Props {
@@ -26,6 +28,8 @@ const nav = [
   { href: '/', label: 'Cases', id: 'cases' },
   { href: '/inbox/', label: 'Alibi inbox', id: 'inbox' },
 ] as const;
+// The presenter's Reset demo button, only when a live demo is connected (src/pages/demo-reset.ts).
+const demoControls = Boolean(ALIBI_DEMO_ORIGIN && ALIBI_DEMO_TOKEN) && section !== 'sign-in';
 ---
 
 <!doctype html>
@@ -74,12 +78,26 @@ const nav = [
           <a href="/sign-in/" aria-current={section === 'sign-in' ? 'page' : undefined}>
             Sign in
           </a>
+          {demoControls && (
+            <form
+              method="post"
+              action="/demo-reset/"
+              class="demo-reset"
+              onsubmit="return confirm('Reset the whole demo to the start? Every site goes back to before Maya withdraws her payout.')"
+            >
+              <button type="submit">Reset demo</button>
+            </form>
+          )}
         </div>
       </div>
     </header>
     <main id="main" class="console-main" class:list={{ wide }}>
       <slot />
     </main>
+    <script>
+      import { startLive } from '@alibi/ui/live';
+      startLive();
+    </script>
   </body>
 </html>
 
@@ -206,6 +224,26 @@ const nav = [
   nav a[aria-current='page'] {
     background: rgb(255 255 255 / 0.1);
     color: #fff;
+  }
+
+  .demo-reset {
+    margin: 0;
+  }
+
+  .demo-reset button {
+    padding: 5px 11px;
+    border: 1px solid rgb(255 255 255 / 0.25);
+    border-radius: 8px;
+    background: transparent;
+    color: #fde68a;
+    font: inherit;
+    font-size: var(--t-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .demo-reset button:hover {
+    background: rgb(255 255 255 / 0.08);
   }
 
   .who {

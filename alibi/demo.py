@@ -54,12 +54,13 @@ from alibi.connectors.http import ADMIN, TOKEN_ENV, load_tokens
 from alibi.core.schemas import format_utc
 from alibi.core.signing import DEFAULT_KEY_DIR
 
-__all__ = ["announce", "app_environment", "bank_state_path", "case_dir", "main", "parse_args",
+__all__ = ["Stack", "announce", "app_environment", "bank_state_path", "case_dir", "main", "parse_args",
            "reset", "resume_clock", "seed_mode", "serve"]
 
 DEFAULT_APP_PORT = 8100
 DEFAULT_MERCHANT_PORT = demo_services.DEFAULT_MERCHANT_PORT
 DEFAULT_BANK_PORT = demo_services.DEFAULT_BANK_PORT
+DEFAULT_DIRECTOR_PORT = 8103
 DEFAULT_AS_OF = "2026-10-25T00:00:00Z"
 DEFAULT_ROOT = Path("data/alibi/demo")
 DEFAULT_TOKENS = demo_services.DEFAULT_TOKENS
@@ -92,6 +93,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--app-port", type=int, default=DEFAULT_APP_PORT)
     parser.add_argument("--merchant-port", type=int, default=DEFAULT_MERCHANT_PORT)
     parser.add_argument("--bank-port", type=int, default=DEFAULT_BANK_PORT)
+    parser.add_argument("--director-port", type=int, default=DEFAULT_DIRECTOR_PORT,
+                        help=f"demo director (alibi/demo_director.py); -1 turns it off (default {DEFAULT_DIRECTOR_PORT})")
     parser.add_argument("--root", default=str(DEFAULT_ROOT),
                         help="demo state root; the app data dir is <root>/case_<n>/ (default data/alibi/demo)")
     parser.add_argument("--keys", default=str(DEFAULT_KEY_DIR), help="shared key directory")
@@ -189,7 +192,7 @@ def app_environment(args: argparse.Namespace) -> dict[str, str]:
     return env
 
 
-def build_passport(args: argparse.Namespace, env: dict[str, str]):
+def build_passport(args: argparse.Namespace, env: dict[str, str], clock=None):
     """Create the holder app through its public factory. The environment is applied to this
     process before the settings are read, so modules that read ``os.environ`` directly (replay,
     the store key) see it too. With both service URLs set the runtime seeds in ``connectors``
@@ -198,7 +201,7 @@ def build_passport(args: argparse.Namespace, env: dict[str, str]):
     from alibi.app.main import create_app
 
     os.environ.update(env)
-    return create_app(settings_from_env())
+    return create_app(settings_from_env(clock=clock) if clock is not None else settings_from_env())
 
 
 def seed_mode(passport) -> str | None:
@@ -344,6 +347,101 @@ def _shutdown(servers: list, passport, out) -> int:
     return code
 
 
+class Stack:
+    """The three servers of one case: holder app, mock merchant, mock bank. ``start`` builds,
+    binds and seeds them; ``stop`` closes them; ``restart(reset=True)`` is the director's reset
+    (same ports, fresh state, about two seconds). The holder app reads the bank's simulated
+    clock in-process, so both always agree on "now"."""
+
+    def __init__(self, args: argparse.Namespace, tokens: dict[str, str], out=sys.stdout):
+        self.args, self.tokens, self.out = args, tokens, out
+        self.start_as_of = args.as_of
+        self.servers: list = []
+        self.passport = None
+        self.services: dict[str, Any] = {}
+        self.urls: dict[str, str] = {}
+        self.ports: dict[str, int] = {}
+        self.seeds: dict[str, Any] = {}
+        self.lock = threading.RLock()
+
+    # the director's view
+    def bank_service(self):
+        bank = self.services.get("bank")
+        return getattr(getattr(bank, "state", None), "bank", None)
+
+    @staticmethod
+    def holder_headers() -> dict[str, str]:
+        return _holder_headers()
+
+    def _clock(self):
+        fallback = parse_time(self.args.as_of, "as_of")
+
+        def now():
+            bank = self.bank_service()
+            clock = getattr(bank, "clock", None)
+            return clock.as_of if clock is not None else fallback
+        return now
+
+    def start(self, resumed_from: str | None = None) -> bool:
+        args = self.args
+        env = app_environment(args)
+        app_url = env["ALIBI_API_ORIGIN"]
+        self.services = demo_services.build_apps(demo_services.parse_args([
+            "--case", str(args.case), "--as-of", args.as_of, "--no-seed",
+            "--keys", str(args.keys), "--tokens", str(args.tokens),
+            "--state", str(bank_state_path(args.root, args.case)),
+            "--passport-url", f"{app_url}/connect/merchant/webhook",
+            "--passport-rfc-url", f"{app_url}/connect/bank/rfc",
+        ]))
+        self.passport = build_passport(args, env, clock=self._clock())
+        self.servers = [
+            demo_services._Server(self.passport, args.host, self.ports.get("app", args.app_port), "app"),
+            demo_services._Server(self.services["merchant"], args.host,
+                                  self.ports.get("merchant", args.merchant_port), "merchant"),
+            demo_services._Server(self.services["bank"], args.host,
+                                  self.ports.get("bank", args.bank_port), "bank"),
+        ]
+        for server in self.servers:
+            server.start()
+        deadline = time.monotonic() + STARTUP_DEADLINE
+        while not all(s.server.started for s in self.servers):
+            if demo_services._failed(self.servers) or time.monotonic() >= deadline:
+                stuck = [s.name for s in self.servers if not s.server.started]
+                print(json.dumps({"error": "server did not start", "servers": stuck}),
+                      file=self.out, flush=True)
+                return False
+            time.sleep(0.05)
+        self.ports = {s.name: s.server.servers[0].sockets[0].getsockname()[1] for s in self.servers}
+        self.urls = {name: f"http://{args.host}:{port}" for name, port in self.ports.items()}
+        with httpx.Client(timeout=HTTP_TIMEOUT) as client:
+            self.seeds = _seed(client, args, self.urls, self.tokens, resumed_from)
+        return True
+
+    def stop(self) -> int:
+        return _shutdown(self.servers, self.passport, self.out) if self.servers else 0
+
+    def restart(self, *, reset: bool = True) -> None:
+        with self.lock:
+            self.stop()
+            if reset:
+                print(json.dumps(globals()["reset"](self.args.root, self.args.case)), file=self.out, flush=True)
+                self.args.as_of = self.start_as_of
+            if not self.start():
+                raise RuntimeError("the demo stack did not restart")
+
+    def failed(self) -> list[str]:
+        with self.lock:
+            return demo_services._failed(self.servers)
+
+
+def _director_server(args: argparse.Namespace, stack: Stack, tokens: dict[str, str]):
+    from alibi.demo_director import Director, create_director_app, demo_token
+
+    director = Director(stack)
+    app = create_director_app(director, lambda: demo_token(tokens))
+    return demo_services._Server(app, args.host, args.director_port, "director")
+
+
 def serve(args: argparse.Namespace, *, out=sys.stdout) -> int:
     args.as_of = _normalise_time(args.as_of, "--as-of")
     # ``ALIBI_REPLAY=1 python -m alibi.demo`` (the demo script's fallback) means --replay too.
@@ -353,49 +451,41 @@ def serve(args: argparse.Namespace, *, out=sys.stdout) -> int:
         print(json.dumps(reset_info), file=out, flush=True)
     args.as_of, resumed_from = resume_clock(args.root, args.case, args.as_of)
     tokens = load_tokens(args.tokens)            # one file: bank_a, bank_b, feed, admin
-    env = app_environment(args)
-    passport = build_passport(args, env)
-    app_url = env["ALIBI_API_ORIGIN"]
-    services = demo_services.build_apps(demo_services.parse_args([
-        "--case", str(args.case), "--as-of", args.as_of, "--no-seed",
-        "--keys", str(args.keys), "--tokens", str(args.tokens),
-        "--state", str(bank_state_path(args.root, args.case)),
-        "--passport-url", f"{app_url}/connect/merchant/webhook",
-        "--passport-rfc-url", f"{app_url}/connect/bank/rfc",
-    ]))
-    servers = [
-        demo_services._Server(passport, args.host, args.app_port, "app"),
-        demo_services._Server(services["merchant"], args.host, args.merchant_port, "merchant"),
-        demo_services._Server(services["bank"], args.host, args.bank_port, "bank"),
-    ]
-    for server in servers:
-        server.start()
+    stack = Stack(args, tokens, out)
+    director = None
     try:
-        deadline = time.monotonic() + STARTUP_DEADLINE
-        while not all(s.server.started for s in servers):
-            if demo_services._failed(servers) or time.monotonic() >= deadline:
-                stuck = [s.name for s in servers if not s.server.started]
-                print(json.dumps({"error": "server did not start", "servers": stuck}),
-                      file=out, flush=True)
-                return _shutdown(servers, passport, out) or 1
-            time.sleep(0.05)
-        ports = {s.name: s.server.servers[0].sockets[0].getsockname()[1] for s in servers}
-        urls = {name: f"http://{args.host}:{port}" for name, port in ports.items()}
-        with httpx.Client(timeout=HTTP_TIMEOUT) as client:
-            seeds = _seed(client, args, urls, tokens, resumed_from)
-        print(json.dumps(announce(args, ports, seeds, reset_info, services["tokens_path"],
-                                  seed_mode(passport), resumed_from)), file=out, flush=True)
+        if not stack.start(resumed_from):
+            return stack.stop() or 1
+        if getattr(args, "director_port", -1) >= 0:
+            director = _director_server(args, stack, tokens)
+            director.start()
+            deadline = time.monotonic() + STARTUP_DEADLINE
+            while not director.server.started:
+                if director.error is not None or time.monotonic() >= deadline:
+                    print(json.dumps({"error": "server did not start", "servers": ["director"]}),
+                          file=out, flush=True)
+                    director.stop()
+                    return stack.stop() or 1
+                time.sleep(0.05)
+        line = announce(args, stack.ports, stack.seeds, reset_info, stack.services["tokens_path"],
+                        seed_mode(stack.passport), resumed_from)
+        if director is not None:
+            line["director"] = f"http://{args.host}:{director.server.servers[0].sockets[0].getsockname()[1]}"
+        print(json.dumps(line), file=out, flush=True)
         stop = threading.Event()
         until = None if args.timeout is None else time.monotonic() + args.timeout
         while until is None or time.monotonic() < until:
             remaining = WAIT_SLICE if until is None else min(WAIT_SLICE, until - time.monotonic())
             if remaining > 0:
                 stop.wait(remaining)
-            if demo_services._failed(servers):
+            if stack.failed():
                 break
     except KeyboardInterrupt:
         pass
-    return _shutdown(servers, passport, out)
+    if director is not None:
+        director.stop()
+        director.join(timeout=10)
+    return stack.stop()
 
 
 # --------------------------------------------------------------------------- driver commands

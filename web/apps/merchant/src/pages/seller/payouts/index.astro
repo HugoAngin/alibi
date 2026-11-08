@@ -4,50 +4,70 @@ import ShopLayout from '@/layouts/ShopLayout.astro';
 import SellerNav from '@/components/SellerNav.astro';
 import { formatGBP } from '@/data/shop';
 import { orders, payouts, refunds, totals, when } from '@/data/account';
+import WithdrawCard from '@/components/WithdrawCard.astro';
+import { payoutDemo } from '@/lib/demo';
+
+export const prerender = false;
+
+const demo = await payoutDemo(Astro.cookies);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
 <ShopLayout title="Payouts">
   <h1>Payouts</h1>
   <SellerNav current="payouts" />
 
-  {payouts.map((p) => (
-    <article class="payout" aria-labelledby={`p-${p.payoutRef}`}>
-      <h2 id={`p-${p.payoutRef}`}>
-        {formatGBP(p.amountMinor)} <code>{p.payoutRef}</code>
-      </h2>
-      <p class="status-paid">✓ {p.status}</p>
-      <dl>
-        <dt>Requested</dt>
-        <dd>{when(p.requestedAt)}</dd>
-        <dt>Arrived</dt>
-        <dd>{when(p.settledAt)}</dd>
-        <dt>Paid to</dt>
-        <dd>{p.destination}</dd>
-      </dl>
-      <h3>What it covers</h3>
-      <table>
-        <tbody>
-          <tr>
-            <td>{orders.length} orders</td>
-            <td class="num">{formatGBP(totals.salesMinor)}</td>
-          </tr>
-          <tr>
-            <td>{refunds.length} refunds</td>
-            <td class="num">−{formatGBP(totals.refundsMinor)}</td>
-          </tr>
-          <tr>
-            <td>Seller fees</td>
-            <td class="num">−{formatGBP(totals.feesMinor)}</td>
-          </tr>
-          <tr class="total">
-            <td>Paid out</td>
-            <td class="num">{formatGBP(totals.netMinor)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p class="meta">Orders {p.coversOrderRefs.join(', ')}.</p>
-    </article>
-  ))}
+  {demo.message && (
+    <p class="withdraw-message" role="status">
+      {demo.message}
+    </p>
+  )}
+
+  {demo.available && (
+    <section class="payout" aria-label="Seller balance">
+      <WithdrawCard returnTo="/seller/payouts/" />
+    </section>
+  )}
+
+  {!demo.available &&
+    payouts.map((p) => (
+      <article class="payout" aria-labelledby={`p-${p.payoutRef}`}>
+        <h2 id={`p-${p.payoutRef}`}>
+          {formatGBP(p.amountMinor)} <code>{p.payoutRef}</code>
+        </h2>
+        <p class="status-paid">✓ {p.status}</p>
+        <dl>
+          <dt>Requested</dt>
+          <dd>{when(p.requestedAt)}</dd>
+          <dt>Arrived</dt>
+          <dd>{when(p.settledAt)}</dd>
+          <dt>Paid to</dt>
+          <dd>{p.destination}</dd>
+        </dl>
+        <h3>What it covers</h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>{orders.length} orders</td>
+              <td class="num">{formatGBP(totals.salesMinor)}</td>
+            </tr>
+            <tr>
+              <td>{refunds.length} refunds</td>
+              <td class="num">−{formatGBP(totals.refundsMinor)}</td>
+            </tr>
+            <tr>
+              <td>Seller fees</td>
+              <td class="num">−{formatGBP(totals.feesMinor)}</td>
+            </tr>
+            <tr class="total">
+              <td>Paid out</td>
+              <td class="num">{formatGBP(totals.netMinor)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="meta">Orders {p.coversOrderRefs.join(', ')}.</p>
+      </article>
+    ))}
 
   <p class="meta">
     Money from a sale first becomes available in your seller balance. A payout is the transfer from
@@ -56,6 +76,14 @@ import { orders, payouts, refunds, totals, when } from '@/data/account';
 </ShopLayout>
 
 <style>
+  .withdraw-message {
+    max-width: var(--measure);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-md);
+    background: var(--c-soft);
+    font-weight: 600;
+  }
+
   .payout {
     padding: var(--space-md);
     background: var(--c-surface);

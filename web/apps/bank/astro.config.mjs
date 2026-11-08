@@ -22,6 +22,10 @@ export default defineConfig({
   devToolbar: { enabled: false },
   env: {
     schema: {
+      // The live demo's director (alibi/demo_director.py): local http://127.0.0.1:8103, hosted the
+      // Modal address. With its bearer, server-side only. Unset: no live demo, screens as before.
+      ALIBI_DEMO_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      ALIBI_DEMO_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
       // Read at runtime from the Worker's vars (`secret` access avoids inlining).
       ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
       // Bank A's credential for the backend, forwarded as a bearer token from the server only.

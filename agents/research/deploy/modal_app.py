@@ -14,16 +14,17 @@ Two Modal Secrets must exist in the workspace (``SECRETS`` below):
 
 * ``alibi-backend``: ``GEMINI_API_KEY`` and ``ALIBI_MASTER_KEY``.
 * ``alibi-backend-tokens``: the credentials the Workers share:
-  ``ALIBI_HOLDER_TOKEN`` (the Alibi Worker's holder bearer) and ``ALIBI_BANK_A_TOKEN`` (the bank
-  Worker's ``BANK_A_TOKEN``). The S5 services read both from the environment, which wins over
+  ``ALIBI_HOLDER_TOKEN`` (the Alibi Worker's holder bearer), ``ALIBI_BANK_A_TOKEN`` (the bank
+  Worker's ``BANK_A_TOKEN``) and ``ALIBI_DEMO_TOKEN`` (all three Workers' ``ALIBI_DEMO_TOKEN``:
+  the demo director's bearer for live state, Withdraw, Request and Reset). The S5 services read both from the environment, which wins over
   their tokens file; every other token is random per container.
 * ``ALIBI_MODAL_WARM=1`` keeps one container running, so the case's SQLite store persists between
   requests (it lives in the container's /tmp and resets when the container restarts).
 
-The stack starts case 1 fresh at a clock inside both of its RFC windows (``ALIBI_DEMO_NOW``,
-default 2026-11-05T09:00:00Z), with the passport and the bank on the same instant (eval,
-agents/eval/CASE_FORMAT.md). Bank B's request is issued at boot so Maya's dashboard has one to
-review; Bank A's is left for the bank console's "Request customer's alibi" button.
+The stack starts case 1 fresh before Maya's payout (``ALIBI_DEMO_NOW``, default
+2026-10-25T00:00:00Z). The demo director (``alibi/demo_director.py``, ``/demo/*`` through the
+router) drives it from the sites: Withdraw on the marketplace, Request on the bank console,
+Reset anywhere. The holder app follows the bank's clock in-process, so the two never disagree.
 """
 
 from __future__ import annotations
@@ -43,19 +44,22 @@ REPO = Path(__file__).resolve().parents[3] if modal.is_local() else Path("/")
 REMOTE = "/root/repo"
 STATE = "/tmp/alibi"
 
-DEMO_NOW = os.environ.get("ALIBI_DEMO_NOW", "2026-11-05T09:00:00Z")
-APP_PORT, MERCHANT_PORT, BANK_PORT, ROUTER_PORT = 8100, 8101, 8102, 8000
+# The live demo starts before Maya's payout (alibi/demo_director.py): the marketplace's Withdraw
+# button moves the clocks forward from here, and Reset comes back here.
+DEMO_NOW = os.environ.get("ALIBI_DEMO_NOW", "2026-10-25T00:00:00Z")
+APP_PORT, MERCHANT_PORT, BANK_PORT, DIRECTOR_PORT, ROUTER_PORT = 8100, 8101, 8102, 8103, 8000
 TOKENS_FILE = f"{STATE}/bank_tokens.json"
 
 #: S5's one-process demo stack (alibi/RUNBOOK.md), seeded with case 1 at DEMO_NOW.
 STACK = [
     "python", "-m", "alibi.demo",
     "--case", "1", "--reset", "--as-of", DEMO_NOW, "--host", "127.0.0.1",
+    "--director-port", str(DIRECTOR_PORT),
     "--app-port", str(APP_PORT), "--merchant-port", str(MERCHANT_PORT), "--bank-port", str(BANK_PORT),
     "--root", f"{STATE}/demo", "--keys", f"{STATE}/keys", "--tokens", TOKENS_FILE,
 ]
 #: Requests issued once the stack is up.
-BOOT_RFCS = [r for r in os.environ.get("ALIBI_DEMO_RFCS", "bank_b").split(",") if r]
+BOOT_RFCS = [r for r in os.environ.get("ALIBI_DEMO_RFCS", "").split(",") if r]
 
 # Only tracked source and public synthetic fixtures go into the image: never
 # .env files, keys, local databases or scratch data.
@@ -136,7 +140,8 @@ def _issue(recipient: str, attempts: int = 20) -> None:
 def backend() -> None:
     os.makedirs(STATE, exist_ok=True)
     subprocess.Popen(STACK, cwd=REMOTE)
-    for name, port in (("app", APP_PORT), ("merchant", MERCHANT_PORT), ("bank", BANK_PORT)):
+    for name, port in (("app", APP_PORT), ("merchant", MERCHANT_PORT), ("bank", BANK_PORT),
+                       ("director", DIRECTOR_PORT)):
         if not _wait_for(port):
             raise RuntimeError(f"{name} did not start on port {port}")
     for recipient in BOOT_RFCS:

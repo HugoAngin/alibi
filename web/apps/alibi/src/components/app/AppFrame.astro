@@ -6,6 +6,7 @@
  * screen is not showing live backend data, and `/simulate/` adds a bar saying the visitor is
  * looking at Maya's dashboard, read-only, with a way to start their own.
  */
+import { ALIBI_SIMULATE_ACTIONS } from 'astro:env/server';
 import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
 
 interface Props {
@@ -21,6 +22,8 @@ interface Props {
 }
 
 const { holder = 'Maya', fixtureReason, active, wide = false, simulation = false } = Astro.props;
+// The live demo (ALIBI_SIMULATE_ACTIONS=1): the presenter acts as Maya here and can reset the demo.
+const demoControls = simulation && ALIBI_SIMULATE_ACTIONS === '1';
 const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
 const sections = [
   {
@@ -38,9 +41,23 @@ const sections = [
     <div class="sim-bar">
       <p>
         <span class="sim-dot" aria-hidden="true"></span>
-        You’re viewing Maya’s dashboard, live and read-only
+        {demoControls
+          ? 'Live demo: you’re acting as Maya'
+          : 'You’re viewing Maya’s dashboard, live and read-only'}
       </p>
-      <a href="/sign-up/">Start your own</a>
+      {demoControls ? (
+        <form
+          method="post"
+          action="/simulate/reset/"
+          onsubmit="return confirm('Reset the whole demo to the start? Every site goes back to before Maya withdraws her payout.')"
+        >
+          <button type="submit" class="sim-reset">
+            Reset demo
+          </button>
+        </form>
+      ) : (
+        <a href="/sign-up/">Start your own</a>
+      )}
     </div>
   )}
 
@@ -77,6 +94,11 @@ const sections = [
   <main id="main" class="screen">
     <slot />
   </main>
+
+  <script>
+    import { startLive } from '@alibi/ui/live';
+    startLive();
+  </script>
 
   <nav class="dock-wrap" aria-label="App">
     <div class="dock">
@@ -172,6 +194,21 @@ const sections = [
     border-radius: 50%;
     background: #6fd39b;
     box-shadow: 0 0 0 3px rgb(111 211 155 / 0.25);
+  }
+
+  .sim-bar form {
+    margin: 0;
+  }
+
+  .sim-reset {
+    padding: 4px 12px;
+    border: 1px solid var(--s-paper);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--s-paper);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
   }
 
   .sim-bar a {

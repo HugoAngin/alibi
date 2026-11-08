@@ -67,6 +67,34 @@ delete every database beside it) and the bank state `data/alibi/bank/state.json`
 **without** a reset replays the case as duplicates and keeps history; that is the persistence
 check, not a reload.
 
+## Live demo (the sites drive it)
+
+Two terminals from the repo root:
+
+```bash
+uv run --frozen python -m alibi.demo --case 1 --reset     # app 8100, merchant 8101, bank 8102, director 8103
+cd web && pnpm demo                                       # alibi 4321, merchant 4322, bank 4323
+```
+
+Then, in the browser, with no CLI steps:
+
+1. Marketplace `http://127.0.0.1:4322/seller/payouts/`: **Withdraw**. The director moves every clock
+   to the payout landing (10-26, 10-28, then 10-29 08:00), so Maya's alert and Bank A's case
+   FC-0147 appear.
+2. Bank `http://127.0.0.1:4323/` (passcode printed by `pnpm demo`): open FC-0147, **Request
+   customer's alibi**, Send. The clock moves to the request's issue time (11-02 09:00).
+3. Maya `http://127.0.0.1:4321/simulate/`: open Bank A's request, Run investigation, Approve, Send.
+4. Bank: the case reads "Alibi received"; the inbox opens the context report.
+5. **Reset demo** (bank console header, or Maya's simulation bar) puts everything back to step 1 in
+   about a second.
+
+Every page polls its site's `/live/` and reloads when the demo's state changes, so all open
+screens follow within about 1.5 s. One clock: the holder app reads the mock bank's clock
+in-process, so a package is never "issued in the future" and the requests' expiry does not
+depend on today's date. Director routes (`/demo/state|withdraw|request|reset`, bearer
+`ALIBI_DEMO_TOKEN` or the tokens file's `admin`) are in `alibi/demo_director.py`; hosted, the
+router forwards `/demo/*` to it, and the Workers need `ALIBI_DEMO_ORIGIN` and `ALIBI_DEMO_TOKEN`.
+
 ## Routes
 
 The holder and analyst route table (method, path, request, response, auth, refusal codes) is

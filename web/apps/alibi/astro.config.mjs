@@ -22,6 +22,16 @@ export default defineConfig({
   build: { format: 'directory' },
   env: {
     schema: {
+      // The live demo's director (alibi/demo_director.py): local http://127.0.0.1:8103, hosted the
+      // Modal address. With its bearer, server-side only. Unset: no live demo, screens as before.
+      ALIBI_DEMO_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      ALIBI_DEMO_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // "1": Maya's simulation dashboard (/simulate/) can run, approve and send, for the live demo.
+      ALIBI_SIMULATE_ACTIONS: envField.string({
+        context: 'server',
+        access: 'secret',
+        optional: true,
+      }),
       // The Python backend (web/docs/backend-integration.md). Unset means
       // "not connected": screens show the built-in case 1 data and say so.
       // `secret` access makes Astro read it at runtime (the Worker's vars),

@@ -11,7 +11,7 @@
  */
 import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
 
-import { cases, day, formatGBP, when, type FraudCase } from '@/data/cases';
+import { day, formatGBP, when, type FraudCase } from '@/data/cases';
 import { statusLabel } from '@/lib/caseState';
 import type { Queue } from '@/lib/queue';
 
@@ -22,6 +22,7 @@ interface Props {
 }
 
 const { queue, openId, step = 'case' } = Astro.props;
+const cases = queue.cases;
 const counts = {
   all: cases.length,
   open: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Open').length,

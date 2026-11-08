@@ -1,0 +1,63 @@
+---
+/** Maya's seller balance before she withdraws it: the live demo's first step. */
+import { formatGBP } from '@/data/shop';
+import { payouts } from '@/data/account';
+
+interface Props {
+  returnTo: '/seller/' | '/seller/payouts/';
+}
+
+const { returnTo } = Astro.props;
+const payout = payouts[0]!;
+---
+
+<div class="withdraw">
+  <p class="label">Available to withdraw</p>
+  <p class="amount">{formatGBP(payout.amountMinor)}</p>
+  <p class="meta">
+    From {payout.coversOrderRefs.length} orders in October, after refunds and fees.
+  </p>
+  <form method="post" action="/seller/payouts/withdraw/">
+    <input type="hidden" name="return_to" value={returnTo} />
+    <button type="submit">Withdraw to {payout.destination.toLowerCase()}</button>
+  </form>
+</div>
+
+<style>
+  .withdraw {
+    display: grid;
+    gap: var(--space-2xs);
+  }
+
+  .label {
+    margin: 0;
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+
+  .amount {
+    margin: 0;
+    font-size: var(--t-xl);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meta {
+    margin: 0;
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+
+  button {
+    justify-self: start;
+    margin-top: var(--space-xs);
+    padding: var(--space-xs) var(--space-md);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--c-shop);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+</style>

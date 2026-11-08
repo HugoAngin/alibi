@@ -45,6 +45,7 @@ ALIBI_MASTER_KEY    passport encryption key; read by ``alibi.core.store``, never
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -88,6 +89,9 @@ class Settings:
     data_dir: Path = DEFAULT_DATA_DIR
     key_dir: Path = Path(DEFAULT_KEY_DIR)
     fixed_now: datetime | None = None
+    # The demo runner (alibi.demo) passes the mock bank's simulated clock here, so the passport
+    # and the bank always agree on "now" and a package is never signed after the bank's clock.
+    clock: Callable[[], datetime] | None = field(default=None, compare=False, repr=False)
     replay: bool = False
     mode: str = "rules"              # investigation mode: rules | agents | one_pass (ALIBI_MODE)
     bank_url: str | None = None
@@ -118,7 +122,9 @@ class Settings:
         return self.data_dir / f"case_{self.case_number}.state.json"
 
     def now(self) -> datetime:
-        """The app clock: ``ALIBI_NOW`` when set, else the current UTC time."""
+        """The app clock: the injected demo clock, else ``ALIBI_NOW``, else the current UTC time."""
+        if self.clock is not None:
+            return self.clock()
         return self.fixed_now if self.fixed_now is not None else datetime.now(timezone.utc)
 
     def recipient_for_token(self, token: str | None) -> str | None:

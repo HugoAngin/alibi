@@ -7,12 +7,15 @@
 import type { APIRoute } from 'astro';
 import {
   ALIBI_API_ORIGIN,
+  ALIBI_DEMO_ORIGIN,
+  ALIBI_DEMO_TOKEN,
   BANK_API_ORIGIN,
   BANK_A_TOKEN,
   BANK_SESSION_SECRET,
 } from 'astro:env/server';
 
 import { forwardAction } from '@alibi/ui/api';
+import { demoEnabled, demoStep } from '@alibi/ui/demo';
 
 import { handleAct, type Forward } from '@/lib/actions';
 import { bankTarget } from '@/lib/bankApi';
@@ -34,8 +37,13 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
   );
   // forwardAction only JSON-serialises the body; its type says string values, but the bank needs
   // `requested_evidence` as a list, so the planned body passes through as is.
+  // In the live demo the request goes through the director, which first moves the shared clock
+  // to the request's issue time, then has the bank issue and forward it (alibi/demo_director.py).
+  const demo = { origin: ALIBI_DEMO_ORIGIN, token: ALIBI_DEMO_TOKEN };
   const forward: Forward = (o) =>
-    forwardAction({ ...o, body: o.body as unknown as Record<string, string> });
+    fields.kind === 'request' && demoEnabled(demo)
+      ? demoStep(demo, 'request', { recipient: 'bank_a' })
+      : forwardAction({ ...o, body: o.body as unknown as Record<string, string> });
   const outcome = await handleAct(
     { fields, requestOrigin: request.headers.get('origin'), siteOrigin: url.origin, analyst },
     {

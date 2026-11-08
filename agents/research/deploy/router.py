@@ -39,6 +39,9 @@ def upstreams_from_env(env: dict[str, str] | None = None) -> list[Upstream]:
     """Upstreams in match order: longest prefix first, the app last."""
     env = dict(os.environ if env is None else env)
     return [
+        # The demo director keeps its /demo prefix (its own routes are /demo/*) and checks the
+        # demo bearer itself (alibi/demo_director.py).
+        Upstream("demo", "/demo", env.get("ALIBI_DIRECTOR_ORIGIN", "http://127.0.0.1:8103")),
         Upstream("merchant", "/merchant", env.get("ALIBI_MERCHANT_ORIGIN", "http://127.0.0.1:8101")),
         Upstream("bank", "/bank", env.get("ALIBI_BANK_ORIGIN", "http://127.0.0.1:8102")),
         Upstream("app", "", env.get("ALIBI_APP_ORIGIN", "http://127.0.0.1:8100")),
@@ -67,6 +70,8 @@ def pick(path: str, upstreams: list[Upstream]) -> tuple[Upstream, str]:
     """The upstream for a public path, and the path to send it."""
     for up in upstreams:
         if up.prefix and (path == up.prefix or path.startswith(up.prefix + "/")):
+            if up.name == "demo":
+                return up, path
             return up, path[len(up.prefix):] or "/"
     return upstreams[-1], path
 

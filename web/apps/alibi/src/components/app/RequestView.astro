@@ -20,6 +20,8 @@ interface Props {
   offNote?: string;
   /** The request comes from a bank the holder trusts (src/lib/trust.ts): one tap approves and sends. */
   trusted?: boolean;
+  /** Where the forms post: /app/act, or /simulate/act in the live demo. */
+  actionUrl?: '/app/act' | '/simulate/act';
 }
 
 const {
@@ -28,6 +30,7 @@ const {
   live,
   offNote = 'Approval needs the backend: it binds your decision to the package’s digest.',
   trusted = false,
+  actionUrl = '/app/act',
 } = Astro.props;
 const { request: rq, investigation: inv, trace, review } = data;
 const approval = review.approval;
@@ -63,7 +66,7 @@ const oneTap =
         Check them below if you want, or approve and send now.
       </p>
     </div>
-    <form method="post" action="/app/act">
+    <form method="post" action={actionUrl}>
       <input type="hidden" name="action" value={approval.action} />
       <input type="hidden" name="digest" value={approval.digest} />
       <input type="hidden" name="audience" value={approval.audience} />
@@ -128,7 +131,7 @@ const oneTap =
     </ul>
   )}
   {inv.can_run && (
-    <form method="post" action="/app/act">
+    <form method="post" action={actionUrl}>
       <input type="hidden" name="action" value={inv.run_action} />
       <button class="btn btn--primary" type="submit" disabled={!live}>
         Run investigation
@@ -169,7 +172,7 @@ const oneTap =
               </span>
               <span class="meta">{i.reason}</span>
               {i.removable && i.remove_action ? (
-                <form method="post" action="/app/act">
+                <form method="post" action={actionUrl}>
                   <input type="hidden" name="action" value={i.remove_action} />
                   <button class="btn btn--small" type="submit" disabled={!live}>
                     Remove
@@ -252,7 +255,7 @@ const oneTap =
     {approval.invalidated_reason && (
       <p class="notice">Your earlier approval no longer applies: {approval.invalidated_reason}</p>
     )}
-    <form method="post" action="/app/act">
+    <form method="post" action={actionUrl}>
       <input type="hidden" name="action" value={approval.action} />
       <input type="hidden" name="digest" value={approval.digest} />
       <input type="hidden" name="audience" value={approval.audience} />
@@ -270,7 +273,7 @@ const oneTap =
       </button>
     </form>
     {live && approval.status === 'approved' && rq.status !== 'sent' && (
-      <form method="post" action="/app/act">
+      <form method="post" action={actionUrl}>
         <input type="hidden" name="action" value={`/requests/${rq.request_id}/dispatch`} />
         <button class="btn btn--primary btn--wide" type="submit">
           Send approved package to {approval.recipient}

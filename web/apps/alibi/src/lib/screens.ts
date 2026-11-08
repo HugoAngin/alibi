@@ -36,10 +36,12 @@ export type Flash =
   | { kind: 'unavailable'; message: string };
 
 const FLASH_COOKIE = 'alibi_flash';
+// Site-wide: Maya's screens live under /app/ and, in the live demo, under /simulate/ too.
+const FLASH_PATH = '/';
 
 export function setFlash(cookies: AstroCookies, flash: Flash): void {
   cookies.set(FLASH_COOKIE, JSON.stringify(flash), {
-    path: '/app',
+    path: FLASH_PATH,
     maxAge: 60,
     httpOnly: true,
     sameSite: 'lax',
@@ -50,7 +52,7 @@ export function setFlash(cookies: AstroCookies, flash: Flash): void {
 export function takeFlash(cookies: AstroCookies): Flash | null {
   const raw = cookies.get(FLASH_COOKIE)?.value;
   if (!raw) return null;
-  cookies.delete(FLASH_COOKIE, { path: '/app' });
+  cookies.delete(FLASH_COOKIE, { path: FLASH_PATH });
   try {
     return JSON.parse(raw) as Flash;
   } catch {

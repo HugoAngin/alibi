@@ -3,6 +3,7 @@
 import httpx
 from starlette.testclient import TestClient
 
+from agents.research.deploy import router
 from agents.research.deploy.router import Upstream, build_app, has_credential, is_blocked, pick
 
 UPS = [
@@ -127,3 +128,12 @@ def test_ordinary_queries_still_pass():
     c, calls = recording_client()
     assert c.get("/merchant/events?since=1").status_code == 200
     assert len(calls) == 1
+
+
+def test_demo_director_keeps_its_prefix_and_is_not_blocked():
+    ups = router.upstreams_from_env({})
+    up, path = router.pick("/demo/reset", ups)
+    assert up.name == "demo" and path == "/demo/reset"
+    assert not router.is_blocked(path)
+    up, path = router.pick("/demo/admin", ups)
+    assert router.is_blocked(path)

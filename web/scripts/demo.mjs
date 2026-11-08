@@ -8,7 +8,8 @@
  * Opens nothing itself; prints the three local addresses. Each app falls back to its built-in
  * case 1 data and says so if its backend is not answering, so a missing service never shows a
  * blank screen. Overrides: ALIBI_APP_URL, ALIBI_MERCHANT_URL, ALIBI_BANK_URL, BANK_A_TOKEN,
- * ANALYST_PASSCODE, BANK_SESSION_SECRET, ALIBI_DEMO_HOST. Stop with Ctrl-C (all three stop).
+ * ANALYST_PASSCODE, BANK_SESSION_SECRET, ALIBI_DEMO_HOST, ALIBI_DEMO_ORIGIN (the demo director,
+ * default :8103), ALIBI_DEMO_TOKEN (default: the admin entry of data/alibi/bank_tokens.json). Stop with Ctrl-C (all three stop).
  *
  * The apps listen on 127.0.0.1 only (ALIBI_DEMO_HOST may name another loopback address; anything
  * else is refused). The holder app runs in demo holder mode (apps/alibi/src/lib/demoHolder.ts):
@@ -29,6 +30,7 @@ const backend = {
   app: env.ALIBI_APP_URL ?? 'http://127.0.0.1:8100',
   merchant: env.ALIBI_MERCHANT_URL ?? 'http://127.0.0.1:8101',
   bank: env.ALIBI_BANK_URL ?? 'http://127.0.0.1:8102',
+  director: env.ALIBI_DEMO_ORIGIN ?? 'http://127.0.0.1:8103',
 };
 const replay = env.ALIBI_REPLAY === '1';
 
@@ -56,6 +58,18 @@ function bankToken() {
   return { token: '', from: '' };
 }
 
+/** The demo director's bearer (alibi/demo_director.py): ALIBI_DEMO_TOKEN, else the admin entry. */
+function directorToken() {
+  if (env.ALIBI_DEMO_TOKEN) return env.ALIBI_DEMO_TOKEN;
+  const file = join(repo, 'data', 'alibi', 'bank_tokens.json');
+  try {
+    return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')).admin ?? '') : '';
+  } catch {
+    return '';
+  }
+}
+const demoEnv = { ALIBI_DEMO_ORIGIN: backend.director, ALIBI_DEMO_TOKEN: directorToken() };
+
 const passcodeSupplied = Boolean(env.ANALYST_PASSCODE);
 const passcode = env.ANALYST_PASSCODE || randomBytes(4).toString('hex');
 const sessionSecret = env.BANK_SESSION_SECRET || randomBytes(32).toString('hex');
@@ -73,6 +87,9 @@ const apps = [
       ALIBI_API_ORIGIN: backend.app,
       ALIBI_DEMO_HOLDER: '1',
       HOLDER_SESSION_SECRET: holderSecret,
+      // The presenter acts as Maya on /simulate/ and can reset the demo there.
+      ALIBI_SIMULATE_ACTIONS: '1',
+      ...demoEnv,
     },
   },
   {
@@ -80,7 +97,7 @@ const apps = [
     pkg: '@alibi/merchant',
     originVar: 'MERCHANT_ORIGIN',
     port: 4322,
-    env: { ALIBI_API_ORIGIN: backend.merchant, PUBLIC_ALIBI_ORIGIN: local(4321) },
+    env: { ALIBI_API_ORIGIN: backend.merchant, PUBLIC_ALIBI_ORIGIN: local(4321), ...demoEnv },
   },
   {
     name: 'bank',
@@ -92,6 +109,7 @@ const apps = [
       BANK_A_TOKEN: token,
       ANALYST_PASSCODE: passcode,
       BANK_SESSION_SECRET: sessionSecret,
+      ...demoEnv,
     },
   },
 ];

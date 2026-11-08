@@ -18,6 +18,8 @@ if (!fraudCase) return new Response('Case not found', { status: 404 });
 
 const loaded = await loadQueue(Astro.cookies);
 if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
+// In the live demo Maya's case only exists once her payout is flagged (src/lib/queue.ts).
+if (!loaded.queue.cases.some((c) => c.id === fraudCase.id)) return Astro.redirect('/', 303);
 // Only a case that can still be asked has a request step.
 if (loaded.queue.states[fraudCase.id]?.kind !== 'not_requested')
   return Astro.redirect(`/cases/${fraudCase.id}/`, 303);

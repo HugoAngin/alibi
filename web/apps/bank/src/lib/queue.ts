@@ -7,15 +7,19 @@
 import type { AstroCookies } from 'astro';
 import {
   ALIBI_API_ORIGIN,
+  ALIBI_DEMO_ORIGIN,
+  ALIBI_DEMO_TOKEN,
   BANK_API_ORIGIN,
   BANK_A_TOKEN,
   BANK_SESSION_SECRET,
 } from 'astro:env/server';
 
-import { analyst as demoAnalyst, bank, cases } from '@/data/cases';
+import { demoState, type DemoState } from '@alibi/ui/demo';
+
+import { analyst as demoAnalyst, bank, cases, type FraudCase } from '@/data/cases';
 
 import { bankTarget } from './bankApi';
-import { alibiState, type AlibiState } from './caseState';
+import { alibiState, visibleCases, type AlibiState } from './caseState';
 import { loadInbox } from './load';
 import { RECIPIENT, backendHeaders, takeFlash, type Flash } from './screens';
 import { SESSION_COOKIE, verifySession } from './session';
@@ -27,6 +31,10 @@ export interface Queue {
   previewReason: string | null;
   states: Record<string, AlibiState>;
   flash: Flash | null;
+  /** The cases on screen. In the live demo, Maya's case appears once her payout is flagged. */
+  cases: FraudCase[];
+  /** The live demo's state, when one is connected. */
+  demo: DemoState | null;
 }
 
 export type QueueLoad = { redirect: string } | { queue: Queue };
@@ -41,14 +49,21 @@ export async function loadQueue(cookies: AstroCookies): Promise<QueueLoad> {
   if (target.origin && !analyst) return { redirect: '/sign-in/' };
 
   const who = { id: RECIPIENT, name: bank.name, analyst_name: analyst ?? demoAnalyst.name };
-  const loaded = target.origin
-    ? await loadInbox(target, who, backendHeaders(BANK_A_TOKEN))
-    : { source: 'fixture' as const, reason: 'The bank service is not connected here.' };
+  const [loaded, demo] = await Promise.all([
+    target.origin
+      ? loadInbox(target, who, backendHeaders(BANK_A_TOKEN))
+      : Promise.resolve({
+          source: 'fixture' as const,
+          reason: 'The bank service is not connected here.',
+        }),
+    demoState({ origin: ALIBI_DEMO_ORIGIN, token: ALIBI_DEMO_TOKEN }),
+  ]);
   const live = loaded.source === 'live';
   const inbox = loaded.source === 'live' ? loaded.data : null;
 
   const states: Record<string, AlibiState> = {};
-  for (const c of cases) states[c.id] = alibiState(c, inbox);
+  const shown = visibleCases(cases, demo);
+  for (const c of shown) states[c.id] = alibiState(c, inbox);
 
   return {
     queue: {
@@ -56,6 +71,8 @@ export async function loadQueue(cookies: AstroCookies): Promise<QueueLoad> {
       previewReason: live ? null : (('reason' in loaded ? loaded.reason : null) ?? null),
       states,
       flash: takeFlash(cookies),
+      cases: shown,
+      demo,
     },
   };
 }

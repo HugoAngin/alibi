@@ -159,6 +159,10 @@ const category = Astro.url.pathname === '/' ? Astro.url.searchParams.get('c') : 
       </nav>
       <p class="fine">A simulated shop for the Alibi demo. No real orders or payments.</p>
     </footer>
+    <script>
+      import { startLive } from '@alibi/ui/live';
+      startLive();
+    </script>
   </body>
 </html>
 

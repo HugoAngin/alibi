@@ -4,8 +4,14 @@ import ShopLayout from '@/layouts/ShopLayout.astro';
 import SellerNav from '@/components/SellerNav.astro';
 import { formatGBP, seller } from '@/data/shop';
 import { day, notifications, orders, payouts, totals, when } from '@/data/account';
+import WithdrawCard from '@/components/WithdrawCard.astro';
+import { payoutDemo } from '@/lib/demo';
+
+export const prerender = false;
 
 const payout = payouts[0]!;
+const demo = await payoutDemo(Astro.cookies);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 const latest = [...orders].reverse().slice(0, 3);
 ---
 
@@ -36,16 +42,30 @@ const latest = [...orders].reverse().slice(0, 3);
   </section>
 
   <section aria-labelledby="payout-title" class="panel">
-    <h2 id="payout-title">Latest payout</h2>
-    <p>
-      <strong>{formatGBP(payout.amountMinor)}</strong> · <code>{payout.payoutRef}</code> ·
-      <span class="status-paid">✓ {payout.status}</span>
-    </p>
-    <p class="meta">
-      Requested {when(payout.requestedAt)}. Arrived {when(payout.settledAt)} in your{' '}
-      {payout.destination.toLowerCase()}.
-    </p>
-    <a href="/seller/payouts/">All payouts</a>
+    {demo.message && (
+      <p class="withdraw-message" role="status">
+        {demo.message}
+      </p>
+    )}
+    {demo.available ? (
+      <>
+        <h2 id="payout-title">Seller balance</h2>
+        <WithdrawCard returnTo="/seller/" />
+      </>
+    ) : (
+      <>
+        <h2 id="payout-title">Latest payout</h2>
+        <p>
+          <strong>{formatGBP(payout.amountMinor)}</strong> · <code>{payout.payoutRef}</code> ·
+          <span class="status-paid">✓ {payout.status}</span>
+        </p>
+        <p class="meta">
+          Requested {when(payout.requestedAt)}. Arrived {when(payout.settledAt)} in your{' '}
+          {payout.destination.toLowerCase()}.
+        </p>
+        <a href="/seller/payouts/">All payouts</a>
+      </>
+    )}
   </section>
 
   <section aria-labelledby="orders-title" class="panel">
@@ -78,6 +98,13 @@ const latest = [...orders].reverse().slice(0, 3);
 </ShopLayout>
 
 <style>
+  .withdraw-message {
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-md);
+    background: var(--c-soft);
+    font-weight: 600;
+  }
+
   .panel {
     margin-block: var(--space-md);
     padding: var(--space-md);

@@ -6,6 +6,8 @@
  */
 import type { FraudCase } from '../data/cases';
 
+import type { DemoState } from '@alibi/ui/demo';
+
 import type { AnalystInbox } from './types';
 
 export type AlibiState =
@@ -40,4 +42,17 @@ export function statusLabel(c: FraudCase, s: AlibiState): string {
   if (c.status === 'awaiting_customer') return 'Awaiting customer';
   if (c.status === 'closed') return 'Closed';
   return 'Open';
+}
+
+/**
+ * The live demo decides when Maya's case exists: before she withdraws her payout there is
+ * nothing to flag, so only the filler cases show; once the credit has landed and been flagged,
+ * her case opens at the flag's time. Without a live demo every case shows, as before.
+ */
+export function visibleCases(all: FraudCase[], demo: DemoState | null): FraudCase[] {
+  if (!demo) return all;
+  return all.flatMap((c) => {
+    if (!c.request) return [c];
+    return demo.steps.flagged ? [{ ...c, openedAt: demo.flagged_at }] : [];
+  });
 }

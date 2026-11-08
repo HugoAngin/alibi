@@ -38,6 +38,21 @@ def test_pending_payout_has_no_supporting_breakdown_or_citations():
     assert claims["q.breakdown"]["facts"] == {} and claims["q.breakdown"]["evidence_refs"] == []
 
 
+def test_second_platform_rules_maps_deliveries_and_lookup_only_statement():
+    case = without_gold(load_case(73))
+    [row] = predict_baseline(case, "rules")
+    assert row["links"] == [{"txn_id": "txn-0073-004", "state": "linked",
+                             "payout_record_ids": ["rec-0073-013"]}]
+    claims = row["proposed_package"]["claims"]
+    assert "merchant:rec-0073-013" in claims["q.source_of_funds"]["evidence_refs"]
+    assert claims["q.breakdown"]["facts"]["breakdown_minor"]["net"] > 0
+    assert row["retrieval"]["lookups"] > 0
+
+    case["merchant_lookup"][0]["available_from"] = "2100-01-01T00:00:00Z"
+    [before_lookup] = predict_baseline(case, "rules")
+    assert before_lookup["links"][0]["state"] == "unmatched"
+
+
 def test_one_pass_uses_same_fixed_evidence_without_future_or_gold(tmp_path):
     case = without_gold(canonical_case())
     request = case["rfcs"][0]

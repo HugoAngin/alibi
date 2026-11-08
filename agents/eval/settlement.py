@@ -4,6 +4,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 import re
 
+from agents.data.api import to_contract
+
 WINDOW = timedelta(days=5)
 REFERENCE = re.compile(
     r"\b(?:withdrawal|payout|settlement)\s+(?:ref(?:erence)?[\s:#-]+)?"
@@ -73,7 +75,7 @@ def fixed_candidate_pool(snapshot: dict, lookup) -> tuple[dict, dict, dict]:
         current = bank.get(row["txn_id"])
         if current is None or row["revision"] > current["revision"]:
             bank[row["txn_id"]] = row
-    merchant = [entry["event"] for entry in snapshot["merchant_deliveries"]]
+    merchant = [to_contract(entry["event"]) for entry in snapshot["merchant_deliveries"]]
     claim = snapshot["holder_claim"]
     active = _active(merchant, subject, "merchant")
     references = set()
@@ -103,7 +105,7 @@ def fixed_candidate_pool(snapshot: dict, lookup) -> tuple[dict, dict, dict]:
 
     calls = 0
     for reference in sorted(references):
-        merchant.extend(lookup(payout_reference=reference))
+        merchant.extend(to_contract(event) for event in lookup(payout_reference=reference))
         calls += 1
     active = _active(merchant, subject, "merchant")
     imports = [entry["record"] for entry in snapshot["imports"] if _candidate_import(entry["record"])]
@@ -118,7 +120,7 @@ def fixed_candidate_pool(snapshot: dict, lookup) -> tuple[dict, dict, dict]:
         if record_id not in candidate_pool
     }
     for record_id in sorted(missing):
-        merchant.extend(lookup(record_id=record_id))
+        merchant.extend(to_contract(event) for event in lookup(record_id=record_id))
         calls += 1
     return bank, {**self_supplied, **_active(merchant, subject, "merchant")}, {
         "lookups": calls,

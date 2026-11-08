@@ -7,6 +7,7 @@ from datetime import datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from agents.eval.baselines import predict_baseline, propose_baseline
 from agents.eval.case_io import request_context
 from agents.eval.demo_fixture import build_analyst_preview, build_mock_bank, build_mock_merchant
 from agents.eval.http_probe_runtime import attempt
@@ -24,7 +25,7 @@ __all__ = [
     "attempt",
     "build_analyst_preview", "build_mock_bank", "build_mock_merchant",
     "compare_captures", "dispatch_approved", "fixed_candidate_pool", "match_credit",
-    "period_totals", "reconcile_credit", "request_context", "score_capture", "score_probe_steps",
+    "period_totals", "predict_baseline", "propose_baseline", "reconcile_credit", "request_context", "score_capture", "score_probe_steps",
     "sign_record", "verify_package",
 ]
 

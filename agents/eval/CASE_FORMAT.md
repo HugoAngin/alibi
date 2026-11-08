@@ -36,3 +36,11 @@ Use `--split lockbox` only through the authorized evaluator runner after candida
 Use `agents.eval.api.compare_captures(cases, gold, full=..., rules=..., one_pass=...)` for paired results. Each capture uses the same inputs and independent gold. The report gives win, tie and loss counts per case and per scenario family. A family wins when full Alibi passes more variants than the baseline within that family. Report the number of independent families with the counts and state the uncertainty when there are too few families for an interval.
 
 The local reference retrieval helper is `agents.eval.api.fixed_candidate_pool(view, lookup)`. For each named credit it looks up the payment reference, the holder's cited reference, canonical references in visible documents and ordinary labelled references parsed from compatible balance releases. It then looks up missing component IDs from uniquely matched payouts. Period requests use the records already visible in their time window. `match_credit`, `reconcile_credit` and `period_totals` expose deterministic draft inputs. A well-formed self-supplied record retains its import provenance. The official comparison uses the app owner's S5 runner and its shared policy and delivery checks.
+
+`agents.eval.api.predict_baseline(case_without_gold, mode)` emits one pre-policy prediction per case in the interim shared Prediction format. Choose `rules` or `one_pass`. Both modes prepare the same time-scoped candidate pool for each RFC. `one_pass` makes one uncached Flash request per RFC, records failed attempts, and stops on provider failure. The original per-request drafts preserve citation revisions and rationale for S5's shared validation and policy gate. The case-level prediction contains the fixed-retrieval counters and the interim gold-shaped answer map. Run the gate before scoring disclosures, counting unsafe proposals or reporting benchmark results.
+
+```bash
+uv run --frozen python -m agents.eval.baselines --mode rules --case 1 --case 2
+```
+
+The baseline CLI reads only public development cases. The evaluator-only runner supplies sealed inputs after freeze. Use `--mode one_pass --log data/alibi/dev-one-pass.jsonl` for a live public run with a separate provider log.

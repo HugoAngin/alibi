@@ -70,7 +70,9 @@ def fixed_candidate_pool(snapshot: dict, lookup) -> tuple[dict, dict, dict]:
     bank = {}
     for entry in snapshot["bank_deliveries"]:
         row = entry["row"]
-        bank.setdefault(row["txn_id"], row)
+        current = bank.get(row["txn_id"])
+        if current is None or row["revision"] > current["revision"]:
+            bank[row["txn_id"]] = row
     merchant = [entry["event"] for entry in snapshot["merchant_deliveries"]]
     claim = snapshot["holder_claim"]
     active = _active(merchant, subject, "merchant")

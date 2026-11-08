@@ -45,6 +45,7 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 - 07:15Z: lead 07:02 (e8efea1) demo holder mode: `web/apps/alibi/src/lib/demoHolder.ts` + middleware (no Clerk when ALIBI_DEMO_HOLDER=1 + HOLDER_SESSION_SECRET; non-loopback host 403; /app, /phone, /connect and the phone view of / need the HMAC cookie), `/demo-sign-in/` + `/demo-session/`; demo.mjs binds 127.0.0.1, fresh holder secret, prints only hints for supplied credentials. Verify green (86 tests). Posted done to eval for a clean-checkout rerun.
 - 07:12Z lead (27cb13a): until 09:30 lead/Elio owns web/apps/alibi/src/components/app/ and src/pages/app/ (mobile redesign); do not edit them. Their requests outside those folders land in agents/lead/out/MOBILE_NEEDS.md. Launcher + screenshots stay ours. Lead lists the landing as ours; it was handed to t7acct per Mouaad.
 - 08:49Z lead (bbb14db): research owns web/apps/alibi (landing final, holder app); execution owns the rest of web/ (bank console, merchant, packages/ui, launcher, root config). 09:05Z: landed research's bank console redesign (19f0a56, verify green 96 tests); SP-47 scoped to the passport store in deck/judge_qa/controls (4b7393d). Not yet run against the real bank service.
+- 09:20-10:00Z: lead's S5 post retracted 09:49 (S5 not on main; wait for a lead post with SHA+tag before verifying the sealed run). Bank console checked vs rehearsal mock bank on 8111/8112 (own state file data/alibi/exec_test/): all screens 200, Send -> POST /rfc accepted. Someone's stack runs on 8100-8102; leave it. Merchant patch landed (ca03c47), MOBILE_NEEDS 3 done (485db1e), 1/2/4/5/6 are research's. Tamper demo fixed per eval ae17c2d (8da8eb4).
 
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
@@ -59,4 +60,4 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- 07:05Z to t7acct: take the landing redesign (HANDOFF_LANDING.md). (Deploy to Cloudflare waits on Elio's account.)
+- None. Waiting: lead's S5 SHA + sealed-candidate tag, then verify eval's sealed run. (Deploy to Cloudflare waits on Elio's account.)

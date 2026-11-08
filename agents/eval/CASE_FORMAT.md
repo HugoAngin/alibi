@@ -33,6 +33,22 @@ For native bank checks SP-25 to SP-32, issue a real Bank A request and approve a
 
 For consent probes against the native bank, set `fixtures.consent_bank_service` to the service key containing that bank origin. The default inbox, package view and raw envelope routes are `/inbox`, `/packages/{package_id}` and `/packages/{package_id}/raw`. A successful dispatch control checks the approval against the signed body's digest and the dispatch receipt against the signed envelope's separate digest. Leave this fixture unset when using the legacy app-hosted bank view.
 
+Before releasing the routed demo, start a fresh public Case 1 stack with
+`ALIBI_HOLDER_TOKEN` set. Use a private profile with `base_urls.app` pointing to
+the loopback router and `base_urls.bank` pointing to the same router's `/bank`
+prefix. Supply three distinct synthetic tokens under `holder`, `bank_a` and
+`bank_b`. Run the gate once per fresh store.
+
+```bash
+uv run --frozen python -m agents.eval.verify_demo_handoff --config "$ALIBI_ROUTED_PROBES"
+```
+
+The gate exercises valid approval and dispatch with no credential, each bank
+credential, and then the holder credential. It checks both routed inboxes,
+matches each accepted receipt to the signed body and exact RFC, and checks
+that the other recipient gets 404. A successful run leaves two public receipts
+available for profile generation against the direct loopback services.
+
 After dispatching one public Case 1 package to each bank, generate the native
 profile from the signed receipts and the holder's source view. Supply a private
 base config with the disposable loopback origins and synthetic bearer tokens.
@@ -43,7 +59,10 @@ uv run --frozen python -m agents.eval.probe_profile --config "$ALIBI_BASE_PROBES
   --key-dir "$ALIBI_DEMO_KEYS" --out "$ALIBI_LIVE_PROBES"
 ```
 
-This prepares SP-17, SP-18, SP-20, SP-21 and SP-25 through SP-32. Supply the
+This prepares SP-17, SP-18 and SP-20 through SP-32. Run the three RFC intake
+checks on a disposable bank clock inside both Case 1 RFC windows. SP-22
+expects `subject_mismatch` and SP-23 expects `txn_out_of_feed`. SP-24 sends a
+valid Bank B control and changes the declared issuer to Bank A on the attack. Supply the
 remaining route and fixture settings in the base config for the full catalogue.
 
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.

@@ -1,8 +1,10 @@
 ---
 /**
  * Compose a Request for Context. The analyst picks the questions; scope is
- * fixed to the case's transaction. Sending is not wired yet: it will go to
- * the mock bank service, which delivers the RFC to the customer's Alibi.
+ * fixed to the case's transaction. The audience is never a form field: the
+ * backend takes it from the bank's credential (execution SP-20, SP-24).
+ * Sending is not wired yet: it will go to the mock bank service, which
+ * delivers the RFC to the customer's Alibi.
  */
 import type { GetStaticPaths } from 'astro';
 
@@ -36,7 +38,6 @@ const defaults = new Set(['q.source_of_funds', 'q.breakdown']);
         <code>{c.txn.bookedAt}</code>. Recipient <code>{bank.id}</code>.
       </p>
       <input type="hidden" name="txn_ids" value={c.txn.id} />
-      <input type="hidden" name="audience" value={bank.id} />
     </fieldset>
 
     <fieldset>

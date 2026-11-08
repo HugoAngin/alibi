@@ -1,16 +1,20 @@
 ---
+/** Shop front: Maya's lots, all sold in October (case 1's order confirmations). */
 import ShopLayout from '@/layouts/ShopLayout.astro';
-import { formatGBP, listings, shop } from '@/data/shop';
+import { formatGBP, sales, seller, shop } from '@/data/shop';
 ---
 
 <ShopLayout>
   <h1>{shop.tagline}</h1>
+  <p class="lede">{seller.name}’s shop</p>
   <ul class="grid">
-    {listings.map((l) => (
+    {sales.map((s) => (
       <li>
         <div class="photo" aria-hidden="true" />
-        <h2>{l.title}</h2>
-        <p>{formatGBP(l.priceMinor)}</p>
+        <h2>{s.title}</h2>
+        <p>
+          {formatGBP(s.priceMinor)} · <span class="sold">Sold {s.soldOn}</span>
+        </p>
       </li>
     ))}
   </ul>
@@ -19,6 +23,10 @@ import { formatGBP, listings, shop } from '@/data/shop';
 <style>
   h1 {
     font-size: var(--t-lg);
+  }
+
+  .lede {
+    color: var(--c-ink-soft);
   }
 
   .grid {
@@ -46,5 +54,10 @@ import { formatGBP, listings, shop } from '@/data/shop';
 
   h2 {
     font-size: var(--t-base);
+  }
+
+  .sold {
+    color: var(--c-ink-faint);
+    font-size: var(--t-sm);
   }
 </style>

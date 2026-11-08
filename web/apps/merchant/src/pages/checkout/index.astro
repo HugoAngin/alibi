@@ -1,13 +1,16 @@
 ---
-/** Checkout, the second place a merchant can offer "Connect to my Alibi". */
+/**
+ * Checkout, the second place a merchant can offer "Connect to my Alibi". This
+ * page shows an example buyer, not Maya, so the basket is labelled as an example.
+ */
 import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
 import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
 
 import ShopLayout from '@/layouts/ShopLayout.astro';
 import ConnectionStatus from '@/components/ConnectionStatus.astro';
-import { formatGBP, listings, shop } from '@/data/shop';
+import { exampleBasket, formatGBP, shop } from '@/data/shop';
 
-const basket = listings.slice(0, 2);
+const basket = exampleBasket;
 const total = basket.reduce((sum, l) => sum + l.priceMinor, 0);
 const returnTo = new URL('/checkout/', Astro.site).toString();
 ---
@@ -17,6 +20,7 @@ const returnTo = new URL('/checkout/', Astro.site).toString();
 
   <section class="panel" aria-labelledby="basket-title">
     <h2 id="basket-title">Your basket</h2>
+    <p class="example">Example buyer and basket, not part of Maya’s case.</p>
     <table>
       <tbody>
         {basket.map((l) => (
@@ -65,6 +69,11 @@ const returnTo = new URL('/checkout/', Astro.site).toString();
 
   .num {
     text-align: right;
+  }
+
+  .example {
+    font-size: var(--t-sm);
+    color: var(--c-ink-faint);
   }
 
   .total td {

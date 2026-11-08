@@ -1,7 +1,8 @@
 /**
  * The simulated bank's fraud-review queue. SYNTHETIC: fictional customers and
  * cases. The first case is Maya's £2,160 credit from the team's canonical
- * fixture (development case 1); the others fill the queue.
+ * fixture (development case 1). The others only fill the queue: their IDs use
+ * a `txn-q-` prefix so they can never be mistaken for data's case records.
  */
 
 export const bank = { id: 'bank_a', name: 'Bank A', unit: 'Financial Crime Operations' } as const;
@@ -47,7 +48,7 @@ export const cases: FraudCase[] = [
     openedAt: '2026-11-03T10:05:00Z',
     restriction: 'None',
     txn: {
-      id: 'txn-0014-002',
+      id: 'txn-q-0152',
       bookedAt: '2026-11-02T12:00:00Z',
       amountMinor: 84000,
       description: 'FASTER PAYMENT',
@@ -62,7 +63,7 @@ export const cases: FraudCase[] = [
     openedAt: '2026-10-25T08:40:00Z',
     restriction: 'None',
     txn: {
-      id: 'txn-0027-009',
+      id: 'txn-q-0139',
       bookedAt: '2026-10-24T19:12:00Z',
       amountMinor: -12999,
       description: 'CARD PURCHASE',

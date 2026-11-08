@@ -1,23 +1,51 @@
 ---
-/** The customer's account settings, where "Connect to my Alibi" lives. */
+/** Maya's seller account, where "Connect to my Alibi" lives. */
 import { PUBLIC_ALIBI_ORIGIN } from 'astro:env/client';
 import ConnectAlibiButton from '@alibi/ui/ConnectAlibiButton.astro';
 
 import ShopLayout from '@/layouts/ShopLayout.astro';
 import ConnectionStatus from '@/components/ConnectionStatus.astro';
-import { customer, shop } from '@/data/shop';
+import { formatGBP, sales, seller, shop } from '@/data/shop';
 
 const returnTo = new URL('/account/settings/', Astro.site).toString();
 ---
 
 <ShopLayout title="Account settings">
-  <h1>Account settings</h1>
+  <h1>Seller account</h1>
 
   <section class="panel" aria-labelledby="profile-title">
     <h2 id="profile-title">Profile</h2>
     <p>
-      {customer.name} · {customer.email}
+      {seller.name} · seller ID <code>{seller.subjectRef}</code>
     </p>
+  </section>
+
+  <section class="panel" aria-labelledby="sales-title">
+    <h2 id="sales-title">Your sales</h2>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Sold</th>
+          <th scope="col">Order</th>
+          <th scope="col">Item</th>
+          <th scope="col" class="num">
+            Price
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {sales.map((s) => (
+          <tr>
+            <td>{s.soldOn}</td>
+            <td>
+              <code>{s.reference}</code>
+            </td>
+            <td>{s.title}</td>
+            <td class="num">{formatGBP(s.priceMinor)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   </section>
 
   <section class="panel" aria-labelledby="connected-title">
@@ -48,5 +76,9 @@ const returnTo = new URL('/account/settings/', Astro.site).toString();
 
   h2 {
     font-size: var(--t-md);
+  }
+
+  .num {
+    text-align: right;
   }
 </style>

@@ -504,7 +504,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--variants", default=",".join(DEFAULT_VARIANTS),
                         help="comma-separated fixture variants (default contradiction,supported)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="report directory")
+    parser.add_argument("--skip-injections", action="store_true",
+                        help="run the variants only (the probe can run separately with its own cap)")
+    parser.add_argument("--injections-only", action="store_true",
+                        help="run only the injection probe; needs --baseline-status")
+    parser.add_argument("--baseline-status", default=None,
+                        help="the clean contradiction q1 status to compare against (with --injections-only)")
     args = parser.parse_args(argv)
+    if args.injections_only and not args.baseline_status:
+        print("dev_traces: --injections-only needs --baseline-status <status>", file=sys.stderr)
+        return 2
     if args.cap < 1:
         print("dev_traces: --cap must be at least 1", file=sys.stderr)
         return 2
@@ -518,11 +527,11 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
-    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    variants = [] if args.injections_only else [v.strip() for v in args.variants.split(",") if v.strip()]
     session = _Session(args.cap, args.out)
     report: dict[str, Any] = {"variants": {}, "injections": {}, "calls_used": 0, "cap": args.cap,
                               "second_opinion": "none", "stopped_early": None}
-    baseline_status: str | None = None
+    baseline_status: str | None = args.baseline_status
     for variant in variants:
         if session.exhausted:
             report["variants"][variant] = {"skipped": "budget spent"}
@@ -537,15 +546,18 @@ def main(argv: list[str] | None = None) -> int:
         _log(f"{variant}: {json.dumps(outcome['statuses'], sort_keys=True)}; distinction "
              f"{(outcome['distinction'] or {}).get('distinguished')}; calls used {session.budget.used}")
 
-    if baseline_status is None and not session.exhausted:
-        _log("no contradiction variant requested; running a clean contradiction run as the probe baseline")
-        baseline_status = run_variant(session, "contradiction")["q1_status"]
-        report["variants"].setdefault("contradiction", {"baseline_only": baseline_status})
-    rows = run_injection_probe(session, baseline_status)
-    session.out.mkdir(parents=True, exist_ok=True)
-    (session.out / "injection_probe.md").write_text(
-        render_injection_report(rows, baseline_status=baseline_status, budget_used=session.budget.used,
-                                cap=args.cap), encoding="utf-8")
+    if args.skip_injections:
+        rows = []
+    else:
+        if baseline_status is None and not session.exhausted:
+            _log("no contradiction variant requested; running a clean contradiction run as the probe baseline")
+            baseline_status = run_variant(session, "contradiction")["q1_status"]
+            report["variants"].setdefault("contradiction", {"baseline_only": baseline_status})
+        rows = run_injection_probe(session, baseline_status)
+        session.out.mkdir(parents=True, exist_ok=True)
+        (session.out / "injection_probe.md").write_text(
+            render_injection_report(rows, baseline_status=baseline_status, budget_used=session.budget.used,
+                                    cap=args.cap), encoding="utf-8")
     for row in rows:
         checks = row.get("checks")
         report["injections"][row["id"]] = ({k: checks[k] for k in ("status_unchanged", "no_foreign_ref",

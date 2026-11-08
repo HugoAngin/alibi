@@ -313,7 +313,9 @@ def test_curator_exclusions_stay_in_the_trace(make):
     result = ctx.run(client_for(curator_script=curator_all(exclusions, gaps)))
     (claim,) = result.claims
     assert secret not in claim_text(claim) and "a record is withheld" not in claim_text(claim)
-    assert runner.GENERIC_CURATOR_GAP in claim.gap
+    # Nothing was in fact withheld (code keeps every calculation term), so no withholding gap
+    # reaches the bank; the Curator's gap text stays holder-side.
+    assert runner.GENERIC_CURATOR_GAP not in (claim.gap or "")
     notes = events(result, actor="curator", step="note")
     assert any(secret in json.dumps(e.result) for e in notes)
     assert claim.status == ClaimStatus.SUPPORTED

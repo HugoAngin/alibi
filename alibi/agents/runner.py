@@ -134,7 +134,7 @@ _TOTAL_KINDS = {SALES_TOTAL: (RecordKind.ORDER,), REFUNDS_TOTAL: (RecordKind.REF
 _LABELS = {RecordKind.ORDER: "sales", RecordKind.REFUND: "refunds", RecordKind.FEE: "fees"}
 _RANK = {ClaimStatus.SUPPORTED: 0, ClaimStatus.UNRESOLVED: 1, ClaimStatus.CONTRADICTED: 2}
 _TRACE_OUTCOMES = frozenset({"ok", "refused", "unavailable", "error", "budget_exceeded", "not_found"})
-GENERIC_CURATOR_GAP = "Part of the supporting evidence is withheld under the holder's disclosure policy."
+GENERIC_CURATOR_GAP = "Some supporting evidence is withheld at the account holder's request."
 UNMAPPED_GAP = "The investigation could not map this question to evidence it can check."
 
 
@@ -1013,7 +1013,9 @@ class _Run:
                 self.note("note", actor="curator", reason="Curator kept no evidence for a decided claim; code "
                                                           "keeps its validated refs.")
             gap = outcome.gap
-            if question.question_id in gapped:
+            # The generic withholding gap goes out only when something was in fact withheld; a
+            # Curator "gap" with nothing dropped is holder-side commentary and stays in the trace.
+            if question.question_id in gapped and dropped:
                 gap = f"{gap} {GENERIC_CURATOR_GAP}" if gap else GENERIC_CURATOR_GAP
             self.note("note", actor="curator", refs=final,
                       reason=f"Curator kept {len(final)} of {len(outcome.evidence)} cited item(s) for the claim.",

@@ -1,0 +1,179 @@
+{
+ "schema": "alibi.replay.v1",
+ "case": "maya",
+ "variant": "onepass_supported",
+ "recorded_at": "2026-11-08T03:41:53Z",
+ "models": [
+  "gemini-3.8-flash"
+ ],
+ "calls": [
+  {
+   "seq": 0,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "5d534a24787f7ac3e8d580f38c1926c52ed2e3e313e7ae6bc8940daee3ef8166",
+   "role": "# One-pass draft",
+   "data": {
+    "claims": [
+     {
+      "question_id": "q1",
+      "statement": "Credit txn_9001 references payout PO-5001 (po_5001), but no settlement record exists in the material to verify settlement to the bank.",
+      "status": "unresolved",
+      "refs": [
+       {
+        "record_id": "txn_9001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "po_5001",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [
+       "No settlement record for payout PO-5001 or reference STL-88001 is present in the material."
+      ]
+     }
+    ],
+    "disclosures": [],
+    "rationale": "Settlement records are empty, so the credit cannot be verified as settled to the bank under the candidate rule. The claim is unresolved and no disclosures are made."
+   },
+   "usage": {
+    "prompt_tokens": 6402,
+    "output_tokens": 225,
+    "thinking_tokens": 0,
+    "total_tokens": 6627
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:41:56Z"
+  },
+  {
+   "seq": 1,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "4b4e674f7789f18c74e2551118550ac599c6b33dd69f280d5371159a55cd6b3a",
+   "role": "# One-pass draft",
+   "data": {
+    "claims": [
+     {
+      "question_id": "q1",
+      "statement": "Marketplace sales during October 2026 comprise four orders: ord_1001 (60000 GBP), ord_1002 (72000 GBP), ord_1003 (48000 GBP), and ord_1004 (60000 GBP).",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "ord_1001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1002",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1003",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1004",
+        "revision": 1,
+        "role": "confirms"
+       }
+      ],
+      "gaps": []
+     },
+     {
+      "question_id": "q2",
+      "statement": "Refunds issued to buyers during October 2026 comprise rfd_2001 (18000 GBP) covering ord_1003.",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "rfd_2001",
+        "revision": 1,
+        "role": "confirms"
+       }
+      ],
+      "gaps": []
+     }
+    ],
+    "disclosures": [
+     {
+      "question_id": "q1",
+      "record_id": "ord_1001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented sale completed during October 2026"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1002",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented sale completed during October 2026"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1003",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented sale completed during October 2026"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1004",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented sale completed during October 2026"
+     },
+     {
+      "question_id": "q2",
+      "record_id": "rfd_2001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "related_record_ids",
+       "status"
+      ],
+      "reason": "documented buyer refund issued during October 2026"
+     }
+    ],
+    "rationale": "Both questions concern activity within the scoped period 2026-10-01 to 2026-11-01. Orders ord_1001, ord_1002, ord_1003, and ord_1004 fall in this window for sales, and refund rfd_2001 covers the sole refund."
+   },
+   "usage": {
+    "prompt_tokens": 6184,
+    "output_tokens": 898,
+    "thinking_tokens": 0,
+    "total_tokens": 7082
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:42:03Z"
+  }
+ ]
+}

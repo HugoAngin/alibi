@@ -1,0 +1,690 @@
+{
+ "schema": "alibi.replay.v1",
+ "case": "maya",
+ "variant": "supported",
+ "recorded_at": "2026-11-08T03:30:07Z",
+ "models": [
+  "gemini-3.8-flash",
+  "gemini-4-argon",
+  "gemma-4-26b-a4b-it"
+ ],
+ "calls": [
+  {
+   "seq": 0,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "ea94a880fe0a7d0b93fe6484a5f89768c89fbb5db54b93432e54cff32cd3ddf0",
+   "role": "# Detective",
+   "data": {
+    "alerts": [
+     {
+      "kind": "unexplained_credit",
+      "summary": "Credit txn_9001 of 216000 GBP booked on 2026-11-03 is currently unmatched to a settlement.",
+      "refs": [
+       {
+        "record_id": "txn_9001",
+        "revision": 1
+       }
+      ],
+      "suggested_evidence": "Settlement record corresponding to payout reference PO-5001 or settlement reference STL-88001."
+     }
+    ],
+    "claims": [
+     {
+      "claim_id": "c1",
+      "question_id": "q1",
+      "statement": "The 216000 GBP credit corresponds to Threadline payout PO-5001 covering orders ord_1001, ord_1002, ord_1003, ord_1004 less refund rfd_2001 and fee fee_3001.",
+      "status": "unresolved",
+      "refs": [
+       {
+        "record_id": "txn_9001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "po_5001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "msg_7001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1002",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1003",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1004",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rfd_2001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "fee_3001",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [
+       "Payout po_5001 has status initiated and no settlement record is present in the material confirming funds reached the bank account."
+      ],
+      "next_checks": [
+       {
+        "type": "lookup_settlement",
+        "args": {
+         "payout_reference": "PO-5001",
+         "merchant_id": "threadline"
+        },
+        "reason": "Confirm payout PO-5001 settled to the bank account on or before 2026-11-03T10:00:00Z."
+       }
+      ]
+     }
+    ]
+   },
+   "usage": {
+    "prompt_tokens": 4648,
+    "output_tokens": 753,
+    "thinking_tokens": 0,
+    "total_tokens": 5401
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:30:13Z"
+  },
+  {
+   "seq": 1,
+   "model": "gemma-4-26b-a4b-it",
+   "prompt_sha256": "3712def81477730f19389c0a33ffc676d52d6fc3838ee148fdac6e508c0b3eeb",
+   "role": "# Detective",
+   "data": {
+    "alerts": [],
+    "claims": [
+     {
+      "claim_id": "c1",
+      "question_id": "q1",
+      "statement": "The 216000 GBP credit (txn_9001) is the Threadline payout PO-5001: 240000 sales (ord_1001, ord_1002, ord_1003, ord_1004) minus 18000 refund (rfd_2001) minus 6000 fees (fee_3001).",
+      "status": "unresolved",
+      "refs": [
+       {
+        "record_id": "txn_9001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "po_5001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1002",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1003",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "ord_1004",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rfd_2001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "fee_3001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "msg_7001",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [
+       "po_5001 is marked as 'initiated' and there is no settlement record showing the money actually reached the bank account.",
+       "msg_7001 confirms the earnings calculation, but does not prove the transfer to the bank."
+      ],
+      "next_checks": [
+       {
+        "type": "lookup_settlement",
+        "args": {
+         "payout_reference": "PO-5001",
+         "merchant_id": "threadline"
+        },
+        "reason": "Confirm the payout PO-5001 was settled to the bank account, matching the amount and reference STL-88001 mentioned in the bank description."
+       }
+      ]
+     }
+    ]
+   },
+   "usage": {
+    "prompt_tokens": 4648,
+    "output_tokens": 502,
+    "thinking_tokens": 0,
+    "total_tokens": 5150
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:30:24Z"
+  },
+  {
+   "seq": 2,
+   "model": "gemini-4-argon",
+   "prompt_sha256": "a1d56cc0bc746052b0b893e62ffd830617875cc021b0a0f2624fd78d426cbd11",
+   "role": "# Challenger",
+   "data": {
+    "claim_id": "c1",
+    "proposed_status": "unresolved",
+    "bank_settlement_established": false,
+    "payout_reference": "PO-5001",
+    "confirming_refs": [
+     {
+      "record_id": "txn_9001",
+      "revision": 1,
+      "why": "Bank credit of 216000 GBP booked at 2026-11-03T10:00:00Z carrying reference PO-5001."
+     },
+     {
+      "record_id": "po_5001",
+      "revision": 1,
+      "why": "Payout PO-5001 of 216000 GBP initiated on 2026-11-02T08:30:00Z covering ord_1001, ord_1002, ord_1003, ord_1004, rfd_2001, and fee_3001."
+     },
+     {
+      "record_id": "ord_1001",
+      "revision": 1,
+      "why": "Completed order of 60000 GBP covered by po_5001."
+     },
+     {
+      "record_id": "ord_1002",
+      "revision": 1,
+      "why": "Completed order of 72000 GBP covered by po_5001."
+     },
+     {
+      "record_id": "ord_1003",
+      "revision": 1,
+      "why": "Completed order of 48000 GBP covered by po_5001."
+     },
+     {
+      "record_id": "ord_1004",
+      "revision": 1,
+      "why": "Completed order of 60000 GBP covered by po_5001."
+     },
+     {
+      "record_id": "rfd_2001",
+      "revision": 1,
+      "why": "Completed refund of 18000 GBP covered by po_5001."
+     },
+     {
+      "record_id": "fee_3001",
+      "revision": 1,
+      "why": "Completed fee of 6000 GBP covered by po_5001."
+     }
+    ],
+    "conflicting_refs": [],
+    "missing_evidence": [
+     "A settlement record for payout PO-5001 confirming that funds settled to the bank account at or before 2026-11-03T10:00:00Z."
+    ],
+    "next_action": {
+     "type": "lookup_settlement",
+     "args": {
+      "payout_reference": "PO-5001",
+      "merchant_id": "threadline",
+      "record_id": "po_5001"
+     },
+     "reason": "msg_7001 only shows release to the seller balance and po_5001 only shows status initiated; a settlement record is needed to confirm bank settlement."
+    },
+    "trace": [
+     "Checked txn_9001 rev 1: 216000 GBP credit booked 2026-11-03T10:00:00Z citing PO-5001 and STL-88001.",
+     "Checked msg_7001 rev 1: 216000 GBP released to seller balance on 2026-11-01T08:00:00Z, which is platform balance movement, not bank settlement.",
+     "Checked po_5001 rev 1: 216000 GBP payout PO-5001 with status initiated at 2026-11-02T08:30:00Z covering ord_1001, ord_1002, ord_1003, ord_1004, rfd_2001, and fee_3001.",
+     "Checked settlements: none supplied in the material; requesting lookup_settlement for PO-5001."
+    ],
+    "rationale": "The payout po_5001 and its covered components match the 216000 GBP credit and reference PO-5001, but msg_7001 only shows release to the seller balance and po_5001 is only initiated. Requesting the settlement record for PO-5001 to verify bank settlement."
+   },
+   "usage": {
+    "prompt_tokens": 6757,
+    "output_tokens": 1112,
+    "thinking_tokens": 0,
+    "total_tokens": 7869
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:30:38Z"
+  },
+  {
+   "seq": 3,
+   "model": "gemini-4-argon",
+   "prompt_sha256": "fc2235dd1eab44f00df71085039b68af5d7b1347c18111ee784f593f39b29ca2",
+   "role": "# Challenger",
+   "data": {
+    "claim_id": "c1",
+    "proposed_status": "supported",
+    "bank_settlement_established": true,
+    "payout_reference": "PO-5001",
+    "confirming_refs": [
+     {
+      "record_id": "txn_9001",
+      "revision": 1,
+      "why": "Bank credit of 216000 GBP booked at 2026-11-03T10:00:00Z with payment references PO-5001 and STL-88001."
+     },
+     {
+      "record_id": "po_5001",
+      "revision": 1,
+      "why": "Payout PO-5001 for 216000 GBP initiated on 2026-11-02T08:30:00Z covering ord_1001, ord_1002, ord_1003, ord_1004, rfd_2001, and fee_3001."
+     },
+     {
+      "record_id": "stl_88001",
+      "revision": 1,
+      "why": "Settlement STL-88001 for payout PO-5001 confirms 216000 GBP settled to the bank at 2026-11-03T07:45:00Z, prior to the bank booking time."
+     },
+     {
+      "record_id": "ord_1001",
+      "revision": 1,
+      "why": "Completed order of 60000 GBP included in po_5001."
+     },
+     {
+      "record_id": "ord_1002",
+      "revision": 1,
+      "why": "Completed order of 72000 GBP included in po_5001."
+     },
+     {
+      "record_id": "ord_1003",
+      "revision": 1,
+      "why": "Completed order of 48000 GBP included in po_5001."
+     },
+     {
+      "record_id": "ord_1004",
+      "revision": 1,
+      "why": "Completed order of 60000 GBP included in po_5001."
+     },
+     {
+      "record_id": "rfd_2001",
+      "revision": 1,
+      "why": "Completed refund of 18000 GBP included in po_5001."
+     },
+     {
+      "record_id": "fee_3001",
+      "revision": 1,
+      "why": "Completed fee of 6000 GBP included in po_5001."
+     }
+    ],
+    "conflicting_refs": [],
+    "missing_evidence": [],
+    "next_action": {
+     "type": "none",
+     "args": {},
+     "reason": "The retrieved settlement record stl_88001 confirms bank settlement occurred before the bank credit booking time, fully supporting the claim."
+    },
+    "trace": [
+     "Checked txn_9001 rev 1: 216000 GBP credit booked 2026-11-03T10:00:00Z with references PO-5001 and STL-88001.",
+     "Checked po_5001 rev 1: payout PO-5001 of 216000 GBP initiated 2026-11-02T08:30:00Z covering ord_1001, ord_1002, ord_1003, ord_1004, rfd_2001, and fee_3001.",
+     "Checked component records ord_1001, ord_1002, ord_1003, ord_1004, rfd_2001, fee_3001 (all rev 1): all completed prior to payout initiation.",
+     "Checked stl_88001 rev 1 (via lookup 0): settlement STL-88001 for PO-5001 of 216000 GBP settled to bank at 2026-11-03T07:45:00Z, before txn_9001 booked_at."
+    ],
+    "rationale": "Settlement record stl_88001 confirms that payout PO-5001 of 216000 GBP settled to the bank at 2026-11-03T07:45:00Z, before the bank credit booked at 2026-11-03T10:00:00Z. Amount, references, components, and timing all align."
+   },
+   "usage": {
+    "prompt_tokens": 7280,
+    "output_tokens": 1034,
+    "thinking_tokens": 0,
+    "total_tokens": 8314
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:30:53Z"
+  },
+  {
+   "seq": 4,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "a14392b9bebc7edea2b4389fbad446ee75873297b002947a201aa43ee88021e7",
+   "role": "# Curator",
+   "data": {
+    "disclosures": [
+     {
+      "question_id": "q1",
+      "record_id": "txn_9001",
+      "revision": 1,
+      "form": "full",
+      "fields": [],
+      "reason": "the credit transaction being enquired about"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "po_5001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "payment_ref",
+       "record_id",
+       "related_record_ids",
+       "status"
+      ],
+      "reason": "payout PO-5001 corresponding to the net credit amount"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "stl_88001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "effective_at",
+       "occurred_at",
+       "payment_ref",
+       "record_id",
+       "settlement_ref",
+       "status"
+      ],
+      "reason": "settlement linking payout PO-5001 to the credit"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "record_id",
+       "status"
+      ],
+      "reason": "order component of the payout"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1002",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "record_id",
+       "status"
+      ],
+      "reason": "order component of the payout"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1003",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "record_id",
+       "status"
+      ],
+      "reason": "order component of the payout"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1004",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "record_id",
+       "status"
+      ],
+      "reason": "order component of the payout"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "rfd_2001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "record_id",
+       "status"
+      ],
+      "reason": "refund deducted from the payout total"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "fee_3001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "record_id",
+       "status"
+      ],
+      "reason": "fee deducted from the payout total"
+     }
+    ],
+    "exclusions": [],
+    "gaps": [],
+    "rationale": "Credit txn_9001 is supported by the corresponding payout and settlement records, along with the underlying constituent orders, refund, and fee. Item details are omitted from the extracts to adhere to minimum disclosure principles."
+   },
+   "usage": {
+    "prompt_tokens": 5204,
+    "output_tokens": 1012,
+    "thinking_tokens": 0,
+    "total_tokens": 6216
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:31:01Z"
+  },
+  {
+   "seq": 5,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "b33cd4cd51f594227b24b0f804830ff7698c4f1645155b168dc4f65dacdfb788",
+   "role": "# Detective",
+   "data": {
+    "alerts": [],
+    "claims": [
+     {
+      "claim_id": "c1",
+      "question_id": "q1",
+      "statement": "Documented marketplace sales between 1 and 31 October 2026 comprise completed orders ord_1001, ord_1002, ord_1003, and ord_1004 from Threadline.",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "ord_1001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1002",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1003",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1004",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "msg_7001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "po_5001",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [],
+      "next_checks": []
+     },
+     {
+      "claim_id": "c2",
+      "question_id": "q2",
+      "statement": "Documented marketplace refunds issued between 1 and 31 October 2026 comprise completed refund rfd_2001 from Threadline.",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "rfd_2001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "ord_1003",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "msg_7001",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "po_5001",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [],
+      "next_checks": []
+     }
+    ]
+   },
+   "usage": {
+    "prompt_tokens": 4750,
+    "output_tokens": 500,
+    "thinking_tokens": 0,
+    "total_tokens": 5250
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:31:06Z"
+  },
+  {
+   "seq": 6,
+   "model": "gemma-4-26b-a4b-it",
+   "prompt_sha256": "a2f59d300bc2c5c3849c5745d657d8f6cb909b814b1ae63852a5a8db4a59d25a",
+   "role": "# Detective",
+   "error": "SchemaValidationError",
+   "message": "$: response is not JSON (Extra data)",
+   "recorded_at": "2026-11-08T03:31:17Z"
+  },
+  {
+   "seq": 7,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "190f7d5a50a91b05e2469ad37e5c0ffc230c5a8775e70ec65d8e8e7ff8ea0acc",
+   "role": "# Curator",
+   "data": {
+    "disclosures": [
+     {
+      "question_id": "q1",
+      "record_id": "ord_1001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order contributing to October 2026 total sales"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1002",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order contributing to October 2026 total sales"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1003",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order contributing to October 2026 total sales"
+     },
+     {
+      "question_id": "q1",
+      "record_id": "ord_1004",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "order contributing to October 2026 total sales"
+     },
+     {
+      "question_id": "q2",
+      "record_id": "rfd_2001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "occurred_at",
+       "related_record_ids",
+       "status"
+      ],
+      "reason": "refund issued to buyer during October 2026"
+     }
+    ],
+    "exclusions": [],
+    "gaps": [],
+    "rationale": "All four orders and the single refund fall within the requested period and directly support the claims for documented sales and refunds. Item-level descriptions and internal provenance fields are omitted to enforce minimum disclosure."
+   },
+   "usage": {
+    "prompt_tokens": 4600,
+    "output_tokens": 519,
+    "thinking_tokens": 0,
+    "total_tokens": 5119
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T03:31:22Z"
+  }
+ ]
+}

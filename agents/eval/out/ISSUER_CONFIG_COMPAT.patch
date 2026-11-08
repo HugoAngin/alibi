@@ -1,0 +1,20 @@
+diff --git a/alibi/tests/test_connectors_case_source.py b/alibi/tests/test_connectors_case_source.py
+--- a/alibi/tests/test_connectors_case_source.py
++++ b/alibi/tests/test_connectors_case_source.py
+@@ -246,8 +246,14 @@
+ 
+ def test_the_core_demo_key_cannot_sign_for_the_case_issuer(tmp_path, case1):
+     keystore = keys.connector_keystore(tmp_path / "keys", seed="s2")
+-    payload = keys.sign_merchant_event(map_merchant_event(_event(case1, "rec-0001-001")).body,
+-                                       keystore, kid="merchant_demo")
++    body = map_merchant_event(_event(case1, "rec-0001-001")).body
++    from alibi.core.signing import SignatureError
++    with pytest.raises(SignatureError):
++        keys.sign_merchant_event(body, keystore, kid="merchant_demo")
++    # Construct the deliberately mismatched signature below the hardened helper so the
++    # independent ingest-side issuer pin check remains covered as well.
++    signature = keystore.sign(body, kid="merchant_demo", domain="alibi:record:v1")
++    payload = {"event": body, "signature": signature.to_json_dict()}
+     from alibi.core.ingest import IngestError
+     with Store(tmp_path / "p.db") as store, pytest.raises(IngestError) as info:
+         ingest_merchant_event(store, keystore.registry(), payload, subject_ref="maya-001",

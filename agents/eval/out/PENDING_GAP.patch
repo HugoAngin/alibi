@@ -1,0 +1,63 @@
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -799,8 +799,9 @@
+             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), problem,
+                             gap=problem_code, detail=" ".join(gaps + [problem]), **base)
+         if settlement is None:
+-            code = GAP_BALANCE_RELEASE if payout.status == RELEASED_STATUS \
+-                else GAP_SETTLEMENT_NOT_FOUND
++            code = (GAP_BALANCE_RELEASE if payout.status == RELEASED_STATUS else
++                    GAP_PENDING_AT_BOOKING if payout.status in PENDING_STATUSES else
++                    GAP_SETTLEMENT_NOT_FOUND)
+             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts),
+                             "No settlement record for the linked payout.", gap=code,
+                             detail=" ".join(gaps), **base)
+--- a/alibi/tests/test_core_investigation_fixes.py
++++ b/alibi/tests/test_core_investigation_fixes.py
+@@ -132,7 +132,7 @@
+ @pytest.mark.parametrize("name, edit, status, code, words", [
+     ("contradiction", None, CONTRADICTED, "settlement_pending_at_booking", "still pending"),
+     ("ambiguous", None, UNRESOLVED, "ambiguous_candidates", "cannot choose"),
+-    ("supported", lambda fx: fx["lookup_events"].clear(), UNRESOLVED, "settlement_not_found",
++    ("supported", lambda fx: fx["lookup_events"].clear(), UNRESOLVED, "settlement_pending_at_booking",
+      "No settlement record for payout PO-5001"),
+     ("supported", lambda fx: fx["lookup_events"][0].update(status="reversed"), CONTRADICTED,
+      "settlement_failed", "status reversed"),
+@@ -222,7 +222,7 @@
+     ingest.ingest_merchant_event(store, two_issuers.registry, signed_foreign, now=now)
+     result, _ = real_run(store, RFC_A, two_issuers.registry, now, lambda _: None)
+     claim = claim_of(result)
+-    assert claim.status == UNRESOLVED and claim.gap == "settlement_not_found"
++    assert claim.status == UNRESOLVED and claim.gap == "settlement_pending_at_booking"
+     assert "record:stl_foreign@1" not in keys(claim.evidence_refs)
+     # Nor through the lookup, now that the gateway's scope admits the other issuer's record.
+     result, _ = real_run(store, RFC_A, two_issuers.registry, now, lambda _: signed_foreign)
+@@ -445,7 +445,7 @@
+ @pytest.mark.parametrize("status, extra, expected, code", [
+     ("failed", {}, CONTRADICTED, "settlement_failed"),
+     ("settled", {"effective_at": "2026-11-03T11:00:00Z"}, CONTRADICTED, "settlement_after_credit"),
+-    ("initiated", {}, UNRESOLVED, "settlement_not_found"),   # pending before booking: no evidence
++    ("initiated", {}, UNRESOLVED, "settlement_pending_at_booking"),  # known pending, no later settlement
+ ], ids=["failed", "settled-late", "pending-before"])
+ def test_a_payouts_own_status_contradicts_or_leaves_open(passport, keystore, now, status, extra,
+                                                         expected, code):
+--- /dev/null
++++ b/alibi/tests/test_pending_gap.py
+@@ -0,0 +1,17 @@
++"""Known pending payout state remains an unresolved settlement gap, with private dependencies."""
++import pytest
++from alibi.core.schemas import ClaimStatus
++from alibi.tests.test_investigate_rules import passport, variant, record_of, investigate, claim_of
++
++@pytest.mark.parametrize("status, expected_gap", [("pending", "settlement_pending_at_booking"), ("requested", "settlement_not_found")])
++def test_no_later_settlement_distinguishes_pending_from_unknown(passport, keystore, now, status, expected_gap):
++    def edit(fx):
++        record_of(fx, "po_5001")["status"] = status
++    store, fx = passport(variant("supported", edit))
++    result, _ = investigate(store, fx, keystore, now, lookup=False)
++    claim = claim_of(result)
++    assert claim.status == ClaimStatus.UNRESOLVED
++    assert claim.gap == expected_gap
++    assert claim.evidence_refs == [] and claim.calculation is None
++    assert "po_5001" in {r.ref_id for r in claim.examined_refs}
++    assert "No settlement record" in claim.gap_detail

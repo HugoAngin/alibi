@@ -1,7 +1,7 @@
 """Public rehearsal gate for run_sealed --post-fix-second-look.
 
 This module never opens private inputs or launches a second capture. The canonical
-capture command owns the exclusive candidate-4 lock and original manifest checks.
+capture command owns the exclusive candidate-5 lock and original manifest checks.
 """
 import argparse
 import json

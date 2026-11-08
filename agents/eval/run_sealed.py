@@ -27,8 +27,8 @@ from tools.lockbox import is_open
 PREDICTION_FILES = {mode: f"{mode}.jsonl" for mode in MODES}
 PROBE_FILE = "probes.jsonl"
 PROBE_RECEIPT = probe_receipt_path(Path(PROBE_FILE)).name
-SECOND_LOOK_TAG = "sealed-candidate-4"
-SECOND_LOOK_DEADLINE = datetime(2026, 11, 8, 13, tzinfo=timezone.utc)
+SECOND_LOOK_TAG = "sealed-candidate-5"
+SECOND_LOOK_DEADLINE = datetime(2026, 11, 8, 13, 25, tzinfo=timezone.utc)
 REPORT_HEADINGS = {
     "public_rehearsal": "Public rehearsal, stubbed model and drafts only",
     "public_live": "Public live adapter check",
@@ -413,7 +413,7 @@ def _second_look_lock(original_lock: Path, original_manifest: Path, manifest: di
             or first_manifest["set_sha256"] != manifest["set_sha256"]
             or first_manifest["model_config"]["sha256"] != manifest["model_config"]["sha256"]):
         raise ValueError("the second look requires the original capture, pack and model configuration")
-    return original_lock.with_name(f"{original_lock.stem}-candidate-4.json"), _digest(original_path)
+    return original_lock.with_name(f"{original_lock.stem}-candidate-5.json"), _digest(original_path)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -425,9 +425,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--timeout", type=float, default=90, help="seconds per case and system")
     parser.add_argument("--candidate-ref", help="run a declared sealed-candidate tag with isolated workers")
     parser.add_argument("--post-fix-second-look", action="store_true",
-                        help="run the one authorized candidate-4 comparison on the reused pack")
-    parser.add_argument("--original-manifest", type=Path, help="first capture's manifest for candidate 4")
-    parser.add_argument("--public-rehearsal", type=Path, help="exact candidate-4 public Cases 1/2 capture")
+                        help="run the one authorized candidate-5 comparison on the reused pack")
+    parser.add_argument("--original-manifest", type=Path, help="first capture's manifest for candidate 5")
+    parser.add_argument("--public-rehearsal", type=Path, help="exact candidate-5 public Cases 1/2 capture")
     parser.add_argument('--trusted-issuers-file', type=Path, help='explicit private synthetic trust setup')
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
@@ -442,9 +442,9 @@ def main(argv: list[str] | None = None) -> None:
         if (args.candidate_ref != SECOND_LOOK_TAG or args.dry_run or args.public_live
                 or args.original_manifest is None or args.public_rehearsal is None or args.workers != 4
                 or args.deadline != SECOND_LOOK_DEADLINE or args.checkpoint_at is not None):
-            parser.error("the candidate-4 second look requires its tag, original manifest, four workers and 13:00 UTC deadline")
+            parser.error("the candidate-5 second look requires its tag, original manifest, four workers and 13:25 UTC deadline")
     elif args.original_manifest is not None or (args.candidate_ref == SECOND_LOOK_TAG and not args.public_live):
-        parser.error("candidate-4 sealed captures require --post-fix-second-look")
+        parser.error("candidate-5 sealed captures require --post-fix-second-look")
     if args.checkpoint_at is not None and (not args.candidate_ref or args.dry_run or args.public_live):
         parser.error("checkpoint-at requires an isolated frozen capture")
     if args.out is None or not (0 < args.timeout < 3600):
@@ -521,7 +521,7 @@ def main(argv: list[str] | None = None) -> None:
                 original_integrity = audit(original_capture)
                 lock, original_digest = _second_look_lock(lock, _private_path(args.original_manifest), manifest)
             except (common.EvalError, OSError, ValueError, KeyError, TypeError) as exc:
-                parser.error(f"candidate-4 original capture verification failed ({type(exc).__name__})")
+                parser.error(f"candidate-5 original capture verification failed ({type(exc).__name__})")
             kind = "post_fix_second_look"
             signature.update(kind=kind, original_run_sha256=original_digest)
             trust_digest = None

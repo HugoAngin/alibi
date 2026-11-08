@@ -5,6 +5,7 @@
  */
 
 import type { AstroCookies } from 'astro';
+import { ALIBI_HOLDER_TOKEN } from 'astro:env/server';
 
 import type { DispatchResult, Refusal } from './api/types';
 
@@ -19,12 +20,13 @@ export const ROUTES = {
 };
 
 /**
- * Credentials to forward to the backend. The holder session scheme is not
- * published yet (web/docs/backend-integration.md, Identity); when it is, this
- * is the one place that adds it.
+ * Credentials to forward to the backend: the holder bearer (`ALIBI_HOLDER_TOKEN`, alibi/app/UI.md
+ * Credentials), read on the server only and never sent to the browser. Unset (the local demo),
+ * the backend's holder routes ask for nothing. Holder pages and actions sit behind sign-in
+ * (src/middleware.ts); `/simulate/` uses it only for reads, since it renders no action.
  */
 export function backendHeaders(): Record<string, string> {
-  return {};
+  return ALIBI_HOLDER_TOKEN ? { Authorization: `Bearer ${ALIBI_HOLDER_TOKEN}` } : {};
 }
 
 export type Flash =

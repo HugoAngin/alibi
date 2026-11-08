@@ -27,6 +27,9 @@ export default defineConfig({
       // `secret` access makes Astro read it at runtime (the Worker's vars),
       // instead of inlining whatever the build machine had.
       ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // The backend's holder bearer (alibi/app/UI.md Credentials). A Worker secret, the same value
+      // as the backend's ALIBI_HOLDER_TOKEN; forwarded from the server only (src/lib/screens.ts).
+      ALIBI_HOLDER_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
       // Local demo only (`pnpm demo`, src/lib/demoHolder.ts): sign in as Maya without Clerk, on
       // 127.0.0.1 only. Never set these on the deployed Worker.
       ALIBI_DEMO_HOLDER: envField.string({ context: 'server', access: 'secret', optional: true }),

@@ -1,0 +1,252 @@
+---
+/**
+ * `/app/requests/<id>/sent/`: what happened when Maya approved, which also
+ * sends. Either the bank's receipt, or the backend's refusal in its own words
+ * (the demo's live-refusal moment), or "nothing was sent" when the backend
+ * could not be reached. Shown once, from the action's result; revisiting the
+ * page goes back to the request.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import Badge from '@/components/app/Badge.astro';
+import { when } from '@/lib/format';
+import { takeFlash } from '@/lib/screens';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+const back = `/app/requests/${encodeURIComponent(id)}/`;
+const flash = takeFlash(Astro.cookies);
+if (!flash) return Astro.redirect(back, 303);
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+
+const dispatch = flash.kind === 'dispatch' ? flash.dispatch : null;
+const delivered = dispatch?.outcome === 'success' && dispatch.receipt;
+// A refusal arrives either as a 4xx {code, reason} or inside a dispatch context.
+const refusal =
+  flash.kind === 'refused'
+    ? {
+        code: flash.refusal.code,
+        reason: flash.refusal.reason,
+        expected: '',
+        actual: '',
+        checked: '',
+      }
+    : dispatch && !delivered && dispatch.refusal
+      ? {
+          code: dispatch.refusal.code,
+          reason: dispatch.refusal.reason,
+          expected: dispatch.refusal.expected_digest,
+          actual: dispatch.refusal.actual_digest,
+          checked: dispatch.refusal.checked_at,
+        }
+      : null;
+const short = (digest: string) => (digest.length > 22 ? `${digest.slice(0, 22)}…` : digest);
+---
+
+<BaseLayout title={delivered ? 'Sent' : 'Not sent'} view="app">
+  <AppFrame active="requests">
+    {delivered && dispatch && dispatch.receipt && (
+      <section class="result result--ok" aria-labelledby="result-title">
+        <p class="mark" aria-hidden="true">
+          ✓
+        </p>
+        <h1 id="result-title">Sent to {dispatch.recipient}</h1>
+        <p class="lede">
+          {dispatch.recipient} received exactly the package you approved, signed so they can check
+          it themselves.
+        </p>
+        <dl class="kv">
+          <dt>Receipt</dt>
+          <dd>
+            <code>{dispatch.receipt.receipt_id}</code>{' '}
+            <Badge kind="status" value={dispatch.receipt.status} />
+          </dd>
+          <dt>Package</dt>
+          <dd>
+            <code title={dispatch.receipt.package_digest}>
+              {short(dispatch.receipt.package_digest)}
+            </code>
+          </dd>
+          <dt>Received</dt>
+          <dd>{when(dispatch.receipt.received_at)}</dd>
+          <dt>Valid until</dt>
+          <dd>{when(dispatch.receipt.expires_at)}</dd>
+        </dl>
+        <p class="actions">
+          <a class="btn btn--primary" href="/app/#sharing-title">
+            See what you have shared
+          </a>
+          <a class="btn" href="/app/">
+            Back to your passport
+          </a>
+        </p>
+      </section>
+    )}
+
+    {refusal && (
+      <section class="result result--refused" role="alert" aria-labelledby="result-title">
+        <p class="mark" aria-hidden="true">
+          ✕
+        </p>
+        <h1 id="result-title">Not sent</h1>
+        <p class="lede">
+          The backend refused, so nothing reached the bank. This is its reason, word for word:
+        </p>
+        <p>
+          <code class="code">{refusal.code}</code>
+        </p>
+        <pre class="reason">{refusal.reason}</pre>
+        {(refusal.expected || refusal.actual) && (
+          <dl class="kv">
+            <dt>You approved</dt>
+            <dd>
+              <code title={refusal.expected}>{short(refusal.expected)}</code>
+            </dd>
+            <dt>Body now</dt>
+            <dd>
+              <code title={refusal.actual}>{short(refusal.actual)}</code>
+            </dd>
+            {refusal.checked && (
+              <>
+                <dt>Checked</dt>
+                <dd>{when(refusal.checked)}</dd>
+              </>
+            )}
+          </dl>
+        )}
+        <p class="actions">
+          <a class="btn btn--primary" href={`${back}#approval-title`}>
+            Review and approve again
+          </a>
+        </p>
+      </section>
+    )}
+
+    {flash.kind === 'unavailable' && (
+      <section class="result" aria-labelledby="result-title">
+        <h1 id="result-title">Nothing was sent</h1>
+        <p class="lede">{flash.message}</p>
+        <p class="actions">
+          <a class="btn btn--primary" href={back}>
+            Back to the request
+          </a>
+        </p>
+      </section>
+    )}
+
+    {flash.kind === 'ok' && (
+      <section class="result" aria-labelledby="result-title">
+        <h1 id="result-title">Done</h1>
+        <p class="lede">{flash.message}</p>
+        <p class="actions">
+          <a class="btn btn--primary" href={back}>
+            Back to the request
+          </a>
+        </p>
+      </section>
+    )}
+  </AppFrame>
+</BaseLayout>
+
+<style>
+  .result {
+    margin-top: var(--space-md);
+    padding: var(--space-md);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+  }
+
+  .result--ok {
+    border-color: var(--c-ok);
+  }
+
+  .result--refused {
+    border: 2px solid var(--c-bad);
+    border-left-width: 8px;
+  }
+
+  .mark {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    margin: 0 0 var(--space-sm);
+    border-radius: 50%;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--c-surface);
+    background: var(--c-ok);
+  }
+
+  .result--refused .mark {
+    background: var(--c-bad);
+  }
+
+  h1 {
+    font-size: var(--t-lg);
+  }
+
+  .lede {
+    color: var(--c-ink-soft);
+  }
+
+  .code {
+    font-size: var(--t-sm);
+    padding: 0.15em 0.5em;
+    border: 1px solid var(--c-bad);
+    border-radius: var(--radius-pill);
+    color: var(--c-bad);
+  }
+
+  .reason {
+    white-space: pre-wrap;
+    font-size: var(--t-sm);
+    padding: var(--space-xs);
+    background: var(--c-bg);
+    border-radius: var(--radius-sm);
+  }
+
+  .kv {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-3xs) var(--space-sm);
+    font-size: var(--t-sm);
+  }
+
+  .kv dt {
+    color: var(--c-ink-faint);
+  }
+
+  .kv dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .actions {
+    display: grid;
+    gap: var(--space-2xs);
+    margin-top: var(--space-md);
+  }
+
+  .btn {
+    display: grid;
+    place-items: center;
+    min-height: 48px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--c-line);
+    background: var(--c-surface);
+    color: var(--c-ink);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .btn--primary {
+    background: var(--c-ink);
+    border-color: var(--c-ink);
+    color: var(--c-bg);
+  }
+</style>

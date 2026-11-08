@@ -130,3 +130,40 @@ html.lenis body {
   color: var(--s-ink);
   border: 1px solid var(--s-line);
 }
+
+/* ---------------------------------------------------------------------------
+ * The phone app in the site's design language. The app's components read
+ * the shared tokens from packages/ui, so remapping them here restyles every
+ * app screen at once.
+ * ------------------------------------------------------------------------- */
+
+html[data-view='app'] {
+  --c-bg: var(--s-paper);
+  --c-surface: #ffffff;
+  --c-line: var(--s-line);
+  --c-ink: var(--s-ink);
+  --c-ink-soft: var(--s-ink-soft);
+  --c-ink-faint: var(--s-ink-faint);
+  --c-alibi: var(--s-ink);
+  --c-alibi-ink: var(--s-paper);
+  --c-ok: var(--s-ok);
+  --c-bad: var(--s-bad);
+  --font-sans: var(--s-font-body);
+  --radius-md: 18px;
+}
+
+html[data-view='app'] body {
+  background: var(--s-paper);
+  font-family: var(--s-font-body);
+}
+
+html[data-view='app'] h1,
+html[data-view='app'] h2 {
+  font-family: var(--s-font-display);
+  letter-spacing: -0.025em;
+}
+
+html[data-view='app'] .simulated {
+  background: var(--s-paper-2);
+  color: var(--s-ink-faint);
+}

@@ -187,3 +187,32 @@ export interface RequestDetail {
 }
 
 export type { Refusal } from '@alibi/ui/api';
+
+// ---------------------------------------------------------------- dispatch --
+
+/** What approving (which also sends) returns: `requests/dispatch.html`'s context in UI.md. */
+export interface DispatchResult {
+  outcome: 'success' | 'refused';
+  package_id: string;
+  request_id: string;
+  recipient: string;
+  attempted_at: string;
+  receipt: {
+    receipt_id: string;
+    package_digest: string;
+    received_at: string;
+    status: string;
+    signer_key_id: string;
+    expires_at: string;
+  } | null;
+  refusal: {
+    code: string;
+    reason: string;
+    checked_at: string;
+    expected_digest: string;
+    actual_digest: string;
+  } | null;
+  retry_action: string | null;
+  review_href: string;
+  history_href: string;
+}

@@ -219,6 +219,7 @@ const SHOW = 3;
     <form method="post" action="/app/act">
       <input type="hidden" name="action" value={approval.action} />
       <input type="hidden" name="return_to" value={back} />
+      <input type="hidden" name="result_page" value="sent" />
       <input type="hidden" name="digest" value={approval.digest} />
       <input type="hidden" name="audience" value={approval.audience} />
       <input type="hidden" name="policy_version" value={approval.policy_version} />

@@ -4,7 +4,7 @@
  * pinned by the TypeScript types in ./types.ts.
  */
 
-import type { PassportHome, RequestDetail } from './types';
+import type { DispatchResult, PassportHome, RequestDetail } from './types';
 
 export function isPassportHome(v: unknown): v is PassportHome {
   const o = v as Record<string, unknown>;
@@ -29,4 +29,16 @@ export function isRequestDetail(v: unknown): v is RequestDetail {
     o.review !== null &&
     typeof (o.review as Record<string, unknown>).approval === 'object'
   );
+}
+
+/** Accepts the dispatch context bare or wrapped as `{dispatch: ...}`. */
+export function asDispatch(v: unknown): DispatchResult | null {
+  const o = (v as { dispatch?: unknown })?.dispatch ?? v;
+  const d = o as Record<string, unknown>;
+  return typeof d === 'object' &&
+    d !== null &&
+    (d.outcome === 'success' || d.outcome === 'refused') &&
+    typeof d.request_id === 'string'
+    ? (d as unknown as DispatchResult)
+    : null;
 }

@@ -6,7 +6,7 @@
 
 import type { AstroCookies } from 'astro';
 
-import type { Refusal } from './api/types';
+import type { DispatchResult, Refusal } from './api/types';
 
 /** Backend routes (docs/FRONTEND.md). Each serves its context as JSON on `Accept: application/json`. */
 export const ROUTES = {
@@ -25,6 +25,7 @@ export function backendHeaders(): Record<string, string> {
 
 export type Flash =
   | { kind: 'ok'; message: string }
+  | { kind: 'dispatch'; dispatch: DispatchResult }
   | { kind: 'refused'; refusal: Refusal }
   | { kind: 'unavailable'; message: string };
 

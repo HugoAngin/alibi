@@ -16,4 +16,6 @@ export default defineConfig({
   // provisioning a KV namespace on deploy; replace it when sessions are needed.
   session: { driver: sessionDrivers.lruCache() },
   build: { format: 'directory' },
+  // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.
+  devToolbar: { enabled: false },
 });

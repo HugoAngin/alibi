@@ -7,6 +7,8 @@ export default defineConfig({
   // Absolute URLs (the connect button's return address) are built from this.
   site: process.env.MERCHANT_ORIGIN ?? 'http://localhost:4322',
   build: { format: 'directory' },
+  // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.
+  devToolbar: { enabled: false },
   env: {
     schema: {
       PUBLIC_ALIBI_ORIGIN: envField.string({

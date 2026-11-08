@@ -6,4 +6,6 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
   site: process.env.BANK_ORIGIN ?? 'http://localhost:4323',
   build: { format: 'directory' },
+  // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.
+  devToolbar: { enabled: false },
 });

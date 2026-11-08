@@ -1,0 +1,14 @@
+{
+  "name": "alibi-deck",
+  "private": true,
+  "type": "module",
+  "description": "Builds agents/research/out/alibi_deck.pptx from DECK.md content. Run: npm install && npm run build",
+  "scripts": {
+    "shots": "node shots.mjs",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0",
+    "sharp": "^0.34.5"
+  }
+}

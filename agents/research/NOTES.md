@@ -132,3 +132,9 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Bank: Elio says Mouad has a newer bank UI than 19f0a56. Asked Mouad (6720184085) to push it. The live bank shows only the sign-in page because ANALYST_PASSCODE and BANK_SESSION_SECRET are not set.
 - Open: eval 10:07 need. Wire the Modal launcher (agents/research/deploy/modal_app.py SERVICES) for S5 (origin/s5 a213b76) after the local two-bank gate passes.
 - Logos: Elio keeps the real ones. lead wants a caption until Arnav decides; no caption added.
+
+## Hosted backend and trusted banks, 2026-11-08 ~11:00Z (Elio)
+- Modal alibi-backend now runs S5 (alibi.demo, case 1 at 2026-11-05T09:00Z, Bank B's RFC issued at boot) behind the fail-closed router (0da7a8d). /healthz shows all three services up. Holder and bank routes ask for their tokens, and admin routes return 404. Mode is rules-only: agents need ALIBI_MODE=agents plus a Gemini key in the alibi-backend secret.
+- Secrets: Modal alibi-backend-tokens holds ALIBI_HOLDER_TOKEN and ALIBI_BANK_A_TOKEN. Worker www has ALIBI_HOLDER_TOKEN; Worker bank has BANK_A_TOKEN, ANALYST_PASSCODE and BANK_SESSION_SECRET. The passcode went to Elio in chat only.
+- The prototype banner is removed. Trusted banks shipped (2fea61e): a bank page with a switch and one-tap approve and send; it still takes one tap per disclosure, so SPEC holds. Deployed to www.
+- S5 templates applied (639a170).

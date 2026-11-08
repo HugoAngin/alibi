@@ -1,0 +1,18 @@
+{
+  "findings": [
+    {
+      "plaintext_attachments": 20,
+      "recipient": "bank_a",
+      "signature_and_receipts_verified": true
+    },
+    {
+      "plaintext_attachments": 10,
+      "recipient": "bank_b",
+      "signature_and_receipts_verified": true
+    }
+  ],
+  "outcome": "not_blocked",
+  "probe_id": "SP-47",
+  "scope": "standalone bank persistence",
+  "candidate_commit": "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8"
+}

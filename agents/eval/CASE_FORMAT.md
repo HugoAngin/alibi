@@ -123,6 +123,9 @@ uv run --frozen python -m agents.eval.run_probes --config "$ALIBI_FOLLOWUP_PROBE
   --ids SP-39 --results "$ALIBI_FOLLOWUP_RESULTS"
 ```
 
+The older Jinja fallback proxy timed out on S5. The analyst console uses the
+native bank disposition endpoint above and can complete the follow-up.
+
 For S5's local-only merchant webhook, start a fresh public stack and provide its
 throwaway signing keys and the shared UTC clock. The public router refuses
 this route.
@@ -141,6 +144,21 @@ event to leave the active record unchanged. SP-35 requires the older revision
 to report stale and leave the newer one active. SP-36 still needs an import
 submission route. This supplemental lane runs from the eval harness on
 `main` against the clean S5 backend and preserves the original candidate receipt.
+
+For SP-47 on the same public stack, first run the two-bank handoff gate with
+the trust registry. Then read the state directory printed by `alibi.demo`,
+using only the public registry and fixed clock. The check compares the bank's
+plaintext packages with both sets of receipts and verifies their signatures.
+
+```bash
+uv run --frozen python -m agents.eval.inspect_bank_persistence \
+  --state-dir "$ALIBI_CASE_STATE" --registry "$ALIBI_TRUST_REGISTRY" --at "$ALIBI_FIXTURE_NOW"
+```
+
+On `c6ea270`, the standalone bank stored verified packages in plaintext with
+20 and 10 attachments. The configured passport-store result in the frozen
+probe receipt covers only that isolated component. The separate bank result
+is `out/s5-bank-persistence-sp47.json`.
 
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 

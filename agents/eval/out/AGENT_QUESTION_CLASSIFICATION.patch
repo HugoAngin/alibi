@@ -1,0 +1,158 @@
+--- a/alibi/agents/runner.py
++++ b/alibi/agents/runner.py
+@@ -8,7 +8,7 @@
+    the scoped, budgeted ``Gateway`` into a ``Material`` (every revision pinned, every later
+    retrieval tagged with the lookup that fetched it).
+ 2. Each question is classified: by its team question id, else by keyword
+-   (``classify_question``). Period totals (sales, refunds, fees, net) are summed in code
++   (the shared evidence-question classifier). Period totals (sales, refunds, fees, net) are summed in code
+    exactly like the rules baseline; the Detective sees them but never decides them.
+ 3. Source-of-funds questions, per credit:
+    a. the pinned candidate rule (``settlement_candidates``) joins the credit to payouts;
+@@ -75,6 +75,8 @@
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
+ from alibi.core.answered import examined_refs
+ from alibi.core.investigate_rules import (
++    BREAKDOWN,
++    DOCUMENTED_TOTALS,
+     COMPONENT_KINDS,
+     COUNTED_STATUSES,
+     EXCLUDED_STATUSES,
+@@ -86,7 +88,7 @@
+     SOURCE_OF_FUNDS,
+     UNMAPPED,
+     Classification,
+-    classify_question,
++    classify as classify_evidence_question,
+ )
+ from alibi.core.policy import compile_policy
+ from alibi.core.reconcile import FAILED_STATUSES, PENDING_STATUSES, SIGN_BY_KIND, ReconcileError
+@@ -132,12 +134,8 @@
+              GAP_PENDING_AT_BOOKING, GAP_SETTLEMENT_FAILED, GAP_AMBIGUOUS, GAP_AMOUNT_MISMATCH,
+              GAP_MISSING_CITED, GAP_NO_RECORDS)
+ 
+-# Team question ids decide the question kind before any keyword does.
+-KNOWN_QUESTIONS = {"q.source_of_funds": SOURCE_OF_FUNDS, "q.breakdown": SOURCE_OF_FUNDS,
+-                   "q.sales_refunds_in_period": NET_TOTAL}
+-PERIOD_CATEGORIES = (SALES_TOTAL, REFUNDS_TOTAL, FEES_TOTAL, NET_TOTAL)
+-_TOTAL_KINDS = {SALES_TOTAL: (RecordKind.ORDER,), REFUNDS_TOTAL: (RecordKind.REFUND,),
+-                FEES_TOTAL: (RecordKind.FEE,), NET_TOTAL: (RecordKind.ORDER, RecordKind.REFUND)}
++# Use the same scope-aware classification and categories as rules and one-pass.
++PERIOD_CATEGORIES = (SALES_TOTAL, REFUNDS_TOTAL, FEES_TOTAL, NET_TOTAL, DOCUMENTED_TOTALS)
+ _LABELS = {RecordKind.ORDER: "sales", RecordKind.REFUND: "refunds", RecordKind.FEE: "fees"}
+ _RANK = {ClaimStatus.SUPPORTED: 0, ClaimStatus.UNRESOLVED: 1, ClaimStatus.CONTRADICTED: 2}
+ _TRACE_OUTCOMES = frozenset({"ok", "refused", "unavailable", "error", "budget_exceeded", "not_found"})
+@@ -341,7 +339,7 @@
+             self.question_id = question.question_id
+             found = kinds[question.question_id]
+             proposal = proposals.get(question.question_id)
+-            if found.category == SOURCE_OF_FUNDS:
++            if found.category in (SOURCE_OF_FUNDS, BREAKDOWN):
+                 outcome = self.source_of_funds(question, proposal)
+             elif found.category in PERIOD_CATEGORIES and self.rfc.period is not None:
+                 outcome = self.period_total(found)
+@@ -385,13 +383,8 @@
+ 
+     def classify(self, question: Question) -> Classification:
+         self.question_id = question.question_id
+-        found = classify_question(question.text, self.rfc)
+-        known = KNOWN_QUESTIONS.get(question.question_id)
+-        how = "keyword"
+-        if known is not None and (found.category in (UNMAPPED, SEVERAL_TOTALS)
+-                                  or (known == SOURCE_OF_FUNDS) != (found.category == SOURCE_OF_FUNDS)):
+-            found = Classification(known, _TOTAL_KINDS.get(known, ()), (question.question_id,))
+-            how = "question id"
++        found = classify_evidence_question(question, self.rfc)
++        how = "question id" if found.keywords == (question.question_id,) else "keyword"
+         self.note("note", reason=f"Question classified as {found.category} by {how}.",
+                   result={"category": found.category, "kinds": [k.value for k in found.kinds],
+                           "keywords": list(found.keywords)})
+@@ -994,7 +987,7 @@
+                                          f"for {span}.", skipped_text]))
+             return _Outcome(ClaimStatus.UNRESOLVED, unknown, gap, f"No {label} records found.", gap=gap)
+         net = found.category == NET_TOTAL
+-        signs = SIGN_BY_KIND if net else {found.kinds[0]: 1}
++        signs = SIGN_BY_KIND if net else {kind: 1 for kind in found.kinds}
+         try:
+             calc = reconcile.sum_terms(counted, method=found.category, signs=signs)
+         except ReconcileError as exc:
+@@ -1005,7 +998,11 @@
+         subtotals = [f"{_LABELS[kind]} {sum(r.amount_pence or 0 for r in rows)} from {len(rows)} record"
+                      f"{'s' if len(rows) != 1 else ''} ({', '.join(f'{r.record_id} {r.amount_pence}' for r in rows[:12])})"
+                      if rows else f"{_LABELS[kind]} 0 (no counted records)" for kind, rows in groups]
+-        if net:
++        if found.category == DOCUMENTED_TOTALS:
++            statement = f"Documented totals over {span}: " + "; ".join(
++                f"{_LABELS[kind]} {_money(sum(r.amount_pence or 0 for r in rows), calc.currency)}"
++                for kind, rows in groups) + "."
++        elif net:
+             formula = " ".join(f"{'+' if signs[kind] > 0 else '-'} {_LABELS[kind]} {sum(r.amount_pence or 0 for r in rows)}"
+                                for kind, rows in groups)
+             statement = f"Documented {label} over {span} net to {total} ({formula.lstrip('+ ')})."
+--- /dev/null
++++ b/alibi/tests/test_agents_question_generalization.py
+@@ -0,0 +1,64 @@
++"""Semantic questions and literal retrieval must survive renamed public fixture IDs."""
++import json
++import pytest
++from alibi.adapter import run_case
++from alibi.llm.fake import FakeClient
++from alibi.tests.test_literal_reference_generalization import variant
++
++
++def challenger(model, system, user, schema):
++    payload = json.loads(user)
++    ref = payload['bank'][0]['payment_references'][0]
++    payouts = [r for r in payload['merchant'] if r['kind'] == 'payout']
++    ready = bool(payouts)
++    return {'claim_id': payload['claim']['claim_id'],
++            'proposed_status': 'supported' if ready else 'unresolved',
++            'bank_settlement_established': ready, 'payout_reference': ref,
++            'confirming_refs': [{'record_id': r['record_id'], 'revision': r['revision'], 'why': 'Signed payout'} for r in payouts],
++            'conflicting_refs': [], 'missing_evidence': [] if ready else ['settlement'],
++            'next_action': {'type': 'none' if ready else 'lookup_settlement',
++                            'args': {} if ready else {'payout_reference': ref}, 'reason': 'Exact observed bank reference'},
++            'trace': [], 'rationale': 'Synthetic scripted lookup; code validates the result.'}
++
++
++def client():
++    return FakeClient({'You are the Detective': {'alerts': [], 'claims': []},
++                       'You are the Challenger': challenger,
++                       'You are the Curator': {'disclosures': [], 'exclusions': [], 'gaps': [], 'rationale': 'No proposal'}})
++
++
++@pytest.mark.parametrize('ref', ['pay-Ab9-701', 'SETTLEMENTALPHA', 'pay_alpha_7', 'pay.alpha.7', 'Pay Group 7'])
++def test_agents_preserve_exact_action_reference_and_classify_renamed_questions(tmp_path, ref):
++    case = json.loads(json.dumps(variant(ref, 2)).replace('mock-marketplace', 'public-synthetic-provider'))
++    for request in case['rfcs']:
++        for q in request['questions']:
++            if q['question_id'] == 'q.sales_refunds_in_period':
++                q.update(question_id='q.period_components', text='Show documented sales and refunds over this period.')
++    rows = run_case(case, 'agents', client=client(), root=tmp_path / 'agents',
++                    trusted_issuers={'public_provider_key': 'public-synthetic-provider'})
++    assert all(row['failure'] is None for row in rows)
++    claims = {key: value for row in rows for key, value in row['claims'].items()}
++    assert claims['q.origin_evidence']['status'] == 'supported'
++    assert claims['q.origin_evidence']['facts']['payout_references'] == [ref]
++    assert claims['q.amount_components']['status'] == 'supported'
++    assert claims['q.amount_components']['facts']['breakdown_minor']['net'] == 432000
++    assert claims['q.period_components']['status'] == 'supported'
++    assert claims['q.period_components']['facts'] == {'sales_minor': 480000, 'sale_count': 8, 'refunds_minor': 36000, 'refund_count': 2}
++
++
++def test_arbitrary_breakdown_id_works_without_a_source_question(tmp_path):
++    case = variant('PayAlpha42', 3)
++    case['rfcs'] = [case['rfcs'][0]]
++    case['rfcs'][0]['questions'] = [q for q in case['rfcs'][0]['questions'] if q['question_id'] == 'q.amount_components']
++    rows = run_case(case, 'agents', client=client(), root=tmp_path / 'only_breakdown')
++    claim = rows[0]['claims']['q.amount_components']
++    assert claim['status'] == 'supported'
++    assert claim['facts']['breakdown_minor']['net'] == 648000
++
++
++def test_unrelated_question_remains_unresolved(tmp_path):
++    case = variant('PayAlpha42')
++    case['rfcs'] = [case['rfcs'][0]]
++    case['rfcs'][0]['questions'] = [{'question_id': 'q.unmapped_general', 'text': 'What will next year look like?'}]
++    rows = run_case(case, 'agents', client=client(), root=tmp_path / 'unknown')
++    assert rows[0]['claims']['q.unmapped_general']['status'] == 'unresolved'

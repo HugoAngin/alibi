@@ -14,10 +14,13 @@ All data is synthetic. "Anyone" below means anyone who can reach the public Moda
 | --- | --- | --- | --- |
 | F1 | High | The bank's `POST /admin/seed` and `POST /admin/advance` need no credential. Seed resets both banks' inboxes, requests and dispositions; advance moves the clock forward, which expires every package and request. | No token: seed 200, advance to 2026-12-31 200 |
 | F2 | High | All merchant `/admin/*` routes need no credential: `seed`, `advance`, `retry`, `correct`, `lookups`, `deliveries`, `state`. `/admin/correct` makes the mock merchant **sign** a correction with arbitrary changes and push it to the passport. That can invalidate Maya's approval mid-demo and puts "issuer-signed" content the merchant never meant to sign into her history. `/admin/state` dumps merchant state. | No token: correct `rec-0001-021` → `status: failed` returned 200 with signed revision 2; state 200 (5 KB) |
-| F3 | High | The public router blocks only `/reset`, `/admin/reset` and `/__debug`, so `/bank/admin/*` and `/merchant/admin/*` pass through. `/bank/admin/reset/` (trailing slash) also passes the blocklist. | `is_blocked` is False for all six paths tested |
+| F3 | High, **fixed** by eval in `agents/eval/deploy/router.py` (40e03c1): every `admin` segment is refused before forwarding, including encoded and trailing-slash forms | The public router blocks only `/reset`, `/admin/reset` and `/__debug`, so `/bank/admin/*` and `/merchant/admin/*` pass through. `/bank/admin/reset/` (trailing slash) also passes the blocklist. | `is_blocked` is False for all six paths tested |
 | F4 | Low | Merchant lookup routes (`/records/{id}`, `/settlements`, `/payouts`) are public through `/merchant/...`. They are meant for the passport's gateway; anyone can enumerate Maya's synthetic merchant records. | By reading; no test |
 
 ## Fixes, smallest first
+
+Status 06:20Z: F3 fixed (the hosting router is now eval's). F1 and F2 remain open inside the container: the router keeps them off the internet, but any process that can reach 8101/8102 can still use the admin routes.
+
 
 1. **Router (F3), now.** In `agents/research/deploy/router.py`, block any path with an `admin` segment and normalise the trailing slash before matching:
    ```python

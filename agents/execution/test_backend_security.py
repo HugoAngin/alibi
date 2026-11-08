@@ -15,7 +15,8 @@ from alibi.connectors import keys
 from alibi.connectors.merchant import create_merchant_app
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "agents" / "research" / "deploy"))
+# The hosting router is eval's (agents/eval/deploy/router.py, 40e03c1), which replaced research's.
+sys.path.insert(0, str(ROOT / "agents" / "eval" / "deploy"))
 from router import is_blocked  # noqa: E402
 
 TOKENS = {"bank_a": "tok-a-security", "bank_b": "tok-b-security", "feed": "tok-feed-security"}
@@ -78,8 +79,8 @@ class Findings(Base):
         m.post("/admin/seed", params={"case": 1})
         self.assertIn(m.get("/admin/state").status_code, (401, 403, 404))
 
-    @unittest.expectedFailure
     def test_f3_public_router_blocks_every_admin_route(self):
+        """Fixed by eval in agents/eval/deploy/router.py (40e03c1)."""
         for path in ("/bank/admin/seed", "/bank/admin/advance", "/merchant/admin/seed",
                      "/merchant/admin/correct", "/merchant/admin/state", "/bank/admin/reset/"):
             self.assertTrue(is_blocked(path), path)
@@ -119,7 +120,7 @@ class ControlsThatHold(Base):
             self.assertNotIn(token, text)
 
     def test_router_still_blocks_the_known_reset_paths(self):
-        for path in ("/reset", "/admin/reset", "/bank/admin/reset", "/__debug"):
+        for path in ("/reset", "/__debug", "/admin/reset", "/bank/admin/reset", "/bank/admin/reset/"):
             self.assertTrue(is_blocked(path), path)
 
 

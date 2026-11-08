@@ -1,0 +1,32 @@
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -302,7 +302,7 @@
+     """
+     breakdown_only = bool(_BREAKDOWN_ONLY.search(text)) \
+         and not _CUE_WORDS.search(_EXPLAIN_ONLY.sub(" ", text))
+-    if request.txn_ids and not breakdown_only:
++    if request.txn_ids and not breakdown_only and not _NOT_SOURCE.search(text):
+         named = tuple(sorted({txn_id.lower() for txn_id in request.txn_ids
+                               if _names(text, txn_id)}))
+         if named:
+--- /dev/null
++++ b/alibi/tests/test_named_transaction_question_guard.py
+@@ -0,0 +1,18 @@
++"""A transaction identifier must not override a known unsupported question type."""
++import pytest
++from alibi.adapter import run_case
++from alibi.llm.fake import FakeClient
++from alibi.tests.test_literal_reference_generalization import variant
++from alibi.tests.test_agents_question_generalization import client
++
++@pytest.mark.parametrize('question', ['What credit score applies to credit-921-004?', 'Does credit-921-004 qualify me for a mortgage?'])
++@pytest.mark.parametrize('mode', ['rules', 'one_pass', 'agents'])
++def test_named_transaction_does_not_turn_credit_rating_or_mortgage_into_source(tmp_path, mode, question):
++    case = variant('PayAlpha42')
++    case['rfcs'] = [case['rfcs'][0]]
++    case['rfcs'][0]['questions'] = [{'question_id': 'q.unrelated_assessment', 'text': question}]
++    model = client() if mode == 'agents' else FakeClient({'*': {'claims': [], 'disclosures': [], 'rationale': 'No proposal'}})
++    rows = run_case(case, mode, client=model, root=tmp_path / mode)
++    assert rows[0]['failure'] is None
++    assert rows[0]['claims']['q.unrelated_assessment']['status'] == 'unresolved'
++    assert rows[0]['claims']['q.unrelated_assessment']['facts'] == {}

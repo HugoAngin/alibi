@@ -51,5 +51,26 @@
       "bank_packages": 0,
       "policy_changed": true
     }
+  },
+  "sp07_patch_check": {
+    "patch": "SP07_POLICY_REFUSAL.patch",
+    "scope": "Fresh disposable candidate 5 with the staged patch applied.",
+    "focused_tests_passed": 141,
+    "outcome": "blocked",
+    "reason": "",
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      409,
+      200
+    ],
+    "refusal_codes": [
+      "policy_version_changed"
+    ],
+    "bank_packages": 0,
+    "policy_changed": true
   }
 }

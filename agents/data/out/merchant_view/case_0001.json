@@ -1,0 +1,160 @@
+{
+  "label": "SYNTHETIC - the marketplace's own view of case 1, for web/apps/merchant",
+  "source": "agents/data/out/cases/case_0001.json, agents/data/out/receipts/receipts.json",
+  "merchant": {
+    "id": "mock-marketplace",
+    "name": "Mock Marketplace"
+  },
+  "seller": {
+    "name": "Maya",
+    "subject_ref": "maya-001",
+    "bank_account": "ending 00"
+  },
+  "orders": [
+    {
+      "order_ref": "MM-48001",
+      "title": "Vintage denim jacket",
+      "sold_at": "2026-10-05T10:00:00Z",
+      "price_minor": 30000,
+      "fee_minor": 750,
+      "status": "Completed",
+      "record_id": "rec-0001-001",
+      "fee_record_id": "rec-0001-002"
+    },
+    {
+      "order_ref": "MM-48017",
+      "title": "Wool coat, size 10",
+      "sold_at": "2026-10-06T16:00:00Z",
+      "price_minor": 25000,
+      "fee_minor": 625,
+      "status": "Completed",
+      "record_id": "rec-0001-003",
+      "fee_record_id": "rec-0001-004"
+    },
+    {
+      "order_ref": "MM-48042",
+      "title": "Leather boots and two scarves",
+      "sold_at": "2026-10-07T22:00:00Z",
+      "price_minor": 40000,
+      "fee_minor": 1000,
+      "status": "Completed",
+      "record_id": "rec-0001-006",
+      "fee_record_id": "rec-0001-007"
+    },
+    {
+      "order_ref": "MM-48066",
+      "title": "Cashmere jumper and silk scarf",
+      "sold_at": "2026-10-09T04:00:00Z",
+      "price_minor": 35000,
+      "fee_minor": 875,
+      "status": "Completed",
+      "record_id": "rec-0001-008",
+      "fee_record_id": "rec-0001-009"
+    },
+    {
+      "order_ref": "MM-48081",
+      "title": "Pleated midi skirt",
+      "sold_at": "2026-10-10T10:00:00Z",
+      "price_minor": 20000,
+      "fee_minor": 500,
+      "status": "Completed",
+      "record_id": "rec-0001-010",
+      "fee_record_id": "rec-0001-011"
+    },
+    {
+      "order_ref": "MM-48107",
+      "title": "Bundle: 5 summer dresses",
+      "sold_at": "2026-10-11T16:00:00Z",
+      "price_minor": 45000,
+      "fee_minor": 1125,
+      "status": "Completed",
+      "record_id": "rec-0001-013",
+      "fee_record_id": "rec-0001-014"
+    },
+    {
+      "order_ref": "MM-48122",
+      "title": "Two cotton shirts",
+      "sold_at": "2026-10-12T22:00:00Z",
+      "price_minor": 15000,
+      "fee_minor": 375,
+      "status": "Completed",
+      "record_id": "rec-0001-015",
+      "fee_record_id": "rec-0001-016"
+    },
+    {
+      "order_ref": "MM-48139",
+      "title": "Bundle: 3 winter knits",
+      "sold_at": "2026-10-14T04:00:00Z",
+      "price_minor": 30000,
+      "fee_minor": 750,
+      "status": "Completed",
+      "record_id": "rec-0001-017",
+      "fee_record_id": "rec-0001-018"
+    }
+  ],
+  "refunds": [
+    {
+      "refund_ref": "MM-48017-R1",
+      "order_ref": "MM-48017",
+      "refunded_at": "2026-10-07T12:00:00Z",
+      "amount_minor": 10000,
+      "reason": "Button missing on arrival (partial refund)",
+      "status": "Refunded",
+      "record_id": "rec-0001-005"
+    },
+    {
+      "refund_ref": "MM-48081-R1",
+      "order_ref": "MM-48081",
+      "refunded_at": "2026-10-11T06:00:00Z",
+      "amount_minor": 8000,
+      "reason": "Hem slightly damaged (partial refund)",
+      "status": "Refunded",
+      "record_id": "rec-0001-012"
+    }
+  ],
+  "payouts": [
+    {
+      "payout_ref": "PO-0001-01",
+      "requested_at": "2026-10-26T09:00:00Z",
+      "amount_minor": 216000,
+      "status": "Paid to bank",
+      "settled_at": "2026-10-27T16:00:00Z",
+      "destination": "Bank account ending 00",
+      "covers_order_refs": [
+        "MM-48001",
+        "MM-48017",
+        "MM-48042",
+        "MM-48066",
+        "MM-48081",
+        "MM-48107",
+        "MM-48122",
+        "MM-48139"
+      ],
+      "record_id": "rec-0001-021"
+    }
+  ],
+  "notifications": [
+    {
+      "sent_at": "2026-10-26T08:00:00Z",
+      "title": "Funds available",
+      "body": "Good news! £2,160.00 from your recent sales is now available in your seller balance. Withdrawal PO-0001-01 to your linked bank account has been requested.",
+      "record_id": "rec-0001-020"
+    }
+  ],
+  "purchases": [
+    {
+      "bought_at": "2026-10-14T10:00:00Z",
+      "title": "Prescription eyewear",
+      "amount_minor": 4500,
+      "category": "health",
+      "record_id": "rec-0001-019",
+      "sensitive": true
+    }
+  ],
+  "totals": {
+    "sales_minor": 240000,
+    "refunds_minor": 18000,
+    "fees_minor": 6000,
+    "net_minor": 216000
+  }
+}

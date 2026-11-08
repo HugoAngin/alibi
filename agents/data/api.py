@@ -27,7 +27,8 @@ from tools.lockbox import visible
 
 OUT = Path(__file__).resolve().parent / "out"
 FAMILIES = ("demo", "clean", "bundled_payment", "balance_vs_settlement", "pending_correction",
-            "duplicate_record", "missing_proof", "self_supplied_import", "hidden_reference")
+            "duplicate_record", "missing_proof", "self_supplied_import", "hidden_reference",
+            "injection")
 CANONICAL_CASE = 1            # Maya, supported control
 CONTRADICTION_CASE = 2        # Maya, payout still pending at booking
 

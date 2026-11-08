@@ -179,7 +179,7 @@ def test_contract_shapes(case):
         for k in ("schema_version", "event_id", "record_id", "revision", "issuer_id",
                   "subject_ref", "kind", "occurred_at"):
             assert k in ev
-        if ev["kind"] in ("notice", "statement"):
+        if ev["kind"] in ("notice", "statement", "receipt"):
             assert "amount_minor" not in ev and ev["text"]
         else:
             assert isinstance(ev["amount_minor"], int) and ev["amount_minor"] > 0
@@ -237,7 +237,7 @@ def test_committed_json_matches_generator():
 
 
 def test_coverage():
-    assert len(CASES) == 50
+    assert len(CASES) == 60
     assert {c["family"] for c in CASES} == set(api.FAMILIES)
     assert {c["gold"]["claim_status"] for c in CASES} == {"supported", "contradicted", "unresolved"}
     assert {l["state"] for c in CASES for l in c["gold"]["links"]} == {"linked", "unmatched", "ambiguous"}
@@ -321,3 +321,52 @@ def test_lookup_keys():
     with pytest.raises(ValueError):
         api.lookup(case, at, payout_reference="x", record_id="y")
     assert api.lookup(case, at, payout_reference="PO-9999-99") == []
+
+
+# --------------------------------------------------------------------------
+# injection family (cases 51-60)
+# --------------------------------------------------------------------------
+
+INJECTED = [c for c in CASES if c["family"] == "injection"]
+
+
+def _strip(case: dict) -> dict:
+    """The parts of a case an injection must not change."""
+    g = case["gold"]
+    return {"links": g["links"], "claim_status": g["claim_status"], "answers": g["answers"],
+            "breakdown_minor": g["breakdown_minor"], "forbidden_refs": g["forbidden_refs"],
+            "requires_retrieval": g["requires_retrieval"], "decision_time": g["decision_time"],
+            "holder_claim": case["holder_claim"], "subject_ref": case["subject_ref"]}
+
+
+@pytest.mark.parametrize("case", INJECTED, ids=lambda c: f"case{c['case_number']}")
+def test_injection_is_a_planted_copy(case):
+    inj = case["gold"]["injection"]
+    base = api.load_case(inj["base_case"])
+    assert inj["base_case"] in (1, 2)
+    assert _strip(case) == _strip(base)
+    # The string appears exactly once, outside gold, and nowhere in the base case.
+    body = json.dumps(api.without_gold(case), ensure_ascii=False)
+    assert body.count(inj["string"]) == 1
+    assert inj["string"] not in json.dumps(base, ensure_ascii=False)
+    # Forbidden strings (things agents must never output) may already exist as record data,
+    # e.g. the rent row's txn ID; the injection adds occurrences only inside its own string.
+    base_body = json.dumps(api.without_gold(base), ensure_ascii=False)
+    for f in inj["forbidden_strings"]:
+        assert body.count(f) == base_body.count(f) + inj["string"].count(f), f
+    # Only the carrier differs (plus at most one added receipt import).
+    diff_bank = [a for a, b in zip(case["bank_deliveries"], base["bank_deliveries"]) if a != b]
+    diff_merch = [a for a, b in zip(case["merchant_deliveries"], base["merchant_deliveries"]) if a != b]
+    diff_look = [a for a, b in zip(case["merchant_lookup"], base["merchant_lookup"]) if a != b]
+    diff_rfc = [a for a, b in zip(case["rfcs"], base["rfcs"]) if a != b]
+    added = len(case["imports"]) - len(base["imports"])
+    assert len(diff_bank) + len(diff_merch) + len(diff_look) + len(diff_rfc) + added == 1
+
+
+def test_injection_catalogue_in_sync():
+    from agents.execution.api import load_injections
+    catalogue = {i["id"]: i for i in load_injections()}
+    for case in INJECTED:
+        inj = case["gold"]["injection"]
+        assert catalogue[inj["id"]]["string"] == inj["string"]
+        assert catalogue[inj["id"]]["expect"] == inj["expect"]

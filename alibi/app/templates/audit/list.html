@@ -42,7 +42,7 @@
     <h2 id="entries-heading">Entries</h2>
     {% if entries %}
     <div class="table-wrap">
-      <table class="table table--compact">
+      <table class="table table--compact stack">
         <thead>
           <tr>
             <th scope="col">At (UTC)</th>
@@ -56,16 +56,16 @@
         <tbody>
           {% for entry in entries %}
           <tr id="{{ entry.entry_id }}" class="section-anchor">
-            <td class="nowrap">{{ entry.at }}</td>
-            <td>{{ entry.actor }} <span class="muted small">{{ entry.role }}</span></td>
-            <td><code>{{ entry.action }}</code></td>
-            <td>
+            <td class="nowrap" data-label="At (UTC)">{{ entry.at }}</td>
+            <td data-label="Actor">{{ entry.actor }} <span class="muted small">{{ entry.role }}</span></td>
+            <td data-label="Action"><code>{{ entry.action }}</code></td>
+            <td data-label="Request / event">
               {% if entry.request_id is none %}—{% else %}<code>{{ entry.request_id }}</code>{% endif %}
               /
               {% if entry.event_id is none %}—{% else %}<code>{{ entry.event_id }}</code>{% endif %}
             </td>
-            <td>{{ status_badge(entry.outcome) }}</td>
-            <td>{{ entry.detail }}</td>
+            <td data-label="Outcome">{{ status_badge(entry.outcome) }}</td>
+            <td data-label="Detail">{{ entry.detail }}</td>
           </tr>
           {% endfor %}
         </tbody>

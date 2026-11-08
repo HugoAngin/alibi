@@ -2,7 +2,7 @@
 {#
   Approved package rendering (holder, print-friendly). Context from preview_render.ctx_export:
     package  {package_id, request_id, version, audience, recipient, case_id, subject_ref_masked,
-              period{from,to}, issued_at, expires_at, digest,
+              period{from,to}|None, txn_ids[], issued_at, expires_at, digest,
               signature{alg,key_id,domain,value},
               claims[{question_id, question, status, rationale,
                       evidence_refs[{record_id,revision,trust}],
@@ -15,6 +15,7 @@
 #}
 {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
 {% from "partials/money.html" import money, money_raw %}
+{% from "partials/when.html" import when %}
 
 {% block content %}
 <h1 class="page-title">Package {{ package.package_id }}</h1>
@@ -56,12 +57,18 @@
     <dd><code>{{ package.case_id }}</code></dd>
     <dt>Subject</dt>
     <dd><code>{{ package.subject_ref_masked }}</code> <span class="muted small">masked</span></dd>
-    <dt>Period</dt>
-    <dd><code>[{{ package.period.from }}, {{ package.period.to }})</code> <span class="muted small">half-open</span></dd>
+    <dt>Scope</dt>
+    <dd>
+      {% if package.period %}
+      <code>[{{ package.period.from }}, {{ package.period.to }})</code> <span class="muted small">half-open</span>
+      {% else %}
+      transaction-scoped: {% for txn_id in package.txn_ids %}<code>{{ txn_id }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      {% endif %}
+    </dd>
     <dt>Issued</dt>
-    <dd>{{ package.issued_at }}</dd>
+    <dd>{{ when(package.issued_at) }}</dd>
     <dt>Expires</dt>
-    <dd>{{ package.expires_at }}</dd>
+    <dd>{{ when(package.expires_at) }}</dd>
     <dt>Body digest</dt>
     <dd class="digest">{{ package.digest }}</dd>
     <dt>Signature</dt>
@@ -85,7 +92,7 @@
     <dt>Recipient</dt>
     <dd>{{ export.approval.recipient }}</dd>
     <dt>Approved at</dt>
-    <dd>{% if export.approval.approved_at %}{{ export.approval.approved_at }}{% else %}not approved{% endif %}</dd>
+    <dd>{% if export.approval.approved_at %}{{ when(export.approval.approved_at) }}{% else %}not approved{% endif %}</dd>
     <dt>Policy version</dt>
     <dd><code>{{ export.approval.policy_version }}</code></dd>
     {% if export.approval.invalidated_reason %}
@@ -141,7 +148,7 @@
     <h2 id="attachments-title">Attachments</h2>
   </div>
   <div class="table-wrap">
-    <table class="table table--compact">
+    <table class="table table--compact stack">
       <thead>
         <tr>
           <th scope="col">ID</th>
@@ -157,14 +164,14 @@
       <tbody>
         {% for att in package.attachments %}
         <tr id="{{ att.attachment_id }}">
-          <td><code>{{ att.attachment_id }}</code></td>
-          <td>{{ att.kind }}</td>
-          <td><code>{{ att.record_id }} r{{ att.revision }}</code></td>
-          <td>{{ att.issuer }}</td>
-          <td>{{ trust_badge(att.trust) }}</td>
-          <td>{{ status_badge(att.attestation) }}</td>
-          <td>{% if att.redacted %}yes{% else %}no{% endif %}</td>
-          <td>{{ att.summary }}</td>
+          <td data-label="ID"><code>{{ att.attachment_id }}</code></td>
+          <td data-label="Kind">{{ att.kind }}</td>
+          <td data-label="Record"><code>{{ att.record_id }} r{{ att.revision }}</code></td>
+          <td data-label="Issuer">{{ att.issuer }}</td>
+          <td data-label="Trust">{{ trust_badge(att.trust) }}</td>
+          <td data-label="Attestation">{{ status_badge(att.attestation) }}{% if att.redacted %} <span class="small">Redacted extract, attested by Alibi</span>{% endif %}</td>
+          <td data-label="Redacted">{% if att.redacted %}yes{% else %}no{% endif %}</td>
+          <td data-label="Summary">{{ att.summary }}</td>
         </tr>
         {% else %}
         <tr><td colspan="8" class="empty">No attachments.</td></tr>

@@ -15,6 +15,7 @@
 {% extends "base.html" %}
 {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
 {% from "partials/money.html" import money, money_raw %}
+{% from "partials/when.html" import when %}
 
 {% block content %}
 <h1 class="page-title">Financial passport</h1>
@@ -34,33 +35,65 @@
     </dl>
   </section>
 
-  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
+  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
     <div class="card__head">
-      <h2 id="connections-title">Connections</h2>
-      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
+      <h2 id="alerts-title">Alerts</h2>
+      <a href="/alerts" class="small">All alerts</a>
     </div>
-    {% if connections %}
+    {% if alerts %}
     <ul class="items">
-      {% for c in connections %}
-      <li id="{{ c.connection_id }}">
+      {% for a in alerts %}
+      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
         <div class="item__head">
-          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
+          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
           <span class="cluster">
-            {{ status_badge(c.status) }}
-            {{ trust_badge(c.trust) }}
+            {{ status_badge(a.severity) }}
+            {{ status_badge(a.status) }}
           </span>
         </div>
-        <div class="item__meta">
-          Kind: {{ c.kind }} ·
-          Last synced {{ c.last_synced_at }} ·
-          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
-          <code>{{ c.connection_id }}</code>
-        </div>
+        <div class="item__meta">Created {{ when(a.created_at) }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    <p class="empty">No connections yet.</p>
+    <p class="empty">No alerts.</p>
+    {% endif %}
+  </section>
+
+  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
+    <div class="card__head">
+      <h2 id="requests-title">Requests</h2>
+      <a href="/requests" class="small">All requests</a>
+    </div>
+    {% if requests %}
+    <div class="table-wrap">
+      <table class="table stack">
+        <thead>
+          <tr>
+            <th scope="col">Request</th>
+            <th scope="col">From</th>
+            <th scope="col" class="num">Questions</th>
+            <th scope="col">Received</th>
+            <th scope="col">Expires</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in requests %}
+          <tr id="{{ q.request_id }}">
+            <td data-label="Request"><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
+            <td data-label="From">{{ q.recipient }}</td>
+            <td class="num" data-label="Questions">{{ q.question_count }}</td>
+            <td class="nowrap" data-label="Received">{{ when(q.received_at) }}</td>
+            <td class="nowrap" data-label="Expires">{{ when(q.expires_at) }}</td>
+            <td data-label="Status">{{ status_badge(q.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty">No requests received.</p>
     {% endif %}
   </section>
 
@@ -71,7 +104,7 @@
     </div>
     {% if transactions %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table stack">
         <thead>
           <tr>
             <th scope="col">Booked</th>
@@ -83,13 +116,13 @@
         <tbody>
           {% for t in transactions %}
           <tr id="{{ t.txn_id }}">
-            <td class="nowrap">{{ t.booked_at }}</td>
-            <td>
+            <td class="nowrap" data-label="Booked">{{ when(t.booked_at) }}</td>
+            <td data-label="Description">
               <a href="{{ t.href }}">{{ t.description }}</a>
               <div class="item__meta"><code>{{ t.txn_id }}</code> r{{ t.revision }} · {{ t.direction }}</div>
             </td>
-            <td class="num"><span class="item__amount amount--{{ t.direction }}">{{ money(t.amount) }}</span></td>
-            <td>{{ link_badge(t.link_state, t.linked_count) }}</td>
+            <td class="num" data-label="Amount"><span class="item__amount amount--{{ t.direction }}">{{ money(t.amount) }}</span></td>
+            <td data-label="Link state">{{ link_badge(t.link_state, t.linked_count) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -103,7 +136,7 @@
   <section class="card section-anchor" id="evidence" aria-labelledby="evidence-title">
     <div class="card__head">
       <h2 id="evidence-title">Evidence status</h2>
-      <span class="item__meta">Last checked {{ evidence_status.last_checked_at }}</span>
+      <span class="item__meta">Last checked {{ when(evidence_status.last_checked_at) }}</span>
     </div>
     <div class="stats">
       <div class="stat">
@@ -128,30 +161,46 @@
     </p>
   </section>
 
-  <section class="card section-anchor" id="alerts" aria-labelledby="alerts-title">
+  <section class="card section-anchor" id="sharing" aria-labelledby="sharing-title">
     <div class="card__head">
-      <h2 id="alerts-title">Alerts</h2>
-      <a href="/alerts" class="small">All alerts</a>
+      <h2 id="sharing-title">Sharing history</h2>
+      <span class="item__meta">What was sent does not change. Later corrections mark its evidence as superseded.</span>
     </div>
-    {% if alerts %}
-    <ul class="items">
-      {% for a in alerts %}
-      <li id="{{ a.alert_id }}" class="alert alert--severity-{{ a.severity }}">
-        <div class="item__head">
-          <span class="item__title"><a href="{{ a.href }}">{{ a.title }}</a></span>
-          <span class="cluster">
-            {{ status_badge(a.severity) }}
-            {{ status_badge(a.status) }}
-          </span>
-        </div>
-        <div class="item__meta">Created {{ a.created_at }} · {{ a.kind | replace("_", " ") }} · <code>{{ a.alert_id }}</code></div>
-      </li>
-      {% endfor %}
-    </ul>
+    {% if sharing_history %}
+    <div class="table-wrap">
+      <table class="table stack">
+        <thead>
+          <tr>
+            <th scope="col">Package</th>
+            <th scope="col">Recipient</th>
+            <th scope="col">Sent</th>
+            <th scope="col">Expires</th>
+            <th scope="col" class="num">Items</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in sharing_history %}
+          <tr id="{{ p.package_id }}">
+            <td data-label="Package">
+              <a href="{{ p.href }}"><code>{{ p.package_id }}</code></a>
+              <div class="item__meta">for <code>{{ p.request_id }}</code></div>
+            </td>
+            <td data-label="Recipient">{{ p.recipient }}</td>
+            <td class="nowrap" data-label="Sent">{{ when(p.sent_at) }}</td>
+            <td class="nowrap" data-label="Expires">{{ when(p.expires_at) }}</td>
+            <td class="num" data-label="Items">{{ p.item_count }}</td>
+            <td data-label="Status">{{ status_badge(p.status) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-    <p class="empty">No alerts.</p>
+    <p class="empty">Nothing has been shared yet.</p>
     {% endif %}
   </section>
+
 
   <section class="card card--private section-anchor" id="rules" aria-labelledby="rules-title">
     <div class="card__head">
@@ -175,82 +224,34 @@
     {% endif %}
   </section>
 
-  <section class="card section-anchor" id="requests" aria-labelledby="requests-title">
+  <section class="card section-anchor" id="connections" aria-labelledby="connections-title">
     <div class="card__head">
-      <h2 id="requests-title">Requests</h2>
-      <a href="/requests" class="small">All requests</a>
+      <h2 id="connections-title">Connections</h2>
+      <span class="item__meta">{{ connections | length }} source{{ "" if connections | length == 1 else "s" }}</span>
     </div>
-    {% if requests %}
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th scope="col">Request</th>
-            <th scope="col">From</th>
-            <th scope="col" class="num">Questions</th>
-            <th scope="col">Received</th>
-            <th scope="col">Expires</th>
-            <th scope="col">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for q in requests %}
-          <tr id="{{ q.request_id }}">
-            <td><a href="{{ q.href }}"><code>{{ q.request_id }}</code></a></td>
-            <td>{{ q.recipient }}</td>
-            <td class="num">{{ q.question_count }}</td>
-            <td class="nowrap">{{ q.received_at }}</td>
-            <td class="nowrap">{{ q.expires_at }}</td>
-            <td>{{ status_badge(q.status) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+    {% if connections %}
+    <ul class="items">
+      {% for c in connections %}
+      <li id="{{ c.connection_id }}">
+        <div class="item__head">
+          <span class="item__title"><a href="{{ c.href }}">{{ c.name }}</a></span>
+          <span class="cluster">
+            {{ status_badge(c.status) }}
+            {{ trust_badge(c.trust) }}
+          </span>
+        </div>
+        <div class="item__meta">
+          Kind: {{ c.kind }} ·
+          Last synced {{ when(c.last_synced_at) }} ·
+          {{ c.record_count }} record{{ "" if c.record_count == 1 else "s" }} ·
+          <code>{{ c.connection_id }}</code>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
     {% else %}
-    <p class="empty">No requests received.</p>
+    <p class="empty">No connections yet.</p>
     {% endif %}
   </section>
-
-  <section class="card section-anchor" id="sharing" aria-labelledby="sharing-title">
-    <div class="card__head">
-      <h2 id="sharing-title">Sharing history</h2>
-      <span class="item__meta">What was sent does not change. Later corrections mark its evidence as superseded.</span>
-    </div>
-    {% if sharing_history %}
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th scope="col">Package</th>
-            <th scope="col">Recipient</th>
-            <th scope="col">Sent</th>
-            <th scope="col">Expires</th>
-            <th scope="col" class="num">Items</th>
-            <th scope="col">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in sharing_history %}
-          <tr id="{{ p.package_id }}">
-            <td>
-              <a href="{{ p.href }}"><code>{{ p.package_id }}</code></a>
-              <div class="item__meta">for <code>{{ p.request_id }}</code></div>
-            </td>
-            <td>{{ p.recipient }}</td>
-            <td class="nowrap">{{ p.sent_at }}</td>
-            <td class="nowrap">{{ p.expires_at }}</td>
-            <td class="num">{{ p.item_count }}</td>
-            <td>{{ status_badge(p.status) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="empty">Nothing has been shared yet.</p>
-    {% endif %}
-  </section>
-
 </div>
 {% endblock %}

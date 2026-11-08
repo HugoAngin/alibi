@@ -1,0 +1,12 @@
+{#
+  Timestamp macro. Import with:
+    {% from "partials/when.html" import when %}
+
+  when(ts) takes a UTC ISO-8601 string and prints it inside
+  <time class="when" datetime="..."> so the stylesheet and scripts can find
+  every timestamp. A falsy value (None or "") prints an em dash in .muted.
+#}
+
+{% macro when(ts) -%}
+{%- if ts %}<time class="when" datetime="{{ ts }}">{{ ts }}</time>{% else %}<span class="muted">—</span>{% endif -%}
+{%- endmacro %}

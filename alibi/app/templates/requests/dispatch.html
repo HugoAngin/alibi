@@ -8,6 +8,7 @@
 #}
 {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
 {% from "partials/money.html" import money, money_raw %}
+{% from "partials/when.html" import when %}
 
 {% block content %}
 <h1 class="page-title">Dispatch result</h1>
@@ -21,7 +22,7 @@
     <dt>Request ID</dt>
     <dd><code>{{ dispatch.request_id }}</code></dd>
     <dt>Attempted at</dt>
-    <dd>{{ dispatch.attempted_at }}</dd>
+    <dd>{{ when(dispatch.attempted_at) }}</dd>
   </dl>
 
   <h3 id="receipt">Receipt</h3>
@@ -31,13 +32,13 @@
     <dt>Package digest</dt>
     <dd class="digest">{{ dispatch.receipt.package_digest }}</dd>
     <dt>Received at</dt>
-    <dd>{{ dispatch.receipt.received_at }}</dd>
+    <dd>{{ when(dispatch.receipt.received_at) }}</dd>
     <dt>Status</dt>
     <dd>{{ status_badge(dispatch.receipt.status) }}</dd>
     <dt>Signer key</dt>
     <dd><code>{{ dispatch.receipt.signer_key_id }}</code></dd>
     <dt>Expires</dt>
-    <dd>{{ dispatch.receipt.expires_at }}</dd>
+    <dd>{{ when(dispatch.receipt.expires_at) }}</dd>
   </dl>
   <p class="muted small">The receipt binds this package ID to its digest. The bank's receipt shows the bytes arrived intact; it does not mark any claim true.</p>
   <div class="btn-row">
@@ -57,7 +58,7 @@
     <dt>Recipient</dt>
     <dd>{{ dispatch.recipient }}</dd>
     <dt>Attempted at</dt>
-    <dd>{{ dispatch.attempted_at }}</dd>
+    <dd>{{ when(dispatch.attempted_at) }}</dd>
     {% if dispatch.refusal %}
     <dt>Code</dt>
     <dd>{{ status_badge(dispatch.refusal.code) }}</dd>

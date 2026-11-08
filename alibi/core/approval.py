@@ -48,11 +48,22 @@ DEFAULT_APPROVAL_TTL = timedelta(minutes=15)
 
 
 class ApprovalError(Exception):
-    """An approval cannot be granted or used. ``problems`` lists every reason (safe to show)."""
+    """An approval cannot be granted or used. ``problems`` lists every reason (safe to show).
 
-    def __init__(self, problems: Iterable[str]):
+    ``code`` and ``reason`` carry the consent-matrix refusal (agents/execution/out/consent_matrix.md)
+    when the first problem maps to one, so HTTP layers can answer ``{code, reason}`` verbatim.
+    """
+
+    def __init__(self, problems: Iterable[str], *, code: str | None = None,
+                 reason: str | None = None):
         self.problems = list(problems) or ["the approval is not valid"]
+        self.code = code
+        self.reason = reason if reason is not None else self.problems[0]
         super().__init__("; ".join(self.problems))
+
+    @property
+    def refusal(self) -> dict[str, str | None]:
+        return {"code": self.code, "reason": self.reason}
 
 
 # --------------------------------------------------------------------------- ref helpers

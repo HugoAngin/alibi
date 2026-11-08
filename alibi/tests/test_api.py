@@ -595,3 +595,49 @@ def test_agents_lead_api_reexports_alibi_api():
     assert CONTRACT_FUNCTIONS <= set(api.__all__)
     for name in api.__all__:
         assert getattr(lead, name) is getattr(api, name)
+
+
+# --------------------------------------------------------------------------- consent matrix C2 and C6
+
+
+def test_editing_the_review_after_approval_supersedes_it_and_dispatch_refuses(ctx):
+    """C2: Maya approves, removes an item, and the old approval must not sign the old body."""
+    import json
+
+    fx = load(ctx, "supported")
+    investigate(ctx, fx)
+    first = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    removable = next(a.ref.token() for a in first.body.attachments)
+    approval = api.approve(ctx.store, first.draft_id, holder_id=HOLDER, now=ctx.now)
+    second = api.build_review(ctx.store, RFC_A, now=ctx.now, removed=[removable])
+    assert second.draft_id != first.draft_id and second.body_sha256 != first.body_sha256
+    assert ctx.store.get_draft(first.draft_id).status == api.DraftStatus.INVALIDATED
+    assert ctx.store.get_approval(approval.approval_id).status == api.ApprovalStatus.INVALIDATED
+    with pytest.raises(api.ApprovalError) as refused:
+        api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore, now=ctx.now)
+    assert refused.value.code == "approval_digest_mismatch"
+    assert refused.value.reason.startswith("dispatch refused: approved digest sha256:")
+    assert ctx.store.list_packages() == [] and ctx.store.list_deliveries() == []
+    # C6: the superseded draft cannot be approved either.
+    with pytest.raises(api.ApprovalError) as stale:
+        api.approve(ctx.store, first.draft_id, holder_id=HOLDER, now=ctx.now)
+    assert stale.value.code == "approval_digest_not_current"
+    # The new draft approves and signs, and the removed item is not in the package.
+    fresh = api.approve(ctx.store, second.draft_id, holder_id=HOLDER, now=ctx.now)
+    package = api.sign_and_package(ctx.store, fresh.approval_id, keystore=ctx.keystore, now=ctx.now)
+    assert removable.split(":", 1)[1] not in json.dumps(package.to_json_dict())
+
+
+def test_rebuilding_an_identical_review_keeps_the_approval(ctx):
+    """Re-rendering the review page (same body, later clock) must not invalidate anything."""
+    from datetime import timedelta
+
+    fx = load(ctx, "supported")
+    investigate(ctx, fx)
+    first = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    approval = api.approve(ctx.store, first.draft_id, holder_id=HOLDER, now=ctx.now)
+    again = api.build_review(ctx.store, RFC_A, now=ctx.now + timedelta(minutes=1))
+    assert again.draft_id == first.draft_id
+    assert ctx.store.get_approval(approval.approval_id).status == api.ApprovalStatus.PENDING
+    assert api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore,
+                                now=ctx.now + timedelta(minutes=2)).package_id

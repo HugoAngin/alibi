@@ -326,6 +326,63 @@ def _invalidate_for_policy(store: Store, subject_ref: str, version_tag: str,
     return drafts, approvals
 
 
+# Consent-matrix refusals (agents/execution/out/consent_matrix.md) raised by this module. The
+# sentences are the matrix's verbatim templates; ``code`` is recovered from the sentence when an
+# invalidated approval or draft is used later.
+_C2 = ("dispatch refused: approved digest sha256:{approved12} does not match body digest "
+       "sha256:{actual12}; the body changed after approval{change}. Review and approve the "
+       "revised body.")
+_C6 = ("approval refused: the preview you approved (sha256:{approved12}) is no longer the "
+       "current draft (sha256:{current12}). Review the current draft.")
+_REFUSAL_CODES = (("dispatch refused: approved digest", "approval_digest_mismatch"),
+                  ("approval refused: the preview you approved", "approval_digest_not_current"))
+
+
+def _code_for(reason: str | None) -> str | None:
+    for prefix, code in _REFUSAL_CODES:
+        if reason and reason.startswith(prefix):
+            return code
+    return None
+
+
+_VOLATILE_BODY_FIELDS = ("expires_at", "issued_at")
+
+
+def _body_fingerprint(body: PackageBody) -> str:
+    """Digest of a body without the fields derived from the clock, so re-rendering the same
+    review a minute later is the same draft, while any change to content is a new one."""
+    data = body.to_json_dict()
+    for field in _VOLATILE_BODY_FIELDS:
+        data.pop(field, None)
+    return canon.digest(data)
+
+
+def _live_drafts(store: Store, request_id: str) -> list[Draft]:
+    """Drafts of a request that are still pending, approved or packaged, oldest first."""
+    live = (DraftStatus.PENDING, DraftStatus.APPROVED, DraftStatus.PACKAGED)
+    drafts = [d for d in store.list_drafts(request_id=request_id) if DraftStatus(d.status) in live]
+    return sorted(drafts, key=lambda d: (d.created_at, d.draft_id))
+
+
+def _supersede(store: Store, request_id: str, current: Draft, *, change: str) -> None:
+    """A newly built body replaces every earlier live draft of the request (consent matrix C6)
+    and invalidates every pending approval of an earlier body (C2), so an approval never signs
+    a body the holder has since edited."""
+    for old in _live_drafts(store, request_id):
+        if old.draft_id == current.draft_id or DraftStatus(old.status) == DraftStatus.PACKAGED:
+            continue
+        store.update_draft_status(old.draft_id, DraftStatus.INVALIDATED, _C6.format(
+            approved12=old.body_sha256[:12], current12=current.body_sha256[:12]))
+    for approval in store.list_approvals(request_id=request_id,
+                                         status=ApprovalStatus.PENDING.value):
+        if approval.body_sha256 == current.body_sha256:
+            continue
+        store.update_approval(Approval.model_validate({
+            **approval.to_json_dict(), "status": ApprovalStatus.INVALIDATED.value,
+            "invalidated_reason": _C2.format(approved12=approval.body_sha256[:12],
+                                             actual12=current.body_sha256[:12], change=change)}))
+
+
 def _draft_problems(draft: Draft, approval: Approval) -> list[str]:
     problems = []
     status = DraftStatus(draft.status)
@@ -544,11 +601,15 @@ def build_review(store: Store, request_id: str, *, now: datetime | None = None,
             draft = core_package.make_draft(rfc, body, review,
                                             policy_version=compiled.policy_version,
                                             source_revisions=refs, now=at)
-            try:
-                return store.get_draft(draft.draft_id)   # built already: keep its status
-            except NotFound:
-                pass
+            fingerprint = _body_fingerprint(draft.body)
+            same_body = [d for d in _live_drafts(store, rfc.request_id)
+                         if _body_fingerprint(d.body) == fingerprint
+                         and d.policy_version == draft.policy_version]
+            if same_body:
+                return same_body[-1]   # built already (any clock): keep it and its status
             store.save_draft(draft)
+            change = f" ({', '.join(sorted(str(r) for r in removed))} removed)" if removed else ""
+            _supersede(store, rfc.request_id, draft, change=change)
             _audit(store, action="build_review", actor=SYSTEM, outcome="ok", at=at,
                    target_id=draft.draft_id,
                    detail=f"draft for {rfc.request_id} to {rfc.audience}: "
@@ -587,6 +648,11 @@ def approve(store: Store, draft_id: str, *, holder_id: str,
                 return existing
             rfc = _get(store.get_request, draft.request_id, "request")
             _, compiled = _current_policy(store, rfc.subject_ref)
+            if DraftStatus(draft.status) == DraftStatus.INVALIDATED:
+                why = draft.invalidated_reason or "this draft was superseded"
+                raise ApprovalError([f"only a pending draft can be approved; this draft is "
+                                     f"invalidated ({why})"],
+                                    code=_code_for(draft.invalidated_reason), reason=why)
             if DraftStatus(draft.status) == DraftStatus.PENDING \
                     and compiled.policy_version != draft.policy_version:
                 raise ApprovalError([f"the disclosure policy changed since this draft was built "
@@ -647,8 +713,19 @@ def sign_and_package(store: Store, approval_id: str, *, keystore: DemoKeystore |
                 approval, body=draft.body, audience=approval.audience,
                 request_id=approval.request_id, policy_version=compiled.policy_version,
                 revisions=revisions, now=at)
+            # Defence in depth for consent matrix C2: the approved body must still be the
+            # request's current draft, whatever the approval's own status says.
+            live = _live_drafts(store, rfc.request_id)
+            current = live[-1] if live else None
+            if current is not None and current.body_sha256 != approval.body_sha256:
+                problems.append(_C2.format(approved12=approval.body_sha256[:12],
+                                           actual12=current.body_sha256[:12], change=""))
             if problems:
-                raise ApprovalError(problems)
+                invalidated = ApprovalStatus(approval.status) == ApprovalStatus.INVALIDATED
+                reason = approval.invalidated_reason if invalidated else None
+                matched = reason if _code_for(reason) else next(
+                    (p for p in problems if _code_for(p)), None)
+                raise ApprovalError(problems, code=_code_for(matched), reason=matched)
             package = core_package.sign_package(draft.body, approval, _keystore(keystore),
                                                 policy_version=compiled.policy_version,
                                                 revisions=revisions, now=at)

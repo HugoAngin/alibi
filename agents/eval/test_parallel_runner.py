@@ -34,8 +34,11 @@ def worker_rows(case, mode):
     return rows
 
 
-def test_parallel_capture_lanes_integrity_and_replay(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize('deny_siblings', [False, True])
+def test_parallel_capture_lanes_integrity_and_replay(tmp_path, monkeypatch, capsys, deny_siblings):
     args = capture_args(tmp_path, monkeypatch)
+    if deny_siblings:
+        args['isolation']['capture_root'] = args['output'].parent
     barrier = Barrier(4)
     guard = Lock()
     calls = []
@@ -59,7 +62,7 @@ def test_parallel_capture_lanes_integrity_and_replay(tmp_path, monkeypatch, caps
     assert len(first_lanes) == 4
     for _, _, kwargs in calls:
         assert set(kwargs["denied_scratch"]) == first_lanes - {kwargs["scratch_parent"]}
-        assert kwargs["capture_root"] == args["output"]
+        assert kwargs["capture_root"] == (args['output'].parent if deny_siblings else args['output'])
         assert kwargs["deadline"] == args["isolation"]["deadline"]
     assert all(not root.exists() for root in first_lanes)
     summary = common.load_json(args["output"] / "scheduling.json")

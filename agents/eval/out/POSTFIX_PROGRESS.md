@@ -13,10 +13,14 @@ evidence, not a new unseen comparison.
 - Reused held-out runtime diagnostic: all 44 rules cases completed without worker failure,
   versus 10/44 in the original frozen rules run. Zero scheduler errors and model calls.
   Record `09a90f6cd0` PASS. No gold was scored in this runtime diagnostic.
+- Separate scoring of those retained predictions, record `db5a3f9c28` PASS, still gives
+  0/32 main and 0/12 adversarial safe-complete. This used gold only in the evaluator after
+  all workers had ended, made no model calls, and is explicitly another post-hoc look.
 - Evaluator fixes: bounded worker cleanup, retained private stderr, fixed-code failure
   diagnostics, native import preflight, and corrected wrapper-field default reporting.
 - Remaining app work: unresolved-answer evidence minimisation, one-pass question handling,
-  intermittent cross-bank approval scoping, and a demo smoke port-release assertion.
+  same-clock draft ordering and a demo smoke port-release assertion. Cross-bank scoping
+  landed at `354f9e0`; all 36 API tests pass. The separate ordering issue remains.
 
 `POSTFIX_REUSED_RUNTIME.json` exports aggregate counts only. The complete new capture is
 a separate private sibling of the frozen capture, with artifact hashes. Replaying the

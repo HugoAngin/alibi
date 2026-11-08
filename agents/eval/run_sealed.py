@@ -90,7 +90,7 @@ def _parallel_capture(output: Path, cases: list[dict], isolation: dict, signatur
                     credential=isolation["credential"],
                     output=output / "capture-workers" / f"{mode}-{case['case_number']}",
                     scratch_parent=lane, denied_scratch=tuple(root for root in roots if root != lane),
-                    capture_root=output, deadline=isolation["deadline"],
+                    capture_root=isolation.get("capture_root", output), deadline=isolation["deadline"],
                 )
             finally:
                 lanes.put(lane)

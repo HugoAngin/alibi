@@ -1,0 +1,54 @@
+{
+  "candidate_commit": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+  "environment": "Disposable synthetic Case 1 with ALIBI_MODE=agents and alibi.demo --replay; model credentials removed",
+  "gate": {
+    "banks": {
+      "bank_a": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      },
+      "bank_b": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      }
+    },
+    "case": 1,
+    "passed": true
+  },
+  "requests": [
+    {
+      "request": "rfc-0001-01",
+      "status": "sent",
+      "mode": "agents",
+      "recording": "case1_agents.json"
+    },
+    {
+      "request": "rfc-0001-02",
+      "status": "sent",
+      "mode": "agents",
+      "recording": "case1_agents.json"
+    }
+  ]
+}

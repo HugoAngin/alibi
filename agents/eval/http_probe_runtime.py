@@ -118,6 +118,8 @@ class ProbeSession:
             exchange["error"] = type(exc).__name__
             raise ProbeUnavailable(f"{service} transport failed: {type(exc).__name__}") from None
         exchange.update(status=response.status_code, response_body=self._redact(response.text))
+        if "content-disposition" in response.headers:
+            exchange["content_disposition"] = self._redact(response.headers["content-disposition"])
         return response
 
     @staticmethod

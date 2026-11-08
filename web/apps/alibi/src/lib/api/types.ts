@@ -65,6 +65,8 @@ export interface PassportHome {
   }[];
   requests: {
     request_id: string;
+    /** The recipient's id, e.g. `bank_a`; `recipient` is its display name. */
+    audience: string;
     recipient: string;
     question_count: number;
     received_at: string;
@@ -75,6 +77,8 @@ export interface PassportHome {
   sharing_history: {
     package_id: string;
     request_id: string;
+    /** The recipient's id, e.g. `bank_a`. */
+    audience: string;
     recipient: string;
     sent_at: string;
     expires_at: string;

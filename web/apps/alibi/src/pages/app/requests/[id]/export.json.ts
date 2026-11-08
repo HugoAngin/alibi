@@ -7,7 +7,7 @@ import type { APIRoute } from 'astro';
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
 import { holderSignedIn } from '@/components/app/home';
-import { backendHeaders } from '@/lib/screens';
+import { ROUTES, backendHeaders } from '@/lib/screens';
 
 export const prerender = false;
 
@@ -23,10 +23,10 @@ export const GET: APIRoute = async ({ params, locals }) => {
 
   let upstream: Response;
   try {
-    upstream = await fetch(
-      new URL(`/requests/${encodeURIComponent(id)}/export.json`, ALIBI_API_ORIGIN),
-      { headers: backendHeaders(), signal: AbortSignal.timeout(8000) },
-    );
+    upstream = await fetch(new URL(ROUTES.exportJson(id), ALIBI_API_ORIGIN), {
+      headers: backendHeaders(),
+      signal: AbortSignal.timeout(8000),
+    });
   } catch {
     return text('The backend did not answer.', 502);
   }

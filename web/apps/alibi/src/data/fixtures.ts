@@ -101,6 +101,7 @@ export function passportFixture(): PassportHome {
     requests: [
       {
         request_id: requests.bankA.requestId,
+        audience: 'bank_a',
         recipient: 'Bank A',
         question_count: requests.bankA.questions.length,
         received_at: requests.bankA.issuedAt,
@@ -110,6 +111,7 @@ export function passportFixture(): PassportHome {
       },
       {
         request_id: requests.bankB.requestId,
+        audience: 'bank_b',
         recipient: 'Bank B',
         question_count: requests.bankB.questions.length,
         received_at: requests.bankB.issuedAt,

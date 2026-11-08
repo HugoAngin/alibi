@@ -51,14 +51,14 @@ const passport = decision.view === 'app' ? await loadPassport() : null;
   <BaseLayout title="Passport" view="app">
     {passport?.source === 'live' || passport?.source === 'fixture' ? (
       <AppFrame
-        active="passport"
+        active="home"
         holder={passport.data.holder.name}
         fixtureReason={passport.source === 'fixture' ? passport.reason : undefined}
       >
         <PassportHome data={passport.data} />
       </AppFrame>
     ) : (
-      <AppFrame active="passport">
+      <AppFrame active="home">
         <p>{passport?.reason}</p>
       </AppFrame>
     )}

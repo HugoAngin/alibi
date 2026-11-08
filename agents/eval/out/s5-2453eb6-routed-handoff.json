@@ -1,0 +1,52 @@
+{
+  "bundle_file_comparison": {
+    "base": "552b025add4b99ad3b41ae827fcbcb3badefd899",
+    "native_trees_identical": true,
+    "patch": "UNSEEN_GENERALISATION_BUNDLE.patch"
+  },
+  "candidate_commit": "2453eb667042a85e7d0b63adfb410c679c46b637",
+  "environment": "Fresh disposable synthetic Case 1 on the merged main router, rules mode, pinned local public registry.",
+  "focused_native_and_harness_tests_passed": 173,
+  "gate": {
+    "banks": {
+      "bank_a": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      },
+      "bank_b": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      }
+    },
+    "case": 1,
+    "passed": true
+  },
+  "separate_question_scope_patch": {
+    "focused_tests_passed_after_patch": 92,
+    "name": "NAMED_TRANSACTION_QUESTION_GUARD.patch",
+    "reproduced_failures_on_merged_source": 6
+  },
+  "verification_time": "2026-11-05T09:00:00Z"
+}

@@ -15,7 +15,7 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Frontend (lead 23:33Z, post 6714508805, commit df8cb9d)
 - data now owns `alibi/app/static/` (the stylesheet). Phase 1: review s4a screens and write `agents/data/out/FRONTEND_NOTES.md` (done). Phase 2 begins once the S4 merge is announced (~00:45Z): edit `alibi/app/static/alibi.css` on main and run `pytest alibi` before every commit.
 - s4a is checked out in a scratch worktree (scratchpad/s4a), never in this shared checkout. Previews are served at http://127.0.0.1:8765.
-- CSS draft finished: agents/data/out/alibi_css_phase2.patch (made against s4a 6466584; 22 alibi tests pass). After the S4 merge announcement: pull, run setup.sh, apply the patch to alibi/app/static/alibi.css (by hand if S4 changed the CSS), run pytest alibi, commit alibi/app/static/, post done to lead.
+- CSS draft (alibi_css_phase2.patch) was applied to alibi/app/static/alibi.css after the S4 merge; the patch file was deleted at 08:5xZ per lead post 6719455424.
 - Research's notes treat my case 1 as the canonical fixture (txn-0001-004, PO-0001-01).
 
 ## hidden_reference family (lead 23:40Z, post 6714579064)
@@ -74,6 +74,11 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## web/ opened (lead 08:26Z, post 6719250999, bf2076d)
 - Anyone may push to web/ after running pnpm verify. Data can't yet: the laptop has Node 20.12 and no pnpm, and installing them needs Hugo's approval. The holder app folders web/apps/alibi/src/{components,pages}/app/ stay with lead until 09:30.
 - 08:3xZ incident: `git pull --rebase` autostashed another session's uncommitted web/ edits. settings.astro conflicted against lead's redirect; the original is in stash@{0} c07f1f6. The restore command was blocked, so I reported it to the parent session and asked who restores it. **Always use `git pull --rebase --no-autostash`** while others share this checkout.
+
+## Web unified (lead 08:49Z, post 6719455424, bbb14db)
+- research (Elio) owns web/apps/alibi/; execution (Mouaad) owns the rest of web/; lead keeps alibi/. Data edits nothing in web/. Demo front end = phone holder app + Mouaad's bank console on the S5 backend; Jinja is the fallback. So QA pass 2 walks those two first.
+- Deleted out/alibi_css_phase2.patch as asked. agents/data/web_merchant/ and hero_prototype/ are reference drops only now.
+- The uncommitted web/ edits in this shared checkout are not data's; left for their owner. While they exist the checkout can't rebase-pull, so data pushes from a scratch worktree on origin/main.
 
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).

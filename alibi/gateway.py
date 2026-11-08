@@ -61,17 +61,24 @@ from alibi.core.store import NotFound, Store, StoreError
 
 __all__ = [
     "DEFAULT_BUDGET", "DEFAULT_WINDOW", "BudgetExceeded", "Gateway", "GatewayError",
-    "NotFoundError", "RejectedResult", "ScopeError", "SettlementLookup", "TxnRefresh",
-    "Unavailable",
+    "NotFoundError", "PayoutQuery", "RejectedResult", "ScopeError", "SettlementLookup",
+    "TxnRefresh", "Unavailable",
 ]
 
 SettlementLookup = Callable[[str], dict | None]   # payment_ref -> signed merchant event payload
 TxnRefresh = Callable[[str], dict | None]          # txn_id -> bank txn JSON
+# (key, value) -> signed merchant event payloads; key is "covers_record_id" or "payout_date"
+PayoutQuery = Callable[[str, str], list | None]
 
 DEFAULT_BUDGET = 12
 DEFAULT_WINDOW = timedelta(days=5)
 MAX_TRACE_ITEMS = 50   # items listed in one trace result; the count is always exact
 ACTOR = "gateway"
+MAX_PAYOUT_RESULTS = 10   # a payout query answering more than this is rejected, never truncated
+PAYOUT_QUERY_KEYS = ("covers_record_id", "payout_date")
+# Records a payout query may be asked to cover: what a payout's ``covers_record_ids`` names.
+_COVERED_KINDS = frozenset({RecordKind.ORDER, RecordKind.REFUND, RecordKind.FEE})
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _IDENT = TypeAdapter(Ident)
 _REF = TypeAdapter(Ref)
@@ -282,7 +289,7 @@ class Gateway:
                  registry: TrustRegistry | None = None, budget: int = DEFAULT_BUDGET,
                  settlement_lookup: SettlementLookup | None = None,
                  txn_refresh: TxnRefresh | None = None, now: datetime | None = None,
-                 request_id: str | None = None):
+                 request_id: str | None = None, payout_query: PayoutQuery | None = None):
         if isinstance(budget, bool) or not isinstance(budget, int) or budget < 0:
             raise ValueError("budget must be a non-negative integer")
         if now is not None and (not isinstance(now, datetime) or now.utcoffset() is None):
@@ -295,6 +302,7 @@ class Gateway:
         self.budget = budget
         self.settlement_lookup = settlement_lookup
         self.txn_refresh = txn_refresh
+        self.payout_query = payout_query
         self.now = now
         self.calls_used = 0
         self.trace: list[TraceEvent] = []
@@ -413,6 +421,116 @@ class Gateway:
             return record, summary, [record.ref()]
         return self._call("lookup_settlement", {"payment_ref": payment_ref}, run)
 
+    def lookup_payouts(self, *, covers_record_id: str | None = None,
+                       payout_date: str | None = None) -> list[EvidenceRecord]:
+        """Ask the merchant connector for payouts by exactly one key.
+
+        ``covers_record_id``: payouts whose ``covers_record_ids`` name that record. The record
+        must be one of this subject's active, issuer-verified order, refund or fee records
+        (another subject's raises ``ScopeError``; a self-supplied or other-kind record is
+        refused), and every result must come from that record's issuer and name it among
+        its covered records.
+
+        ``payout_date``: payouts initiated or settled on that UTC day (``YYYY-MM-DD``). The day
+        must not be after the run's clock and must fall within ``DEFAULT_WINDOW`` before (or
+        on the day of) one of this subject's own bank credits; every result must come from one
+        of the issuers of the subject's issuer-verified records and occur or settle that day.
+
+        Every result must be a ``payout`` or ``settlement`` for this subject. The connector is
+        not called when the key is out of scope; an answer with any result failing the checks,
+        or more than ``MAX_PAYOUT_RESULTS`` results, is rejected whole. Accepted results are
+        ingested with connector ``merchant_lookup`` and the active stored records are returned
+        by (occurred_at, record_id); an empty list when the merchant knows none.
+        """
+        def run():
+            given = {name: value for name, value in (("covers_record_id", covers_record_id),
+                                                     ("payout_date", payout_date))
+                     if value is not None}
+            if len(given) != 1:
+                raise GatewayError("give exactly one of covers_record_id, payout_date")
+            (key, value), = given.items()
+            if key == "covers_record_id":
+                covered = self._record(value)
+                if covered.source_trust != SourceTrust.ISSUER_VERIFIED:
+                    raise ScopeError("covers_record_id is not an issuer-verified record")
+                if covered.kind not in _COVERED_KINDS:
+                    raise ScopeError("covers_record_id is not an order, refund or fee record")
+                issuers, value = {covered.issuer_id}, covered.record_id
+                day = None
+            else:
+                day = self._query_day(value)
+                issuers = {r.issuer_id for r in self.store.list_sources(self.subject_ref)
+                           if r.source_trust == SourceTrust.ISSUER_VERIFIED}
+                if not issuers:
+                    raise ScopeError("this subject has no issuer-verified records to query")
+            if self.payout_query is None:
+                raise Unavailable("no payout query connector is configured")
+            if self.registry is None:
+                raise Unavailable("no trust registry is configured to verify lookup results")
+            try:
+                payloads = self.payout_query(key, value)
+            except Exception as exc:  # whatever the connector raised, report only its type
+                raise Unavailable(f"the payout query failed ({type(exc).__name__})") from None
+            if payloads is None:
+                payloads = []
+            if not isinstance(payloads, list):
+                raise RejectedResult("the payout query returned something other than a list")
+            if len(payloads) > MAX_PAYOUT_RESULTS:
+                raise RejectedResult(f"the payout query returned more than {MAX_PAYOUT_RESULTS} "
+                                     "records")
+            raws = [_connector_object(payload) for payload in payloads]
+            kinds = {kind.value for kind in SETTLEMENT_EVIDENCE_KINDS}
+            for raw in raws:
+                event = raw.get("event")
+                if not isinstance(event, dict) or event.get("kind") not in kinds:
+                    raise RejectedResult("the payout query returned something other than a payout")
+                if event.get("subject_ref") != self.subject_ref:
+                    raise RejectedResult("the payout query returned another subject's record")
+                if event.get("issuer_id") not in issuers:
+                    raise RejectedResult("the payout query returned a record from another issuer")
+                if key == "covers_record_id":
+                    related = event.get("related_record_ids")
+                    if not isinstance(related, list) or value not in related:
+                        raise RejectedResult("the payout query returned a payout that does not "
+                                             "cover the record")
+                elif day not in (str(event.get("occurred_at") or "")[:10],
+                                 str(event.get("effective_at") or "")[:10]):
+                    raise RejectedResult("the payout query returned a payout on another day")
+            records: dict[str, EvidenceRecord] = {}
+            statuses: list[str] = []
+            # Nested ingests use savepoints; any later bad signature or active-scope mismatch
+            # rolls back the complete answer, including source invalidations from earlier items.
+            with self.store.transaction():
+                for raw in raws:
+                    try:
+                        put = ingest_merchant_event(self.store, self.registry, raw,
+                                                    connector=CONNECTOR_LOOKUP,
+                                                    subject_ref=self.subject_ref, now=self._clock())
+                    except IngestError as exc:
+                        raise RejectedResult(f"the payout query result was rejected: {exc.reason}"
+                                             ) from None
+                    record = put.record if put.active else self.store.get_source(put.record.record_id)
+                    if record.kind not in SETTLEMENT_EVIDENCE_KINDS \
+                            or record.subject_ref != self.subject_ref \
+                            or record.issuer_id not in issuers \
+                            or record.source_trust != SourceTrust.ISSUER_VERIFIED:
+                        raise RejectedResult("the passport's payout record does not match the query")
+                    if key == "covers_record_id" and value not in record.related_record_ids:
+                        raise RejectedResult("the active payout no longer covers the queried record")
+                    if key == "payout_date" and day not in (
+                            record.occurred_at.date().isoformat(),
+                            record.effective_at.date().isoformat() if record.effective_at else None):
+                        raise RejectedResult("the active payout is no longer on the queried day")
+                    records[record.record_id] = record
+                    statuses.append(put.status)
+            found = _by_time(list(records.values()))
+            summary = {key: value, **_list_summary(found)}
+            if statuses:
+                summary["put_statuses"] = sorted(set(statuses))
+            return found, summary, [r.ref() for r in found]
+        return self._call("lookup_payouts", {"covers_record_id": covers_record_id,
+                                             "payout_date": payout_date}, run)
+
     def refresh_txn(self, txn_id: str) -> BankTxn:
         """Re-read one of this subject's txns from the bank and return its active revision.
 
@@ -500,6 +618,24 @@ class Gateway:
         if any(wanted in _txn_tokens(txn) for txn in self.store.list_bank_txns(self.subject_ref)):
             return own
         return set()
+
+    def _query_day(self, value: Any) -> str:
+        """A ``payout_date`` in scope: a real ``YYYY-MM-DD`` day, not after the clock, within
+        ``DEFAULT_WINDOW`` before (or on the day of) one of the subject's own bank credits."""
+        if not isinstance(value, str) or not _DAY.fullmatch(value):
+            raise GatewayError("payout_date must be YYYY-MM-DD")
+        try:
+            day = datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            raise GatewayError("payout_date must be a real calendar day") from None
+        if day > self._clock().date():
+            raise ScopeError("payout_date is after the run's clock")
+        window = DEFAULT_WINDOW.days
+        if not any(txn.is_credit and 0 <= (txn.booked_at.date() - day).days <= window
+                   for txn in self.store.list_bank_txns(self.subject_ref)):
+            raise ScopeError("payout_date is not within the window before one of this "
+                             "subject's bank credits")
+        return value
 
     def _call(self, tool: str, args: dict[str, Any], run: Callable[[], tuple]) -> Any:
         args = {name: _arg(value) for name, value in args.items() if value is not None}

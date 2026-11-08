@@ -1,0 +1,111 @@
+"""Public synthetic query safeguards: active scope, atomic ingestion and private dependencies."""
+import copy
+import json
+
+import pytest
+
+from agents.data.api import load_case, without_gold
+from alibi import api
+from alibi.adapter import _World, _run
+from alibi.connectors.case_source import CaseClock, parse_time
+from alibi.core.ingest import ingest_merchant_event
+from alibi.core.schemas import SigningDomain
+from alibi.core.store import NotFound
+from alibi.fixtures import maya
+from alibi.gateway import RejectedResult
+from alibi.tests.test_payout_query import fx, passport, _gateway, _payout, _event
+
+
+@pytest.mark.parametrize("key", ["covers_record_id", "payout_date"])
+@pytest.mark.parametrize("still_matches", [False, True])
+def test_stale_response_rechecks_the_active_query_fields(passport, registry, keystore, fx, now,
+                                                         key, still_matches):
+    initial = _payout(fx)
+    payload = maya.sign_event(initial, keystore)
+    ingest_merchant_event(passport, registry, payload, now=now)
+    latest = {**initial, "event_id": "evt_query_revision_2", "revision": 2,
+              "corrects_revision": 1, "correction_reason": "Public query correction"}
+    if not still_matches:
+        if key == "covers_record_id":
+            latest["related_record_ids"] = ["ord_1002"]
+        else:
+            latest["occurred_at"] = "2026-11-01T10:00:00Z"
+            latest.pop("effective_at", None)
+    ingest_merchant_event(passport, registry, maya.sign_event(latest, keystore), now=now)
+    gateway = _gateway(passport, registry, now, lambda k, v: [payload])
+    value = "ord_1001" if key == "covers_record_id" else "2026-11-02"
+    if still_matches:
+        [record] = gateway.lookup_payouts(**{key: value})
+        assert record.revision == 2
+    else:
+        with pytest.raises(RejectedResult, match="active payout"):
+            gateway.lookup_payouts(**{key: value})
+
+
+@pytest.mark.parametrize("correction", [False, True])
+def test_later_bad_signature_rolls_back_earlier_valid_items(passport, registry, keystore, fx,
+                                                          now, correction):
+    first = _payout(fx)
+    if correction:
+        first = _event(fx, "po_5001")
+        first.update(event_id="evt_atomic_correction", revision=2, corrects_revision=1,
+                     correction_reason="Public correction that must roll back")
+        first["amount_pence"] += 1
+    bad = maya.sign_event(_payout(fx, record_id="po_bad", event_id="evt_bad"), keystore)
+    bad["event"]["amount_pence"] += 1  # raw scope valid, signature invalid
+    gateway = _gateway(passport, registry, now,
+                        lambda k, v: [maya.sign_event(first, keystore), bad])
+    with pytest.raises(RejectedResult, match="signature"):
+        gateway.lookup_payouts(covers_record_id="ord_1001")
+    if correction:
+        assert passport.get_source("po_5001").revision == 1
+    else:
+        with pytest.raises(NotFound):
+            passport.get_source("po_5002")
+    with pytest.raises(NotFound):
+        passport.get_source("po_bad")
+
+
+@pytest.mark.parametrize("number, outcome, target", [
+    (42, "success", "clue"), (42, "success", "order"),
+    (42, "empty", "clue"), (42, "error", "order"),
+    (43, "success", "clue"), (43, "empty", "clue")])
+def test_query_clue_and_order_revisions_remain_private_dependencies(tmp_path, number, outcome, target):
+    case = without_gold(load_case(number))
+    at = parse_time(case["rfcs"][0]["issued_at"], "at")
+    world = _World(case, tmp_path / "world")
+    try:
+        world.seed(CaseClock(case, at))
+        if outcome != "success":
+            def query(k, v):
+                if outcome == "error":
+                    raise RuntimeError("Public unavailable control")
+                return []
+            world.merchant.payout_query = query
+        rfc = world.store.get_request(case["rfcs"][0]["request_id"])
+        result, _ = _run(world, "rules", rfc, at, None)
+        clue = "rec-0042-023" if number == 42 else "rec-0043-019"
+        ref_id = clue if target == "clue" else "rec-0042-012"
+        assert all(ref_id in {ref.ref_id for ref in c.examined_refs} for c in result.claims)
+        assert all(c.status.value == ("supported" if outcome == "success" else "unresolved")
+                   for c in result.claims)
+        draft = api.build_review(world.store, rfc.request_id, audience=rfc.audience, now=at)
+        approval = api.approve(world.store, draft.draft_id, holder_id="holder_maya", now=at)
+        assert clue not in json.dumps(draft.body.to_json_dict())
+        if outcome != "success":
+            assert draft.body.attachments == []
+        body = world.store.get_source(ref_id).to_event().to_json_dict()
+        body.update(event_id="evt_query_dependency_revision", revision=2, corrects_revision=1,
+                    correction_reason="Public clue correction")
+        if target == "clue":
+            body["text"] = "The earlier payout clue was incorrect."
+        else:
+            body["payment_ref"] = "ORDER-CORRECTED-991"
+        payload = {"event": body, "signature": world.keystore.sign(
+            body, kid="merchant_mock", domain=SigningDomain.RECORD).to_json_dict()}
+        put = api.ingest_merchant_event(world.store, payload, registry=world.registry, now=at)
+        assert {c.claim_id for c in result.claims} <= set(put.invalidated["claims"])
+        assert draft.draft_id in put.invalidated["drafts"]
+        assert approval.approval_id in put.invalidated["approvals"]
+    finally:
+        world.close()

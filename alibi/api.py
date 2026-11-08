@@ -112,6 +112,7 @@ from alibi.gateway import (
     GatewayError,
     NotFoundError,
     ScopeError,
+    PayoutQuery,
     SettlementLookup,
     TxnRefresh,
     Unavailable,
@@ -578,7 +579,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                       txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
                       registry: TrustRegistry | None = None,
                       now: datetime | None = None, client: Any = None,
-                      holder_claim: Any = None) -> InvestigationResult:
+                      holder_claim: Any = None,
+                      payout_query: PayoutQuery | None = None) -> InvestigationResult:
     """Investigate a stored request and save its links, claims and trace.
 
     ``holder_claim`` (rules and one-pass modes) is the holder's own untrusted account of a credit,
@@ -616,14 +618,15 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
             from alibi.agents import runner as agents_runner   # lazy: the runner imports this module
             result = agents_runner.run_investigation(
                 store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
-                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now)
+                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now,
+                payout_query=payout_query)
             actor = agents_runner.ACTOR
         else:
             from alibi.baselines import one_pass
             result = one_pass.run_investigation(
                 store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
                 txn_refresh=txn_refresh, budget=budget, registry=registry, now=now,
-                holder_claim=holder_claim)
+                holder_claim=holder_claim, payout_query=payout_query)
             actor = one_pass.ACTOR
         answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
                             for claim in result.claims)
@@ -640,7 +643,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                           run_id=core_rules.next_run_id(store, rfc.request_id,
                                                         audience=rfc.audience),
                           registry=registry, budget=budget, settlement_lookup=settlement_lookup,
-                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
+                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id,
+                          payout_query=payout_query)
     result = core_rules.run_investigation(rfc, store, gateway, mode, now=now,
                                           holder_claim=holder_claim)
     answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"

@@ -70,10 +70,12 @@ class Lookup:
     refs: list[str] = field(default_factory=list)   # keys of what it returned
     reason: str | None = None
     actor: str = "gateway"
+    connector_query: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {"index": self.index, "tool": self.tool, "args": self.args, "outcome": self.outcome,
-                "refs": list(self.refs), "reason": self.reason, "actor": self.actor}
+                "refs": list(self.refs), "reason": self.reason, "actor": self.actor,
+                **({"connector_query": True} if self.connector_query else {})}
 
 
 class Material:
@@ -114,9 +116,9 @@ class Material:
 
     def add_lookup(self, tool: str, args: dict[str, Any], outcome: str, *,
                    refs: list[str] | None = None, reason: str | None = None,
-                   actor: str = "gateway") -> int:
+                   actor: str = "gateway", connector_query: bool = False) -> int:
         index = len(self.lookups)
-        self.lookups.append(Lookup(index, tool, dict(args), outcome, list(refs or []), reason, actor))
+        self.lookups.append(Lookup(index, tool, dict(args), outcome, list(refs or []), reason, actor, connector_query))
         return index
 
     def _note(self, key: str, via_lookup: int | None, new: bool) -> None:
@@ -212,8 +214,9 @@ class Material:
 
     @property
     def lookup_count(self) -> int:
-        """Retrievals that went to a connector (settlement lookups and bank refreshes)."""
-        return sum(1 for lk in self.lookups if lk.tool in ("lookup_settlement", "refresh_txn")
+        """Connector-backed retrievals; passport-only covering/date listings do not count."""
+        return sum(1 for lk in self.lookups
+                   if (lk.tool in ("lookup_settlement", "refresh_txn") or lk.connector_query)
                    and lk.outcome not in ("refused", "budget_exceeded", "skipped"))
 
     def via_lookup(self, ident: str, revision: int) -> int | None:

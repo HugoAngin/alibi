@@ -196,8 +196,9 @@ def test_action_budget_exhaustion_stops_the_loop(make):
     ctx = make("supported")
     result = ctx.run(client_for(challenger_script=challenger()))   # always asks for a lookup
     stats = run_stats(result)
-    assert stats["action_budget_used"] == 3 and stats["rounds"] == 3
-    assert len(events(result, actor="gateway", tool="lookup_settlement")) == 3
+    assert stats["action_budget_used"] == 2 and stats["rounds"] == 2
+    assert len(events(result, actor="gateway", tool="lookup_settlement")) == 2
+    assert any(e.result.get("stop_reason") == "repeated_action_no_progress" for e in result.trace)
     (claim,) = result.claims
     assert claim.status == ClaimStatus.UNRESOLVED and claim.gap.startswith("challenger_unresolved:")
     wide = make("supported")

@@ -8,7 +8,7 @@ returns an ``InvestigationResult`` with ``mode="agents"``. Per request:
    the scoped, budgeted ``Gateway`` into a ``Material`` (every revision pinned, every later
    retrieval tagged with the lookup that fetched it).
 2. Each question is classified: by its team question id, else by keyword
-   (``classify_question``). Period totals (sales, refunds, fees, net) are summed in code
+   (the shared evidence-question classifier). Period totals (sales, refunds, fees, net) are summed in code
    exactly like the rules baseline; the Detective sees them but never decides them.
 3. Source-of-funds questions, per credit:
    a. the pinned candidate rule (``settlement_candidates``) joins the credit to payouts;
@@ -75,6 +75,8 @@ from alibi.core.canon import make_id
 from alibi.core.facts import answered_calculation, answered_refs, derive_facts
 from alibi.core.answered import examined_refs
 from alibi.core.investigate_rules import (
+    BREAKDOWN,
+    DOCUMENTED_TOTALS,
     COMPONENT_KINDS,
     COUNTED_STATUSES,
     EXCLUDED_STATUSES,
@@ -86,7 +88,7 @@ from alibi.core.investigate_rules import (
     SOURCE_OF_FUNDS,
     UNMAPPED,
     Classification,
-    classify_question,
+    classify as classify_evidence_question,
 )
 from alibi.core.policy import compile_policy
 from alibi.core.reconcile import FAILED_STATUSES, PENDING_STATUSES, SIGN_BY_KIND, ReconcileError
@@ -132,12 +134,8 @@ GAP_CODES = (GAP_SETTLEMENT_NOT_FOUND, GAP_BALANCE_RELEASE, GAP_SETTLEMENT_AFTER
              GAP_PENDING_AT_BOOKING, GAP_SETTLEMENT_FAILED, GAP_AMBIGUOUS, GAP_AMOUNT_MISMATCH,
              GAP_MISSING_CITED, GAP_NO_RECORDS)
 
-# Team question ids decide the question kind before any keyword does.
-KNOWN_QUESTIONS = {"q.source_of_funds": SOURCE_OF_FUNDS, "q.breakdown": SOURCE_OF_FUNDS,
-                   "q.sales_refunds_in_period": NET_TOTAL}
-PERIOD_CATEGORIES = (SALES_TOTAL, REFUNDS_TOTAL, FEES_TOTAL, NET_TOTAL)
-_TOTAL_KINDS = {SALES_TOTAL: (RecordKind.ORDER,), REFUNDS_TOTAL: (RecordKind.REFUND,),
-                FEES_TOTAL: (RecordKind.FEE,), NET_TOTAL: (RecordKind.ORDER, RecordKind.REFUND)}
+# Use the same scope-aware classification and categories as rules and one-pass.
+PERIOD_CATEGORIES = (SALES_TOTAL, REFUNDS_TOTAL, FEES_TOTAL, NET_TOTAL, DOCUMENTED_TOTALS)
 _LABELS = {RecordKind.ORDER: "sales", RecordKind.REFUND: "refunds", RecordKind.FEE: "fees"}
 _RANK = {ClaimStatus.SUPPORTED: 0, ClaimStatus.UNRESOLVED: 1, ClaimStatus.CONTRADICTED: 2}
 _TRACE_OUTCOMES = frozenset({"ok", "refused", "unavailable", "error", "budget_exceeded", "not_found"})
@@ -167,7 +165,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
                       registry: Any | None = None, now: datetime | None = None,
                       action_budget: int = 3, max_rounds: int = 3,
                       second_opinion: roles.SecondOpinion | None = None,
-                      call_budget: Any | None = None) -> InvestigationResult:
+                      call_budget: Any | None = None,
+                      payout_query: Callable | None = None) -> InvestigationResult:
     """Answer every question of ``request`` (a request_id or ``RequestForContext``) with the
     agents pipeline (module doc) and save links, claims, alerts and the trace.
 
@@ -188,7 +187,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
         run_id = next_run_id(store, rfc.request_id, audience=rfc.audience)
         gateway = Gateway(store, subject_ref=rfc.subject_ref, run_id=run_id, registry=registry,
                           budget=budget, settlement_lookup=settlement_lookup,
-                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
+                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id,
+                          payout_query=payout_query)
     else:
         scope = getattr(gateway, "subject_ref", None)
         if scope is not None and scope != rfc.subject_ref:
@@ -339,7 +339,7 @@ class _Run:
             self.question_id = question.question_id
             found = kinds[question.question_id]
             proposal = proposals.get(question.question_id)
-            if found.category == SOURCE_OF_FUNDS:
+            if found.category in (SOURCE_OF_FUNDS, BREAKDOWN):
                 outcome = self.source_of_funds(question, proposal)
             elif found.category in PERIOD_CATEGORIES and self.rfc.period is not None:
                 outcome = self.period_total(found)
@@ -383,13 +383,8 @@ class _Run:
 
     def classify(self, question: Question) -> Classification:
         self.question_id = question.question_id
-        found = classify_question(question.text, self.rfc)
-        known = KNOWN_QUESTIONS.get(question.question_id)
-        how = "keyword"
-        if known is not None and (found.category in (UNMAPPED, SEVERAL_TOTALS)
-                                  or (known == SOURCE_OF_FUNDS) != (found.category == SOURCE_OF_FUNDS)):
-            found = Classification(known, _TOTAL_KINDS.get(known, ()), (question.question_id,))
-            how = "question id"
+        found = classify_evidence_question(question, self.rfc)
+        how = "question id" if found.keywords == (question.question_id,) else "keyword"
         self.note("note", reason=f"Question classified as {found.category} by {how}.",
                   result={"category": found.category, "kinds": [k.value for k in found.kinds],
                           "keywords": list(found.keywords)})
@@ -572,6 +567,7 @@ class _Run:
         result = self.candidates(txn)
         last: ChallengerOutput | None = None
         stale = False        # the last proposal predates a retrieval that changed the material
+        previous_action = None
         for index in range(self.max_rounds):
             self.rounds += 1
             merchant, settlements = self.role_records()
@@ -615,6 +611,18 @@ class _Run:
                 stale = True
             result = self.candidates(txn)
             claim["link_state"], claim["linked_to"] = _link_view(result, join.choice)
+            action_key = (out.next_action.type, out.next_action.args.model_dump(exclude_none=True))
+            # The Challenger has seen the previous result and requested the same read.
+            # Stop only after that repeat confirms no new material. Transport failures
+            # remain retryable, and refresh_txn may observe a correction on a later call.
+            if (action_key == previous_action
+                    and out.next_action.type in {"lookup_settlement", "lookup_payouts_covering", "lookup_by_date"}
+                    and res.outcome in {"ok", "not_found", "refused"} and not res.new_keys):
+                self.note("note", actor="challenger", tool=res.tool,
+                          reason="Repeated retrieval added no material after its result was reviewed; stopping the loop.",
+                          result={"stop_reason": "repeated_action_no_progress", "round": index + 1})
+                break
+            previous_action = action_key if res.outcome in {"ok", "not_found", "refused"} else None
         outcome = self.verdict(txn, result, join)
         if last is not None and stale:
             self.note("note", actor="challenger",
@@ -979,7 +987,7 @@ class _Run:
                                          f"for {span}.", skipped_text]))
             return _Outcome(ClaimStatus.UNRESOLVED, unknown, gap, f"No {label} records found.", gap=gap)
         net = found.category == NET_TOTAL
-        signs = SIGN_BY_KIND if net else {found.kinds[0]: 1}
+        signs = SIGN_BY_KIND if net else {kind: 1 for kind in found.kinds}
         try:
             calc = reconcile.sum_terms(counted, method=found.category, signs=signs)
         except ReconcileError as exc:
@@ -990,7 +998,11 @@ class _Run:
         subtotals = [f"{_LABELS[kind]} {sum(r.amount_pence or 0 for r in rows)} from {len(rows)} record"
                      f"{'s' if len(rows) != 1 else ''} ({', '.join(f'{r.record_id} {r.amount_pence}' for r in rows[:12])})"
                      if rows else f"{_LABELS[kind]} 0 (no counted records)" for kind, rows in groups]
-        if net:
+        if found.category == DOCUMENTED_TOTALS:
+            statement = f"Documented totals over {span}: " + "; ".join(
+                f"{_LABELS[kind]} {_money(sum(r.amount_pence or 0 for r in rows), calc.currency)}"
+                for kind, rows in groups) + "."
+        elif net:
             formula = " ".join(f"{'+' if signs[kind] > 0 else '-'} {_LABELS[kind]} {sum(r.amount_pence or 0 for r in rows)}"
                                for kind, rows in groups)
             statement = f"Documented {label} over {span} net to {total} ({formula.lstrip('+ ')})."

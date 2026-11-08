@@ -253,6 +253,15 @@ class MerchantClient:
             return None
         return {"event": best["event"], "signature": best["signature"]}
 
+    def payout_query(self, key: str, value: str) -> list[dict[str, Any]]:
+        """``alibi.gateway.PayoutQuery``: the signed records the merchant serves for one
+        ``covers_record_id`` or ``payout_date`` key, without ``extra``. The gateway decides
+        whether the key is in scope and validates every record before it is used."""
+        if key not in ("covers_record_id", "payout_date"):
+            raise ValueError("payout_query takes covers_record_id or payout_date")
+        return [{"event": envelope["event"], "signature": envelope["signature"]}
+                for envelope in self.lookup(**{key: value})]
+
     # ----------------------------------------------------------------------- admin
 
     def identity(self) -> dict[str, Any]:
@@ -377,11 +386,13 @@ class BankClient:
 
 def connect(merchant: MerchantClient | None = None, feed=None) -> dict[str, Callable]:
     """The connector keyword arguments for ``alibi.api.run_investigation``: the merchant's
-    ``settlement_lookup`` and the feed client's ``refresh`` as ``txn_refresh``. Pass them as
+    ``settlement_lookup`` and ``payout_query``, and the feed client's ``refresh`` as
+    ``txn_refresh``. Pass them as
     ``run_investigation(store, request_id, registry=registry, now=now, **connect(m, f))``."""
     out: dict[str, Callable] = {}
     if merchant is not None:
         out["settlement_lookup"] = merchant.settlement_lookup
+        out["payout_query"] = merchant.payout_query
     if feed is not None:
         out["txn_refresh"] = feed.refresh
     return out

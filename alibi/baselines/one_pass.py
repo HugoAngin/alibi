@@ -62,6 +62,7 @@ from alibi.agents.roles import call_cost
 from alibi.core import investigate_rules as core_rules
 from alibi.core.answered import examined_refs
 from alibi.core import reconcile
+from alibi.core.release import is_balance_release
 from alibi.core.canon import make_id
 from alibi.core.facts import answered_calculation, answered_refs, derive_facts
 from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES
@@ -182,7 +183,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
                       gateway: Any | None = None, settlement_lookup: Callable | None = None,
                       txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
                       registry: Any | None = None, now: datetime | None = None,
-                      model: str | None = None, holder_claim: Any = None) -> InvestigationResult:
+                      model: str | None = None, holder_claim: Any = None,
+                      payout_query: Callable | None = None) -> InvestigationResult:
     """Run the one-pass baseline for a stored request and return the saved result
     (``mode="single_call"``). Same arguments as ``alibi.api.run_investigation`` plus
     ``client`` (``GeminiClient`` or ``FakeClient``) and an optional ``model`` id;
@@ -190,14 +192,15 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
     return run_one_pass(store, request, client=client, gateway=gateway,
                         settlement_lookup=settlement_lookup, txn_refresh=txn_refresh,
                         budget=budget, registry=registry, now=now, model=model,
-                        holder_claim=holder_claim).result
+                        holder_claim=holder_claim, payout_query=payout_query).result
 
 
 def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
                  gateway: Any | None = None, settlement_lookup: Callable | None = None,
                  txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
                  registry: Any | None = None, now: datetime | None = None,
-                 model: str | None = None, holder_claim: Any = None) -> OnePassRun:
+                 model: str | None = None, holder_claim: Any = None,
+                 payout_query: Callable | None = None) -> OnePassRun:
     """Run the baseline and return the result with its proposal and counts.
 
     Without ``gateway`` one is built for the request's subject under the next single_call run
@@ -205,6 +208,8 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
     once (a ``CallBudget`` of 1). Never raises for a model or connector failure: those become
     unresolved claims and typed trace events. ``holder_claim`` is the holder's own untrusted
     account of a credit (``{txn_id, stated_minor}``): checked against the records, never evidence.
+    ``payout_query`` is only handed to the gateway: the baseline's fixed retrieval strategy
+    never calls ``lookup_payouts``.
     """
     rfc = request if isinstance(request, RequestForContext) else store.get_request(request)
     at = _clock(now)
@@ -214,7 +219,8 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
         gateway = Gateway(store, subject_ref=rfc.subject_ref,
                           run_id=next_run_id(store, rfc.request_id, audience=rfc.audience), registry=registry,
                           budget=budget, settlement_lookup=settlement_lookup,
-                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
+                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id,
+                          payout_query=payout_query)
     scope = getattr(gateway, "subject_ref", None)
     if scope is not None and scope != rfc.subject_ref:
         raise ValueError("the gateway is scoped to a different subject than the request")
@@ -339,11 +345,18 @@ class _Run:
         # MAX_REFERENCE_LOOKUPS of them. The gateway still checks scope and signer, and nothing
         # a lookup returns triggers a further lookup.
         written: dict[str, list[EvidenceRecord]] = {}
+        # Typed bank references are already known values, so recognizing an issuer
+        # message that names one does not need the free-text token shape heuristic.
+        declared = {ref for txn in self.material.txns() for ref in txn.refs}
         for message in messages:
             if message.source_trust != SourceTrust.ISSUER_VERIFIED:
                 continue
-            for token in _TEXT_REF.findall(message.text or ""):
-                if not (re.search(r"[A-Za-z]", token) and re.search(r"\d", token)) \
+            exact = [ref for ref in sorted(declared) if re.search(
+                rf"(?<![A-Za-z0-9-]){re.escape(ref)}(?![A-Za-z0-9-])",
+                message.text or "", re.IGNORECASE)]
+            for token in dict.fromkeys([*exact, *_TEXT_REF.findall(message.text or "")]):
+                if (token not in exact and not (re.search(r"[A-Za-z]", token)
+                                                and re.search(r"\d", token))) \
                         or _norm(token) in by_norm:
                     continue
                 if token in written or len(written) < core_rules.MAX_REFERENCE_LOOKUPS:
@@ -522,7 +535,7 @@ class _Run:
             code_keys = {ref.key() for ref in evidence}
             for ref in proposed.refs:
                 item = self.material.get(ref.record_id, ref.revision)
-                if item is None or item.ref().key() in code_keys:
+                if item is None:
                     continue
                 key = (_ident(item), item.revision)
                 if isinstance(item, EvidenceRecord) and item.kind == RecordKind.MESSAGE:
@@ -531,7 +544,8 @@ class _Run:
                     reason = (f"{key[0]}@{key[1]} is not in the shareable evidence under the holder's "
                               "policy; not attached to the claim.")
                 else:
-                    evidence.append(item.ref())
+                    if item.ref().key() not in code_keys:
+                        evidence.append(item.ref())
                     continue
                 self.unsafe_refs.append(f"{key[0]}@{key[1]}")
                 self.note("validation", outcome="refused", refs=[item.ref()], reason=reason,
@@ -677,12 +691,15 @@ class _Run:
             else:
                 why = f"the payout's own status {payout.status} is not a settlement status and does not show a bank transfer"
             gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no settlement record for payout {ref} was retrieved; {why}."
-            if any(r.kind == RecordKind.MESSAGE for r in records):
+            examined_messages = [r for r in records if r.kind == RecordKind.MESSAGE
+                                 and r.subject_ref == txn.subject_ref]
+            releases = [r for r in examined_messages if is_balance_release(r, txn, core_rules.DEFAULT_WINDOW)]
+            if releases:
                 gap += (f" {GAP_BALANCE_RELEASE}: a 'released to balance' message is a release to the "
                         "platform balance, not a settlement.")
             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary(),
                             "No settlement record for the candidate payout.", gap=gap,
-                            evidence=[txn.ref(), *pool_refs])
+                            evidence=[txn.ref(), *pool_refs, *(r.ref() for r in examined_messages)])
         if found.conflicts:
             conflict = found.conflicts[0]
             if _conflict_code(conflict, txn) == GAP_SETTLEMENT_AFTER:
@@ -697,10 +714,20 @@ class _Run:
                    "checked against this credit.")
             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), gap,
                             f"Merchant records unavailable ({self.records_err}).", gap=gap, evidence=[txn.ref()])
+        examined_messages = [r for r in records if r.kind == RecordKind.MESSAGE
+                             and r.subject_ref == txn.subject_ref]
+        releases = [r for r in examined_messages if is_balance_release(r, txn, core_rules.DEFAULT_WINDOW)]
+        if not any(r.kind == RecordKind.PAYOUT for r in records) and releases:
+            gap = (f"{GAP_BALANCE_RELEASE}: issuer evidence reports this amount available in the "
+                   "platform balance; it does not establish bank settlement.")
+            return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn),
+                            found.summary() or gap, "Balance release only.", gap=gap,
+                            evidence=[txn.ref(), *(r.ref() for r in examined_messages)])
         if not any(r.kind == RecordKind.PAYOUT for r in records):
             gap = f"{GAP_NO_RECORDS}: the passport holds no payout record for this subject."
             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary() or gap,
-                            "No payout records.", gap=gap, evidence=[txn.ref()])
+                            "No payout records.", gap=gap,
+                            evidence=[txn.ref(), *(r.ref() for r in examined_messages)])
         reasons = "; ".join(f"{', '.join(p.record_id for p in r.payouts)}: {r.reason}" for r in found.rejected)
         gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no payout fits this credit under the candidate rule ({reasons})."
         return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary(),

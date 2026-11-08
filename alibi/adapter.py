@@ -51,7 +51,7 @@ from alibi import api
 from alibi.bank.service import create_bank_app
 from alibi.connectors import keys
 from alibi.connectors.bank_feed import FeedClient, HttpFeed
-from alibi.connectors.case_source import CaseClock, parse_time
+from alibi.connectors.case_source import KIND_MAP, CaseClock, parse_time
 from alibi.connectors.clients import BankClient, MerchantClient, bootstrap, connect
 from alibi.connectors.merchant import create_merchant_app
 from alibi.connectors.plug import rfc_sink, webhook_sink
@@ -87,7 +87,9 @@ _LLM_FAILURES = {"unavailable": "unavailable", "budget_exceeded": "budget_exceed
 STRATEGIES = {
     "rules": ("deterministic: list the subject's records and bank entries; when no stored payout "
               "settles the credit, look up the settlement for the payout reference the credit "
-              "carries or the subject's own records name; one call per reference"),
+              "carries or the subject's own records name; one call per reference; failing "
+              "that, query the merchant's payouts by an issuer-verified order record (#number) "
+              "or an explicit day named in issuer text, at most two queries"),
     "one_pass": "look up any payout reference named in a balance_release message",
     "agents": ("adaptive: the Detective proposes checks and the Challenger requests at most one "
                "lookup per round (settlement by reference, payouts by covered record or date), "
@@ -199,6 +201,7 @@ class _World:
                                subject_ref=self.subject, connection_id=f"conn-case-{self.number}")
         self.issued: set[str] = set()
         self.notes: list[str] = []
+        self.import_statuses: list[str] = []
 
     def close(self) -> None:
         for client in (self.merchant_client, self.bank_client):
@@ -217,6 +220,7 @@ class _World:
         summary = bootstrap(self.store, self.registry, case=self.number, merchant=self.merchant,
                             banks=self.banks, feed=self.feed, clock=clock)
         self.issued.update(summary.get("rfcs") or {})
+        self.import_statuses.extend(summary.get("imports") or [])
         return summary
 
     def advance(self, clock: CaseClock, moment: datetime) -> None:
@@ -228,8 +232,62 @@ class _World:
         self.banks[RECIPIENTS[0]].advance(moment)  # one bank service behind both recipients
         self.feed.sync(now=moment)
         for put in import_case_imports(self.store, clock, since=previous):
+            self.import_statuses.append(put.status)
             self.notes.append(f"import {put.record.record_id}: {put.status}")
         self.issue_visible(clock)
+
+    def ingest_telemetry(self, clock: CaseClock) -> dict[str, Any]:
+        """Cumulative input outcomes and current inventory; fixed labels and counts only.
+
+        This observes already-visible input and existing service delivery logs. It never
+        maps an input again, performs evidence retrieval, or changes an ingest decision.
+        """
+        try:
+            def kinds(entries, field):
+                counts: dict[str, int] = {}
+                allowed = {kind.value for kind in RecordKind}
+                for entry in entries:
+                    raw = entry.get(field, {}).get("kind")
+                    kind = KIND_MAP.get(raw, raw) if isinstance(raw, str) else None
+                    label = kind if kind in allowed else "unsupported"
+                    counts[label] = counts.get(label, 0) + 1
+                return counts
+
+            merchant = {"accepted": 0, "skipped": 0, "refused": 0, "reasons": {},
+                        "visible_by_kind": kinds(clock.visible_merchant_deliveries(), "event")}
+            for delivery in self.merchant.deliveries():
+                status, reason = delivery.get("outcome"), delivery.get("reason")
+                if status in {"inserted", "corrected", "duplicate"}:
+                    bucket, label = "accepted", status
+                elif status == "stale":
+                    bucket, label = "skipped", "stale"
+                elif status == "not_delivered":
+                    bucket, label = "skipped", "not_delivered"
+                else:
+                    bucket = "refused"
+                    label = ("mapping_error" if isinstance(reason, str) and reason.startswith("mapping failed:")
+                             else "untrusted_issuer" if reason == "issuer has no configured signing key"
+                             else "ingest_refused" if status == "refused" else "other_error")
+                merchant[bucket] += 1
+                merchant["reasons"][label] = merchant["reasons"].get(label, 0) + 1
+            visible = clock.visible_imports()
+            refused = max(0, len(visible) - len(self.import_statuses))
+            imported_kinds = kinds(visible, "record")
+            unsupported = min(refused, imported_kinds.get("unsupported", 0))
+            imports = {"accepted": sum(s in {"inserted", "corrected", "duplicate"} for s in self.import_statuses),
+                       "skipped": refused + sum(s == "stale" for s in self.import_statuses),
+                       "refused": refused,
+                       "reasons": {"unsupported_kind": unsupported, "import_refused": refused - unsupported},
+                       "visible_by_kind": imported_kinds}
+            available = {"issuer_verified": 0, "self_supplied": 0, "bank_observed": 0}
+            for record in self.store.list_sources(self.subject):
+                trust = record.source_trust.value
+                if trust in available:
+                    available[trust] += 1
+            return {"version": 1, "merchant": merchant, "imports": imports, "available": available}
+        except Exception:
+            # Diagnostics must not change a successful prediction into a worker failure.
+            return {"version": 1, "collection_error": 1}
 
     def issue_visible(self, clock: CaseClock) -> None:
         for rfc in clock.visible_rfcs():
@@ -567,7 +625,8 @@ def _counts(world: _World, mode: str, result: Any, one_pass_run: Any) -> dict[st
                 "lookups": int(one_pass_run.lookups),
                 "observed_inputs": int(one_pass_run.observed_inputs), "tool_calls": tool_calls}
     lookups = sum(1 for e in result.trace
-                  if e.step == "tool_call" and e.actor == "gateway" and e.tool == "lookup_settlement")
+                  if e.step == "tool_call" and e.actor == "gateway"
+                  and e.tool in ("lookup_settlement", "lookup_payouts"))
     observed = len(world.store.list_sources(world.subject)) + len(world.store.list_bank_txns(world.subject))
     return {"model_calls": 0, "tokens": 0, "lookups": lookups, "observed_inputs": observed,
             "tool_calls": tool_calls}
@@ -659,7 +718,8 @@ def run_case(case: int | dict[str, Any], mode: str = "rules", as_of: datetime | 
              *, client: Any = None, run_id: str | None = None, replay: bool | None = None,
              root: Path | str | None = None,
              trusted_issuers: Mapping[str, str] | None = None,
-             synthetic_key_seed: str | None = None) -> list[dict[str, Any]]:
+             synthetic_key_seed: str | None = None,
+             ingest_telemetry: bool = True) -> list[dict[str, Any]]:
     """Run one case in ``mode`` through the simulated services and return its predictions.
 
     ``case`` is a case number (``agents.data.api.load_case``) or a case dict; gold is stripped.
@@ -709,13 +769,18 @@ def run_case(case: int | dict[str, Any], mode: str = "rules", as_of: datetime | 
                 moment = fixed if fixed is not None else parse_time(rfc_case["issued_at"], "issued_at")
                 if moment > clock.as_of:
                     world.advance(clock, moment)
+                telemetry = world.ingest_telemetry(clock) if ingest_telemetry else None
                 try:
                     rfc = world.store.get_request(rfc_case["request_id"], audience=rfc_case["audience"])
                 except StoreError as exc:
                     predictions.append(_refused(world, rfc_case, mode, clock.as_of, schema,
                                                 f"request not in the passport: {_clip(exc)}"))
+                    if telemetry is not None:
+                        predictions[-1]["ingest_telemetry"] = telemetry
                     continue
                 predictions.append(_answer(world, mode, rfc, clock.as_of, engine_client, schema))
+                if telemetry is not None:
+                    predictions[-1]["ingest_telemetry"] = telemetry
     finally:
         world.close()
     return predictions

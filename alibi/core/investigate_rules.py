@@ -58,6 +58,7 @@ from typing import Any
 from pydantic import TypeAdapter, ValidationError
 
 from alibi.core import reconcile
+from alibi.core.release import is_balance_release
 from alibi.core.canon import make_id
 from alibi.core.reconcile import (
     FAILED_STATUSES,
@@ -229,6 +230,46 @@ _REF = TypeAdapter(Ref)
 # A reference written in issuer text: four or more letters, digits and hyphens as a whole token
 # (same shape as the one-pass baseline's fixed retrieval); a letter and a digit are required.
 _TEXT_REF = re.compile(r"(?<![\w-])[A-Za-z0-9][A-Za-z0-9-]{3,}(?![\w-])")
+# An explicit issuer field may contain a spaced reference. Keep its literal value;
+# never normalize separators, infer a provider prefix, or change gateway authorization.
+_TEXT_REF_FIELD = re.compile(
+    r"^\s*(?:payout|payment|transfer)[_ ]ref(?:erence)?\s*[:=]\s*"
+    r"([A-Za-z0-9][A-Za-z0-9_.:@ -]{0,63}?)\s*$", re.IGNORECASE)
+# An order number written as ``#1291`` in issuer text (a payout-clue key, never a reference).
+_ORDER_CLUE = re.compile(r"(?<![\w#])#(\d{3,12})(?!\d)")
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
+           "september", "october", "november", "december")
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_DATE_CLUE = re.compile(r"(?:\b(" + "|".join(_WEEKDAYS) + r")\s+)?\b(\d{1,2})\s+("
+                        + "|".join(_MONTHS) + r")\b", re.IGNORECASE)
+
+
+def _date_clues(record: EvidenceRecord, txn: BankTxn, window: timedelta) -> list[str]:
+    """Explicit ``<day> <Month>`` dates in an issuer text, as ``YYYY-MM-DD``: the year is the
+    text's own (or the year before, for a date that would otherwise follow the text), a
+    weekday written with it must agree, and the day must be no later than the text and
+    within ``window`` before the credit's booking day. Nothing is guessed from a weekday
+    alone."""
+    out: list[str] = []
+    written = record.occurred_at.date()
+    for weekday, day, month in _DATE_CLUE.findall(record.text or ""):
+        for year in (written.year, written.year - 1):
+            try:
+                date = datetime(year, _MONTHS.index(month.lower()) + 1, int(day)).date()
+            except ValueError:
+                date = None
+            if date is not None and date <= written:
+                break
+        else:
+            continue
+        if date is None or (weekday and _WEEKDAYS[date.weekday()] != weekday.lower()):
+            continue
+        lead = (txn.booked_at.date() - date).days
+        if 0 <= lead <= max(window.days, 0):
+            text = date.isoformat()
+            if text not in out:
+                out.append(text)
+    return out
 _ORIGIN = "the credit's origin remains unresolved"
 
 
@@ -709,6 +750,8 @@ class _Run:
                 match = _match(txn, found, self.window)
         if match.payout is None and match.state == LinkState.UNMATCHED and not match.excluded:
             named = self.fetch_by_issuer_text(txn, found)
+            if not named:
+                named = self.fetch_by_payout_clue(txn, found)
             # A named payout still pending is not a source (it had not settled when last
             # observed); one that fits the credit is kept only to name that gap.
             waiting = {rid: pair for rid, pair in named.items()
@@ -758,13 +801,16 @@ class _Run:
         step reuses it instead of asking again. The gateway decides whether each reference is
         this subject's to ask about."""
         known = {p.payment_ref.upper() for p in found if p.payment_ref}
-        tokens = [ref.upper() for ref in txn.refs]
-        tokens += sorted(reference_tokens(txn) - set(tokens))
+        # Lookup keys are exact provider values. Upper-casing is useful for matching,
+        # but must never rewrite the observed value sent to the connector.
+        described = [match.group(0) for match in re.finditer(_REF_TOKEN.pattern,
+                     txn.description, re.IGNORECASE) if any(c.isdigit() for c in match.group(0))]
+        tokens = list(dict.fromkeys([*txn.refs, *described]))
         tried = 0
         for token in tokens:
             if tried >= MAX_REFERENCE_LOOKUPS:
                 break
-            if token in known or not _is_ref(token):
+            if token.upper() in known or not _is_ref(token):
                 continue
             tried += 1
             record, err = self.read("lookup_settlement", f"lookup_settlement {token}",
@@ -779,7 +825,7 @@ class _Run:
             if record.subject_ref != self.request.subject_ref or not record.payment_ref:
                 continue
             self.fetched[record.payment_ref] = record
-            if record.kind == RecordKind.PAYOUT and record.payment_ref.upper() == token:
+            if record.kind == RecordKind.PAYOUT and record.payment_ref == token:
                 self.note("validation", tool="lookup_settlement", refs=[txn.ref(), record.ref()],
                           reason=(f"The lookup for {token}, a reference on the credit, returned "
                                   f"payout {record.ref().key()}, which is taken as a candidate."),
@@ -817,8 +863,10 @@ class _Run:
             own = {ref.upper() for ref in (record.payment_ref, record.settlement_ref,
                                            record.withdrawal_ref) if ref}
             for line in (record.text or "").splitlines():
-                tokens = [t for t in _TEXT_REF.findall(line)
-                          if re.search(r"[A-Za-z]", t) and re.search(r"\d", t)]
+                field = _TEXT_REF_FIELD.fullmatch(line)
+                candidates = ([field.group(1)] if field else []) + _TEXT_REF.findall(line)
+                tokens = list(dict.fromkeys(t for t in candidates
+                          if re.search(r"[A-Za-z]", t) and re.search(r"\d", t)))
                 mapped = any(t.upper() in carried for t in tokens)
                 for token in tokens:
                     key = token.upper()
@@ -863,6 +911,79 @@ class _Run:
                       args={"payment_ref": token},
                       result={"record_id": record.record_id, "revision": record.revision,
                               "kind": record.kind.value, "status": record.status or "none"})
+        return out
+
+    def fetch_by_payout_clue(self, txn: BankTxn, found: list[EvidenceRecord]
+                             ) -> dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]]:
+        """Bounded merchant query from an explicit clue in issuer text, when nothing in the
+        passport, on the credit or named by reference matches. Only with a payout query
+        connector. A clue is an order number written ``#<digits>`` that is the
+        ``payment_ref`` of one of this subject's issuer-verified order records from the same
+        issuer (queried by ``covers_record_id``), or an explicit day and month name (``24
+        June``, optional weekday that must agree) no later than the text and within the
+        match window before the credit (queried by ``payout_date``). At most
+        ``MAX_REFERENCE_LOOKUPS`` queries; the gateway checks scope, signer and subject; a
+        returned payout must still match the credit by amount, currency and date. Returns
+        ``record_id -> (payout, records naming the clue)``."""
+        if getattr(self.gateway, "payout_query", None) is None \
+                or not hasattr(self.gateway, "lookup_payouts"):
+            return {}
+        records, _ = self.read("list_records", "list_records messages and orders",
+                               lambda: self.gateway.list_records(
+                                   kinds=[RecordKind.MESSAGE, RecordKind.ORDER]))
+        own = [r for r in records or [] if r.subject_ref == self.request.subject_ref
+               and r.source_trust == SourceTrust.ISSUER_VERIFIED]
+        texts = sorted((r for r in own if r.kind == RecordKind.MESSAGE and r.text),
+                       key=lambda r: (r.occurred_at, r.record_id))
+        orders = {(r.issuer_id, r.payment_ref): r for r in own
+                  if r.kind == RecordKind.ORDER and r.payment_ref}
+        keys: list[tuple[str, str, EvidenceRecord]] = []
+        for record in reversed(texts):   # the latest clue first
+            for number in _ORDER_CLUE.findall(record.text or ""):
+                order = orders.get((record.issuer_id, number))
+                if order is not None:
+                    keys.append(("covers_record_id", order.record_id, record))
+                    break
+            for day in _date_clues(record, txn, self.window):
+                keys.append(("payout_date", day, record))
+        out: dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]] = {}
+        seen: set[tuple[str, str]] = set()
+        for key, value, source in keys:
+            if len(seen) >= MAX_REFERENCE_LOOKUPS:
+                break
+            if (key, value) in seen:
+                continue
+            seen.add((key, value))
+            dependencies = self.text_dependencies.setdefault(txn.txn_id, [])
+            dependencies.append(source.ref())
+            if key == "covers_record_id":
+                dependencies.extend(r.ref() for r in own if r.record_id == value)
+            got, err = self.read("lookup_payouts", f"lookup_payouts {key} {value}",
+                                 lambda key=key, value=value:
+                                 self.gateway.lookup_payouts(**{key: value}))
+            payouts = [self.current(r) for r in got or []]
+            payouts = [r for r in payouts if r.kind == RecordKind.PAYOUT
+                       and r.subject_ref == self.request.subject_ref
+                       and r.source_trust == SourceTrust.ISSUER_VERIFIED
+                       and r.issuer_id == source.issuer_id]
+            dependencies.extend(r.ref() for r in payouts)
+            if not payouts:
+                if err is None:
+                    self.note("note", tool="lookup_payouts", refs=[source.ref()],
+                              reason=f"The payout query by {key} {value}, from issuer-verified "
+                                     f"{source.ref().key()}, returned no payout.",
+                              args={key: value})
+                continue
+            for record in payouts:
+                if record.payment_ref:
+                    self.fetched.setdefault(record.payment_ref, record)
+                out.setdefault(record.record_id, (record, [source]))
+            self.note("validation", tool="lookup_payouts",
+                      refs=[txn.ref(), source.ref(), *(r.ref() for r in payouts)],
+                      reason=(f"The payout query by {key} {value}, from issuer-verified "
+                              f"{source.ref().key()}, returned {_ids(payouts, keys=True)}, "
+                              "taken as candidates."),
+                      args={key: value}, result={"count": len(payouts)})
         return out
 
     def unlinked(self, txn: BankTxn, match: _Match) -> _Outcome:
@@ -921,14 +1042,13 @@ class _Run:
                 if records is not None:
                     merchant = [r for r in records if r.subject_ref == txn.subject_ref
                                 and r.source_trust == SourceTrust.ISSUER_VERIFIED]
-                    releases = [r for r in merchant if r.kind == RecordKind.MESSAGE
-                                and r.amount_pence == txn.amount_pence and r.currency == txn.currency
-                                and timedelta(0) <= txn.booked_at - r.occurred_at <= self.window
-                                and re.search(r"\b(?:seller|platform) balance\b", r.text or "", re.I)]
+                    # A later correction can change a rejected diagnostic into a release.
+                    # Retain examined messages privately even when no release is recognized.
+                    evidence.extend(r.ref() for r in merchant if r.kind == RecordKind.MESSAGE)
+                    releases = [r for r in merchant if is_balance_release(r, txn, self.window)]
                     if releases:
                         code = GAP_BALANCE_RELEASE
                         gap = "An issuer message reports funds in the platform balance, but no bank settlement is established."
-                        evidence.extend(r.ref() for r in releases)
                     elif not merchant:
                         code = GAP_NO_RECORDS
                         gap = "No issuer-verified merchant records are available to establish this credit's source."

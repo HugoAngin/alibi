@@ -9,9 +9,11 @@ The Challenger (and the Detective's ``next_checks``) may propose one of:
   ``Material.settlement_lookup_refs`` then names the reference, so the candidate rule treats a
   payout returned for its own reference as the merchant's answer about its settlement;
 * ``lookup_payouts_covering {record_id}``: payouts and settlements whose ``covers_record_ids``
-  name a retrieved record (a passport listing filtered in code);
+  name a retrieved record: the merchant's answer through ``Gateway.lookup_payouts`` when a
+  payout query connector is configured (scope, signer and subject checked there), else a
+  passport listing filtered in code;
 * ``lookup_by_date {payout_date}``: payouts and settlements initiated or effective on a
-  ``YYYY-MM-DD`` day (a passport listing filtered in code);
+  ``YYYY-MM-DD`` day, the same way;
 * ``refresh_txn {txn_id}``: the bank's current revision of a retrieved transaction
   (``Gateway.refresh_txn``);
 * ``none``.
@@ -95,6 +97,15 @@ def _typed(exc: GatewayError) -> str:
     return outcome if outcome in ("refused", "unavailable", "budget_exceeded", "not_found", "error") else "error"
 
 
+def _query(gateway: Any, **key: str) -> list[EvidenceRecord] | None:
+    """The merchant's payouts for one key through ``Gateway.lookup_payouts`` (scope, signer
+    and subject checked there), or ``None`` when the gateway has no payout query connector.
+    Gateway refusals propagate to the caller's typed handling."""
+    if getattr(gateway, "payout_query", None) is None or not hasattr(gateway, "lookup_payouts"):
+        return None
+    return list(gateway.lookup_payouts(**key))
+
+
 def execute_action(gateway: Any, material: Material, action: NextAction | NextCheck,
                    budget: ActionBudget) -> ActionResult:
     """Run one proposed action and fold what it returns into ``material``."""
@@ -113,6 +124,7 @@ def execute_action(gateway: Any, material: Material, action: NextAction | NextCh
     records: list[EvidenceRecord] = []
     txns: list[BankTxn] = []
     outcome, reason = "ok", None
+    connector_query = False
     try:
         if kind == "lookup_settlement":
             ref = args.get("payout_reference")
@@ -129,8 +141,12 @@ def execute_action(gateway: Any, material: Material, action: NextAction | NextCh
             if not isinstance(record_id, str) or not material.has(record_id):
                 outcome, reason = "refused", "record_id is not in the retrieved material"
             else:
-                listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
-                records = [r for r in listed if record_id in r.related_record_ids]
+                connector_query = (getattr(gateway, "payout_query", None) is not None
+                                   and hasattr(gateway, "lookup_payouts"))
+                records = _query(gateway, covers_record_id=record_id)
+                if records is None:   # no payout query connector: the passport listing
+                    listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
+                    records = [r for r in listed if record_id in r.related_record_ids]
                 if not records:
                     outcome, reason = "not_found", f"no payout or settlement covers {record_id}"
         elif kind == "lookup_by_date":
@@ -138,9 +154,13 @@ def execute_action(gateway: Any, material: Material, action: NextAction | NextCh
             if day is None:
                 outcome, reason = "refused", "payout_date is not YYYY-MM-DD"
             else:
-                listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
-                records = [r for r in listed if r.occurred_at.date() == day
-                           or (r.effective_at is not None and r.effective_at.date() == day)]
+                connector_query = (getattr(gateway, "payout_query", None) is not None
+                                   and hasattr(gateway, "lookup_payouts"))
+                records = _query(gateway, payout_date=day.isoformat())
+                if records is None:   # no payout query connector: the passport listing
+                    listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
+                    records = [r for r in listed if r.occurred_at.date() == day
+                               or (r.effective_at is not None and r.effective_at.date() == day)]
                 if not records:
                     outcome, reason = "not_found", f"no payout or settlement on {day.isoformat()}"
         elif kind == "refresh_txn":
@@ -157,7 +177,8 @@ def execute_action(gateway: Any, material: Material, action: NextAction | NextCh
         outcome, reason = "error", f"unexpected error ({type(exc).__name__})"
 
     keys = [f"{r.record_id}@{r.revision}" for r in records] + [f"{t.txn_id}@{t.revision}" for t in txns]
-    index = material.add_lookup(kind, args, outcome, refs=keys, reason=reason, actor="challenger")
+    index = material.add_lookup(kind, args, outcome, refs=keys, reason=reason, actor="challenger",
+                                connector_query=connector_query)
     new_keys = []
     for record in records:
         if material.add_record(record, via_lookup=index):

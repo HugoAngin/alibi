@@ -22,7 +22,8 @@
       "github": "eliohd",
       "paths": [
         "agents/research/",
-        "alibi/app/templates/"
+        "alibi/app/templates/",
+        "web/"
       ]
     },
     {

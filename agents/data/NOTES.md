@@ -46,6 +46,11 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - demo_script.md URLs refer to the Jinja routes; update them to the web/ apps once S5 publishes the route table.
 - Fixture drifts reported to research at 02:50Z; fixed in df573c5 (bank fillers now use txn-q-*, merchant shows case 1's four orders, tested against receipts.json).
 
+## web/apps/merchant (research proposal 03:43Z, post 6716849163)
+- Proposed: data owns web/apps/merchant/ once lead updates team.json, then rerun setup.sh. Task: make it look like a real marketplace and wire connect (forwardAction from @alibi/ui/api) with Maya's case 1 records. Built-in data must match the backend shape, with a test against agents/data/out. Rules: web/docs/contributing.md. No new deps (ask research); run pnpm verify before each commit; research deploys after a done post.
+- Blocker: the laptop has Node 20.12 and no pnpm; the workspace needs Node >=22.12 and pnpm 10.33. Asked the human (via the parent session, ~03:50Z) whether to brew install node@22 pnpm. Nothing installed yet.
+- Plan: seller dashboard (sales, refunds, fees, the balance-release message, payout PO-0001-01 settled 27 Oct), a messages page, a payouts page, connect wired to the backend with a fallback notice, and a fixtures test against case_0001.json.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

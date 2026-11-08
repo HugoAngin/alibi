@@ -33,6 +33,10 @@ Lead 01:29Z (5 items): (3)(4) done earlier. (5) `tamper_demo.py` + `out/TAMPER_D
 Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_coverage.py` done. S1 FINDINGS: C2 a new review (Maya removes rfd_2001) does not invalidate the earlier approval, so sign_and_package sends the pre-edit body with rfd_2001; C6 the superseded draft can still be approved. Audit gaps: no link entry; delivery receipt, disposition, follow-up are S2. (3) S2 security review when S2 merges (~02:30). (4) 09:00 judge drill needs the human presenter. (5) Gemini parser score after S3.
 - `refusal_codes.py`: core ApprovalError problems -> consent_matrix codes (asked lead to route to S2).
 
+04:00-04:40Z web + deck:
+- Bank console staged at `agents/execution/web_bank/` (research copies it into web/apps/bank). Eval found an open proxy in /act/ -> fixed (fixed kinds, server-built paths, signed analyst session, same-origin); then a dotted-name session bug and a TS2345 in tests -> fixed (eabc727). Secrets: BANK_A_TOKEN, ANALYST_PASSCODE, BANK_SESSION_SECRET.
+- Deck v2 staged at `agents/execution/deck/` (daa4511) from research's deck; README lists changes. Not built: npm not installed here (human's OK pending); asked research/eval to build. Retake landing after data's hero, bank shots after the console deploys.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.

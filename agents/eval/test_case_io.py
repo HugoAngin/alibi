@@ -31,6 +31,14 @@ def test_a_late_settlement_lookup_is_hidden():
     assert lookup(payout_reference="PO-0001-01") == []
 
 
+def test_request_context_refuses_mixed_transaction_and_period_scope():
+    case = canonical_case()
+    bank_a, bank_b = case["rfcs"]
+    bank_a["period"] = bank_b["period"]
+    with pytest.raises(ValueError, match="exactly one of period or txn_ids"):
+        request_context(case, bank_a["request_id"])
+
+
 @pytest.mark.parametrize("number", [42, 43])
 def test_hidden_reference_lookup_uses_data_contract_and_keeps_subject_scope(number):
     case = load_case(number)

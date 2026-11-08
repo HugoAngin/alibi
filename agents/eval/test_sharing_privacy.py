@@ -140,6 +140,14 @@ def test_preview_is_deterministic():
     assert a.body == b.body and a.body_digest == b.body_digest
 
 
+def test_preview_refuses_mixed_transaction_and_period_scope():
+    state = make_state()
+    state.requests["rfc-a"]["period"] = state.requests["rfc-b"]["period"]
+    with pytest.raises(ApprovalError) as exc:
+        build_preview(state, "rfc-a", claims_a(), now=NOW)
+    assert exc.value.code == "invalid_scope"
+
+
 def test_only_allowlisted_record_fields_reach_attachments():
     preview = build_preview(make_state(), "rfc-a", claims_a(), now=NOW)
     atts = {a["ref"]: a for a in preview.body["attachments"]}

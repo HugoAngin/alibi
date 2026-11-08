@@ -393,8 +393,19 @@ def _case_id(state: TrustedState, rfc: dict) -> str:
 
 def scope_of(rfc: dict) -> dict:
     period = rfc.get("period")
-    return {"txn_ids": sorted(rfc.get("txn_ids") or []),
-            "period": {"from": period["from"], "to": period["to"]} if period else None,
+    txn_ids = rfc.get("txn_ids", [])
+    if not isinstance(txn_ids, list) or bool(txn_ids) == (period is not None):
+        raise ApprovalError("invalid_scope", "request needs exactly one of period or txn_ids")
+    if not all(isinstance(txn_id, str) and txn_id for txn_id in txn_ids) or len(set(txn_ids)) != len(txn_ids):
+        raise ApprovalError("invalid_scope", "transaction IDs must be non-empty and distinct")
+    if period is not None:
+        try:
+            if (not isinstance(period, dict) or set(period) != {"from", "to"}
+                    or parse_time(period["from"]) >= parse_time(period["to"])):
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ApprovalError("invalid_scope", "request period must be a half-open UTC window") from None
+    return {"txn_ids": sorted(txn_ids), "period": dict(period) if period is not None else None,
             "question_ids": list(rfc["question_ids"])}
 
 
@@ -446,6 +457,7 @@ def build_preview(state: TrustedState, request_id: str, proposed_claims: list, *
     if policy.unresolved_rules:
         raise PolicyHold("unresolved_rules", "; ".join(policy.unresolved_rules))
     rfc = _load_request(state, request_id, now)
+    scope = scope_of(rfc)
     if policy.allowed_recipients is not None and rfc["audience"] not in policy.allowed_recipients:
         raise PolicyHold("recipient_not_allowed", rfc["audience"])
     if rfc["subject_ref"] not in state.holders:
@@ -565,7 +577,7 @@ def build_preview(state: TrustedState, request_id: str, proposed_claims: list, *
     public_attachments = [{k: v for k, v in attachments[r].items() if k != "_generalised"}
                           for r in sorted(attachments)]
     body = {"schema_version": PACKAGE_SCHEMA_VERSION, "package_id": "", "request_id": request_id,
-            "audience": rfc["audience"], "case_id": _case_id(state, rfc), "scope": scope_of(rfc),
+            "audience": rfc["audience"], "case_id": _case_id(state, rfc), "scope": scope,
             "issued_at": issued, "expires_at": expires, "claims": claims,
             "attachments": public_attachments}
 

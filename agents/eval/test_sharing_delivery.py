@@ -432,7 +432,7 @@ def v1_body() -> dict:
         "case_id": "rfc-0001",
         "scope": {
             "txn_ids": ["txn-0001-001"],
-            "period": {"from": "2026-10-01T00:00:00Z", "to": "2026-11-01T00:00:00Z"},
+            "period": None,
             "question_ids": ["q.income_in_period", "q.source_of_funds"],
         },
         "issued_at": "2026-11-07T10:00:00Z",
@@ -533,7 +533,8 @@ def test_v1_full_record_issuer_verified_fails_closed_without_valid_proof(registr
         (lambda b: b["attachments"][0].update(presentation="summary"), "schema"),
         (lambda b: b["attachments"][0].update(trust=["issuer_verified"]), "schema"),
         (lambda b: b["scope"].pop("question_ids"), "schema"),
-        (lambda b: b["scope"].update(period={"from": "2026-11-01T00:00:00Z", "to": "2026-10-01T00:00:00Z"}), "schema"),
+        (lambda b: b["scope"].update(txn_ids=[], period={"from": "2026-11-01T00:00:00Z", "to": "2026-10-01T00:00:00Z"}), "schema"),
+        (lambda b: b["scope"].update(period={"from": "2026-10-01T00:00:00Z", "to": "2026-11-01T00:00:00Z"}), "schema"),
         (lambda b: b["scope"].update(period=None, txn_ids=[]), "schema"),
         (lambda b: b["claims"][1].update(question_id="q.breakdown"), "schema"),  # not a requested question
         (lambda b: b["claims"][0]["calculation"].update(total_minor=216001), "schema"),

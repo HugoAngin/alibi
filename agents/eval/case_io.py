@@ -36,6 +36,9 @@ def request_context(case: dict, request_id: str):
     if len(requests) != 1:
         raise ValueError(f"expected exactly one RFC for {request_id}")
     request = requests[0]
+    txn_ids = request.get("txn_ids", [])
+    if not isinstance(txn_ids, list) or bool(txn_ids) == (request.get("period") is not None):
+        raise ValueError("RFC needs exactly one of period or txn_ids")
     decision_time = request["issued_at"]
     subject = request["subject_ref"]
     if subject != case["subject_ref"]:

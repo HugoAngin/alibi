@@ -362,10 +362,10 @@ def validate_body(body: Any) -> dict:
 def _validate_v1(body: dict) -> None:
     scope = _exact_keys(body["scope"], V1_SCOPE_FIELDS, frozenset(), "scope")
     txn_ids = _id_list(scope["txn_ids"], "scope.txn_ids", allow_empty=True)
+    if bool(txn_ids) == (scope["period"] is not None):
+        raise VerificationError("schema", "scope needs exactly one of period or txn_ids")
     if scope["period"] is not None:
         _validate_period(scope["period"], "scope.period")
-    elif not txn_ids:
-        raise VerificationError("schema", "scope needs a period or at least one txn_id")
     questions = set(_id_list(scope["question_ids"], "scope.question_ids", allow_empty=False))
 
     attached: dict[str, int] = {}  # ref -> revision

@@ -10,7 +10,7 @@ import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
 import type { PassportHome } from '@/lib/api/types';
 import { day, money } from '@/lib/format';
-import { backendHeaders } from '@/lib/screens';
+import { ROUTES, backendHeaders } from '@/lib/screens';
 import { loadContext } from '@alibi/ui/api';
 
 import ActivityRow from './ActivityRow.astro';
@@ -44,7 +44,7 @@ await Promise.all(
   data.transactions.map(async (t) => {
     const loaded = await loadContext({
       origin: ALIBI_API_ORIGIN,
-      path: `/txn/${encodeURIComponent(t.txn_id)}`,
+      path: ROUTES.txn(t.txn_id),
       isShape: isTxnDetail,
       fixture: () => null,
       headers: backendHeaders(),

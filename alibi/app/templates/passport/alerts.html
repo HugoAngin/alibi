@@ -11,6 +11,7 @@
 #}
 {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
 {% from "partials/money.html" import money, money_raw %}
+{% from "partials/when.html" import when %}
 {% block content %}
 <h1 class="page-title">Alerts</h1>
 <p class="page-lede">Things Alibi noticed in your records. Each alert is an observation with the facts behind it, not a judgement about you or a merchant.</p>
@@ -28,14 +29,14 @@
         </div>
         <p class="item__meta">
           {{ status_badge(alert.kind) }}
-          Severity: {{ alert.severity }} · Raised {{ alert.created_at }} · <code>{{ alert.alert_id }}</code>
+          Severity: {{ alert.severity }} · Raised {{ when(alert.created_at) }} · <code>{{ alert.alert_id }}</code>
         </p>
         <p>{{ alert.explanation }}</p>
 
         <h4>Facts behind this alert</h4>
         {% if alert.facts %}
         <div class="table-wrap">
-          <table class="table table--compact">
+          <table class="table table--compact stack">
             <thead>
               <tr>
                 <th scope="col">Fact</th>
@@ -46,9 +47,9 @@
             <tbody>
               {% for fact in alert.facts %}
               <tr>
-                <td>{{ fact.label }}</td>
-                <td>{{ fact.value }}</td>
-                <td><a href="{{ fact.href }}"><code>{{ fact.source_id }}</code> r{{ fact.source_revision }}</a></td>
+                <td data-label="Fact">{{ fact.label }}</td>
+                <td data-label="Value">{{ fact.value }}</td>
+                <td data-label="Source"><a href="{{ fact.href }}"><code>{{ fact.source_id }}</code> r{{ fact.source_revision }}</a></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -75,6 +76,11 @@
     <p class="empty">No alerts. Alibi raises one when a merchant message and a bank entry disagree, a credit has no linked record, or a merchant is unknown to the registry.</p>
     {% endif %}
   </section>
+
+  <form method="post" action="{{ tick_action }}" class="btn-row no-print">
+    <button type="submit" class="btn">Re-run checks now</button>
+    <span class="muted small">Last checked {% if last_tick %}{{ when(last_tick) }}{% else %}at start{% endif %}. Checks also run on every start.</span>
+  </form>
 
   <section id="merchant-lookup" class="card section-anchor" aria-labelledby="lookup-heading">
     <div class="card__head">
@@ -103,7 +109,7 @@
       <dt>Registry</dt>
       <dd>{{ result.registry }}</dd>
       <dt>Checked at</dt>
-      <dd>{{ result.checked_at }}</dd>
+      <dd>{{ when(result.checked_at) }}</dd>
       <dt>Notes</dt>
       <dd>{{ result.notes }}</dd>
     </dl>

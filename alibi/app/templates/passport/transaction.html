@@ -6,7 +6,8 @@
                      link_state, linked_count, href, account_label, connection_name, references[],
                      provenance{connection_id, retrieved_at, source_version}, trust}
     sources         list of {record_id, revision, kind, issuer, trust, occurred_at, amount{minor,currency},
-                             status, summary, href, signature{present, key_id, verified}, superseded}
+                             status, summary, href, signature{present, key_id, verified}, superseded,
+                             via_lookup: bool}
     reconciliation  {title, lines[{label, kind, sign, amount, source_ids[]}], expression, result,
                      compared_to{label, amount}, difference, matches, computed_by, computed_at}
     claims          list of {claim_id, question_id, question, status, rationale, href}
@@ -18,6 +19,7 @@
 {% extends "base.html" %}
 {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
 {% from "partials/money.html" import money, money_raw %}
+{% from "partials/when.html" import when %}
 
 {% block content %}
 <h1 class="page-title">Transaction <code>{{ txn.txn_id }}</code></h1>
@@ -39,7 +41,7 @@
       <dt>Revision</dt>
       <dd>r{{ txn.revision }}</dd>
       <dt>Booked</dt>
-      <dd>{{ txn.booked_at }}</dd>
+      <dd>{{ when(txn.booked_at) }}</dd>
       <dt>Description</dt>
       <dd>{{ txn.description }}</dd>
       <dt>Amount</dt>
@@ -61,7 +63,7 @@
       <dt>Provenance</dt>
       <dd>
         Connection <code>{{ txn.provenance.connection_id }}</code>,
-        retrieved {{ txn.provenance.retrieved_at }},
+        retrieved {{ when(txn.provenance.retrieved_at) }},
         source version <code>{{ txn.provenance.source_version }}</code>
       </dd>
     </dl>
@@ -87,6 +89,7 @@
           </span>
           <span class="cluster">
             {{ trust_badge(s.trust) }}
+            {% if s.via_lookup %}{{ status_badge("via_lookup", "retrieved by lookup") }}{% endif %}
             {{ status_badge(s.status) }}
             <span class="item__amount">{{ money(s.amount) }}</span>
           </span>
@@ -94,7 +97,7 @@
         <p class="small">{{ s.summary }}</p>
         <div class="item__meta">
           Issuer: {{ s.issuer }} ·
-          Occurred {{ s.occurred_at }} ·
+          Occurred {{ when(s.occurred_at) }} ·
           {{ money_raw(s.amount) }} ·
           {% if s.signature.present %}
             Issuer signature key <code>{{ s.signature.key_id }}</code>, {% if s.signature.verified %}verified{% else %}not verified{% endif %}
@@ -118,8 +121,9 @@
       <h2 id="reconciliation-title">Reconciliation</h2>
       <span class="item__meta">{{ reconciliation.title }}</span>
     </div>
+    {% if reconciliation.lines %}
     <div class="table-wrap">
-      <table class="recon">
+      <table class="recon stack">
         <thead>
           <tr>
             <th scope="col" class="sign"><span class="visually-hidden">Sign</span></th>
@@ -132,39 +136,42 @@
         <tbody>
           {% for line in reconciliation.lines %}
           <tr>
-            <td class="sign">{{ line.sign }}</td>
-            <td>{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
-            <td>{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
-            <td class="num">{{ money(line.amount) }}</td>
-            <td class="num">{{ money_raw(line.amount) }}</td>
+            <td class="sign" data-label="Sign">{{ line.sign }}</td>
+            <td data-label="Line">{{ line.label }} <span class="muted small">({{ line.kind }})</span></td>
+            <td data-label="Sources">{% for sid in line.source_ids %}<code>{{ sid }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+            <td class="num" data-label="Amount">{{ money(line.amount) }}</td>
+            <td class="num" data-label="Minor units">{{ money_raw(line.amount) }}</td>
           </tr>
           {% endfor %}
           <tr class="recon__total">
-            <td class="sign">=</td>
-            <td>Result</td>
-            <td></td>
-            <td class="num">{{ money(reconciliation.result) }}</td>
-            <td class="num">{{ money_raw(reconciliation.result) }}</td>
+            <td class="sign" data-label="Sign">=</td>
+            <td data-label="Line">Result</td>
+            <td data-label="Sources"></td>
+            <td class="num" data-label="Amount">{{ money(reconciliation.result) }}</td>
+            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.result) }}</td>
           </tr>
           <tr class="recon__compare">
-            <td class="sign"></td>
-            <td>Compared to {{ reconciliation.compared_to.label }}</td>
-            <td>{% if reconciliation.matches %}matches{% else %}does not match{% endif %}</td>
-            <td class="num">{{ money(reconciliation.compared_to.amount) }}</td>
-            <td class="num">{{ money_raw(reconciliation.compared_to.amount) }}</td>
+            <td class="sign" data-label="Sign"></td>
+            <td data-label="Line">Compared to {{ reconciliation.compared_to.label }}</td>
+            <td data-label="Sources">{% if reconciliation.matches %}matches{% else %}does not match{% endif %}</td>
+            <td class="num" data-label="Amount">{{ money(reconciliation.compared_to.amount) }}</td>
+            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.compared_to.amount) }}</td>
           </tr>
           <tr class="recon__compare">
-            <td class="sign"></td>
-            <td>Difference</td>
-            <td>{{ status_badge("ok" if reconciliation.matches else "fail", "Matches" if reconciliation.matches else "Does not match") }}</td>
-            <td class="num">{{ money(reconciliation.difference) }}</td>
-            <td class="num">{{ money_raw(reconciliation.difference) }}</td>
+            <td class="sign" data-label="Sign"></td>
+            <td data-label="Line">Difference</td>
+            <td data-label="Sources">{{ status_badge("ok" if reconciliation.matches else "fail", "Matches" if reconciliation.matches else "Does not match") }}</td>
+            <td class="num" data-label="Amount">{{ money(reconciliation.difference) }}</td>
+            <td class="num" data-label="Minor units">{{ money_raw(reconciliation.difference) }}</td>
           </tr>
         </tbody>
       </table>
     </div>
+    {% else %}
+    <p class="empty">{{ reconciliation.expression }}</p>
+    {% endif %}
     <p class="recon__expression">{{ reconciliation.expression }}</p>
-    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ reconciliation.computed_at }}. The sum is taken from the cited amounts, not typed by hand.</p>
+    <p class="small muted">Computed by {{ reconciliation.computed_by }} at {{ when(reconciliation.computed_at) }}. The sum is taken from the cited amounts, not typed by hand.</p>
   </section>
 
   <section class="card section-anchor" id="claims" aria-labelledby="claims-title">
@@ -201,11 +208,11 @@
       <li id="{{ ch.change_id }}">
         <div class="item__head">
           <span class="item__title"><code>{{ ch.record_id }}</code> r{{ ch.older.revision }} to r{{ ch.newer.revision }} <span class="muted">· {{ ch.kind }}</span></span>
-          <span class="item__meta">Received {{ ch.received_at }}</span>
+          <span class="item__meta">Received {{ when(ch.received_at) }}</span>
         </div>
         <p class="small">{{ ch.effect }}</p>
         <div class="table-wrap">
-          <table class="table table--compact">
+          <table class="table table--compact stack">
             <thead>
               <tr>
                 <th scope="col">Field</th>
@@ -216,9 +223,9 @@
             <tbody>
               {% for d in ch.diff %}
               <tr>
-                <td><code>{{ d.field }}</code></td>
-                <td><span class="diff-before">{{ d.before }}</span></td>
-                <td><span class="diff-after">{{ d.after }}</span></td>
+                <td data-label="Field"><code>{{ d.field }}</code></td>
+                <td data-label="Before (r{{ ch.older.revision }})"><span class="diff-before">{{ d.before }}</span></td>
+                <td data-label="After (r{{ ch.newer.revision }})"><span class="diff-after">{{ d.after }}</span></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -231,7 +238,7 @@
               <div class="revision__title">Revision r{{ ch.older.revision }} <span class="badge badge--status badge--superseded">superseded</span></div>
               <dl class="kv">
                 <dt>Received</dt>
-                <dd>{{ ch.older.received_at }}</dd>
+                <dd>{{ when(ch.older.received_at) }}</dd>
                 {% for f in ch.older.fields %}
                 <dt><code>{{ f.name }}</code></dt>
                 <dd>{{ f.value }}</dd>
@@ -243,7 +250,7 @@
               <div class="revision__title">Revision r{{ ch.newer.revision }} <span class="muted small">(active)</span></div>
               <dl class="kv">
                 <dt>Received</dt>
-                <dd>{{ ch.newer.received_at }}</dd>
+                <dd>{{ when(ch.newer.received_at) }}</dd>
                 {% for f in ch.newer.fields %}
                 <dt><code>{{ f.name }}</code></dt>
                 <dd>{{ f.value }}</dd>

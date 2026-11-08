@@ -76,6 +76,15 @@ def test_accepts_two_verified_deliveries_and_separates_holder_auth():
         }
 
 
+def test_independent_verifier_rejects_bank_report_with_unsigned_envelope():
+    session = routed_stack()
+    try:
+        with pytest.raises(ProbeUnavailable, match="bank_a independent verification refused"):
+            check(session, registry={})
+    finally:
+        session.close()
+
+
 @pytest.mark.parametrize(("fault", "diagnostic"), [
     ("approve", "approve with no credential returned HTTP 200"),
     ("dispatch", "dispatch with no credential returned HTTP 200"),

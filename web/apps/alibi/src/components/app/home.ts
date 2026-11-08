@@ -6,9 +6,10 @@
  */
 
 import type { ClaimStatus, LinkState, Money, PassportHome, Trust } from '@/lib/api/types';
-import { money } from '@/lib/format';
+// Relative, not `@/`, so the unit tests (tests/home.test.ts) can import this file directly.
+import { money } from '../../lib/format';
 
-type Request = PassportHome['requests'][number] & { audience?: string };
+type Request = PassportHome['requests'][number];
 
 /**
  * Whether the holder is signed in: the demo holder session on a local demo,
@@ -152,8 +153,9 @@ export interface Bank {
   feed: PassportHome['connections'][number] | null;
 }
 
+/** The recipient id; an older backend without `audience` falls back to the display name. */
 function audienceOf(r: Request): string {
-  return r.audience ?? r.recipient;
+  return r.audience || r.recipient;
 }
 
 /**
@@ -186,15 +188,15 @@ export function banks(data: PassportHome): Bank[] {
     }
     return b;
   };
-  for (const r of data.requests as Request[]) {
+  for (const r of data.requests) {
     const b = bank(audienceOf(r), r.recipient);
     b.requests += 1;
     if (requestState(r.status) === 'awaiting') b.awaiting += 1;
     if (r.received_at > b.lastAt) b.lastAt = r.received_at;
   }
   for (const s of data.sharing_history) {
-    const req = data.requests.find((r) => r.request_id === s.request_id) as Request | undefined;
-    const audience = (s as { audience?: string }).audience ?? (req ? audienceOf(req) : s.recipient);
+    const req = data.requests.find((r) => r.request_id === s.request_id);
+    const audience = s.audience || (req ? audienceOf(req) : s.recipient);
     const b = bank(audience, s.recipient);
     b.packagesSent += 1;
     if (s.sent_at > b.lastAt) b.lastAt = s.sent_at;

@@ -12,6 +12,7 @@
 #}
 {% from "partials/badges.html" import trust_badge, claim_badge, link_badge, status_badge %}
 {% from "partials/money.html" import money, money_raw %}
+{% from "partials/when.html" import when %}
 {% block content %}
 <h1 class="page-title">Privacy rules</h1>
 <p class="page-lede">A rule written in plain English becomes a typed policy that code applies to every package. Nothing changes until you confirm the interpretation.</p>
@@ -111,7 +112,7 @@
         <p>{{ rule.summary }}</p>
         <p class="item__meta">
           {{ status_badge(rule.kind) }}
-          <code>{{ rule.rule_id }}</code> · Policy version {{ rule.version }} · Confirmed {{ rule.confirmed_at }}
+          <code>{{ rule.rule_id }}</code> · Policy version {{ rule.version }} · Confirmed {{ when(rule.confirmed_at) }}
         </p>
         <form class="inline" method="post" action="{{ rule.retire_action }}">
           <button type="submit" class="btn btn--small">Retire</button>
@@ -137,7 +138,7 @@
           {{ status_badge("held") }}
         </div>
         <p>{{ rule.reason }}</p>
-        <p class="item__meta"><code>{{ rule.rule_id }}</code> · Held since {{ rule.created_at }}</p>
+        <p class="item__meta"><code>{{ rule.rule_id }}</code> · Held since {{ when(rule.created_at) }}</p>
         <div class="btn-row">
           <form class="inline" method="post" action="{{ rule.clarify_action }}">
             <button type="submit" class="btn btn--small">Clarify</button>

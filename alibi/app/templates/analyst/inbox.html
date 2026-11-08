@@ -35,7 +35,7 @@
     </div>
     {% if packages %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table stack">
         <thead>
           <tr>
             <th scope="col">Package</th>
@@ -51,20 +51,20 @@
         <tbody>
           {% for pkg in packages %}
           <tr id="pkg-{{ pkg.package_id }}">
-            <td><a href="{{ pkg.href }}"><code>{{ pkg.package_id }}</code></a></td>
-            <td><code>{{ pkg.request_id }}</code></td>
-            <td class="nowrap">{{ pkg.received_at }}</td>
-            <td class="nowrap">{{ pkg.expires_at }}</td>
-            <td><code>{{ pkg.subject_ref_masked }}</code></td>
-            <td>{{ status_badge(pkg.authentication) }}</td>
-            <td>
+            <td data-label="Package"><a href="{{ pkg.href }}"><code>{{ pkg.package_id }}</code></a></td>
+            <td data-label="Request"><code>{{ pkg.request_id }}</code></td>
+            <td class="nowrap" data-label="Received">{{ pkg.received_at }}</td>
+            <td class="nowrap" data-label="Expires">{{ pkg.expires_at }}</td>
+            <td data-label="Subject"><code>{{ pkg.subject_ref_masked }}</code></td>
+            <td data-label="Authentication">{{ status_badge(pkg.authentication) }}</td>
+            <td data-label="Claims">
               <span class="cluster">
                 <span class="nowrap">{{ claim_badge("supported") }} {{ pkg.claim_counts.supported }}</span>
                 <span class="nowrap">{{ claim_badge("contradicted") }} {{ pkg.claim_counts.contradicted }}</span>
                 <span class="nowrap">{{ claim_badge("unresolved") }} {{ pkg.claim_counts.unresolved }}</span>
               </span>
             </td>
-            <td>
+            <td data-label="Disposition">
               {% if pkg.disposition %}
                 {{ status_badge(pkg.disposition) }}
               {% else %}
@@ -92,7 +92,7 @@
     </div>
     {% if requests_sent %}
     <div class="table-wrap">
-      <table class="table">
+      <table class="table stack">
         <thead>
           <tr>
             <th scope="col">Request</th>
@@ -105,17 +105,17 @@
         <tbody>
           {% for req in requests_sent %}
           <tr id="req-{{ req.request_id }}">
-            <td><code>{{ req.request_id }}</code></td>
-            <td>
+            <td data-label="Request"><code>{{ req.request_id }}</code></td>
+            <td data-label="Parent request">
               {% if req.parent_request_id %}
                 <code>{{ req.parent_request_id }}</code>
               {% else %}
                 <span class="muted">—</span>
               {% endif %}
             </td>
-            <td class="nowrap">{{ req.sent_at }}</td>
-            <td>{{ status_badge(req.status) }}</td>
-            <td class="num">{{ req.question_count }}</td>
+            <td class="nowrap" data-label="Sent">{{ req.sent_at }}</td>
+            <td data-label="Status">{{ status_badge(req.status) }}</td>
+            <td class="num" data-label="Questions">{{ req.question_count }}</td>
           </tr>
           {% endfor %}
         </tbody>

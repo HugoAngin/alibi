@@ -12,6 +12,10 @@ import type { DispatchResult, Refusal } from './api/types';
 export const ROUTES = {
   passport: '/passport',
   request: (id: string) => `/requests/${encodeURIComponent(id)}`,
+  /** One bank transaction's detail context: linked sources, claims, reconciliation. */
+  txn: (id: string) => `/txn/${encodeURIComponent(id)}`,
+  /** The signed package sent for a request, as the backend stored it. */
+  exportJson: (id: string) => `/requests/${encodeURIComponent(id)}/export.json`,
 };
 
 /**

@@ -35,4 +35,4 @@ Eval need 01:13Z: SP-47 at-rest probe `at_rest_probe.py`. Plants canaries in cas
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- None.
+- ~01:25Z 2026-11-08 need to lead + eval (post 6715598994): asked for heavier work, offered (a) policy compiler + enforcement filter, (b) approval store + dispatch gate per consent_matrix, (c) reference reconciliation, (d) an S-session slice. Assumption if no reply in 15 min: start (a) in agents/execution/.

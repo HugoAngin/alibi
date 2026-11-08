@@ -185,7 +185,12 @@ def attempt(probe_id: str, base_urls: dict, tokens: dict) -> dict:
     ctx = ProbeSession(base_urls, tokens)
     result = {"probe_id": probe_id, "outcome": NOT_RUN, "exchanges": ctx.exchanges}
     try:
-        handler = _handler_for(probe_id)
+        if 25 <= int(probe_id[3:]) <= 32 and ctx.fixtures.get("native_verifier_package_id"):
+            from agents.eval.http_probe_native_verifier import HANDLERS
+
+            handler = HANDLERS[probe_id]
+        else:
+            handler = _handler_for(probe_id)
         if handler is None:
             raise ProbeUnavailable("probe handler has not landed")
         outcome = handler(ctx)

@@ -8,7 +8,12 @@
  * Opens nothing itself; prints the three local addresses. Each app falls back to its built-in
  * case 1 data and says so if its backend is not answering, so a missing service never shows a
  * blank screen. Overrides: ALIBI_APP_URL, ALIBI_MERCHANT_URL, ALIBI_BANK_URL, BANK_A_TOKEN,
- * ANALYST_PASSCODE, BANK_SESSION_SECRET. Stop with Ctrl-C (all three stop).
+ * ANALYST_PASSCODE, BANK_SESSION_SECRET, ALIBI_DEMO_HOST. Stop with Ctrl-C (all three stop).
+ *
+ * The apps listen on 127.0.0.1 only (ALIBI_DEMO_HOST may name another loopback address; anything
+ * else is refused). The holder app runs in demo holder mode (apps/alibi/src/lib/demoHolder.ts):
+ * no Clerk key is needed, /demo-sign-in/ signs in as Maya with a signed session cookie, and every
+ * holder route checks it. Supplied credentials are never printed; a generated passcode is.
  */
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -27,41 +32,60 @@ const backend = {
 };
 const replay = env.ALIBI_REPLAY === '1';
 
-/** Bank A's bearer token: the environment, else the bank service's local tokens file. */
+const host = env.ALIBI_DEMO_HOST ?? '127.0.0.1';
+if (!/^(?:127(?:\.\d{1,3}){3}|::1|localhost)$/.test(host)) {
+  console.error(`  refusing to start: ALIBI_DEMO_HOST=${host} is not a loopback address.`);
+  process.exit(1);
+}
+const urlHost = host.includes(':') ? `[${host}]` : host;
+const local = (port) => `http://${urlHost}:${port}`;
+
+/** Bank A's bearer token and where it came from: the environment, else the bank service's local tokens file. */
 function bankToken() {
-  if (env.BANK_A_TOKEN) return env.BANK_A_TOKEN;
-  if (env.ALIBI_BANK_A_TOKEN) return env.ALIBI_BANK_A_TOKEN;
+  if (env.BANK_A_TOKEN) return { token: env.BANK_A_TOKEN, from: 'BANK_A_TOKEN' };
+  if (env.ALIBI_BANK_A_TOKEN) return { token: env.ALIBI_BANK_A_TOKEN, from: 'ALIBI_BANK_A_TOKEN' };
   const file = join(repo, 'data', 'alibi', 'bank_tokens.json');
   if (existsSync(file)) {
     try {
-      return JSON.parse(readFileSync(file, 'utf8')).bank_a ?? '';
+      const token = JSON.parse(readFileSync(file, 'utf8')).bank_a ?? '';
+      return { token, from: token ? 'data/alibi/bank_tokens.json' : '' };
     } catch {
-      return '';
+      return { token: '', from: '' };
     }
   }
-  return '';
+  return { token: '', from: '' };
 }
 
-const passcode = env.ANALYST_PASSCODE ?? randomBytes(4).toString('hex');
-const sessionSecret = env.BANK_SESSION_SECRET ?? randomBytes(32).toString('hex');
-const token = bankToken();
+const passcodeSupplied = Boolean(env.ANALYST_PASSCODE);
+const passcode = env.ANALYST_PASSCODE || randomBytes(4).toString('hex');
+const sessionSecret = env.BANK_SESSION_SECRET || randomBytes(32).toString('hex');
+// Fresh every run, never printed: signs the demo holder's session cookie.
+const holderSecret = randomBytes(32).toString('hex');
+const { token, from: tokenFrom } = bankToken();
 
 const apps = [
   {
     name: 'alibi',
     pkg: '@alibi/site',
+    originVar: 'ALIBI_ORIGIN',
     port: 4321,
-    env: { ALIBI_API_ORIGIN: backend.app },
+    env: {
+      ALIBI_API_ORIGIN: backend.app,
+      ALIBI_DEMO_HOLDER: '1',
+      HOLDER_SESSION_SECRET: holderSecret,
+    },
   },
   {
     name: 'merchant',
     pkg: '@alibi/merchant',
+    originVar: 'MERCHANT_ORIGIN',
     port: 4322,
-    env: { ALIBI_API_ORIGIN: backend.merchant, PUBLIC_ALIBI_ORIGIN: 'http://localhost:4321' },
+    env: { ALIBI_API_ORIGIN: backend.merchant, PUBLIC_ALIBI_ORIGIN: local(4321) },
   },
   {
     name: 'bank',
     pkg: '@alibi/bank',
+    originVar: 'BANK_ORIGIN',
     port: 4323,
     env: {
       BANK_API_ORIGIN: backend.bank,
@@ -106,16 +130,22 @@ for (const [name, url] of Object.entries(backend)) {
     `  backend ${name.padEnd(8)} ${url}  ${ok ? 'answering' : 'NOT answering (screens fall back to built-in case 1 data)'}`,
   );
 }
-if (!token)
-  console.log('  bank token not found: set BANK_A_TOKEN or create data/alibi/bank_tokens.json');
 console.log(
-  `  bank analyst passcode: ${passcode}${env.ANALYST_PASSCODE ? '' : ' (generated for this run)'}\n`,
+  token
+    ? `  bank token: from ${tokenFrom}`
+    : '  bank token not found: set BANK_A_TOKEN or create data/alibi/bank_tokens.json',
 );
+console.log(
+  passcodeSupplied
+    ? '  bank analyst passcode: from ANALYST_PASSCODE'
+    : `  bank analyst passcode: ${passcode} (generated for this run, local only)`,
+);
+console.log(`  holder sign-in: ${local(4321)}/demo-sign-in/ (as Maya, no Clerk)\n`);
 
 for (const app of apps) {
-  const child = spawn('pnpm', ['--filter', app.pkg, 'dev'], {
+  const child = spawn('pnpm', ['--filter', app.pkg, 'run', 'dev', '--host', host], {
     cwd: web,
-    env: { ...env, ...shared, ...app.env },
+    env: { ...env, ...shared, [app.originVar]: local(app.port), ...app.env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   children.push(child);
@@ -132,5 +162,5 @@ for (const app of apps) {
       stopAll(code);
     }
   });
-  console.log(`  ${app.name.padEnd(8)} http://localhost:${app.port}/`);
+  console.log(`  ${app.name.padEnd(8)} ${local(app.port)}/`);
 }

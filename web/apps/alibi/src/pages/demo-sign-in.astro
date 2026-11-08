@@ -1,0 +1,49 @@
+---
+/**
+ * `/demo-sign-in/`: the local demo's sign-in (src/lib/demoHolder.ts). One button signs in as Maya
+ * on this machine; Clerk is not involved. 404 unless demo holder mode is on.
+ */
+import { ALIBI_DEMO_HOLDER, HOLDER_SESSION_SECRET } from 'astro:env/server';
+
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import IslandHeader from '@/components/site/IslandHeader.astro';
+import { demoHolderEnabled, safeNext } from '@/lib/demoHolder';
+
+export const prerender = false;
+
+if (!demoHolderEnabled(ALIBI_DEMO_HOLDER, HOLDER_SESSION_SECRET)) {
+  return new Response('Not found.', { status: 404 });
+}
+
+const next = safeNext(Astro.url.searchParams.get('next'));
+const signedIn = Boolean(Astro.locals.demoHolder);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<BaseLayout title="Sign in" description="Local demo sign-in.">
+  <IslandHeader />
+  <main id="main" class="auth">
+    <div class="panel">
+      <h1>Sign in to Alibi</h1>
+      <p>Local demo on this machine. You sign in as Maya, with synthetic data.</p>
+      {signedIn ? (
+        <p>
+          <a class="s-btn s-btn--primary" href={next}>
+            Open Maya’s passport
+          </a>
+        </p>
+      ) : (
+        <form method="post" action="/demo-session/">
+          <input type="hidden" name="next" value={next} />
+          <button class="s-btn s-btn--primary" type="submit">
+            Continue as Maya
+          </button>
+        </form>
+      )}
+    </div>
+  </main>
+</BaseLayout>
+
+<style>
+  @import '../styles/auth.css';
+</style>

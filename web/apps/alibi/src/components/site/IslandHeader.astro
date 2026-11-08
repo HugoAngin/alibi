@@ -13,6 +13,9 @@ interface Props {
 }
 
 const { current } = Astro.props;
+// Local demo (src/lib/demoHolder.ts): no Clerk widgets, a plain sign-out instead.
+const demo =
+  Astro.locals.demoHolder === undefined ? null : { signedIn: Boolean(Astro.locals.demoHolder) };
 ---
 
 <header class="island-wrap">
@@ -40,19 +43,42 @@ const { current } = Astro.props;
         <a href="/simulate/" aria-current={current === 'simulate' ? 'page' : undefined}>
           Simulate
         </a>
-        <Show when="signed-out">
-          <a class="join" href="/sign-up/" aria-current={current === 'join' ? 'page' : undefined}>
-            Join
-          </a>
-        </Show>
-        <Show when="signed-in">
-          <a class="join" href="/app/">
-            Open app
-          </a>
-          <span class="account">
-            <UserButton />
-          </span>
-        </Show>
+        {demo ? (
+          demo.signedIn ? (
+            <>
+              <a class="join" href="/app/">
+                Open app
+              </a>
+              <form class="account" method="post" action="/demo-session/?out=1">
+                <button type="submit">Sign out</button>
+              </form>
+            </>
+          ) : (
+            <a class="join" href="/demo-sign-in/">
+              Sign in
+            </a>
+          )
+        ) : (
+          <>
+            <Show when="signed-out">
+              <a
+                class="join"
+                href="/sign-up/"
+                aria-current={current === 'join' ? 'page' : undefined}
+              >
+                Join
+              </a>
+            </Show>
+            <Show when="signed-in">
+              <a class="join" href="/app/">
+                Open app
+              </a>
+              <span class="account">
+                <UserButton />
+              </span>
+            </Show>
+          </>
+        )}
       </div>
     </nav>
   </div>
@@ -108,6 +134,20 @@ const { current } = Astro.props;
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  .account button {
+    padding: 0.55rem 0.9rem;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    font: 500 0.95rem/1 var(--s-font-body);
+    color: var(--s-ink);
+    cursor: pointer;
+  }
+
+  .account button:hover {
+    background: rgb(255 255 255 / 0.55);
   }
 
   .links a {

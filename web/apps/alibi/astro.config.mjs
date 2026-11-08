@@ -27,6 +27,14 @@ export default defineConfig({
       // `secret` access makes Astro read it at runtime (the Worker's vars),
       // instead of inlining whatever the build machine had.
       ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Local demo only (`pnpm demo`, src/lib/demoHolder.ts): sign in as Maya without Clerk, on
+      // 127.0.0.1 only. Never set these on the deployed Worker.
+      ALIBI_DEMO_HOLDER: envField.string({ context: 'server', access: 'secret', optional: true }),
+      HOLDER_SESSION_SECRET: envField.string({
+        context: 'server',
+        access: 'secret',
+        optional: true,
+      }),
     },
   },
   // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.

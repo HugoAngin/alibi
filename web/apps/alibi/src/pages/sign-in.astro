@@ -5,6 +5,9 @@ import { SignIn } from '@clerk/astro/components';
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import IslandHeader from '@/components/site/IslandHeader.astro';
 import { clerkAppearance } from '@/lib/clerk';
+
+// Local demo (src/lib/demoHolder.ts): no Clerk, sign in as Maya instead.
+if (Astro.locals.demoHolder !== undefined) return Astro.redirect('/demo-sign-in/', 303);
 ---
 
 <BaseLayout title="Sign in" description="Sign in to Alibi.">

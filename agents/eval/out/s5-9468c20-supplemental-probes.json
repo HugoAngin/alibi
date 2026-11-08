@@ -1,0 +1,85 @@
+{
+  "candidate_commit": "9468c2048eebcee38221b6023a412237ff1cc860",
+  "harness_commit": "5a5d69bc4a07fc37797780c37aa7380d9bb1f876",
+  "observations": [
+    {
+      "probe_id": "SP-33",
+      "outcome": "blocked",
+      "audit": [
+        "POST HTTP 409",
+        "GET HTTP 200",
+        "GET HTTP 404"
+      ]
+    },
+    {
+      "probe_id": "SP-34",
+      "outcome": "blocked",
+      "audit": [
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "GET HTTP 200",
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "GET HTTP 200",
+        "POST HTTP 409",
+        "GET HTTP 200",
+        "GET HTTP 200"
+      ]
+    },
+    {
+      "probe_id": "SP-35",
+      "outcome": "blocked",
+      "audit": [
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "GET HTTP 200",
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "GET HTTP 200"
+      ]
+    },
+    {
+      "probe_id": "SP-37",
+      "outcome": "blocked",
+      "audit": [
+        "POST HTTP 409",
+        "GET HTTP 200",
+        "GET HTTP 404"
+      ]
+    },
+    {
+      "probe_id": "SP-39",
+      "outcome": "blocked",
+      "audit": [
+        "GET HTTP 200",
+        "GET HTTP 200",
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "GET HTTP 200",
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "POST HTTP 200",
+        "POST HTTP 200",
+        "GET HTTP 200",
+        "GET HTTP 200"
+      ]
+    },
+    {
+      "probe_id": "SP-47",
+      "scope": "standalone bank persistence",
+      "outcome": "not_blocked",
+      "findings": [
+        {
+          "recipient": "bank_a",
+          "signature_and_receipts_verified": true,
+          "plaintext_attachments": 20
+        },
+        {
+          "recipient": "bank_b",
+          "signature_and_receipts_verified": true,
+          "plaintext_attachments": 10
+        }
+      ]
+    }
+  ]
+}

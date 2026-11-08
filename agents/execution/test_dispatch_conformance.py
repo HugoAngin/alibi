@@ -115,14 +115,12 @@ class Refusals(Base):
     def test_c1_refused(self):
         self.c1()
 
-    @unittest.expectedFailure
     def test_c2_refused(self):
-        """S1 FINDING: after Maya removes an item, the old approval still signs the pre-edit body."""
+        """Fixed in 41ff999: an edited review invalidates the earlier approval."""
         self.c2()
 
-    @unittest.expectedFailure
     def test_removed_item_never_reaches_the_bank(self):
-        """S1 FINDING (consequence of C2): the old approval signs a package still holding rfd_2001."""
+        """Fixed in 41ff999: the removed refund never reaches the bank."""
         import json
 
         from agents.lead.api import build_review
@@ -134,9 +132,8 @@ class Refusals(Base):
             return  # refused: fine
         self.assertNotIn("rfd_2001", json.dumps(pkg.to_json_dict()))
 
-    @unittest.expectedFailure
     def test_c6_refused(self):
-        """S1 FINDING: building a new review does not supersede the old draft, so it can still be approved."""
+        """Fixed in 41ff999: a superseded draft cannot be approved."""
         self.c6()
 
     def test_c7_refused(self):
@@ -155,11 +152,9 @@ class CodesAndReasons(Base):
     def test_c1_code_reason(self):
         self.code_reason(self.c1(), "approval_missing")
 
-    @unittest.expectedFailure
     def test_c2_code_reason(self):
         self.code_reason(self.c2(), "approval_digest_mismatch")
 
-    @unittest.expectedFailure
     def test_c6_code_reason(self):
         self.code_reason(self.c6(), "approval_digest_not_current")
 

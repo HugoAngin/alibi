@@ -31,6 +31,8 @@ Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP st
 
 For native bank checks SP-25 to SP-32, issue a real Bank A request and approve and dispatch a public case package that includes a full issuer-signed record. Put its ID in `fixtures.native_verifier_package_id` to select the native handlers. Supply the matching throwaway package and record signing key paths as `fixtures.native_verifier_package_pem` and `fixtures.native_verifier_record_pem`, outside Git. Configure `bank_a` and `bank_b` tokens and a disposable loopback `bank` origin. A second bank service can be selected with `fixtures.native_verifier_service` if it handles both recipient identities. The default routes are `/deliver`, `/inbox` and `/packages/{package_id}`; override them as `native_verifier_deliver`, `native_verifier_inbox` and `native_verifier_package` if the runbook uses a prefix. These checks write signed synthetic variants and rejected receipts. Run them on an isolated probe inbox, away from demo and sealed case state.
 
+For consent probes against the native bank, set `fixtures.consent_bank_service` to the service key containing that bank origin. The default inbox, package view and raw envelope routes are `/inbox`, `/packages/{package_id}` and `/packages/{package_id}/raw`. A successful dispatch control checks the approval against the signed body's digest and the dispatch receipt against the signed envelope's separate digest. Leave this fixture unset when using the legacy app-hosted bank view.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash

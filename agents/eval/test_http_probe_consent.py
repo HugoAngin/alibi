@@ -6,7 +6,8 @@ import httpx
 import pytest
 
 from agents.eval import api, http_probe_runtime as runtime
-from agents.eval.http_probe_consent import HANDLERS
+from agents.eval.http_probe_consent import HANDLERS, _check_delivery
+from alibi.core import canon
 
 
 DIGEST = "a" * 64
@@ -98,6 +99,44 @@ def test_changed_body_needs_fresh_approval_and_matching_delivery_digest(run, rec
     assert result["outcome"] == outcome
     assert len(approvals) == 2 and dispatches == 2
     assert DIGEST.encode() in approvals[0] and EDITED_DIGEST.encode() in approvals[1]
+
+
+@pytest.mark.parametrize("swapped", [False, True])
+def test_native_dispatch_checks_the_approved_body_and_bank_receipt_separately(monkeypatch, swapped):
+    body = {"audience": "bank_a", "claims": []}
+    package = {"package_id": "package-a", "body": body, "body_sha256": canon.digest(body)}
+    receipt = {"accepted": True, "receipt_id": "receipt-a", "package_id": "package-a",
+               "package_sha256": canon.digest(package), "recipient": "bank_a"}
+    holder = ok({"package_id": "package-a", "receipt": {
+        "receipt_id": "receipt-a", "status": "accepted",
+        "package_digest": canon.digest(body if swapped else package),
+    }})
+
+    def respond(request):
+        assert request.url.host == "bank.invalid"
+        assert request.headers["Authorization"] == "Bearer test-bank"
+        if request.url.path == "/packages/package-a":
+            return ok({"status": "verified", "authentication": {"valid": True}, "receipt": receipt})
+        assert request.url.path == "/packages/package-a/raw"
+        return ok(package)
+
+    client = httpx.Client
+    monkeypatch.setattr(runtime.httpx, "Client", lambda **kw: client(
+        transport=httpx.MockTransport(respond), **kw,
+    ))
+    session = runtime.ProbeSession(
+        {"bank": "http://bank.invalid", "fixtures": {"consent_bank_service": "bank"}},
+        {"bank_a": "test-bank"},
+    )
+    try:
+        if swapped:
+            with pytest.raises(runtime.ProbeUnavailable, match="receipt did not agree"):
+                _check_delivery(session, holder, "bank_a", canon.digest(body))
+        else:
+            package_id, delivered = _check_delivery(session, holder, "bank_a", canon.digest(body))
+            assert package_id == "package-a" and delivered["package"] == package
+    finally:
+        session.close()
 
 
 def test_race_sends_two_concurrent_requests_and_requires_ordered_audit(run):

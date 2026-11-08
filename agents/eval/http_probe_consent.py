@@ -20,7 +20,8 @@ Outcome contract (one per handler, mapped to the runtime constants):
                       and generic router 404s are never counted as a refusal.
 
 Config is passed to ``attempt`` as ``base_urls`` (service origins plus ``fixtures`` and
-``routes`` sub-dicts) and ``tokens`` (actor -> bearer). Console traffic uses ``app``.
+``routes`` sub-dicts) and ``tokens`` (actor -> bearer). Holder traffic uses ``app``.
+Use ``fixtures.consent_bank_service`` for the native bank inbox and package routes.
 Corrections use ``fixtures.merchant_correction_service`` when set, otherwise ``app``.
 Use a fresh synthetic store per attempt so approvals and deliveries never cross probes.
 
@@ -78,9 +79,11 @@ from agents.eval.http_probe_runtime import (
     ProbeSession,
     ProbeUnavailable,
 )
+from alibi.core import canon
 
 APP = "app"
 HOLDER, BANK_A, BANK_B, MERCHANT = "holder", "bank_a", "bank_b", "merchant"
+JSON_HEADERS = {"Accept": "application/json"}
 
 # Documented S4 route templates (overridable by config key; see module docstring).
 RUN = "/requests/{request_id}/run"
@@ -100,11 +103,13 @@ def _json(response) -> dict:
 def _run_investigation(session: ProbeSession, request_id: str) -> None:
     session.require_success(session.http(
         "POST", APP, session.route("run", RUN, request_id=request_id), HOLDER,
+        headers=JSON_HEADERS,
     ))
 
 
 def _review(session: ProbeSession, request_id: str):
-    resp = session.http("GET", APP, session.route("review", REVIEW, request_id=request_id), HOLDER)
+    resp = session.http("GET", APP, session.route("review", REVIEW, request_id=request_id), HOLDER,
+                        headers=JSON_HEADERS)
     session.require_success(resp)
     return resp
 
@@ -127,13 +132,14 @@ def _approve(session: ProbeSession, request_id: str, digest: str, audience: str,
     return session.http(
         "POST", APP, session.route("approve", APPROVE, request_id=request_id), HOLDER,
         data={"digest": digest, "audience": audience, "policy_version": policy_version},
+        headers=JSON_HEADERS,
     )
 
 
 def _dispatch(session: ProbeSession, request_id: str, **fields):
     return session.http(
         "POST", APP, session.route("dispatch", DISPATCH, request_id=request_id), HOLDER,
-        data=fields or None,
+        data=fields or None, headers=JSON_HEADERS,
     )
 
 
@@ -142,14 +148,25 @@ def _correct_source(session: ProbeSession, path: str, event: dict):
     return session.http("POST", service, path, MERCHANT, json=event)
 
 
+def _bank_actor(session: ProbeSession, recipient: str) -> str:
+    return BANK_B if recipient == session.fixtures.get("recipient_bank_b", BANK_B) else BANK_A
+
+
+def _inbox_target(session: ProbeSession, recipient: str) -> tuple[str, str]:
+    service = session.fixtures.get("consent_bank_service")
+    default = "/inbox" if service else INBOX
+    return service or APP, session.route("inbox", default, recipient=recipient)
+
+
 def _bank_inbox(session: ProbeSession, recipient: str):
-    actor = BANK_B if recipient == session.fixtures.get("recipient_bank_b", BANK_B) else BANK_A
-    return session.http("GET", APP, session.route("inbox", INBOX, recipient=recipient), actor)
+    service, path = _inbox_target(session, recipient)
+    return session.http("GET", service, path, _bank_actor(session, recipient), headers=JSON_HEADERS)
 
 
 def _bank_package(session: ProbeSession, recipient: str, package_id: str, actor: str = BANK_A):
     resp = session.http(
         "GET", APP, session.route("package", PACKAGE, recipient=recipient, package_id=package_id), actor,
+        headers=JSON_HEADERS,
     )
     session.require_success(resp)
     payload = _json(resp)
@@ -160,8 +177,40 @@ def _bank_package(session: ProbeSession, recipient: str, package_id: str, actor:
     return payload
 
 
+def _native_delivery(session: ProbeSession, service: str, recipient: str, receipt: dict,
+                     approved_digest: str) -> dict:
+    package_id = receipt["package_id"]
+    actor = _bank_actor(session, recipient)
+    path = session.route("package", "/packages/{package_id}", recipient=recipient, package_id=package_id)
+    response = session.http("GET", service, path, actor, headers=JSON_HEADERS)
+    session.require_success(response)
+    view = _json(response)
+    bank_receipt = view.get("receipt") or {}
+    if (view.get("status") != "verified" or view.get("authentication", {}).get("valid") is not True
+            or bank_receipt.get("accepted") is not True
+            or bank_receipt.get("package_id") != package_id
+            or bank_receipt.get("recipient") != recipient
+            or not receipt.get("receipt_id")
+            or bank_receipt.get("receipt_id") != receipt.get("receipt_id")
+            or receipt.get("status") != "accepted"):
+        raise ProbeUnavailable("native bank did not show the accepted dispatch receipt")
+    raw_path = session.route("package_raw", path + "/raw", recipient=recipient, package_id=package_id)
+    raw_response = session.http("GET", service, raw_path, actor, headers=JSON_HEADERS)
+    session.require_success(raw_response)
+    package = _json(raw_response)
+    body = package.get("body")
+    if (package.get("package_id") != package_id or not isinstance(body, dict)
+            or body.get("audience") != recipient or bank_receipt.get("package_sha256") != canon.digest(package)
+            or _digest_hex(receipt.get("package_digest")) != bank_receipt.get("package_sha256")
+            or package.get("body_sha256") != canon.digest(body)
+            or _digest_hex(approved_digest) != package.get("body_sha256")):
+        raise ProbeUnavailable("approved body, signed package and bank receipt did not agree")
+    return {**view, "package": package, "gaps": [claim["gap"] for claim in body.get("claims", [])
+                                                if claim.get("gap")]}
+
+
 def _receipt(response) -> dict:
-    """Flatten a dispatch result to ``{package_id, package_digest, status}``."""
+    """Extract the receipt identity, digest and status from the dispatch result."""
     payload = _json(response)
     level = payload.get("dispatch", payload)
     level = level if isinstance(level, dict) else {}
@@ -170,6 +219,7 @@ def _receipt(response) -> dict:
     if level.get("package_id"):
         out["package_id"] = level["package_id"]
     out.setdefault("package_id", receipt.get("package_id"))
+    out["receipt_id"] = receipt.get("receipt_id") or level.get("receipt_id")
     out["package_digest"] = receipt.get("package_digest") or level.get("package_digest")
     out["status"] = receipt.get("status") or level.get("status")
     return out
@@ -213,6 +263,14 @@ def _inbox_rows(response) -> list[dict]:
 def _attachments_for(payload: dict, record_id: str) -> list:
     """Every attachment-like dict in a package that cites ``record_id``."""
     found = []
+    native_body = payload.get("package", {}).get("body", {})
+    source_checks = {source.get("attachment_id"): source for source in payload.get("sources", [])
+                     if isinstance(source, dict)}
+    for item in native_body.get("attachments", []):
+        ref = item.get("ref", {})
+        if ref.get("ref_type") == "record" and ref.get("ref_id") == record_id:
+            attestation = source_checks.get(item.get("attachment_id"), {}).get("attestation")
+            found.append({"attestation": attestation, "redacted": item.get("form") == "redacted_extract"})
     for key in ("attachments", "source_trust", "evidence"):
         for item in payload.get(key, []) or []:
             if isinstance(item, dict) and item.get("record_id") == record_id:
@@ -236,6 +294,9 @@ def _check_delivery(session: ProbeSession, response, recipient: str, expect_dige
     session.require_success(response)
     receipt = _receipt(response)
     package_id = receipt.get("package_id")
+    service = session.fixtures.get("consent_bank_service")
+    if service and package_id:
+        return package_id, _native_delivery(session, service, recipient, receipt, expect_digest)
     if not package_id or not _same_digest(receipt.get("package_digest"), expect_digest):
         raise ProbeUnavailable("dispatch did not return the package ID and matching receipt digest")
     return package_id, _bank_package(session, recipient, package_id)
@@ -260,7 +321,7 @@ def _export_views(session: ProbeSession, request_id: str, recipient: str, packag
     for name in route_names:
         try:
             path = session.route(name, request_id=request_id, recipient=recipient, package_id=package_id)
-            response = session.http("GET", APP, path, BANK_A)
+            response = session.http("GET", APP, path, BANK_A, headers=JSON_HEADERS)
             session.require_success(response)
             if _contains_value(response.text, denied) or _contains_value(
                 response.headers.get("content-disposition", ""), denied
@@ -310,7 +371,7 @@ def sp02(session: ProbeSession):
     action = _removable_action(review)
     if action is None:
         raise ProbeUnavailable("no optional included item to remove")
-    session.require_success(session.http("POST", APP, action, HOLDER))
+    session.require_success(session.http("POST", APP, action, HOLDER, headers=JSON_HEADERS))
     _, d2 = _current_digest(session, rid)
     if _same_digest(d1, d2):
         raise ProbeUnavailable("removing the item did not change the body digest")
@@ -679,14 +740,14 @@ def sp20(session: ProbeSession):
         return NOT_BLOCKED
 
     query = f"?recipient={quote(recipient_b, safe='')}&audience={quote(recipient_b, safe='')}"
-    path = session.route("inbox", INBOX, recipient=recipient_a)
+    service, path = _inbox_target(session, recipient_a)
     attempts = (
         (path + query, None),
         (path, {"X-Alibi-Recipient": recipient_b, "X-Alibi-Audience": recipient_b}),
     )
     outcomes = []
     for target, headers in attempts:
-        spoofed = session.http("GET", APP, target, BANK_A, headers=headers)
+        spoofed = session.http("GET", service, target, BANK_A, headers={**JSON_HEADERS, **(headers or {})})
         if bank_b_package in spoofed.text:
             return NOT_BLOCKED
         if not 200 <= spoofed.status_code < 300:

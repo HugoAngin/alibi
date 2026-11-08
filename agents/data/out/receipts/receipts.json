@@ -1,0 +1,286 @@
+{
+  "label": "SYNTHETIC - labelled test images, not real receipts",
+  "count": 10,
+  "currency_note": "amounts are integer pence; negative item amounts are deductions",
+  "receipts": [
+    {
+      "file": "rcpt-01_order_confirmation.png",
+      "id": "rcpt-01",
+      "kind": "order_confirmation",
+      "layout": "web_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-05",
+      "reference": "MM-48001",
+      "currency": "GBP",
+      "total_minor": 30000,
+      "items": [
+        {
+          "description": "Vintage denim jacket",
+          "amount_minor": 30000
+        }
+      ],
+      "extra_fields": {
+        "seller_fee_minor": 750,
+        "seller": "maya-001",
+        "status": "Completed"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-001"
+      },
+      "notes": "Sale confirmation as the seller sees it. The order number is the platform's display reference; the case record ID is in links."
+    },
+    {
+      "file": "rcpt-02_order_confirmation.png",
+      "id": "rcpt-02",
+      "kind": "order_confirmation",
+      "layout": "web_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-06",
+      "reference": "MM-48017",
+      "currency": "GBP",
+      "total_minor": 25000,
+      "items": [
+        {
+          "description": "Wool coat, size 10",
+          "amount_minor": 25000
+        }
+      ],
+      "extra_fields": {
+        "seller_fee_minor": 625,
+        "seller": "maya-001",
+        "status": "Completed"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-003"
+      },
+      "notes": "Sale confirmation as the seller sees it. The order number is the platform's display reference; the case record ID is in links."
+    },
+    {
+      "file": "rcpt-03_order_confirmation.png",
+      "id": "rcpt-03",
+      "kind": "order_confirmation",
+      "layout": "web_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-07",
+      "reference": "MM-48042",
+      "currency": "GBP",
+      "total_minor": 40000,
+      "items": [
+        {
+          "description": "Leather boots and two scarves",
+          "amount_minor": 40000
+        }
+      ],
+      "extra_fields": {
+        "seller_fee_minor": 1000,
+        "seller": "maya-001",
+        "status": "Completed"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-006"
+      },
+      "notes": "Sale confirmation as the seller sees it. The order number is the platform's display reference; the case record ID is in links."
+    },
+    {
+      "file": "rcpt-04_order_confirmation.png",
+      "id": "rcpt-04",
+      "kind": "order_confirmation",
+      "layout": "web_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-11",
+      "reference": "MM-48107",
+      "currency": "GBP",
+      "total_minor": 45000,
+      "items": [
+        {
+          "description": "Bundle: 5 summer dresses",
+          "amount_minor": 45000
+        }
+      ],
+      "extra_fields": {
+        "seller_fee_minor": 1125,
+        "seller": "maya-001",
+        "status": "Completed"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-013"
+      },
+      "notes": "Sale confirmation as the seller sees it. The order number is the platform's display reference; the case record ID is in links."
+    },
+    {
+      "file": "rcpt-05_refund_confirmation.png",
+      "id": "rcpt-05",
+      "kind": "refund_confirmation",
+      "layout": "web_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-07",
+      "reference": "MM-48017-R1",
+      "currency": "GBP",
+      "total_minor": 10000,
+      "items": [
+        {
+          "description": "Partial refund: Wool coat, size 10 (button missing)",
+          "amount_minor": 10000
+        }
+      ],
+      "extra_fields": {
+        "original_order": "MM-48017"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-005"
+      },
+      "notes": "Refund against the sale rec-0001-003."
+    },
+    {
+      "file": "rcpt-06_payout_confirmation.png",
+      "id": "rcpt-06",
+      "kind": "payout_confirmation",
+      "layout": "app_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-27",
+      "reference": "PO-0001-01",
+      "currency": "GBP",
+      "total_minor": 216000,
+      "items": [
+        {
+          "description": "Sales",
+          "amount_minor": 240000
+        },
+        {
+          "description": "Refunds",
+          "amount_minor": -18000
+        },
+        {
+          "description": "Fees",
+          "amount_minor": -6000
+        }
+      ],
+      "extra_fields": {
+        "status": "Paid to bank",
+        "settled_at": "2026-10-27T16:00:00Z",
+        "bank_account": "ending 00"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-021"
+      },
+      "notes": "Holder's screenshot of the payout that settles case 1's credit. As an import it is self_supplied; the issuer-verified record is only available by lookup."
+    },
+    {
+      "file": "rcpt-07_payout_confirmation.png",
+      "id": "rcpt-07",
+      "kind": "payout_confirmation",
+      "layout": "app_screenshot",
+      "distortion": "none",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-26",
+      "reference": "PO-0002-01",
+      "currency": "GBP",
+      "total_minor": 216000,
+      "items": [
+        {
+          "description": "Withdrawal to bank",
+          "amount_minor": 216000
+        }
+      ],
+      "extra_fields": {
+        "status": "Processing",
+        "settled_at": null,
+        "bank_account": "ending 00"
+      },
+      "links": {
+        "case_number": 2,
+        "record_id": "rec-0002-021"
+      },
+      "notes": "Case 2's payout while still processing. It does not show money reaching the bank."
+    },
+    {
+      "file": "rcpt-08_till_receipt.png",
+      "id": "rcpt-08",
+      "kind": "till_receipt",
+      "layout": "thermal_print",
+      "distortion": "faded",
+      "issuer": "Synthetic Opticians",
+      "document_date": "2026-10-14",
+      "reference": "TILL 0412-7781",
+      "currency": "GBP",
+      "total_minor": 4500,
+      "items": [
+        {
+          "description": "Prescription eyewear",
+          "amount_minor": 4500
+        }
+      ],
+      "extra_fields": {
+        "payment": "Card ending 00"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-019"
+      },
+      "notes": "SENSITIVE: health-category purchase. It is a forbidden item in case 1 and must never be disclosed, even if imported."
+    },
+    {
+      "file": "rcpt-09_handwritten_receipt.png",
+      "id": "rcpt-09",
+      "kind": "handwritten_receipt",
+      "layout": "handwritten",
+      "distortion": "lined_paper",
+      "issuer": "Private buyer (handwritten)",
+      "document_date": "2026-10-03",
+      "reference": null,
+      "currency": "GBP",
+      "total_minor": 4500,
+      "items": [
+        {
+          "description": "Denim jacket (private sale)",
+          "amount_minor": 4500
+        }
+      ],
+      "extra_fields": {
+        "payer": "J. Smith",
+        "payment": "cash"
+      },
+      "links": null,
+      "notes": "A cash private sale with no platform record. It supports nothing in any case and must stay self_supplied and unlinked."
+    },
+    {
+      "file": "rcpt-10_payout_confirmation.png",
+      "id": "rcpt-10",
+      "kind": "payout_confirmation",
+      "layout": "printed_letter",
+      "distortion": "photo_at_angle",
+      "issuer": "Mock Marketplace",
+      "document_date": "2026-10-27",
+      "reference": "PO-0001-01",
+      "currency": "GBP",
+      "total_minor": 216000,
+      "items": [
+        {
+          "description": "Withdrawal PO-0001-01",
+          "amount_minor": 216000
+        }
+      ],
+      "extra_fields": {
+        "status": "Sent to your bank",
+        "bank_account": "ending 00"
+      },
+      "links": {
+        "case_number": 1,
+        "record_id": "rec-0001-021"
+      },
+      "notes": "The same payout as rcpt-06, printed and photographed on a desk at an angle."
+    }
+  ]
+}

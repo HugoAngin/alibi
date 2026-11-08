@@ -20,7 +20,8 @@ Eval need 00:45Z: SP-25..SP-32 verifier probes. Plan `out/verifier_probes.json` 
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
 
 ## Next
-- When S2 bank routes and the S5 attempt contract land: HTTP runner for SP-25..32 reusing `_build` bytes, observations to a separate file and split.
+- Eval need 00:59Z: HTTP handlers done in `verifier_http.py`, exported as `api.verifier_http_handlers()` (probe_id -> callable(ctx) -> blocked | not_blocked | not_run). ctx contract in the module docstring: `route(name, **p)`, `http(method, path, recipient=, data=, headers=)`, `keys` (bank's pinned alibi + merchant demo keys), optional `now()`, `note()`. Refusal probes need a valid baseline accepted first; 404/405/5xx/transport/missing prereq = not_run. Tested against fake banks (correct, accept-all, refuse-all, down, 404, no routes/keys).
+- When S2 routes land: check the delivery path and body schema match; S2 may use a different package schema than eval's verifier.
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs

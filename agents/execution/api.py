@@ -89,3 +89,13 @@ def verifier_probe_plan() -> list[dict]:
     from agents.execution.verifier_probes import score_plan
 
     return score_plan()
+
+
+def verifier_http_handlers() -> dict:
+    """SP-25..SP-32 HTTP handlers: probe_id -> callable(ctx) -> "blocked" | "not_blocked" | "not_run".
+
+    The ctx contract is documented in agents/execution/verifier_http.py.
+    """
+    from agents.execution.verifier_http import handlers
+
+    return handlers()

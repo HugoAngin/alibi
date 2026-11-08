@@ -1,10 +1,19 @@
 // Cloudflare Worker for the Alibi site. `main` and the static-assets binding
 // are filled in by @astrojs/cloudflare at build time. Deploy with
 // `pnpm --filter @alibi/site deploy` once a Cloudflare account is configured.
+//
+// Secrets are never in this file: set CLERK_SECRET_KEY with
+// `pnpm exec wrangler secret put CLERK_SECRET_KEY` (web/docs/hosting.md).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "alibi-site",
   "compatibility_date": "2026-04-15",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "vars": {
+    // The live backend on Modal (agents/research/deploy/modal_app.py). Called
+    // server-side only; the screens fall back to labelled case 1 data while
+    // its services are not running.
+    "ALIBI_API_ORIGIN": "https://eliohd--alibi-backend-backend.us-east.modal.run",
+  },
 }

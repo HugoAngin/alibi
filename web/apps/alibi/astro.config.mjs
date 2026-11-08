@@ -22,7 +22,9 @@ export default defineConfig({
     schema: {
       // The Python backend (web/docs/backend-integration.md). Unset means
       // "not connected": screens show the built-in case 1 data and say so.
-      ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'public', optional: true }),
+      // `secret` access makes Astro read it at runtime (the Worker's vars),
+      // instead of inlining whatever the build machine had.
+      ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
   // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.

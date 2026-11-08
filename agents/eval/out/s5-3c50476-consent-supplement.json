@@ -1,0 +1,55 @@
+{
+  "candidate_commit": "3c5047639aade89f1916163ae2ad3a00050d1143",
+  "scope": "Supplemental native HTTP approval checks on separate disposable public Case 1 stacks.",
+  "second_look_probe_receipt_changed": false,
+  "observations": {
+    "SP-04": {
+      "outcome": "blocked",
+      "reason": "",
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        409,
+        200
+      ],
+      "refusal_codes": [
+        "approval_missing"
+      ],
+      "bank_packages": 0
+    },
+    "SP-05": {
+      "outcome": "blocked",
+      "reason": "",
+      "statuses": [
+        200,
+        409,
+        200
+      ],
+      "refusal_codes": [
+        "approval_expired"
+      ],
+      "bank_packages": 0
+    },
+    "SP-07": {
+      "outcome": "not_run",
+      "reason": "",
+      "statuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        409
+      ],
+      "refusal_codes": [
+        "approval_digest_mismatch"
+      ],
+      "bank_packages": 0,
+      "policy_changed": true
+    }
+  }
+}

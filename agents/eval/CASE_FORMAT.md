@@ -107,6 +107,28 @@ window while its RFC remains open, supplied as `expired_request`. SP-09 derives
 the conflicting retry from the stored signed envelope and sends it to the
 disposable bank's `/deliver` route unless overridden by an explicit fixture.
 
+For the supplemental approval checks on public Case 1, start each stack at
+`2026-11-05T09:00:00Z` and issue the canonical Bank A request before setting up
+the probe. Read `policy_version` from the holder review after investigation.
+
+- SP-04. Create a custom RFC through the bank's `POST /rfc` with the same
+  transaction scope as the canonical Bank A request, a new `request_id`, and
+  the canonical ID as `parent_request_id`. Require holder forwarding to return
+  `accepted`, then supply the new ID as `rfc_followup`.
+- SP-05. Approve the Bank A draft and use `alibi.demo advance` to move the bank
+  and holder clock to `2026-11-05T09:16:00Z`. Supply the still-open RFC ID as
+  `expired_request`. Pass the disposable holder credential to the driver in
+  `ALIBI_HOLDER_TOKEN` so it can sync the feed.
+- SP-07. Prepare a pending rule via the holder's `POST /rules/interpret` with
+  `Never share item descriptions.` Set `policy_bump` to that rule's
+  `/rules/{rule_id}/confirm` and `policy_bump_payload` to an empty object. The
+  probe approves the current draft before it confirms the rule. Verify the
+  policy version changes, the response code is `policy_version_changed`, and
+  the bank's inbox remains empty.
+
+Run the three configured probes with `run_probes --ids SP-04 SP-05 SP-07`.
+Supplemental results stay separate from any previously bound probe receipt.
+
 For a fresh S4 rehearsal stack, the optional `ingest_probe_profile` module
 derives the SP-39 follow-up and checks the active-source readback control for
 SP-33 through SP-37. It checks the app is serving the selected public case.

@@ -31,7 +31,15 @@ from typing import Any, Iterable, Optional
 from pydantic import BaseModel, ValidationError
 
 from alibi.agents.models import DetectiveOutput, MatcherOutput, parse_output
-from alibi.llm.client import CallBudget, GeminiClient, LLMError, MissingApiKey, load_api_key
+from alibi.llm import config
+from alibi.llm.client import (
+    CallBudget,
+    GeminiClient,
+    LLMError,
+    MissingApiKey,
+    RawResponse,
+    load_api_key,
+)
 from alibi.llm.prompts import load_prompt
 
 DEFAULT_ROLES: tuple[str, ...] = ("matcher", "detective")
@@ -39,6 +47,52 @@ DEFAULT_ROLES: tuple[str, ...] = ("matcher", "detective")
 PROBE_SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]}
 PROBE_SYSTEM = "Answer with JSON only."
 PROBE_USER = "Set ok to true."
+
+
+# --------------------------------------------------------------------------- transport
+
+
+def is_gemma(model: str) -> bool:
+    return "gemma" in (model or "").lower()
+
+
+def thinking_aware_transport(api_key: Optional[str] = None, genai_client: Any = None):
+    """The team transport, except that Gemma models get no ``thinking_config``.
+
+    Confirmed live on 2026-11-08: ``gemma-4-26b-a4b-it`` answers structured output but returns
+    400 "Thinking level is not supported for this model" when a thinking level is sent, which
+    the default ``alibi.llm.client.gemini_transport`` always does. Gemini models keep their
+    configured level. ``genai_client`` can be injected for tests.
+    """
+    from google.genai import types
+
+    if genai_client is None:
+        from google import genai
+        genai_client = genai.Client(api_key=api_key or load_api_key())
+    levels = {
+        "minimal": types.ThinkingLevel.MINIMAL,
+        "low": types.ThinkingLevel.LOW,
+        "medium": types.ThinkingLevel.MEDIUM,
+        "high": types.ThinkingLevel.HIGH,
+    }
+
+    def call(model: str, system: str, user: str, json_schema: dict, thinking: str) -> RawResponse:
+        cfg = types.GenerateContentConfig(
+            system_instruction=system or None,
+            response_mime_type="application/json",
+            response_json_schema=json_schema,
+            thinking_config=None if is_gemma(model)
+            else types.ThinkingConfig(thinking_level=levels[thinking]),
+        )
+        resp = genai_client.models.generate_content(model=model, contents=user, config=cfg)
+        return RawResponse(text=resp.text, usage_metadata=resp.usage_metadata)
+
+    return call
+
+
+def live_client(api_key: Optional[str] = None, **kwargs: Any) -> GeminiClient:
+    """A ``GeminiClient`` that can talk to Gemini and Gemma models alike (see above)."""
+    return GeminiClient(transport=thinking_aware_transport(api_key), **kwargs)
 
 
 # --------------------------------------------------------------------------- model discovery
@@ -179,7 +233,7 @@ def probe() -> int:
     chosen = models[0]
     report["chosen"] = chosen
     try:
-        client = GeminiClient(api_key=key, use_cache=False)
+        client = live_client(key, use_cache=False)
         result = client.generate(chosen, PROBE_SYSTEM, PROBE_USER, PROBE_SCHEMA,
                                  CallBudget(1, name="gemma-probe"))
         report["structured_output_ok"] = result.data.get("ok") is True

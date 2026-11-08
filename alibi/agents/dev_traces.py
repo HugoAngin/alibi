@@ -385,8 +385,9 @@ class _Session:
         self.gemma_probed = False
 
     def live(self) -> Any:
-        from alibi.llm.client import GeminiClient
-        return GeminiClient(use_cache=False)
+        # Gemma second opinions share this client, and Gemma rejects thinking_config.
+        from alibi.agents.gemma import live_client
+        return live_client(use_cache=False)
 
     def client(self, variant: str) -> Any:
         from alibi.agents.replay import make_client

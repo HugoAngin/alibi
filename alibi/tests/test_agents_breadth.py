@@ -319,3 +319,45 @@ def test_second_opinion_unavailable_or_invalid_never_trusts():
 def test_compare_outputs_unknown_role():
     out = DetectiveOutput()
     assert gemma.compare_outputs("curator", out, out) == (False, "no comparison rule for role 'curator'")
+
+
+# --------------------------------------------------------------------------- gemma transport
+
+
+class _FakeGenai:
+    """Records the config each generate_content call received."""
+
+    def __init__(self):
+        self.calls = []
+        self.models = self
+
+    def generate_content(self, *, model, contents, config):
+        self.calls.append((model, config))
+
+        class _Resp:
+            text = '{"ok": true}'
+            usage_metadata = None
+
+        return _Resp()
+
+
+def test_thinking_aware_transport_omits_thinking_for_gemma_only():
+    fake = _FakeGenai()
+    call = gemma.thinking_aware_transport(api_key="unused", genai_client=fake)
+    call("gemma-4-26b-a4b-it", "sys", "user", gemma.PROBE_SCHEMA, "low")
+    call("gemini-3.8-flash", "sys", "user", gemma.PROBE_SCHEMA, "low")
+    (gemma_model, gemma_cfg), (flash_model, flash_cfg) = fake.calls
+    assert gemma.is_gemma(gemma_model) and not gemma.is_gemma(flash_model)
+    assert gemma_cfg.thinking_config is None
+    assert flash_cfg.thinking_config is not None
+    assert gemma_cfg.response_json_schema == gemma.PROBE_SCHEMA
+
+
+def test_live_client_uses_the_thinking_aware_transport(tmp_path):
+    fake = _FakeGenai()
+    client = gemma.GeminiClient(transport=gemma.thinking_aware_transport("k", genai_client=fake),
+                                cache_dir=tmp_path / "cache", log_path=tmp_path / "log.jsonl",
+                                budget=CallBudget(5), use_cache=False)
+    result = client.generate("gemma-4-31b-it", "s", "u", gemma.PROBE_SCHEMA, CallBudget(1))
+    assert result.data == {"ok": True}
+    assert fake.calls[0][1].thinking_config is None

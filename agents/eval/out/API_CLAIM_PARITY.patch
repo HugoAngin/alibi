@@ -1,0 +1,306 @@
+diff --git a/alibi/api.py b/alibi/api.py
+index c08c3e1..9b826ec 100644
+--- a/alibi/api.py
++++ b/alibi/api.py
+@@ -581,7 +581,7 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
+                       holder_claim: Any = None) -> InvestigationResult:
+     """Investigate a stored request and save its links, claims and trace.
+ 
+-    ``holder_claim`` (rules mode) is the holder's own untrusted account of a credit,
++    ``holder_claim`` (rules and one-pass modes) is the holder's own untrusted account of a credit,
+     ``{txn_id, stated_minor}``; it is checked against the records and never used as evidence.
+ 
+     ``request`` is a request_id together with ``audience`` (the bank that sent it; without it a
+@@ -622,7 +622,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
+             from alibi.baselines import one_pass
+             result = one_pass.run_investigation(
+                 store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
+-                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now)
++                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now,
++                holder_claim=holder_claim)
+             actor = one_pass.ACTOR
+         answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
+                             for claim in result.claims)
+diff --git a/alibi/baselines/one_pass.py b/alibi/baselines/one_pass.py
+index b92c6a8..8ba7089 100644
+--- a/alibi/baselines/one_pass.py
++++ b/alibi/baselines/one_pass.py
+@@ -182,13 +182,15 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
+                       gateway: Any | None = None, settlement_lookup: Callable | None = None,
+                       txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
+                       registry: Any | None = None, now: datetime | None = None,
+-                      model: str | None = None) -> InvestigationResult:
++                      model: str | None = None, holder_claim: Any = None) -> InvestigationResult:
+     """Run the one-pass baseline for a stored request and return the saved result
+     (``mode="single_call"``). Same arguments as ``alibi.api.run_investigation`` plus
+-    ``client`` (``GeminiClient`` or ``FakeClient``) and an optional ``model`` id."""
++    ``client`` (``GeminiClient`` or ``FakeClient``) and an optional ``model`` id;
++    ``holder_claim`` is the holder's untrusted account, as in ``run_one_pass``."""
+     return run_one_pass(store, request, client=client, gateway=gateway,
+                         settlement_lookup=settlement_lookup, txn_refresh=txn_refresh,
+-                        budget=budget, registry=registry, now=now, model=model).result
++                        budget=budget, registry=registry, now=now, model=model,
++                        holder_claim=holder_claim).result
+ 
+ 
+ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
+diff --git a/alibi/core/investigate_rules.py b/alibi/core/investigate_rules.py
+index b83fc83..1d40721 100644
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -389,6 +389,9 @@ class _Outcome:
+     components: list[EvidenceRecord] | None = None   # the linked payout's components, when read
+     payout: EvidenceRecord | None = None
+     settlement: EvidenceRecord | None = None
++    # (gap code, sentence) the breakdown reports when the source is established without the
++    # payout's component records (``_Run.source_only``).
++    breakdown_gap: tuple[str, str] | None = None
+ 
+ 
+ @dataclass
+@@ -584,9 +587,13 @@ class _Run:
+                      + " is not established from the available records.")
+         detail = ("The breakdown cannot be verified because the credit's source is not "
+                   f"established: {base.detail or base.rationale}")
++        gap = base.gap or GAP_SETTLEMENT_NOT_FOUND
++        if getattr(base, "breakdown_gap", None) is not None:
++            gap, missing = base.breakdown_gap
++            detail = f"The breakdown cannot be verified from records: {missing}"
+         return _Outcome(ClaimStatus.UNRESOLVED, statement, base.rationale,
+                         f"Breakdown follows the source of funds: {base.reason}",
+-                        gap=base.gap or GAP_SETTLEMENT_NOT_FOUND, detail=detail,
++                        gap=gap, detail=detail,
+                         evidence=list(base.evidence), calculation=base.calculation)
+ 
+     def credit_outcome(self, txn_id: str) -> _Outcome:
+@@ -821,6 +828,11 @@ class _Run:
+             return _Outcome(ClaimStatus.CONTRADICTED, statement + ".", " ".join(parts), reason,
+                             gap=code, detail=" ".join(filter(None, [gap, problem])), **base)
+         gaps = [_no_settlement_gap(payout, notes)] if settlement is None else []
++        if problem and problem_code == GAP_MISSING_CITED and settlement is not None and not own:
++            projected = self.source_only(txn, payout, settlement, statement, parts)
++            if projected is not None:
++                projected.breakdown_gap = (problem_code, " ".join(gaps + [problem]))
++                return projected
+         if problem:
+             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), problem,
+                             gap=problem_code, detail=" ".join(gaps + [problem]), **base)
+@@ -854,6 +866,50 @@ class _Run:
+         return _Outcome(status, statement + ".", " ".join(parts), reason, gap=code, detail=gap,
+                         facts=facts, **base)
+ 
++    def source_only(self, txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
++                    statement: str, parts: list[str]) -> _Outcome | None:
++        """The source of funds when the payout's component records are missing: supported only
++        from the issuer-verified payout and settlement themselves, when both are for exactly the
++        credit's amount and currency, the settlement was effective in time, and the credit
++        carries their reference with no competing one. No arithmetic over components is
++        claimed or disclosed; the breakdown stays unresolved (``breakdown_gap``). None when any
++        check fails, so the caller's unresolved answer stands."""
++        records = [payout] if settlement.record_id == payout.record_id else [payout, settlement]
++        if any(r.source_trust != SourceTrust.ISSUER_VERIFIED for r in records):
++            return None
++        if any((r.amount_pence, r.currency) != (txn.amount_pence, txn.currency) for r in records):
++            return None
++        try:
++            timing = reconcile.check_settlement_timing(settlement, txn, window=self.window)
++        except ReconcileError:
++            return None
++        if not timing.ok or timing.settlement_effective_at is None:
++            return None
++        tokens = reference_tokens(txn)
++        if _conflicting_refs(tokens, payout, settlement):
++            return None
++        named = sorted({r for r in (payout.payment_ref, settlement.payment_ref,
++                                    settlement.settlement_ref) if r and r.upper() in tokens})
++        if not named:
++            return None
++        ref = payout.payment_ref
++        settled = (f"settled (status {settlement.status}) before the credit was booked"
++                   if settlement.record_id == payout.record_id
++                   else f"settled as {settlement.record_id} before the credit was booked")
++        reason = (f"Settlement {settlement.ref().key()} is {settlement.status} by the booking, "
++                  f"is for exactly the credit's amount and the credit carries {', '.join(named)}; "
++                  "the payout's component records are incomplete, so no breakdown is claimed.")
++        self.note("note", reason=_clip(reason, 300), refs=[r.ref() for r in records],
++                  result={"projection": "source_only"})
++        return _Outcome(
++            ClaimStatus.SUPPORTED, f"{statement}, {settled}.",
++            " ".join([*parts, timing.reason or "", f"References: the credit carries "
++                      f"{', '.join(named)}, matching the payout and settlement."]).strip(),
++            reason, evidence=[txn.ref(), *(r.ref() for r in records)], payout=payout,
++            settlement=settlement,
++            facts={"payout_references": [ref] if ref else [],
++                   "settled_at": [format_utc(timing.settlement_effective_at)]})
++
+     def settlement_for(self, payout: EvidenceRecord, txn: BankTxn
+                        ) -> tuple[EvidenceRecord | None, str, list[str]]:
+         """Fixed retrieval: the settlement lookup for the payout's payment reference (reusing a
+diff --git a/alibi/tests/test_api_claim_parity.py b/alibi/tests/test_api_claim_parity.py
+new file mode 100644
+index 0000000..71052f3
+--- /dev/null
++++ b/alibi/tests/test_api_claim_parity.py
+@@ -0,0 +1,115 @@
++"""The public ``api.run_investigation`` forwards the holder's untrusted claim in the one-pass
++modes as it does in rules mode, and a validated payout and settlement establish the source of
++funds when a covered component record is missing, without claiming a breakdown."""
++from __future__ import annotations
++
++import pytest
++
++from agents.data import api as data_api
++from alibi import adapter, api
++from alibi.core.schemas import ClaimStatus
++from alibi.llm.fake import FakeClient
++
++RFC_A, TXN = "rfc-0001-01", "txn-0001-004"
++
++
++def _control() -> dict:
++    return data_api.without_gold(data_api.load_case(1))
++
++
++def _single_credit(number: int = 8) -> tuple[dict, str, str]:
++    """A public single-credit case that the offline one-pass engine can answer; its holder
++    claim is replaced by each test, so its gold expectation is never used."""
++    case = data_api.without_gold(data_api.load_case(number))
++    rfc = next(r for r in case["rfcs"] if len(r["txn_ids"]) == 1)
++    return case, rfc["request_id"], rfc["txn_ids"][0]
++
++
++def _through_api(api_mode, seen):
++    """Replace the adapter's dispatch with a direct ``api.run_investigation`` call on the same
++    seeded store, recording each result, so the API path itself is what answers."""
++    fake = _client()   # always offline: the adapter's rules mode passes no client
++
++    def run(world, mode, rfc, now, client):
++        common = dict(registry=world.registry, now=now, **world.connectors())
++        result = api.run_investigation(world.store, rfc.request_id, audience=rfc.audience,
++                                       mode=api_mode, client=fake,
++                                       holder_claim=world.case.get("holder_claim"), **common)
++        seen[rfc.request_id] = {c.question_id: c for c in result.claims}
++        return result, None
++    return run
++
++
++def _client():
++    return FakeClient({"*": {"claims": [], "disclosures": [], "rationale": "No proposal."}})
++
++
++@pytest.mark.parametrize("api_mode", ["one_pass", "single_call", "rules"])
++def test_api_forwards_the_untrusted_stated_breakdown(api_mode, tmp_path, monkeypatch):
++    seen: dict = {}
++    monkeypatch.setattr(adapter, "_run", _through_api(api_mode, seen))
++    case, request_id, txn_id = _single_credit()
++    case["holder_claim"] = None
++    adapter.run_case(case, "rules", root=tmp_path / "truth", client=_client())
++    truth = seen[request_id]["q.breakdown"]
++    assert truth.status == ClaimStatus.SUPPORTED
++    minor = dict(truth.facts["breakdown_minor"])
++    wrong = {"sales": minor["sales"] + 100, "refunds": minor["refunds"], "fees": minor["fees"],
++             "net": minor["net"]}
++
++    seen.clear()
++    case["holder_claim"] = {"txn_id": txn_id, "stated_minor": wrong}
++    adapter.run_case(case, "rules", root=tmp_path / "wrong", client=_client())
++    claim = seen[request_id]["q.breakdown"]
++    assert claim.status == ClaimStatus.CONTRADICTED
++    assert claim.facts == {"breakdown_minor": minor}
++    assert {r.key() for r in claim.evidence_refs} == {r.key() for r in truth.evidence_refs}
++    assert seen[request_id]["q.source_of_funds"].status == ClaimStatus.SUPPORTED
++
++    seen.clear()
++    case["holder_claim"] = {"txn_id": txn_id, "stated_minor": minor}
++    adapter.run_case(case, "rules", root=tmp_path / "same", client=_client())
++    assert seen[request_id]["q.breakdown"].status == ClaimStatus.SUPPORTED
++
++
++def _missing_component(case: dict, *, amount_delta: int = 0, self_supplied: bool = False) -> str:
++    """Drop one fee the case's payout covers from every merchant feed, so the payout cites a
++    record that never arrived; optionally change the payout's amount."""
++    payouts = [e["event"] for e in case["merchant_lookup"] + case["merchant_deliveries"]
++               if e["event"].get("kind") == "payout" and e["event"].get("covers_record_ids")]
++    covered = set(payouts[0]["covers_record_ids"])
++    fee = next(e["event"]["record_id"] for e in case["merchant_deliveries"]
++               if e["event"]["record_id"] in covered and e["event"]["kind"] == "fee")
++    case["merchant_deliveries"] = [e for e in case["merchant_deliveries"]
++                                   if e["event"]["record_id"] != fee]
++    for payout in payouts:
++        payout["amount_minor"] += amount_delta
++    return fee
++
++
++def _rules(case, root):
++    predictions = adapter.run_case(case, "rules", root=root)
++    return next(p for p in predictions if p["request_id"] == RFC_A)["claims"]
++
++
++def test_validated_payout_establishes_the_source_without_a_breakdown(tmp_path):
++    case = _control()
++    fee = _missing_component(case)
++    claims = _rules(case, tmp_path)
++    source, breakdown = claims["q.source_of_funds"], claims["q.breakdown"]
++    assert source["status"] == "supported"
++    assert source["calculation"] is None          # no component arithmetic is claimed
++    assert set(source["evidence_refs"]) == {"bank:txn-0001-004", "merchant:rec-0001-021"}
++    assert source["facts"]["payout_references"] == ["PO-0001-01"]
++    assert breakdown["status"] == "unresolved"
++    assert breakdown["gap"] == "missing_cited_record"
++    assert breakdown["evidence_refs"] == [] and breakdown["facts"] == {}
++    assert fee not in " ".join(source["evidence_refs"])
++
++
++def test_missing_component_with_a_different_payout_amount_stays_unresolved(tmp_path):
++    case = _control()
++    _missing_component(case, amount_delta=500)
++    claims = _rules(case, tmp_path)
++    assert claims["q.source_of_funds"]["status"] == "unresolved"
++    assert claims["q.breakdown"]["status"] == "unresolved"
+diff --git a/alibi/tests/test_core_investigation_fixes.py b/alibi/tests/test_core_investigation_fixes.py
+index afc2dd1..0aa625e 100644
+--- a/alibi/tests/test_core_investigation_fixes.py
++++ b/alibi/tests/test_core_investigation_fixes.py
+@@ -140,7 +140,11 @@ def test_exactly_five_days_before_the_credit_still_supports_it(passport, keystor
+      "settlement_after_credit", "after the credit was booked"),
+     ("supported", lambda fx: fx["lookup_events"][0].update(amount_pence=200000), UNRESOLVED,
+      "amount_mismatch", "200000 pence GBP, but the credit is 216000"),
+-    ("supported", lambda fx: record_of(fx, "po_5001")["related_record_ids"].append("ord_1099"),
++    # A missing component with a pending settlement: the source stays unresolved, and the
++    # pending conflict-free gap is the missing record (a settled one is covered by
++    # test_investigate_rules' missing-component test, where only the breakdown is unresolved).
++    ("supported", lambda fx: (record_of(fx, "po_5001")["related_record_ids"].append("ord_1099"),
++                              fx["lookup_events"][0].update(status="on_hold")),
+      UNRESOLVED, "missing_cited_record", "ord_1099"),
+     ("supported", lambda fx: (record_of(fx, "po_5001").update(status="released_to_balance"),
+                               fx["lookup_events"].clear()), UNRESOLVED,
+diff --git a/alibi/tests/test_investigate_rules.py b/alibi/tests/test_investigate_rules.py
+index 17d45de..d5f4890 100644
+--- a/alibi/tests/test_investigate_rules.py
++++ b/alibi/tests/test_investigate_rules.py
+@@ -850,7 +850,9 @@ def test_a_bundled_payout_is_read_in_one_call_within_the_default_budget(passport
+     assert "get_source" not in tools(gateway) and result.calls_used == 5
+ 
+ 
+-@pytest.mark.parametrize("settlement_status, expected", [("settled", UNRESOLVED),
++# A settled, issuer-verified payout for exactly the credit establishes the source on its own
++# (no arithmetic claimed); the missing component then leaves only the breakdown unresolved.
++@pytest.mark.parametrize("settlement_status, expected", [("settled", SUPPORTED),
+                                                          ("reversed", CONTRADICTED)])
+ def test_a_missing_component_is_named_and_never_hides_a_conflict(passport, keystore, now,
+                                                                  settlement_status, expected):
+@@ -863,7 +865,13 @@ def test_a_missing_component_is_named_and_never_hides_a_conflict(passport, keyst
+     result, _ = investigate(store, fx, keystore, now)
+     claim = claim_of(result)
+     assert claim.status == expected
+-    assert "ord_1099" in claim.gap_detail and claim.calculation is None
++    assert claim.calculation is None
++    if expected == SUPPORTED:
++        # Only the credit, payout and settlement are cited; no component is claimed.
++        cited = keys(claim.evidence_refs)
++        assert "record:stl_88001@1" in cited and not any("ord_" in k for k in cited)
++        return
++    assert "ord_1099" in claim.gap_detail
+     if expected == CONTRADICTED:
+         assert "status reversed" in claim.gap_detail and "record:stl_88001@1" in keys(claim.evidence_refs)
+ 

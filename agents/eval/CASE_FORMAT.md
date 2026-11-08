@@ -65,6 +65,17 @@ expects `subject_mismatch` and SP-23 expects `txn_out_of_feed`. SP-24 sends a
 valid Bank B control and changes the declared issuer to Bank A on the attack. Supply the
 remaining route and fixture settings in the base config for the full catalogue.
 
+Keep the receipt stack as the shared origin for readback. Give each mutating
+consent probe its own fresh store by setting `probes.<id>.base_urls.app`,
+`probes.<id>.base_urls.bank` and `probes.<id>.tokens` to that probe's local stack.
+Set the shared fixtures `consent_bank_service: "bank"`, `rfc_bank_a` and
+`rfc_bank_b` to the Case 1 RFC IDs, and set both recipient IDs and the policy
+version from holder review. For SP-04 also supply `rfc_followup` for the
+published follow-up. SP-05 needs an approved request held beyond the approval
+window while its RFC remains open, supplied as `expired_request`. SP-09 derives
+the conflicting retry from the stored signed envelope and sends it to the
+disposable bank's `/deliver` route unless overridden by an explicit fixture.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash
@@ -124,14 +135,14 @@ Rehearse the one-command runner on public data before freezing. `--case` selects
 uv run --frozen python -m agents.eval.run_sealed --dry-run --out "$REHEARSAL_OUTPUT"
 ```
 
-When `alibi.adapter.run_case` lands, check it on public cases before freeze. Run from the clean candidate with the lockbox closed and `GEMINI_API_KEY` in the environment or the local `.env`. Before creating its output or lock, a new live capture checks the credential and imports the adapter in the worker sandbox without supplying a case. Choose a new output directory. Start with Cases 1 and 2 to cover the settled and pending examples and both bank recipients. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage.
+When `alibi.adapter.run_case` lands, check it on public cases before freeze. Run from the clean candidate with the lockbox closed and `GEMINI_API_KEY` in the environment or the local `.env`. In a detached checkout, set `ALIBI_EVAL_ENV_FILE` to the evaluator’s existing credential file. The evaluator reads the run key and denies the worker access to the source file. Before creating its output or lock, a new live capture checks the credential and imports the adapter in the worker sandbox without supplying a case. Choose a new output directory. Start with Cases 1 and 2 to cover the settled and pending examples and both bank recipients. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage.
 
 ```bash
 uv run --frozen python -m agents.eval.run_sealed --public-live --case 1 --case 2 \
   --private-root "$ALIBI_FROZEN_PRIVATE_ROOT" --out "$PUBLIC_LIVE_OUTPUT"
 ```
 
-For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The current live isolation preflight uses macOS `sandbox-exec` to deny the worker access to the private root and repository data. The worker receives the allowlisted case over stdin and starts with separate scratch state for each case and system.
+For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The macOS `sandbox-exec` preflight denies the worker access to the private root, repository data and repository `.env`. The evaluator loads the Gemini run credential and keeps lockbox access in the parent. Each worker receives one allowlisted case over stdin and starts with separate scratch state for that case and system.
 
 ```bash
 python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \

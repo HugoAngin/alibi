@@ -72,7 +72,13 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         if missing:
             raise ValueError(f"candidate evidence needs definite demo outcomes for {', '.join(sorted(missing))}")
     if not dry:
-        client.load_api_key()
+        env_source = os.environ.get("ALIBI_EVAL_ENV_FILE")
+        if env_source:
+            credential_file = Path(env_source).resolve()
+            client.load_api_key(credential_file)
+            blocked = (*blocked, credential_file)
+        else:
+            client.load_api_key()
         verify_adapter(blocked)
     for case in cases:
         case_payload(case)

@@ -9,8 +9,22 @@ from datetime import datetime, timedelta
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from agents.data.api import canonical_case, known_at, lookup, without_gold
-from agents.eval.api import dispatch_approved
+from agents.data.api import (
+    CONTRADICTION_CASE,
+    canonical_case,
+    known_at,
+    load_case,
+    lookup,
+    without_gold,
+)
+from agents.eval.api import (
+    dispatch_approved,
+    fixed_candidate_pool,
+    match_credit,
+    period_totals,
+    reconcile_credit,
+    request_context,
+)
 from agents.eval.sharing_delivery import (
     ISSUER_RECORD_DOMAIN,
     PURPOSE_ISSUER_RECORD,
@@ -354,3 +368,95 @@ def test_public_sharing_probes(sharing_state, mock_bank, dispatch_time):
     assert report["probes_blocked"] == sum(result == "refused" for result in outcomes.values())
     assert report["controls_allowed"] == 2
     print(json.dumps({"observed": outcomes, "unexercised": unexercised}, sort_keys=True))
+
+
+def test_pending_payout_does_not_explain_case_two_credit(mock_bank, dispatch_time):
+    case = without_gold(load_case(CONTRADICTION_CASE))
+    request_a, request_b = case["rfcs"]
+    view, retrieve = request_context(case, request_a["request_id"])
+    holder_claim = view["holder_claim"]
+    reference = holder_claim["payout_reference"]
+
+    # The status describes a time after booking, and delivery is five minutes later.
+    assert lookup(case, "2026-10-29T06:34:59Z", payout_reference=reference) == []
+    payout, = lookup(case, "2026-10-29T06:35:00Z", payout_reference=reference)
+    assert payout["status_as_of"] == "2026-10-29T06:30:00Z"
+    assert payout["status"] == "pending" and payout["settled_at"] is None
+    assert not view["merchant_lookup"]
+    assert all(item["event"]["record_id"] != payout["record_id"]
+               for item in view["merchant_deliveries"])
+
+    bank_rows, merchant, _ = fixed_candidate_pool(view, retrieve)
+    credit = bank_rows[holder_claim["txn_id"]]
+    assert credit["booked_at"] < payout["status_as_of"]
+    assert merchant[payout["record_id"]]["status"] == "pending"
+    covered = [merchant[record_id] for record_id in payout["covers_record_ids"]]
+    net = sum(row["amount_minor"] * (1 if row["kind"] == "sale" else -1) for row in covered)
+    assert net == payout["amount_minor"] == credit["amount_minor"] == 216000
+
+    link = match_credit(credit, merchant)
+    assert link["state"] == "unmatched" and not link["payout_record_ids"]
+    result = reconcile_credit(credit, link, merchant, holder_claim)
+    assert result["status"] == "contradicted"
+    assert result["gap"] == "settlement_pending_at_booking"
+
+    # The local sharing API takes vetted question answers. A contradicted explanation
+    # leaves both Bank A questions unresolved; the counterevidence stays private.
+    state = TrustedState(
+        {**{ref: {**row, "trust": "issuer_verified"} for ref, row in merchant.items()},
+         credit["txn_id"]: {**credit, "kind": "bank_txn", "trust": "bank_observed",
+                            "subject_ref": case["subject_ref"]}},
+        {rfc["request_id"]: rfc for rfc in (request_a, request_b)},
+        Policy("maya-policy-v1"),
+        {case["subject_ref"]: "maya-holder"},
+    )
+    proposed = [{"question_id": qid, "status": "unresolved", "gap": result["gap"],
+                 "rationale": "Settlement proof is missing.", "evidence_refs": []}
+                for qid in request_a["question_ids"]]
+    preview_a = build_preview(state, request_a["request_id"], proposed, now=dispatch_time)
+    authenticator = HolderAuthenticator(secrets.token_bytes(32))
+    approvals = ApprovalStore(authenticator)
+    approval = approvals.approve(
+        state, preview_a, token=authenticator.issue("maya-holder", now=dispatch_time),
+        recipient="bank_a", confirmed_digest=preview_a.body_digest, now=dispatch_time,
+    )
+    bank, package_key, _ = mock_bank
+    raw, delivery = dispatch_approved(
+        preview_a.body, approval.approval_id, approvals=approvals, state=state,
+        recipient="bank_a", inbox=bank, signing_key=package_key, key_id=PACKAGE_KEY_ID,
+        now=dispatch_time,
+    )
+    body = parse_envelope(raw)["body"]
+    assert body == preview_a.body and body["attachments"] == []
+    assert [(item["question_id"], item["status"], item["gap"], item["evidence_refs"])
+            for item in body["claims"]] == [
+        (qid, "unresolved", "settlement_pending_at_booking", [])
+        for qid in ("q.source_of_funds", "q.breakdown")
+    ]
+    verified = bank.get("fixture-a", delivery.receipt.package_id).verification
+    assert verified["package_signature"] == "valid"
+
+    view_b, retrieve_b = request_context(case, request_b["request_id"])
+    _, merchant_b, _ = fixed_candidate_pool(view_b, retrieve_b)
+    period = period_totals(request_b["period"], merchant_b)
+    assert period["status"] == "supported"
+    assert period["facts"] == {
+        "sales_minor": 240000, "refunds_minor": 18000, "sale_count": 8, "refund_count": 2,
+    }
+    records_b = [merchant_b[item["source_id"].split(":", 1)[1]] for item in period["evidence_refs"]]
+    preview_b = build_preview(state, request_b["request_id"], [
+        claim("q.sales_refunds_in_period", records_b, "These are the sales and refunds in the requested period.")
+    ], now=dispatch_time)
+    assert preview_b.body["audience"] == "bank_b"
+    assert preview_b.body["scope"]["period"] == request_b["period"]
+    assert preview_b.body["scope"]["txn_ids"] == []
+    assert preview_b.body["claims"][0]["status"] == "supported"
+    assert {att["kind"] for att in preview_b.body["attachments"]} == {"sale", "refund"}
+    assert len(preview_b.body["attachments"]) == 10
+
+    # Current, in-scope citations still cannot justify a false settlement claim.
+    hostile = claim("q.source_of_funds", [payout, credit], "The payout explains this credit.")
+    rejected = build_preview(state, request_a["request_id"], [hostile], now=dispatch_time)
+    source = next(item for item in rejected.body["claims"] if item["question_id"] == "q.source_of_funds")
+    assert source["status"] == "unresolved"
+    assert source["evidence_refs"] == [] and rejected.body["attachments"] == []

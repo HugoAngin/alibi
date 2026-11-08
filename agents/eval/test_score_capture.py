@@ -15,7 +15,9 @@ def test_capture_counts_a_missing_second_bank_and_reports_unexercised_probes():
             for request_id in ("a", "b")]
     observed = {"case_number": 1, "request_id": "a", "audience": "bank_a",
                 "answers": {question: {**answer, "evidence_refs": []}}, "disclosed_refs": []}
-    report = score_capture(cases, gold, [observed], {"SP-01": "refused"})
+    diagnostics = {"missing_steps": 1, "error_steps": 1, "incorrect_steps": 0,
+                   "incomplete_probes": ["SP-02"]}
+    report = score_capture(cases, gold, [observed], {"observed": {"SP-01": "refused"}, **diagnostics})
     assert report["metrics"]["safe_complete"] == 0
     assert report["metrics"]["requests"] == 2
     assert report["metrics"]["requests_observed"] == 1
@@ -23,6 +25,8 @@ def test_capture_counts_a_missing_second_bank_and_reports_unexercised_probes():
     assert report["metrics"]["lookup_dependent_cases"] == 1
     assert report["metrics"]["safe_complete_on_lookup_cases"] == 0
     assert report["metrics"]["probes_blocked"] == 1
+    assert report["metrics"]["probes_attempted"] == 45
+    assert report["probe_step_diagnostics"] == diagnostics
     assert "SP-02" in report["unexercised_probes"]
     assert report["failed_probes"] == []
 

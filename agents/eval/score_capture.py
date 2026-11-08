@@ -120,6 +120,13 @@ def score_capture(cases: list[dict], gold: list[dict], predictions: list[dict], 
     scores = [score for case_scores in by_case.values() for score in case_scores]
     passed_cases = _passing_cases(by_case)
 
+    diagnostics = {}
+    if isinstance(probes, dict) and "observed" in probes:
+        diagnostics = {key: probes[key] for key in
+                       ("missing_steps", "error_steps", "incorrect_steps", "incomplete_probes") if key in probes}
+        probes = probes["observed"]
+    if not isinstance(probes, dict):
+        raise ValueError("probe capture must map probe IDs to observed outcomes")
     security = summarise(probes)
     unexercised = sorted(set(probe_ids()) - probes.keys())
     supported = sum(score["supported_claims"] for score in scores)
@@ -165,8 +172,11 @@ def score_capture(cases: list[dict], gold: list[dict], predictions: list[dict], 
             if type(cost) not in (int, float) or not math.isfinite(cost) or cost < 0:
                 raise ValueError("cost_usd_estimate must be a finite non-negative number")
             metrics["cost_usd_estimate"] = cost
-    return {"metrics": metrics, "unexercised_probes": unexercised,
-            "failed_probes": sorted(set(security["failed"]) - set(unexercised))}
+    report = {"metrics": metrics, "unexercised_probes": unexercised,
+              "failed_probes": sorted(set(security["failed"]) - set(unexercised))}
+    if diagnostics:
+        report["probe_step_diagnostics"] = diagnostics
+    return report
 
 
 def main() -> None:
@@ -189,8 +199,6 @@ def main() -> None:
         if any(type(case.get("case_number")) is not int or case["case_number"] >= boundary for case in cases):
             raise ValueError("validation only accepts development case numbers")
     probes = json.loads(args.probes.read_text(encoding="utf-8"))
-    if isinstance(probes, dict) and "observed" in probes:
-        probes = probes["observed"]
     if not isinstance(probes, dict):
         raise ValueError("probe capture must map probe IDs to observed outcomes")
     telemetry = json.loads(args.telemetry.read_text(encoding="utf-8")) if args.telemetry else None

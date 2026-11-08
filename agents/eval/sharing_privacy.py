@@ -46,6 +46,8 @@ from typing import Iterable, Mapping
 
 import rfc8785
 
+from agents.eval.settlement import match_credit
+
 PACKAGE_SCHEMA_VERSION = "1"
 PUBLIC_BODY_FIELDS = ("schema_version", "package_id", "request_id", "audience", "case_id",
                       "scope", "issued_at", "expires_at", "claims", "attachments")
@@ -426,6 +428,31 @@ def _cited(claim: dict) -> list[str]:
     return [r for r in refs if isinstance(r, str)]
 
 
+def _supported_source(state: TrustedState, rfc: dict, refs: Mapping) -> bool:
+    """A cited credit needs the uniquely matching, already-settled payout."""
+    credits = {ref for ref in refs if state.records[ref].get("kind") == BANK_KIND
+               and state.records[ref].get("trust") == "bank_observed"}
+    if not credits or (rfc.get("txn_ids") and credits != set(rfc["txn_ids"])):
+        return False
+    payouts = {
+        ref: {**record, "source_kind": "import" if record["trust"] == "self_supplied" else "merchant"}
+        for ref, record in state.records.items()
+        if record.get("kind") == "payout" and record.get("subject_ref") == rfc["subject_ref"]
+        and record.get("trust") in {"issuer_verified", "self_supplied"}
+    }
+    for ref in credits:
+        try:
+            credit = state.records[ref]
+            if type(credit["amount_minor"]) is not int or credit["amount_minor"] <= 0:
+                return False
+            link = match_credit(credit, payouts)
+        except (KeyError, TypeError, ValueError):
+            return False
+        if link["state"] != "linked" or not set(link["payout_record_ids"]) <= refs.keys():
+            return False
+    return True
+
+
 def _check_calculation(calc, kept: dict[str, dict], attachments: dict[str, dict]) -> dict | None:
     """Recompute in code. Returns the sanitised calculation or None if it cannot stand."""
     if not isinstance(calc, Mapping) or not isinstance(calc.get("terms"), list):
@@ -553,6 +580,12 @@ def build_preview(state: TrustedState, request_id: str, proposed_claims: list, *
             claim_changes.append({"question_id": qid, "change": f"{draft['status']}->unresolved",
                                   "reason": "no_shareable_evidence"})
             draft.update(status="unresolved", gap=UNANSWERED_GAP)
+        elif (qid == "q.source_of_funds" and draft["status"] == "supported"
+              and not _supported_source(state, rfc, kept)):
+            claim_changes.append({"question_id": qid, "change": "supported->unresolved",
+                                  "reason": "settlement_not_supported"})
+            draft.update(status="unresolved", rationale=UNANSWERED_RATIONALE, gap=UNANSWERED_GAP,
+                         evidence_refs=[], calculation=None)
         drafts[qid] = draft
 
     # Attach only evidence a surviving claim still cites: minimum disclosure.
@@ -728,6 +761,8 @@ def _check_against_state(body: dict, state: TrustedState, rfc: dict,
         refs = {r["ref"]: r["revision"] for r in claim["evidence_refs"]}
         _require(all(attached.get(r, {}).get("revision") == v for r, v in refs.items()),
                  "disclosure_mismatch", "evidence_refs")
+        if claim["question_id"] == "q.source_of_funds" and claim["status"] == "supported":
+            _require(_supported_source(state, rfc, refs), "disclosure_mismatch", "settlement_not_supported")
         if claim["calculation"] is not None:
             kept = {r: state.records[r] for r in refs}
             _require(_check_calculation(claim["calculation"], kept, attached)

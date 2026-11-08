@@ -45,6 +45,7 @@ def make_state(policy: Policy | None = None) -> TrustedState:
             related_record_id="rec-sale"),
         rec("rec-fee", "fee", 6000, "2026-10-20T10:01:00Z", fee_type="marketplace_commission"),
         rec("rec-payout", "payout", 216000, "2026-10-26T08:00:00Z", destination="bank",
+            status="settled", settled_at="2026-10-26T10:00:00Z", payout_reference="FIXTURE-8841",
             covers_record_ids=["rec-sale", "rec-refund", "rec-fee", "rec-pharmacy"]),
         rec("rec-pharmacy", "purchase", 4599, "2026-10-22T09:00:00Z", issuer_id="mock-pharmacy",
             merchant_name="Synthetic Pharmacy", item="prescription refill",

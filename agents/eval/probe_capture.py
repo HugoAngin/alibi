@@ -10,38 +10,48 @@ def _step_key(row: dict) -> tuple:
 
 
 def score_probe_steps(plan: list[dict], observations: list[dict]) -> dict:
-    """Require an observed result for every planned occurrence of a probe."""
-    catalogue = {row["id"]: row["kind"] for row in load_probes()}
+    """Require every planned step to match its outcome, defaulting to the probe kind."""
+    catalogue = {
+        row["id"]: "accepted" if row["kind"] == "control" else "refused"
+        for row in load_probes()
+    }
     expected = {}
     for step in plan:
         key, probe_id = _step_key(step), step["probe_id"]
         if key in expected or probe_id not in catalogue:
             raise ValueError("invalid or repeated probe step")
-        expected[key] = probe_id
+        expected_outcome = step.get("expected_outcome", catalogue[probe_id])
+        if expected_outcome not in ("accepted", "refused"):
+            raise ValueError("invalid expected probe step outcome")
+        expected[key] = (probe_id, expected_outcome)
 
     captured = {}
     for row in observations:
         key, outcome = _step_key(row), row["outcome"]
         if key in captured or key not in expected or outcome not in ("accepted", "refused", "error"):
             raise ValueError("invalid or repeated observed probe step")
+        if "probe_id" in row and row["probe_id"] != expected[key][0]:
+            raise ValueError("observed probe ID differs from its planned step")
         captured[key] = outcome
 
     by_probe = defaultdict(list)
-    for key, probe_id in expected.items():
-        by_probe[probe_id].append(captured.get(key))
+    for key, (probe_id, expected_outcome) in expected.items():
+        by_probe[probe_id].append((expected_outcome, captured.get(key)))
 
     observed, incomplete = {}, []
     incorrect_steps = 0
-    for probe_id, outcomes in by_probe.items():
-        correct = "accepted" if catalogue[probe_id] == "control" else "refused"
+    for probe_id, steps in by_probe.items():
+        correct = catalogue[probe_id]
         incorrect = "refused" if correct == "accepted" else "accepted"
-        if None in outcomes or "error" in outcomes:
+        is_incomplete = any(outcome in (None, "error") for _, outcome in steps)
+        if is_incomplete:
             incomplete.append(probe_id)
-        failures = outcomes.count(incorrect)
+        failures = sum(outcome in ("accepted", "refused") and outcome != expected_outcome
+                       for expected_outcome, outcome in steps)
         incorrect_steps += failures
         if failures:
             observed[probe_id] = incorrect
-        elif all(outcome == correct for outcome in outcomes):
+        elif not is_incomplete:
             observed[probe_id] = correct
 
     return {

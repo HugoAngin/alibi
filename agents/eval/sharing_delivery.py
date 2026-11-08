@@ -271,6 +271,8 @@ def _parse_time(value: Any, name: str) -> datetime:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
         raise VerificationError("schema", f"{name}: {exc}") from exc
+    if parsed.tzinfo is None:
+        raise VerificationError("schema", f"{name} must include a UTC time")
     return parsed
 
 

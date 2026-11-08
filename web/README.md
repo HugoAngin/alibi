@@ -33,7 +33,7 @@ Try the connect flow: open http://localhost:4322/account/settings/, press "Conne
 - **"Request customer's Alibi"** (`packages/ui/src/RequestAlibiButton.astro`) opens the bank's own request screen, where the analyst picks the question IDs from `shared/CONTRACTS.md`. Sending is not wired yet; it will go through the mock bank service.
 - **URL contracts** live in `packages/ui/src/links.ts` and are unit tested. Maya's demo data in `apps/alibi/src/data/demo.ts` is tested against the team's canonical fixture, `agents/data/out/cases/case_0001.json`.
 
-More detail, and what is deliberately left out, in [docs/architecture.md](docs/architecture.md). How the front end and the Python backend split the work, and what the backend must expose, is in [docs/backend-integration.md](docs/backend-integration.md).
+More detail, and what is deliberately left out, in [docs/architecture.md](docs/architecture.md). How the front end and the Python backend split the work, and what the backend must expose, is in [docs/backend-integration.md](docs/backend-integration.md). Working on part of `web/` in parallel: [docs/contributing.md](docs/contributing.md).
 
 ## Deploy to Cloudflare
 

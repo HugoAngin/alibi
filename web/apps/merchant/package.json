@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@alibi/ui": "workspace:*",
+    "@astrojs/cloudflare": "^13.7.0",
     "astro": "^6.4.8"
   }
 }

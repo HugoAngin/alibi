@@ -8,6 +8,9 @@
  */
 import type { GetStaticPaths } from 'astro';
 
+// Built from the fixed case list, so prerendered.
+export const prerender = true;
+
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
 import { bank, cases, formatGBP, questions, type FraudCase } from '@/data/cases';
 

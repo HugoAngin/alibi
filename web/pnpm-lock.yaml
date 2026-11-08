@@ -84,6 +84,9 @@ importers:
       '@alibi/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@astrojs/cloudflare':
+        specifier: ^13.7.0
+        version: 13.7.0(@types/node@22.20.5)(astro@6.4.8(@types/node@22.20.5)(lightningcss@1.33.0)(rollup@4.68.0)(yaml@2.9.1))(lightningcss@1.33.0)(workerd@1.20261104.1)(wrangler@4.158.0(@types/node@22.20.5))(yaml@2.9.1)
       astro:
         specifier: ^6.4.8
         version: 6.4.8(@types/node@22.20.5)(lightningcss@1.33.0)(rollup@4.68.0)(yaml@2.9.1)
@@ -103,6 +106,9 @@ importers:
       '@alibi/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@astrojs/cloudflare':
+        specifier: ^13.7.0
+        version: 13.7.0(@types/node@22.20.5)(astro@6.4.8(@types/node@22.20.5)(lightningcss@1.33.0)(rollup@4.68.0)(yaml@2.9.1))(lightningcss@1.33.0)(workerd@1.20261104.1)(wrangler@4.158.0(@types/node@22.20.5))(yaml@2.9.1)
       astro:
         specifier: ^6.4.8
         version: 6.4.8(@types/node@22.20.5)(lightningcss@1.33.0)(rollup@4.68.0)(yaml@2.9.1)

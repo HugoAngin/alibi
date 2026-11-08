@@ -1,8 +1,15 @@
-// Static Cloudflare Worker (assets only, no server code) for the simulated
-// merchant. Deploy with `pnpm --filter @alibi/merchant deploy`.
+// Cloudflare Worker for the simulated merchant. `main` and the static-assets
+// binding are filled in by @astrojs/cloudflare at build time. Deploy with
+// `pnpm --filter @alibi/merchant deploy`. Secrets never go in this file: use
+// `pnpm exec wrangler secret put <NAME>` (web/docs/hosting.md).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "merchant",
   "compatibility_date": "2026-04-15",
-  "assets": { "directory": "./dist", "not_found_handling": "404-page" },
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    // The live backend on Modal; this site uses its /merchant/* routes, server-side only.
+    "ALIBI_API_ORIGIN": "https://eliohd--alibi-backend-backend.us-east.modal.run",
+  },
 }

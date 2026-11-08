@@ -1,6 +1,9 @@
 ---
 /** One case, with the "Request customer's Alibi" action. */
 import type { GetStaticPaths } from 'astro';
+
+// Built from the fixed case list, so prerendered.
+export const prerender = true;
 import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
 
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';

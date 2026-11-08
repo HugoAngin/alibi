@@ -1,11 +1,17 @@
 // @ts-check
-import { defineConfig, envField } from 'astro/config';
+import { defineConfig, envField, sessionDrivers } from 'astro/config';
+import cloudflare from '@astrojs/cloudflare';
 
-// A simulated online marketplace. Fully static: built to dist/ and served by
-// a Cloudflare Worker with static assets only (wrangler.jsonc).
+// A simulated online marketplace, on a Cloudflare Worker. Pages render per
+// request so the connect flow can call the backend's merchant service
+// (ALIBI_API_ORIGIN, path prefix /merchant) from the server.
 export default defineConfig({
   // Absolute URLs (the connect button's return address) are built from this.
   site: process.env.MERCHANT_ORIGIN ?? 'http://localhost:4322',
+  output: 'server',
+  adapter: cloudflare({ imageService: 'passthrough' }),
+  // Sessions are unused; an in-memory driver stops the adapter provisioning KV.
+  session: { driver: sessionDrivers.lruCache() },
   build: { format: 'directory' },
   // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.
   devToolbar: { enabled: false },
@@ -16,6 +22,8 @@ export default defineConfig({
         access: 'public',
         default: 'http://localhost:4321',
       }),
+      // Read at runtime from the Worker's vars (`secret` access avoids inlining).
+      ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
     },
   },
 });

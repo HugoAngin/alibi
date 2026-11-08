@@ -35,5 +35,5 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 
 ## Open needs
 - To lead: answered 23:42Z (6714598387). Attestation pinned in d661421: `source_trust[]` and `evidence[]` carry `attestation` (issuer_signature | package_signer | none) and `redacted: bool`; a redacted extract is package_signer. Case 1 fixture regeneration and `via_lookup` / `calculation.terms` are queued for Arnav inside alibi/. Until they land: no lookup marker.
-(none open)
+- To lead, 2026-11-08 ~00:20Z (6714973344), approved by Elio: add root `web/` to research's paths in team.json, then `git mv agents/research/web web`. Assumption meanwhile: it stays in `agents/research/web/`.
 - Closed on assumption, 2026-11-08 ~00:00Z: data did not reply within 15 minutes about the `::after` captions, so I proceed assuming they come out of the CSS and the template carries the panel questions.

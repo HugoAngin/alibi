@@ -1094,3 +1094,30 @@ def test_request_ids_are_scoped_to_the_bank(store):
     store.save_claim(theirs)
     assert store.list_claims(request_id="rfc_a_001", audience="bank_a") == [mine]
     assert store.list_claims(request_id="rfc_a_001", audience="bank_b") == [theirs]
+
+
+def test_get_request_rejects_a_non_string_audience(store):
+    from alibi.core.store import StoreError
+
+    store.save_request(rfc())
+    with pytest.raises(StoreError, match="audience must be a string"):
+        store.get_request("rfc_a_001", audience=123)
+
+
+def test_a_schema_2_database_is_migrated_on_open(tmp_path):
+    """A pre-fix database keyed requests by request_id alone. It is migrated in place to the
+    per-bank key on open (S5: restarts must keep history), and its requests stay readable."""
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    first = Store(path)
+    first.save_request(rfc())
+    first.close()
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+    again = Store(path)
+    try:
+        assert again.get_request("rfc_a_001", audience="bank_a") == rfc()
+        assert again._q("SELECT value FROM meta WHERE key = 'schema_version'")[0][0] == "3"
+    finally:
+        again.close()

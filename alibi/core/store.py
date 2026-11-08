@@ -1238,6 +1238,8 @@ class Store:
         """
         if issuer is None:
             issuer = audience
+        if issuer is not None and not isinstance(issuer, str):
+            raise StoreError("audience must be a string")
         if issuer is not None:
             rows = self._q("SELECT * FROM requests WHERE issuer = ? AND request_id = ?",
                            (issuer, request_id))

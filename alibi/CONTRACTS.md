@@ -41,9 +41,9 @@ now = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)   # before the fixture R
 store = open_store()                     # data/alibi/passport.db
 keys = default_keystore()                # data/alibi/keys
 fx = load_fixture(store, "supported", keystore=keys, now=now)
-run_investigation(store, "rfc_a_001", settlement_lookup=fx["settlement_lookup"],
-                  registry=keys.registry(), now=now)
-draft = build_review(store, "rfc_a_001", now=now)          # body + private review
+run_investigation(store, "rfc_a_001", audience="bank_a",   # a request is (bank, request_id)
+                  settlement_lookup=fx["settlement_lookup"], registry=keys.registry(), now=now)
+draft = build_review(store, "rfc_a_001", audience="bank_a", now=now)   # body + private review
 approval = approve(store, draft.draft_id, holder_id="holder_maya", now=now)
 package = sign_and_package(store, approval.approval_id, keystore=keys, now=now)
 result = verify_package(package.to_json_dict(), expected_audience="bank_a",
@@ -60,11 +60,14 @@ The flow can be re-run. Running the quick start again on the same passport with 
 (after a restart, say) returns the same draft (now `packaged`), the same approval (now
 `consumed`) and the identical package, and records no second delivery.
 
-Request ids are the bank's own, so a request is identified by `(audience, request_id)`. Two
-banks may use the same id without blocking or seeing each other. A bare request_id works while
-only one bank has used it. Once several have, pass the bank, as in
-`run_investigation(..., audience="bank_a")` and `build_review(..., audience="bank_a")`.
-Otherwise the call raises `AmbiguousRequest` instead of guessing.
+Request ids are chosen by banks, so a request is identified by `(audience, request_id)`. Two
+banks may use the same id without blocking or seeing each other. Holder calls therefore always
+name the bank: `run_investigation` and `build_review` take `audience` with a request_id.
+`load_fixture` returns the pairs as `fx["requests"]`. A bare request_id still resolves while only
+one bank has used it (the app, the demo cases and teammates' acceptance tests call bare ids);
+once several banks have used it the call raises `AmbiguousRequest`, and the store resolves a bare
+id to the request received first. Asking for `("bank_a", id)` gets `NotFound` when bank_a never
+sent it, never the other bank's request.
 
 ## Conventions
 
@@ -111,8 +114,9 @@ Otherwise the call raises `AmbiguousRequest` instead of guessing.
   `sign_and_package`. Refusals are audited too: `IngestError` (by the core), `PolicyError` from
   `record_policy` (counts only, never the rule texts), `PackageError` from `build_review`, and
   `ApprovalError` from `approve` and `sign_and_package`. A retry that returns an existing
-  approval or package is audited as `duplicate`. Argument errors (`ValueError`, `NotFound`,
-  `NotImplementedError`) are raised with no audit event. Read them with `store.list_audit()`.
+  approval or package is audited as `duplicate`. Argument errors (`ValueError`, `TypeError`,
+  `NotFound`, `NotImplementedError`) are raised with no audit event. Read them with
+  `store.list_audit()`.
 
 ## Three separate enums
 
@@ -264,6 +268,7 @@ Every error message is safe to show: it names ids, fields and reasons, never pay
 | `GatewayError` | A gateway call fails. Its subclasses are `ScopeError`, `BudgetExceeded`, `Unavailable` and `NotFoundError`. The rules investigation turns these into typed unresolved reasons, so they reach callers only when they use a `Gateway` directly. |
 | `NotImplementedError` | `run_investigation` was given a mode that is not built. |
 | `ValueError` | `now` is not a timezone-aware datetime. `verify_package` returns a rejection instead. |
+| `AmbiguousRequest` | A holder call (`run_investigation`, `build_review`) was given a bare request_id that several banks have used. Request ids are per bank, so name the bank with `audience`. |
 
 ## Functions
 
@@ -306,7 +311,9 @@ and go through `receive_rfc` (RFC A names `txn_ids`, so Bank A's account is pass
 `account_refs`). A `connection_id` other than the fixture's is written into each txn's
 provenance, so the feed is delivered by that connection. Lookup-only settlements stay outside the passport until an
 investigation retrieves them with `settlement_lookup`. Replaying is idempotent: every put
-returns `duplicate` and no row is added.
+returns `duplicate` and no row is added. `requests` lists each loaded request as
+`{"request_id", "audience"}`, which is what the holder calls need. `request_ids` lists only the
+ids.
 
 `now` defaults to the fixture clock `2026-11-07T12:00:00Z`, not the wall clock, because the
 fixture RFCs expire (RFC A at `2026-11-11T09:00:00Z`). The result's `now` is the clock used:
@@ -341,6 +348,16 @@ Returns (callables, the gold block and the clock shown as placeholders):
   "request_ids": [
     "rfc_a_001",
     "rfc_b_001"
+  ],
+  "requests": [
+    {
+      "request_id": "rfc_a_001",
+      "audience": "bank_a"
+    },
+    {
+      "request_id": "rfc_b_001",
+      "audience": "bank_b"
+    }
   ],
   "settlement_lookup": "<callable: payment_ref -> signed settlement event, or None>",
   "txn_refresh": "<callable: txn_id -> latest bank txn JSON, or None>",
@@ -731,11 +748,14 @@ run_investigation(store, request, *, mode="rules", audience=None, gateway=None,
                   now=None) -> InvestigationResult
 ```
 
-Investigates a stored request and saves its links, claims and trace. `request` is a request_id
-or the stored `RequestForContext` (a different model under the same id raises
-`IdempotencyConflict`). `audience` names the bank whose request it is. It is needed only when
-several banks used that request_id; otherwise the call raises `AmbiguousRequest`. Each claim
-carries `audience`. Run ids are `make_id("run", audience, request_id, "rules", n)`, so another
+Investigates a stored request and saves its links, claims and trace. `request` is either a
+request_id together with `audience`, the bank that sent it, or the stored `RequestForContext`,
+whose own audience is used.
+- A bare request_id that several banks used raises `AmbiguousRequest`; pass `audience`.
+- An `audience` that contradicts the model raises `StoreError`.
+- A different model under the same key raises `IdempotencyConflict`.
+
+Each claim carries `audience`. Run ids are `make_id("run", audience, request_id, "rules", n)`, so another
 bank's runs never share them. Without `gateway`, a `Gateway` is built for the request's subject
 and the next run id, with the given connector callables, budget and registry (the registry
 verifies settlement lookups). The rules engine matches by reference, then by amount and date.
@@ -1001,13 +1021,14 @@ belongs to another subject. A `PolicyError` writes a refused audit event targeti
 ### `build_review`
 
 ```python
-build_review(store, request_id, *, audience=None, now=None, removed=()) -> Draft
+build_review(store, request_id, *, audience, now=None, removed=()) -> Draft
 ```
 
-Builds and saves the draft the holder reviews. `audience` names the bank whose request it is.
-It is needed only when several banks used `request_id`; otherwise the call raises
-`AmbiguousRequest`. Only that bank's claims are used, and the body's `case_ref` is derived from
-the bank and the request. It uses the claims of the request's latest
+Builds and saves the draft the holder reviews for the request `(audience, request_id)`.
+`audience` names the bank that sent the request; a bare id works while one bank alone used it and
+raises `AmbiguousRequest` once several have.
+Only that bank's claims are used, and the body's `case_ref` is derived from the bank and the
+request. It uses the claims of the request's latest
 investigation run, meaning the run recorded last, whatever clock it ran on (all its claims must
 still be active), every source and txn those claims cite (the
 cited revisions, which are the active ones while the claims are active), and the subject's
@@ -1238,13 +1259,13 @@ invalidated by newer evidence (run the investigation again), and writes a refuse
 
 ```json
 {
-  "audit_id": "aud_24066acf368abcb0f77da51e",
+  "audit_id": "aud_2a05c3d1964fe7dab20e6b9b",
   "at": "2026-11-07T12:00:00Z",
   "actor": "alibi",
   "action": "build_review",
   "target_id": "rfc_a_001",
   "outcome": "refused",
-  "detail": "refused: request rfc_a_001 has no investigation results yet; call run_investigation first"
+  "detail": "refused for bank_a: request rfc_a_001 has no investigation results yet; call run_investigation first"
 }
 ```
 
@@ -1673,10 +1694,14 @@ The code's public behaviour wins. These API functions take arguments DESIGN.md d
   demo keystore, so verifying never creates keys.
 - A request is identified by `(audience, request_id)`, not by `request_id` alone. Store schema
   version 3 keys the requests table by both columns.
-  - `store.get_request` takes `audience` and raises `AmbiguousRequest` for a bare id that
-    several banks used.
+  - `store.get_request` takes `audience` (alias `issuer`). It is the internal lookup; a bare id
+    resolves to the request received first, and `strict=True` (what the public API uses) raises
+    `AmbiguousRequest` once several banks used it.
   - `list_claims`, `list_drafts` and `list_approvals` take `audience`.
   - `Claim` carries `audience`.
   - `next_run_id(store, request_id, *, audience)` derives run ids from the bank as well.
   - `case_ref` is `make_id("case", audience, parent_request_id or request_id)`.
-  - `run_investigation` and `build_review` take `audience`.
+  - The public API resolves a bare request_id only while one bank alone has used it;
+    `run_investigation` and `build_review` take `audience` and raise `AmbiguousRequest` for a
+    shared bare id, and `load_fixture` returns the `{"request_id", "audience"}` pairs as
+    `requests`. The `build_review` refusal audit names the bank.

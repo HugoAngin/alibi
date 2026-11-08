@@ -27,7 +27,8 @@ sender-chosen text, so it is named only as ``<extra field>``.
 
 Idempotency is the store's: merchant events by ``(connector, issuer_id, event_id)`` plus the
 payload digest, bank txns by ``(txn_id, revision)`` plus content, requests by
-``(issuer, request_id)``, so two banks may use the same request id independently.
+``(issuer, request_id)``: request ids are the bank's own, so two banks may use the same request id
+independently and never collide.
 """
 
 import copy

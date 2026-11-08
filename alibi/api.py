@@ -16,9 +16,12 @@ an audit event. Conventions:
   the demo keystore under ``data/alibi/keys`` (created on first use). ``verify_package`` only
   reads the pinned ``trust_registry.json`` there. Tests always pass their own.
 * Errors are the core's typed exceptions, and their messages are safe to show.
-* A request is identified by ``(audience, request_id)``: request ids are the bank's own. A
-  bare request_id works while only one bank has used it; otherwise pass ``audience`` (the
-  bank), or the call raises ``AmbiguousRequest``.
+* A request is identified by ``(audience, request_id)``: request ids are chosen by banks, so
+  holder calls name the bank with ``audience`` (or pass the stored ``RequestForContext``). A
+  bare request_id still resolves while exactly one bank has used it (the app, the demo cases
+  and teammates' acceptance tests rely on that); once several banks have used it the call
+  raises ``AmbiguousRequest`` instead of guessing, and the store itself resolves a bare id to
+  the request received first, so a later bank never captures an earlier one's drafts.
 """
 
 import copy
@@ -206,8 +209,10 @@ def _registry(registry: TrustRegistry | None) -> TrustRegistry:
 
 def _stored_request(store: Store, request: str | RequestForContext,
                     audience: str | None = None) -> RequestForContext:
-    """The stored request for a request_id (from ``audience`` when given; a bare id must be
-    unique, else ``AmbiguousRequest``), or for a model that must equal the stored one."""
+    """The stored request ``(audience, request_id)``, or the one a model names, which must equal
+    the stored one. A bare request_id resolves while one bank alone has used it; once several
+    banks have, it raises ``AmbiguousRequest`` (banks choose request ids, so guessing could pick
+    a request another bank sent under that id first)."""
     if isinstance(request, RequestForContext):
         if audience is not None and audience != request.audience:
             raise StoreError("audience does not match the request's audience")
@@ -560,9 +565,10 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                       now: datetime | None = None) -> InvestigationResult:
     """Investigate a stored request and save its links, claims and trace.
 
-    ``request`` is a request_id or the stored ``RequestForContext``. ``audience`` names the
-    bank whose request it is; it is needed only when several banks used that request_id
-    (otherwise ``AmbiguousRequest``). Without ``gateway`` a ``Gateway`` is built for the
+    ``request`` is a request_id together with ``audience`` (the bank that sent it; without it a
+    bare id must be one bank's alone, else ``AmbiguousRequest``), or the stored
+    ``RequestForContext``, whose own audience is used (an ``audience`` that contradicts it raises ``StoreError``). Without ``gateway`` a
+    ``Gateway`` is built for the
     request's subject and the next run id, with the connector callables, budget and registry
     given (the registry verifies settlement lookups). Only ``mode="rules"`` is built; other
     modes raise ``NotImplementedError``.
@@ -648,10 +654,9 @@ def record_policy(store: Store, subject_ref: str, rules: Any, *, policy_id: str 
 
 def build_review(store: Store, request_id: str, *, audience: str | None = None,
                  now: datetime | None = None, removed: Collection[str] = ()) -> Draft:
-    """Build and save the draft the holder reviews for a request.
+    """Build and save the draft the holder reviews for the request ``(audience, request_id)``.
 
-    ``audience`` names the bank whose request it is; it is needed only when several banks used
-    ``request_id`` (otherwise ``AmbiguousRequest``).
+    ``audience`` is the bank that sent the request (request ids are chosen by banks).
     Uses the active claims of the request's investigation run recorded last, every source and
     txn they cite (the cited revisions, which are the active ones while the claims are active),
     and the subject's latest policy (or none). ``removed`` names sources the holder took out.
@@ -699,7 +704,7 @@ def build_review(store: Store, request_id: str, *, audience: str | None = None,
             return store.get_draft(draft.draft_id)
     except PackageError as exc:
         _audit(store, action="build_review", actor=SYSTEM, outcome="refused", at=at,
-               target_id=rfc.request_id, detail=f"refused: {exc}")
+               target_id=rfc.request_id, detail=f"refused for {rfc.audience}: {exc}")
         raise
 
 
@@ -952,8 +957,10 @@ def load_fixture(store: Store, variant: str = "supported", *,
     clock, because the fixture RFCs expire (RFC A at 2026-11-11T09:00:00Z). A ``now`` at or past
     an RFC's expiry raises ``IngestError`` before anything is loaded.
 
-    Returns ``{variant, subject_ref, record_ids, txn_ids, request_ids, settlement_lookup,
-    txn_refresh, corrections, statuses, expected, now}``: ``corrections`` are signed payloads
+    Returns ``{variant, subject_ref, record_ids, txn_ids, request_ids, requests,
+    settlement_lookup, txn_refresh, corrections, statuses, expected, now}``: ``requests`` lists
+    each loaded request as ``{"request_id", "audience"}`` (what holder calls need, since
+    request ids are per bank), ``corrections`` are signed payloads
     ready for ``ingest_merchant_event``, ``statuses`` maps each record and txn id to its put
     status, ``expected`` is the fixture's development gold, and ``now`` is the clock used (pass
     it to the later steps).
@@ -976,6 +983,7 @@ def load_fixture(store: Store, variant: str = "supported", *,
     record_ids: list[str] = []
     txn_ids: list[str] = []
     request_ids: list[str] = []
+    requests: list[dict[str, str]] = []
     statuses: dict[str, str] = {}
 
     def note(put: PutResult, ids: list[str]) -> None:
@@ -1002,12 +1010,14 @@ def load_fixture(store: Store, variant: str = "supported", *,
                               account_refs=accounts.get(raw["issuer"]) if raw.get("txn_ids")
                               else None, now=at)
             request_ids.append(rfc.request_id)
+            requests.append({"request_id": rfc.request_id, "audience": rfc.audience})
     return {
         "variant": variant,
         "subject_ref": subject,
         "record_ids": record_ids,
         "txn_ids": txn_ids,
         "request_ids": request_ids,
+        "requests": requests,
         "settlement_lookup": maya.settlement_lookup(fixture, keys),
         "txn_refresh": maya.txn_refresh(fixture),
         "corrections": [maya.sign_event(raw, keys, kid) for raw in fixture["corrections"]],

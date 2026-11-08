@@ -16,6 +16,7 @@ from alibi import api
 
 HOLDER = "holder_maya"
 RFC_A, RFC_B = "rfc_a_001", "rfc_b_001"
+BANK = {RFC_A: "bank_a", RFC_B: "bank_b"}   # request ids are per bank: name the bank
 SUPPORTED = api.ClaimStatus.SUPPORTED
 NOT_SUPPORTED = {api.ClaimStatus.CONTRADICTED, api.ClaimStatus.UNRESOLVED}
 CONTRACT_FUNCTIONS = {
@@ -40,7 +41,7 @@ def load(ctx, variant="supported", *, store=None):
 
 
 def investigate(ctx, fx, request_id=RFC_A, *, store=None):
-    return api.run_investigation(store or ctx.store, request_id,
+    return api.run_investigation(store or ctx.store, request_id, audience=BANK[request_id],
                                  settlement_lookup=fx["settlement_lookup"],
                                  registry=ctx.registry, now=ctx.now)
 
@@ -49,7 +50,7 @@ def deliver(ctx, fx, request_id=RFC_A, *, store=None):
     """Investigate, review, approve and dispatch one request."""
     store = store or ctx.store
     run = investigate(ctx, fx, request_id, store=store)
-    draft = api.build_review(store, request_id, now=ctx.now)
+    draft = api.build_review(store, request_id, audience=BANK[request_id], now=ctx.now)
     approval = api.approve(store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
     package = api.sign_and_package(store, approval.approval_id, keystore=ctx.keystore,
                                    now=ctx.now)
@@ -98,7 +99,7 @@ def test_supported_flow_signs_delivers_and_verifies_for_bank_a(ctx):
     gold = fx["expected"]["claims"][RFC_A]["q1"]
     assert set(gold["evidence"]) <= {ref.key() for ref in claim.evidence_refs}
 
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert (draft.status, draft.request_id, draft.audience) \
         == (api.DraftStatus.PENDING, RFC_A, "bank_a")
     assert [c.status for c in draft.body.claims] == [SUPPORTED]
@@ -187,7 +188,7 @@ def test_verify_package_without_a_registry_reads_the_pinned_file_and_writes_noth
 def test_editing_the_approved_draft_makes_dispatch_refuse(ctx):
     fx = load(ctx)
     investigate(ctx, fx)
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     approval = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
 
     edited = ctx.store.get_draft(draft.draft_id).to_json_dict()
@@ -203,7 +204,7 @@ def test_editing_the_approved_draft_makes_dispatch_refuse(ctx):
 
     # The holder reviews the current draft again and approves it afresh: that one is sent.
     later = ctx.now + timedelta(minutes=1)
-    fresh = api.build_review(ctx.store, RFC_A, now=later)
+    fresh = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=later)
     assert fresh.draft_id != draft.draft_id
     renewed = api.approve(ctx.store, fresh.draft_id, holder_id=HOLDER, now=later)
     package = api.sign_and_package(ctx.store, renewed.approval_id, keystore=ctx.keystore,
@@ -220,13 +221,13 @@ def test_rfc_b_reuses_the_passport_with_its_own_package_and_fresh_approval(ctx):
     held_ids = {record_id for record_id, _ in held}
 
     with pytest.raises(api.PackageError, match="run_investigation"):
-        api.build_review(ctx.store, RFC_B, now=ctx.now)
+        api.build_review(ctx.store, RFC_B, audience=BANK[RFC_B], now=ctx.now)
     run_b = investigate(ctx, fx, RFC_B)
     gold = fx["expected"]["claims"][RFC_B]
     assert [(c.question_id, c.status, c.calculation.total_pence) for c in run_b.claims] \
         == [("q1", SUPPORTED, gold["q1"]["total_pence"]),
             ("q2", SUPPORTED, gold["q2"]["total_pence"])]
-    draft_b = api.build_review(ctx.store, RFC_B, now=ctx.now)
+    draft_b = api.build_review(ctx.store, RFC_B, audience=BANK[RFC_B], now=ctx.now)
     assert source_rows(ctx.store, subject) == held          # nothing re-imported or rebuilt
     cited = {ref.ref_id for c in run_b.claims for ref in c.evidence_refs if ref.ref_type == "record"}
     assert cited and cited <= held_ids
@@ -294,7 +295,7 @@ def test_a_dispatch_retry_returns_the_identical_package_and_one_delivery(ctx):
 def test_approving_the_same_draft_again_returns_the_existing_approval(ctx):
     fx = load(ctx)
     investigate(ctx, fx)
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     approval = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
     again = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER,
                         now=ctx.now + timedelta(minutes=1))
@@ -342,7 +343,7 @@ def test_a_correction_after_approval_invalidates_it_and_dispatch_refuses(ctx):
     fx = load(ctx, "pending_correction")
     run = investigate(ctx, fx)
     assert run.claims[0].status == SUPPORTED
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     approval = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
 
     (correction,) = fx["corrections"]
@@ -370,7 +371,7 @@ def test_a_correction_after_approval_invalidates_it_and_dispatch_refuses(ctx):
 
     # The stale investigation cannot be packaged; a rerun sees the pending settlement.
     with pytest.raises(api.PackageError, match="out of date"):
-        api.build_review(ctx.store, RFC_A, now=ctx.now)
+        api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     rerun = investigate(ctx, fx)
     assert rerun.claims[0].status in NOT_SUPPORTED
     assert "record:stl_88001@2" in {ref.key() for ref in rerun.claims[0].evidence_refs}
@@ -386,7 +387,7 @@ def test_record_policy_dont_share_item_names_removes_them_from_the_next_draft(ct
     names = sorted({item.description
                     for record in ctx.store.list_sources(subject, kinds=["order", "refund"])
                     for item in record.items or [] if item.description})
-    first = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    first = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert names and any(name in text(first.body) for name in names)
     approval = api.approve(ctx.store, first.draft_id, holder_id=HOLDER, now=ctx.now)
 
@@ -402,7 +403,7 @@ def test_record_policy_dont_share_item_names_removes_them_from_the_next_draft(ct
     with pytest.raises(api.ApprovalError):
         api.sign_and_package(ctx.store, approval.approval_id, keystore=ctx.keystore, now=ctx.now)
 
-    second = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    second = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert second.policy_version == policy.version_tag()
     assert not any(name in text(second.body) for name in names)
     assert any(entry.field == "items.description" for entry in second.review.withheld_fields)
@@ -422,7 +423,7 @@ def test_re_recording_an_older_policy_id_puts_it_back_in_force(ctx):
     loose = api.record_policy(ctx.store, subject, "nothing older than 90 days",
                               policy_id="pol_loose", confirmed=True, now=ctx.now)
     assert ctx.store.latest_policy(subject) == loose
-    under_loose = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    under_loose = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert under_loose.policy_version == loose.version_tag()
     assert any(name in text(under_loose.body) for name in names)
 
@@ -432,7 +433,7 @@ def test_re_recording_an_older_policy_id_puts_it_back_in_force(ctx):
     assert [r.to_json_dict() for r in back.rules] == [r.to_json_dict() for r in strict.rules]
     assert ctx.store.latest_policy(subject) == back
     assert ctx.store.get_draft(under_loose.draft_id).status == api.DraftStatus.INVALIDATED
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert draft.policy_version == back.version_tag()
     assert not any(name in text(draft.body) for name in names)
     # Recording the rule in force again keeps that version.
@@ -443,7 +444,7 @@ def test_re_recording_an_older_policy_id_puts_it_back_in_force(ctx):
 def test_build_review_and_record_policy_refusals_are_audited(ctx):
     fx = load(ctx)
     with pytest.raises(api.PackageError, match="run_investigation"):
-        api.build_review(ctx.store, RFC_A, now=ctx.now)
+        api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     (event,) = refusals(ctx.store, RFC_A, "build_review")
     assert event.actor == "alibi" and "no investigation results yet" in event.detail
 
@@ -478,7 +479,7 @@ def test_the_contradiction_variant_never_yields_a_supported_claim(ctx):
     (claim,) = investigate(ctx, fx).claims
     assert claim.status in NOT_SUPPORTED
     assert claim.status.value in fx["expected"]["claims"][RFC_A]["q1"]["statuses"]
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert all(c.status != SUPPORTED for c in draft.body.claims)
 
 
@@ -512,7 +513,7 @@ def test_a_restart_keeps_history_and_the_second_request_reuses_source_ids(
         held_ids = {record_id for record_id, _ in held}
         cited = {ref.ref_id for c in run_b.claims for ref in c.evidence_refs}
         assert cited and cited <= held_ids
-        draft_b = api.build_review(reopened, RFC_B, now=now)
+        draft_b = api.build_review(reopened, RFC_B, audience=BANK[RFC_B], now=now)
         assert {att.ref.ref_id for att in draft_b.body.attachments} <= held_ids
         assert source_rows(reopened, subject) == held
 
@@ -520,7 +521,7 @@ def test_a_restart_keeps_history_and_the_second_request_reuses_source_ids(
 def test_build_review_uses_the_run_recorded_last_whatever_its_clock(ctx):
     fx = load(ctx, "pending_correction")
     later = ctx.now + timedelta(days=1)
-    first = api.run_investigation(ctx.store, RFC_A, settlement_lookup=fx["settlement_lookup"],
+    first = api.run_investigation(ctx.store, RFC_A, audience=BANK[RFC_A], settlement_lookup=fx["settlement_lookup"],
                                   registry=ctx.registry, now=later)
     (correction,) = fx["corrections"]
     api.ingest_merchant_event(ctx.store, correction, registry=ctx.registry, now=ctx.now)
@@ -528,7 +529,7 @@ def test_build_review_uses_the_run_recorded_last_whatever_its_clock(ctx):
     assert rerun.claims[0].created_at < first.claims[0].created_at
     assert rerun.claims[0].status in NOT_SUPPORTED
 
-    draft = api.build_review(ctx.store, RFC_A, now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience=BANK[RFC_A], now=ctx.now)
     assert [c.status for c in draft.body.claims] == [rerun.claims[0].status]
     assert "record:stl_88001@2" in {ref.key() for ref in draft.source_revisions}
 
@@ -584,7 +585,7 @@ def test_the_retail_fixture_imports_a_self_supplied_receipt(ctx):
 def test_other_investigation_modes_are_not_built(ctx, mode):
     load(ctx)
     with pytest.raises(NotImplementedError):
-        api.run_investigation(ctx.store, RFC_A, mode=mode, registry=ctx.registry, now=ctx.now)
+        api.run_investigation(ctx.store, RFC_A, audience=BANK[RFC_A], mode=mode, registry=ctx.registry, now=ctx.now)
     assert ctx.store.list_claims(request_id=RFC_A, state=None) == []
 
 
@@ -663,29 +664,74 @@ def test_rebuilding_a_body_that_was_invalidated_earlier_gets_a_fresh_pending_dra
     assert restored.body_sha256 == first.body_sha256
     assert api.DraftStatus(restored.status) == api.DraftStatus.PENDING
     assert api.DraftStatus(ctx.store.get_draft(removed.draft_id).status) == api.DraftStatus.INVALIDATED
-def test_two_banks_can_share_a_request_id_without_mixing_their_answers(ctx, tmp_path):
-    """Request ids are per bank. bank_b reusing bank_a's id gets its own request, run, draft,
-    case and package, identical to what it gets under its own id; bank_a's flow is unaffected;
-    and a bare id is refused as ambiguous instead of guessing."""
+
+
+# --------------------------------------------------------------------------- request ids are per bank
+
+
+def shared(ctx):
+    """Maya's fixture, then bank_b filing its own request under bank_a's request id RFC_A."""
     fx = load(ctx)
     body = {**ctx.store.get_request(RFC_B).to_json_dict(), "request_id": RFC_A}
     squat = api.receive_rfc(ctx.store, body, authenticated_issuer="bank_b",
                             registry=ctx.registry, now=ctx.now)
     assert (squat.request_id, squat.audience) == (RFC_A, "bank_b")
-    with pytest.raises(api.AmbiguousRequest):
-        api.run_investigation(ctx.store, RFC_A, now=ctx.now)
-    with pytest.raises(api.AmbiguousRequest):
-        api.build_review(ctx.store, RFC_A, now=ctx.now)
+    return fx
 
+
+def run_bank(ctx, fx, bank, request=RFC_A):
+    return api.run_investigation(ctx.store, request, audience=bank,
+                                 settlement_lookup=fx["settlement_lookup"],
+                                 registry=ctx.registry, now=ctx.now)
+
+
+def test_holder_calls_must_name_the_bank(ctx):
+    """Banks choose request ids. A bare id resolves while one bank alone has used it (the app and
+    teammates' acceptance tests call bare ids); once several banks have, it is refused as
+    ambiguous instead of guessing (test_two_banks_can_share_a_request_id...)."""
+    fx = load(ctx)
+    assert fx["requests"] == [{"request_id": RFC_A, "audience": "bank_a"},
+                              {"request_id": RFC_B, "audience": "bank_b"}]
+    bare = api.run_investigation(ctx.store, RFC_A, settlement_lookup=fx["settlement_lookup"],
+                                 registry=ctx.registry, now=ctx.now)
+    assert {c.audience for c in bare.claims} == {"bank_a"}
+    assert api.build_review(ctx.store, RFC_A, now=ctx.now).audience == "bank_a"
+    ctx.store  # the bare call above ran and saved claims: nothing below expects an empty store
+    # The stored request model carries its bank, and a contradicting audience is refused.
+    with pytest.raises(api.StoreError, match="audience does not match"):
+        api.run_investigation(ctx.store, ctx.store.get_request(RFC_B), audience="bank_a",
+                              settlement_lookup=fx["settlement_lookup"], registry=ctx.registry,
+                              now=ctx.now)
+
+
+def test_a_bank_that_takes_an_id_first_cannot_capture_the_holders_flow(ctx):
+    """bank_b files its request under bank_a's predictable id before bank_a's arrives. The
+    holder asks for bank_a's request and gets NotFound, never bank_b's request."""
+    from alibi.fixtures import maya
+
+    fx = api.load_fixture(ctx.store, "supported", keystore=ctx.keystore, now=ctx.now,
+                          include_rfcs=False)
+    squat = {**maya.load_variant("supported")["rfcs"][1], "request_id": RFC_A}
+    api.receive_rfc(ctx.store, squat, authenticated_issuer="bank_b", registry=ctx.registry,
+                    now=ctx.now)
+    with pytest.raises(api.NotFound):
+        run_bank(ctx, fx, "bank_a")
+    with pytest.raises(api.NotFound):
+        api.build_review(ctx.store, RFC_A, audience="bank_a", now=ctx.now)
+    assert ctx.store.list_claims(state=None) == []
+
+
+def test_two_banks_can_share_a_request_id_without_mixing_their_answers(ctx, tmp_path):
+    """bank_b reusing bank_a's id gets its own request, run, draft, case and package, identical
+    to what it gets under its own id, and bank_a's flow is unaffected."""
+    fx = shared(ctx)
     packages = {}
     for bank in ("bank_a", "bank_b"):
-        run = api.run_investigation(ctx.store, RFC_A, audience=bank,
-                                    settlement_lookup=fx["settlement_lookup"],
-                                    registry=ctx.registry, now=ctx.now)
+        run = run_bank(ctx, fx, bank)
         assert {claim.audience for claim in run.claims} == {bank}
         draft = api.build_review(ctx.store, RFC_A, audience=bank, now=ctx.now)
-        request = ctx.store.get_request(RFC_A, audience=bank)
-        assert draft.audience == bank and draft.body.questions == request.questions
+        assert draft.audience == bank
+        assert draft.body.questions == ctx.store.get_request(RFC_A, audience=bank).questions
         approval = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
         packages[bank] = api.sign_and_package(ctx.store, approval.approval_id,
                                               keystore=ctx.keystore, now=ctx.now)
@@ -707,3 +753,90 @@ def test_two_banks_can_share_a_request_id_without_mixing_their_answers(ctx, tmp_
         [(c.question_id, c.status, c.statement) for c in reference.claims]
     assert [(c.question_id, c.status) for c in b.claims] == [("q1", SUPPORTED),
                                                              ("q2", SUPPORTED)]
+
+
+def test_build_review_uses_this_banks_latest_run_when_another_bank_ran_later(ctx):
+    fx = shared(ctx)
+    run_bank(ctx, fx, "bank_a")
+    run_bank(ctx, fx, "bank_b")                 # bank_b's run is recorded last
+    draft = api.build_review(ctx.store, RFC_A, audience="bank_a", now=ctx.now)
+    assert [(c.question_id, c.status) for c in draft.body.claims] == [("q1", SUPPORTED)]
+    assert draft.body.attachments
+
+
+def test_list_drafts_and_approvals_filter_by_audience(ctx):
+    fx = shared(ctx)
+    for bank in ("bank_a", "bank_b"):
+        run_bank(ctx, fx, bank)
+        draft = api.build_review(ctx.store, RFC_A, audience=bank, now=ctx.now)
+        api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
+    for bank in ("bank_a", "bank_b"):
+        drafts = ctx.store.list_drafts(request_id=RFC_A, audience=bank)
+        approvals = ctx.store.list_approvals(request_id=RFC_A, audience=bank)
+        assert len(drafts) == 1 and {d.audience for d in drafts} == {bank}
+        assert len(approvals) == 1 and {a.audience for a in approvals} == {bank}
+
+
+def test_cited_refs_skips_another_banks_claims_with_the_same_request_id(ctx):
+    from alibi.core.package import cited_refs
+
+    fx = shared(ctx)
+    mine = run_bank(ctx, fx, "bank_a").claims
+    theirs = run_bank(ctx, fx, "bank_b").claims
+    assert cited_refs(mine) != cited_refs(theirs)
+    # bank_b's refs happen to be a subset of bank_a's here, so check both directions.
+    for bank, own in (("bank_a", mine), ("bank_b", theirs)):
+        assert cited_refs([*mine, *theirs], request_id=RFC_A, audience=bank) == cited_refs(own)
+
+
+def test_a_follow_up_to_a_banks_own_request_id_works_when_another_bank_shares_it(ctx):
+    shared(ctx)                                 # bank_a and bank_b both have RFC_A
+    child = {**ctx.store.get_request(RFC_A, audience="bank_b").to_json_dict(),
+             "request_id": "rfc_b_child", "parent_request_id": RFC_A}
+    got = api.receive_rfc(ctx.store, child, authenticated_issuer="bank_b",
+                          registry=ctx.registry, now=ctx.now)
+    assert (got.request_id, got.parent_request_id, got.audience) == \
+        ("rfc_b_child", RFC_A, "bank_b")
+
+
+def test_run_investigation_accepts_a_request_model_whose_id_another_bank_shares(ctx):
+    fx = shared(ctx)
+    result = api.run_investigation(ctx.store, ctx.store.get_request(RFC_A, audience="bank_b"),
+                                   settlement_lookup=fx["settlement_lookup"],
+                                   registry=ctx.registry, now=ctx.now)
+    assert {c.audience for c in result.claims} == {"bank_b"}
+
+
+def test_a_policy_change_never_touches_another_subjects_request_with_the_same_id(ctx):
+    """Maya's policy change leaves alone a pending approval for another subject's request that
+    bank_b filed under the same request id."""
+    from alibi.fixtures import maya
+
+    load(ctx)
+    raw = maya.load_variant("supported")
+    other_txn = {**raw["bank_txns"][0], "txn_id": "txn_other_1", "subject_ref": "subj_other",
+                 "account_ref": "acc_other"}
+    other_txn["provenance"] = {**other_txn["provenance"], "connection_id": "conn_other"}
+    api.ingest_bank_txns(ctx.store, [other_txn], subject_ref="subj_other",
+                         connection_id="conn_other", now=ctx.now)
+    body = {**ctx.store.get_request(RFC_B).to_json_dict(), "request_id": RFC_A,
+            "subject_ref": "subj_other"}
+    api.receive_rfc(ctx.store, body, authenticated_issuer="bank_b", registry=ctx.registry,
+                    now=ctx.now)
+    api.run_investigation(ctx.store, RFC_A, audience="bank_b", now=ctx.now)
+    draft = api.build_review(ctx.store, RFC_A, audience="bank_b", now=ctx.now)
+    approval = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
+
+    api.record_policy(ctx.store, "subj_maya", "don't share item names", confirmed=True,
+                      now=ctx.now)
+    assert ctx.store.get_draft(draft.draft_id).status == api.DraftStatus.APPROVED
+    assert ctx.store.get_approval(approval.approval_id).status == api.ApprovalStatus.PENDING
+
+
+def test_build_review_refusals_name_the_bank_and_stay_apart(ctx):
+    shared(ctx)
+    for bank in ("bank_a", "bank_b"):
+        with pytest.raises(api.PackageError):
+            api.build_review(ctx.store, RFC_A, audience=bank, now=ctx.now)
+    details = sorted(event.detail for event in refusals(ctx.store, RFC_A, "build_review"))
+    assert [d.split(":")[0] for d in details] == ["refused for bank_a", "refused for bank_b"]

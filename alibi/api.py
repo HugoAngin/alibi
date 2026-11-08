@@ -420,25 +420,29 @@ def _body_fingerprint(body: PackageBody) -> str:
     return canon.digest(data)
 
 
-def _live_drafts(store: Store, request_id: str) -> list[Draft]:
-    """Drafts of a request that are still pending, approved or packaged, oldest first."""
+def _live_drafts(store: Store, request_id: str, audience: str) -> list[Draft]:
+    """One bank's drafts of a request that are still pending, approved or packaged, oldest
+    first. Request ids are chosen by banks, so two banks can share one: always scope by the
+    audience, or one bank's draft would supersede or block the other's."""
     live = (DraftStatus.PENDING, DraftStatus.APPROVED, DraftStatus.PACKAGED)
-    drafts = [d for d in store.list_drafts(request_id=request_id) if DraftStatus(d.status) in live]
+    drafts = [d for d in store.list_drafts(request_id=request_id, audience=audience)
+              if DraftStatus(d.status) in live]
     return sorted(drafts, key=lambda d: (d.created_at, d.draft_id))
 
 
-def _supersede(store: Store, request_id: str, current: Draft, *, change: str) -> None:
+def _supersede(store: Store, request_id: str, audience: str, current: Draft, *,
+               change: str) -> None:
     """A newly built body replaces every earlier live draft of the request (consent matrix C6)
     and invalidates every pending approval of an earlier body (C2), so an approval never signs
     a body the holder has since edited."""
-    for old in _live_drafts(store, request_id):
+    for old in _live_drafts(store, request_id, audience):
         if old.draft_id == current.draft_id or DraftStatus(old.status) == DraftStatus.PACKAGED:
             continue
         store.update_draft_status(old.draft_id, DraftStatus.INVALIDATED, _C6.format(
             approved12=old.body_sha256[:12], current12=current.body_sha256[:12]))
     for approval in store.list_approvals(request_id=request_id,
                                          status=ApprovalStatus.PENDING.value):
-        if approval.body_sha256 == current.body_sha256:
+        if approval.audience != audience or approval.body_sha256 == current.body_sha256:
             continue
         store.update_approval(Approval.model_validate({
             **approval.to_json_dict(), "status": ApprovalStatus.INVALIDATED.value,
@@ -714,7 +718,7 @@ def build_review(store: Store, request_id: str, *, audience: str | None = None,
                                             policy_version=compiled.policy_version,
                                             source_revisions=refs, now=at)
             fingerprint = _body_fingerprint(draft.body)
-            same_body = [d for d in _live_drafts(store, rfc.request_id)
+            same_body = [d for d in _live_drafts(store, rfc.request_id, rfc.audience)
                          if _body_fingerprint(d.body) == fingerprint
                          and d.policy_version == draft.policy_version]
             if same_body:
@@ -729,7 +733,7 @@ def build_review(store: Store, request_id: str, *, audience: str | None = None,
                                                 sequence=sequence)
             store.save_draft(draft)
             change = f" ({', '.join(sorted(str(r) for r in removed))} removed)" if removed else ""
-            _supersede(store, rfc.request_id, draft, change=change)
+            _supersede(store, rfc.request_id, rfc.audience, draft, change=change)
             _audit(store, action="build_review", actor=SYSTEM, outcome="ok", at=at,
                    target_id=draft.draft_id,
                    detail=f"draft for {rfc.request_id} to {rfc.audience}: "
@@ -865,7 +869,7 @@ def sign_and_package(store: Store, approval_id: str, *, keystore: DemoKeystore |
             # request's current draft, whatever the approval's own status says. C3: and still
             # the body the latest investigation run gives, so a rerun that changed an answer
             # (even only its rationale) revokes the approval before any new preview is built.
-            live = _live_drafts(store, rfc.request_id)
+            live = _live_drafts(store, rfc.request_id, rfc.audience)
             current = live[-1] if live else None
             current_sha256, change = None, ""
             if current is not None and current.body_sha256 != approval.body_sha256:

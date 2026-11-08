@@ -47,6 +47,8 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 - 08:49Z lead (bbb14db): research owns web/apps/alibi (landing final, holder app); execution owns the rest of web/ (bank console, merchant, packages/ui, launcher, root config). 09:05Z: landed research's bank console redesign (19f0a56, verify green 96 tests); SP-47 scoped to the passport store in deck/judge_qa/controls (4b7393d). Not yet run against the real bank service.
 - 09:20-10:00Z: lead's S5 post retracted 09:49 (S5 not on main; wait for a lead post with SHA+tag before verifying the sealed run). Bank console checked vs rehearsal mock bank on 8111/8112 (own state file data/alibi/exec_test/): all screens 200, Send -> POST /rfc accepted. Someone's stack runs on 8100-8102; leave it. Merchant patch landed (ca03c47), MOBILE_NEEDS 3 done (485db1e), 1/2/4/5/6 are research's. Tamper demo fixed per eval ae17c2d (8da8eb4).
 
+- 11:55Z `run_demo.sh`: one command for the stage demo (alibi.demo --reset, agents mode, optional --replay), D1-D3 one Enter each, Enter after D3 resets and reruns. Full replay run verified 11:37-11:40Z on 8200 (both banks delivered/accepted, Bank A Clear, cross-bank 404); run-reset-run-quit loop verified.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
@@ -60,4 +62,5 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- None. Waiting: lead's S5 SHA + sealed-candidate tag, then verify eval's sealed run. (Deploy to Cloudflare waits on Elio's account.)
+- 11:16Z need to lead (6720811720) for backend demo payout routes: declined by lead 11:19Z (freeze; lead NOTES). Demo uses case 1's payout; reset = restart alibi.demo. The web-only merchant payout panel + bank alert stay local, uncommitted.
+- Earlier: none. Waiting: lead's S5 SHA + sealed-candidate tag, then verify eval's sealed run. (Deploy to Cloudflare waits on Elio's account.)

@@ -4,6 +4,10 @@
 
 **Status.** Lead approved this as a pure function over a case without gold (board comment 6718679896). It is **not** wired into the app runner. Wiring it in is Arnav's decision. If he does not accept it, it stays out of the frozen candidate. If he does, execution must rerun the final evaluation independently, because eval wrote the engine.
 
+**Recorded reproduction.** Validation record `b130ba6b03` runs the committed implementation at `268d2997661434773553781475a297ab14feaf97`, declares five explored versions, and passed `tools/results.py verify --id b130ba6b03` in a clean checkout. The final engine and baseline-focused suite passed 183 tests; the full eval suite passed 536 with 16 existing expected failures before the rebase onto the current team changes. This is author-run reproducibility, not independent approval or a sealed evaluation. Earlier uncommitted development runs are disclosed below; only the final version has this reproducible results record.
+
+**API cost.** No live Gemini comparison was run. Lookup counts are connector calls, not model calls or tokens. The engine makes no model calls itself, but adding it ahead of unchanged agent prompts does not establish savings. Integration should measure the existing usage logs for both pipelines on the same inputs, recording model calls, input/output/thinking tokens, latency and correctness. Use its checks and targeted evidence to avoid redundant model rounds only where the existing backend verdict and oversight gates still pass. Do not replace those gates with the draft answers below.
+
 ## API
 
 ```python

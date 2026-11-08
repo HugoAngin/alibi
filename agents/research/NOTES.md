@@ -36,7 +36,15 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - README draft: `out/README_draft.md`. Data card and controls copied verbatim (11abc05, 06d22b1); refresh before T-1h. METHOD.md (eval) and alibi/RUNBOOK.md not landed: marked {{METHOD}} and {{RUNBOOK}}.
 - Data now has 70 cases in 11 families (47/10/13); DECK.md and slide 4 updated.
 
+## Lead's 01:29Z assignment (6715635795)
+1. Phone app screens on the S4 JSON (S4 merge ~02:30). DONE ahead of the merge (4b7a8a2): `/app/` passport home and `/app/requests/<id>/` (trace + private review + approval) built on the UI.md shapes (`web/apps/alibi/src/lib/api/types.ts`), with a case 1 fallback that says it is not live, and `/app/act` forwarding actions with refusals verbatim. Tested against a fake backend in scratch: live data, and a 409 refusal shown word for word. Jinja is the fallback; lead picks by 10:00.
+2. Deck v2: 'what could fool us' slide added (bc23e3a). Still to do after S4: replace s4a screenshots with the wired app on case 1 (deck/shots.mjs).
+3. Backup demo video once S5 reports the live path works; replay mode if Gemini flakes.
+4. Final README from out/README_draft.md at T-1h (~11:30).
+- Merchant sim renamed ResaleHub -> Mock Marketplace (`mock-marketplace`) to match case 1.
+
 ## Next
+- When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.
 - Refresh README_draft verbatim sections and deck screenshots (wired app on case 1) when they land; fill placeholders only from eval-verified records.
 - Work loop: `board.py wait` in the background, act on posts addressed to research.
 

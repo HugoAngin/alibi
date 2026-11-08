@@ -159,7 +159,8 @@ def test_pinned_candidate_requires_tag_and_clean_evaluator(monkeypatch):
         run_sealed._pinned_candidate("sealed-candidate")
 
 
-def test_second_candidate_is_bound_to_its_own_approved_tag(monkeypatch):
+@pytest.mark.parametrize("tag", ["sealed-candidate-2", "sealed-candidate-3"])
+def test_refrozen_candidate_is_bound_to_its_own_approved_tag(monkeypatch, tag):
     commands = []
     responses = iter(["", "candidate2", "candidate2", "evaluator"])
 
@@ -168,8 +169,8 @@ def test_second_candidate_is_bound_to_its_own_approved_tag(monkeypatch):
         return next(responses)
 
     monkeypatch.setattr(run_sealed.subprocess, "check_output", git)
-    assert run_sealed._pinned_candidate("sealed-candidate-2") == ("candidate2", "evaluator")
-    assert commands[2][-1] == "refs/tags/sealed-candidate-2^{commit}"
+    assert run_sealed._pinned_candidate(tag) == ("candidate2", "evaluator")
+    assert commands[2][-1] == f"refs/tags/{tag}^{{commit}}"
 
 
 def test_public_cli_signature_binds_candidate_and_evaluator_separately(tmp_path, monkeypatch):

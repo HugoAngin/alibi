@@ -1,5 +1,5 @@
 {
-  "candidate": "9468c2048eebcee38221b6023a412237ff1cc860",
+  "candidate": "58bf0d4a199f5ad3833fa9bde751d31140219975",
   "models": {
     "one_pass": {
       "model": "gemini-3.8-flash",
@@ -42,13 +42,14 @@
     "alibi/llm/config.py": "9e327b85cef634a2f938a41f5a9d81fd29ce5713f269fb7bead9f4ec8f0b8f25",
     "alibi/llm/prompts.py": "5829faef889bf151c3d19414667774c3f3a8babc1bb4da2ae83e5d9cf3c39dda",
     "alibi/llm/schema.py": "e883b5c5bff108e6843c80d089faaa8322278bb36d60f770930361a51443a27e",
-    "alibi/llm/client.py": "91ee500a4ec74188b6a3309e08bc879c55c024cf5145d36b3054d24a54ddd8e5",
+    "alibi/llm/client.py": "09e791d27cb63c9f195bbdb28892a3dfa1307c6a34b5a621c5c0e163fabbf20d",
     "alibi/core/facts.py": "0b76b445f1c0e21f62ad897434218a10a8a8f85b70fe4a7bd0affd2bba7d48ac",
     "alibi/agents/runner.py": "cf458d611e43bc4d2be12cc85107ac80c2d3c45ec4ea636196135659a01f3b5b",
     "alibi/baselines/one_pass.py": "0fce2a5a53e2f639a8fdc7cacb34f1bb9b08f0c5af20a59217908b9661da48a7",
     "uv.lock": "a86bebcdd2eb8130bedc1561b0d0e37c1784685c95ee166cc81d2486d8d592db"
   },
-  "candidate_tag": "sealed-candidate-2",
-  "refreeze_reason": "Typed Claim.facts added from cited records/calculation after public rehearsal, before opening the pack; lead declared refreeze at 10:51 UTC.",
-  "trace_schema_failure": "Trace-length output-shaping change is absent from 9468c20; invalid outputs remain counted without retries."
+  "candidate_tag": "sealed-candidate-3",
+  "refreeze_reason": "Before pack opening, candidate2 added typed facts from cited records/calculations; candidate3 additionally clips top-level trace steps to their existing schema limit before validation. Lead superseded2 at11:16 UTC.",
+  "trace_schema_failure": "Candidate3 includes trace output shaping; other invalid outputs still count without retries.",
+  "candidate_variants_examined": 3
 }

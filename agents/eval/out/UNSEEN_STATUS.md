@@ -2,7 +2,9 @@
 
 Owner: Verify unseen data workflow chat. The master coordination chat handles public integration and probe evidence. Only this evaluator chat launches the unseen capture.
 
-At 10:58 UTC on 8 November, lead announced `sealed-candidate-2` at `9468c20`, adding typed facts to both Gemini modes, and extended the hard stop to 12:50 UTC. At 11:00 the remote tag was still absent; eval requested the tag push on board comment 6720649301. Once verified, rerun public Cases 1 and 2 and bind fresh public probe evidence to that candidate. No release manifest or capture lock has yet been created.
+Superseding instruction at 11:16 UTC: use `sealed-candidate-3` at `58bf0d4a199f5ad3833fa9bde751d31140219975`, containing the facts fix and trace clipping. The remote tag has been verified. Public model and probe gates are starting in parallel; use `--variants 3`, retain the 12:50 stop and publish a completed-so-far checkpoint at 12:05 if still running.
+
+Earlier history: at 10:58 UTC on 8 November, lead announced `sealed-candidate-2` at `9468c20`, adding typed facts to both Gemini modes, and extended the hard stop to 12:50 UTC. At 11:00 the remote tag was still absent; eval requested the tag push on board comment 6720649301. Once verified, rerun public Cases 1 and 2 and bind fresh public probe evidence to that candidate. No release manifest or capture lock has yet been created.
 
 The original candidate public results and both sequential and parallel rehearsals are documented in `PUBLIC_REHEARSAL.md`. Validation record `b9f980d5e6` passed clean-checkout replay for the first public report. The integrated four-worker check retained two challenger schema failures, with no timeout, retry or infrastructure error. Scored application source remains unchanged.
 

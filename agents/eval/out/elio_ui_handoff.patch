@@ -1,0 +1,1719 @@
+diff --git a/web/apps/alibi/src/components/app/RequestView.astro b/web/apps/alibi/src/components/app/RequestView.astro
+index d9218a5..7ea79ba 100644
+--- a/web/apps/alibi/src/components/app/RequestView.astro
++++ b/web/apps/alibi/src/components/app/RequestView.astro
+@@ -20,7 +20,6 @@ interface Props {
+ 
+ const { data, flash, live } = Astro.props;
+ const { request: rq, investigation: inv, trace, review } = data;
+-const back = `/app/requests/${encodeURIComponent(rq.request_id)}/`;
+ const approval = review.approval;
+ const questionText = new Map(rq.questions.map((q) => [q.question_id, q.text]));
+ const includedByQuestion = rq.questions
+@@ -92,7 +91,6 @@ const SHOW = 3;
+   {inv.can_run && (
+     <form method="post" action="/app/act">
+       <input type="hidden" name="action" value={inv.run_action} />
+-      <input type="hidden" name="return_to" value={back} />
+       <button class="btn btn--primary" type="submit" disabled={!live}>
+         Run investigation
+       </button>
+@@ -134,7 +132,6 @@ const SHOW = 3;
+               {i.removable && i.remove_action ? (
+                 <form method="post" action="/app/act">
+                   <input type="hidden" name="action" value={i.remove_action} />
+-                  <input type="hidden" name="return_to" value={back} />
+                   <button class="btn btn--small" type="submit" disabled={!live}>
+                     Remove
+                   </button>
+@@ -210,29 +207,37 @@ const SHOW = 3;
+   <div class="approval" aria-labelledby="approval-title">
+     <h3 id="approval-title">Approve for {approval.recipient}</h3>
+     <p>
+-      Approving sends exactly the items above to <strong>{approval.recipient}</strong> and nobody
+-      else. Any change afterwards needs a new approval.
++      Approval covers exactly the items above for <strong>{approval.recipient}</strong>. Any change
++      afterwards needs a new approval.
+     </p>
+     {approval.invalidated_reason && (
+       <p class="notice">Your earlier approval no longer applies: {approval.invalidated_reason}</p>
+     )}
+     <form method="post" action="/app/act">
+       <input type="hidden" name="action" value={approval.action} />
+-      <input type="hidden" name="return_to" value={back} />
+-      <input type="hidden" name="result_page" value="sent" />
+       <input type="hidden" name="digest" value={approval.digest} />
+       <input type="hidden" name="audience" value={approval.audience} />
+       <input type="hidden" name="policy_version" value={approval.policy_version} />
+       <button
+         class="btn btn--primary btn--wide"
+         type="submit"
+-        disabled={!live || approval.status === 'approved'}
++        disabled={
++          !live || !approval.digest || approval.status === 'approved' || rq.status === 'sent'
++        }
+       >
+         {approval.status === 'approved'
+           ? `Approved for ${approval.recipient}`
+           : `Approve for ${approval.recipient}`}
+       </button>
+     </form>
++    {live && approval.status === 'approved' && rq.status !== 'sent' && (
++      <form method="post" action="/app/act">
++        <input type="hidden" name="action" value={`/requests/${rq.request_id}/dispatch`} />
++        <button class="btn btn--primary btn--wide" type="submit">
++          Send approved package to {approval.recipient}
++        </button>
++      </form>
++    )}
+     {!live && (
+       <p class="meta">
+         Approval needs the backend: it binds your decision to the package’s digest.
+diff --git a/web/apps/alibi/src/components/site/HeroScene.astro b/web/apps/alibi/src/components/site/HeroScene.astro
+index 81d6c8a..7cb95a2 100644
+--- a/web/apps/alibi/src/components/site/HeroScene.astro
++++ b/web/apps/alibi/src/components/site/HeroScene.astro
+@@ -1,262 +1,461 @@
+ ---
+ /**
+- * The hero's 3D visual: Maya's passport as a paper card, and three slips of
+- * her real evidence from case 1 (the bank credit, the payout, the sales) that
+- * start loose and dock onto the card as the visitor scrolls. That is the
+- * product in one image: evidence gathered before anyone asks. Each slip
+- * carries the site's signature, a stamped record reference.
++ * The hero's visual: the Alibi stream (agents/research/out/HERO_STREAM.md).
++ * Records flow in from shops, bank accounts and a mule-pattern check; the
++ * engine's four agents work on them; a signed context package leaves for a
++ * bank's fraud team. Scroll drives the engine and the hand-off, and packets
++ * keep flowing while the hero is on screen.
+  *
+- * The only motion is that scroll-linked docking: no idle loop, no parallax.
+- * three.js loads only on this page, renders only while visible, and draws a
+- * single still frame (docked) when the visitor prefers reduced motion.
++ * Data honesty: only the stamped case 1 values (txn-0001-004, PO-0001-01,
++ * rec-0001-013, rfc-0001-01, £2,160.00) come from the demo fixture. Every
++ * other source and amount is illustrative and labelled synthetic.
++ *
++ * SVG, no WebGL. It renders only while visible and shows one still, readable
++ * frame when the visitor prefers reduced motion.
+  */
+ ---
+ 
+-<div class="scene" data-hero-scene>
+-  <canvas aria-hidden="true"></canvas>
+-  <noscript>
+-    <p class="fallback">Maya’s passport, with her evidence attached</p>
+-  </noscript>
+-</div>
++<figure class="stream" data-hero-stream>
++  <svg viewBox="0 0 600 560" role="img" aria-labelledby="stream-title stream-desc">
++    <title id="stream-title">How Alibi answers a bank</title>
++    <desc id="stream-desc">
++      Synthetic records from shops, bank accounts and a mule-pattern check flow into the Alibi
++      engine, where the Matcher, Detective, Challenger and Curator work on them. A signed context
++      package leaves for Bank A and answers request rfc-0001-01 about the £2,160.00 credit
++      txn-0001-004.
++    </desc>
++    <defs>
++      <marker
++        id="stream-arrow"
++        viewBox="0 0 8 8"
++        refX="7"
++        refY="4"
++        markerWidth="7"
++        markerHeight="7"
++        orient="auto-start-reverse"
++      >
++        <path d="M0,0 L8,4 L0,8 z" class="arrow-head"></path>
++      </marker>
++    </defs>
++
++    <g class="paths" fill="none">
++      <path id="p-mm" d="M150,56 C230,56 230,232 262,250"></path>
++      <path id="p-ret" d="M150,112 C220,112 226,240 262,258"></path>
++      <path id="p-food" d="M150,168 C210,168 220,252 262,266"></path>
++      <path id="p-cloth" d="M150,224 C200,224 220,268 262,274"></path>
++      <path id="p-elec" d="M150,280 C200,280 226,282 262,282"></path>
++      <path id="p-cur" d="M150,356 C210,356 222,300 262,290"></path>
++      <path id="p-sav" d="M150,412 C214,412 226,310 262,298"></path>
++      <path id="p-mule" d="M150,488 C220,488 230,322 262,306"></path>
++      <path id="p-out" class="out" d="M422,278 C470,278 470,420 520,440"></path>
++    </g>
++
++    <g class="sources">
++      <g class="src src--case" transform="translate(10,40)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Mock Marketplace
++        </text>
++        <text class="tag" x="12" y="44">
++          case 1 · synthetic
++        </text>
++      </g>
++      <g class="src" transform="translate(10,96)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Online retailer
++        </text>
++      </g>
++      <g class="src" transform="translate(10,152)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Food delivery app
++        </text>
++      </g>
++      <g class="src" transform="translate(10,208)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Clothing shop
++        </text>
++      </g>
++      <g class="src" transform="translate(10,264)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Electronics store
++        </text>
++      </g>
++      <text class="group" x="10" y="330">
++        Bank accounts
++      </text>
++      <g class="src" transform="translate(10,340)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Current account
++        </text>
++      </g>
++      <g class="src" transform="translate(10,396)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Savings account
++        </text>
++      </g>
++      <text class="group" x="10" y="464">
++        Mule-pattern check
++      </text>
++      <g class="src src--mule" transform="translate(10,472)">
++        <rect width="140" height="32" rx="6"></rect>
++        <text x="12" y="20">
++          Acct A
++        </text>
++        <text x="104" y="20">
++          Acct B
++        </text>
++        <path class="mule-arrow" d="M58,16 L98,16" marker-end="url(#stream-arrow)"></path>
++      </g>
++      <text class="tag" x="10" y="540">
++        All sources synthetic
++      </text>
++    </g>
++
++    <g class="engine" transform="translate(262,198)">
++      <rect class="engine-box" width="160" height="164" rx="12"></rect>
++      <text class="engine-name" x="80" y="30" text-anchor="middle">
++        Alibi
++      </text>
++      <text class="tag" x="80" y="46" text-anchor="middle">
++        passport engine
++      </text>
++      {['Matcher', 'Detective', 'Challenger', 'Curator'].map((name, i) => (
++        <g class="agent" data-agent transform={`translate(12,${60 + i * 24})`}>
++          <rect width="136" height="20" rx="10" />
++          <text x="68" y="14" text-anchor="middle">
++            {name}
++          </text>
++        </g>
++      ))}
++      <text class="tag small" x="80" y="182" text-anchor="middle">
++        agents on Gemini · code checks every total
++      </text>
++    </g>
++
++    <g class="bank" transform="translate(440,86)">
++      <rect width="150" height="88" rx="8"></rect>
++      <text x="12" y="22" class="strong bank-name">
++        Bank A · fraud team
++      </text>
++      <text x="12" y="40" class="stamp">
++        rfc-0001-01
++      </text>
++      <text x="12" y="58">
++        Where did the £2,160.00
++      </text>
++      <text x="12" y="74">
++        credit come from?
++      </text>
++    </g>
++    <path
++      class="ask"
++      d="M515,174 C515,210 470,218 424,226"
++      fill="none"
++      marker-end="url(#stream-arrow)"
++    ></path>
++
++    <g class="package" data-package transform="translate(452,398)">
++      <rect width="138" height="84" rx="8"></rect>
++      <text x="12" y="22" class="strong">
++        Signed package
++      </text>
++      <text x="12" y="40" class="stamp">
++        txn-0001-004 r1
++      </text>
++      <text x="12" y="56" class="stamp">
++        PO-0001-01 r1
++      </text>
++      <text x="12" y="74" class="seal">
++        ✓ approved by Maya
++      </text>
++    </g>
++
++    <g class="packets" data-packets></g>
++  </svg>
++</figure>
+ 
+ <style>
+-  .scene {
+-    position: relative;
++  .stream {
++    margin: 0;
+     width: 100%;
+-    height: 100%;
+-    min-height: 420px;
+   }
+ 
+-  canvas {
+-    position: absolute;
+-    inset: 0;
++  svg {
+     width: 100%;
+-    height: 100%;
++    height: auto;
+     display: block;
++    overflow: visible;
++  }
++
++  text {
++    fill: var(--s-ink);
++    font-size: 12px;
++  }
++
++  .tag {
++    fill: var(--s-ink-soft);
++    font-family: var(--s-font-mono);
++    font-size: 10px;
++    letter-spacing: 0.04em;
++  }
++
++  .tag.small {
++    font-size: 9px;
++  }
++
++  .group {
++    fill: var(--s-ink-soft);
++    font-size: 11px;
++    text-transform: uppercase;
++    letter-spacing: 0.08em;
++  }
++
++  .stamp {
++    fill: var(--s-accent);
++    font-family: var(--s-font-mono);
++    font-size: 11px;
++  }
++
++  .strong {
++    font-weight: 700;
++  }
++
++  .paths path {
++    stroke: var(--s-line);
++    stroke-width: 1.5;
++  }
++
++  .paths path.out {
++    stroke: var(--s-accent);
++    stroke-dasharray: 4 5;
++    stroke-width: 2;
++  }
++
++  .arrow-head {
++    fill: var(--s-accent);
++  }
++
++  .src rect {
++    fill: var(--s-card);
++    stroke: var(--s-line);
++  }
++
++  .src--case rect {
++    stroke: var(--s-accent);
++    stroke-width: 1.5;
++  }
++
++  .src--mule rect {
++    stroke-dasharray: 3 3;
++  }
++
++  .mule-arrow,
++  .ask {
++    stroke: var(--s-accent);
++    stroke-width: 1.5;
++  }
++
++  .ask {
++    stroke-dasharray: 2 4;
++  }
++
++  .engine-box {
++    fill: var(--s-card);
++    stroke: var(--s-ink);
++    stroke-width: 2;
++  }
++
++  .engine-name {
++    font-size: 20px;
++    font-weight: 700;
++  }
++
++  .agent rect {
++    fill: var(--s-paper);
++    stroke: var(--s-line);
++    transition:
++      fill 400ms var(--s-ease),
++      stroke 400ms var(--s-ease);
++  }
++
++  .agent.is-on rect {
++    fill: var(--s-accent-soft);
++    stroke: var(--s-accent);
++  }
++
++  .agent.is-on text {
++    fill: var(--s-accent);
++    font-weight: 700;
++  }
++
++  .bank rect,
++  .package rect {
++    fill: var(--s-card);
++    stroke: var(--s-ink);
++    stroke-width: 1.5;
++  }
++
++  .bank text {
++    font-size: 11px;
++  }
++
++  .bank .bank-name {
++    font-size: 13px;
++  }
++
++  .package {
++    opacity: 0;
++  }
++
++  .seal {
++    fill: var(--s-accent);
++    font-size: 10px;
++    font-weight: 700;
++  }
++
++  /* Packets are created by the script, so they sit outside Astro's scoping. */
++  .stream :global(.packet rect) {
++    fill: var(--s-card);
++    stroke: var(--s-accent);
++    stroke-width: 1;
+   }
+ 
+-  .fallback {
+-    position: absolute;
+-    bottom: 0;
+-    color: var(--s-ink-soft);
++  .stream :global(.packet text) {
++    fill: var(--s-accent);
++    font-family: var(--s-font-mono);
++    font-size: 9px;
+   }
+ </style>
+ 
+ <script>
+-  import {
+-    ACESFilmicToneMapping,
+-    CanvasTexture,
+-    DirectionalLight,
+-    Group,
+-    Mesh,
+-    MeshBasicMaterial,
+-    MeshStandardMaterial,
+-    PerspectiveCamera,
+-    PlaneGeometry,
+-    PMREMGenerator,
+-    Scene,
+-    SRGBColorSpace,
+-    Vector3,
+-    WebGLRenderer,
+-  } from 'three';
+-  import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+-  import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+-
+-  const INK = '#1f1b16';
+-  const SOFT = '#5e554a';
+-  const STAMP = '#2b45c4';
+-  const PAPER = 0xfdfbf7;
+-
+-  const host = document.querySelector<HTMLElement>('[data-hero-scene]');
+-  const canvas = host?.querySelector('canvas');
+-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+-
+-  type Line = { text: string; font: string; color: string; y: number; box?: boolean };
+-
+-  /** Draws text onto a transparent canvas for a label plane; `box` draws a stamp outline. */
+-  function label(lines: Line[], w: number, h: number) {
+-    const c = document.createElement('canvas');
+-    c.width = w;
+-    c.height = h;
+-    const ctx = c.getContext('2d')!;
+-    for (const l of lines) {
+-      ctx.font = l.font;
+-      ctx.fillStyle = l.color;
+-      ctx.fillText(l.text, 48, l.y);
+-      if (l.box) {
+-        const width = ctx.measureText(l.text).width;
+-        ctx.strokeStyle = l.color;
+-        ctx.globalAlpha = 0.45;
+-        ctx.lineWidth = 3;
+-        ctx.strokeRect(36, l.y - 34, width + 24, 46);
+-        ctx.globalAlpha = 1;
+-      }
+-    }
+-    const tex = new CanvasTexture(c);
+-    tex.colorSpace = SRGBColorSpace;
+-    tex.anisotropy = 4;
+-    return tex;
++  /** Short stamped labels that ride each input path. Case 1 values ride the Mock Marketplace
++   *  and current-account paths; the rest are illustrative. */
++  const STREAMS: { path: string; labels: string[] }[] = [
++    { path: 'p-mm', labels: ['rec-0001-013 £450.00', 'PO-0001-01'] },
++    { path: 'p-ret', labels: ['£34.99'] },
++    { path: 'p-food', labels: ['£18.40'] },
++    { path: 'p-cloth', labels: ['−£25.00'] },
++    { path: 'p-elec', labels: ['£1,249.00'] },
++    { path: 'p-cur', labels: ['txn-0001-004 +£2,160.00'] },
++    { path: 'p-sav', labels: ['+£200.00'] },
++    { path: 'p-mule', labels: ['£950 in · £940 out'] },
++  ];
++  const NS = 'http://www.w3.org/2000/svg';
++  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
++
++  interface Packet {
++    g: SVGGElement;
++    width: number;
++    path: SVGPathElement;
++    offset: number;
++    speed: number;
+   }
+ 
+-  async function start(host: HTMLElement, canvas: HTMLCanvasElement) {
+-    await document.fonts.ready;
+-
+-    const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
+-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+-    renderer.toneMapping = ACESFilmicToneMapping;
+-    renderer.outputColorSpace = SRGBColorSpace;
+-
+-    const scene = new Scene();
+-    const pmrem = new PMREMGenerator(renderer);
+-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+-    const sun = new DirectionalLight(0xfff6e8, 0.6);
+-    sun.position.set(-3, 4, 6);
+-    scene.add(sun);
+-
+-    const camera = new PerspectiveCamera(32, 1, 0.1, 100);
+-    camera.position.set(0, 0, 12.5);
+-
+-    // The passport: a paper card with Maya's details printed on it.
+-    const card = new Group();
+-    card.add(
+-      new Mesh(
+-        new RoundedBoxGeometry(3.3, 4.5, 0.08, 8, 0.24),
+-        new MeshStandardMaterial({ color: PAPER, roughness: 0.9 }),
+-      ),
+-    );
+-    const face = new Mesh(
+-      new PlaneGeometry(3.3, 4.5),
+-      new MeshBasicMaterial({
+-        transparent: true,
+-        map: label(
+-          [
+-            { text: 'alibi', font: '600 88px "Inter Tight", sans-serif', color: INK, y: 136 },
+-            { text: 'Financial passport', font: '500 32px Inter, sans-serif', color: SOFT, y: 192 },
+-            { text: 'Maya', font: '500 64px "Inter Tight", sans-serif', color: INK, y: 1000 },
+-            {
+-              text: 'maya-001 · synthetic',
+-              font: '500 28px "IBM Plex Mono", monospace',
+-              color: SOFT,
+-              y: 1046,
+-            },
+-          ],
+-          792,
+-          1080,
+-        ),
+-      }),
+-    );
+-    face.position.z = 0.045;
+-    card.add(face);
+-    scene.add(card);
+-
+-    // Evidence slips from case 1, each with its stamped reference.
+-    const slips = [
+-      { title: '£2,160.00 credit', ref: 'txn-0001-004 r1' },
+-      { title: 'Payout PO-0001-01', ref: 'rec-0001-021 r1' },
+-      { title: '8 sales · £2,400.00', ref: '18 records · rec-0001-001…018' },
+-    ].map((t, i) => {
+-      const g = new Group();
+-      const body = new Mesh(
+-        new RoundedBoxGeometry(2.5, 0.78, 0.04, 6, 0.12),
+-        new MeshStandardMaterial({ color: PAPER, roughness: 0.85 }),
+-      );
+-      const text = new Mesh(
+-        new PlaneGeometry(2.5, 0.78),
+-        new MeshBasicMaterial({
+-          transparent: true,
+-          map: label(
+-            [
+-              { text: t.title, font: '500 56px "Inter Tight", sans-serif', color: INK, y: 92 },
+-              {
+-                text: t.ref,
+-                font: '500 30px "IBM Plex Mono", monospace',
+-                color: STAMP,
+-                y: 168,
+-                box: true,
+-              },
+-            ],
+-            800,
+-            250,
+-          ),
+-        }),
+-      );
+-      text.position.z = 0.025;
+-      g.add(body, text);
+-      scene.add(g);
+-      return {
+-        g,
+-        // Loose around the card at the top of the page...
+-        from: [
+-          new Vector3(-1.75, 1.75, 1.2),
+-          new Vector3(1.8, 0.35, 1.6),
+-          new Vector3(-1.6, -1.85, 1.0),
+-        ][i],
+-        fromRot: [
+-          new Vector3(0.2, 0.5, -0.18),
+-          new Vector3(-0.15, -0.55, 0.14),
+-          new Vector3(0.25, 0.4, 0.12),
+-        ][i],
+-        // ...and docked on its face, clear of the printed name, once scrolled.
+-        to: new Vector3(0, 1.0 - i * 0.86, 0.12),
+-      };
++  function start(root: HTMLElement) {
++    const svg = root.querySelector('svg');
++    const layer = root.querySelector<SVGGElement>('[data-packets]');
++    const pkg = root.querySelector<SVGGElement>('[data-package]');
++    const out = root.querySelector<SVGPathElement>('#p-out');
++    if (!svg || !layer || !pkg || !out) return;
++    const agents = [...root.querySelectorAll<SVGGElement>('[data-agent]')];
++    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
++
++    const packets: Packet[] = [];
++    STREAMS.forEach((s, i) => {
++      const path = root.querySelector<SVGPathElement>(`#${s.path}`);
++      if (!path) return;
++      s.labels.forEach((text, j) => {
++        const g = document.createElementNS(NS, 'g');
++        g.setAttribute('class', 'packet');
++        const box = document.createElementNS(NS, 'rect');
++        box.setAttribute('height', '16');
++        box.setAttribute('rx', '3');
++        const label = document.createElementNS(NS, 'text');
++        label.textContent = text;
++        label.setAttribute('x', '6');
++        label.setAttribute('y', '11');
++        g.append(box, label);
++        layer.append(g);
++        const width = label.getComputedTextLength() + 12;
++        box.setAttribute('width', String(width));
++        packets.push({
++          g,
++          width,
++          path,
++          offset: (i * 0.29 + j * 0.5) % 1,
++          speed: 0.09 + (i % 3) * 0.015,
++        });
++      });
+     });
+ 
+-    let progress = reduced ? 1 : 0;
+-    let visible = true;
+-    let dirty = true;
+-
+-    const resize = () => {
+-      const { width, height } = host.getBoundingClientRect();
+-      renderer.setSize(width, height, false);
+-      camera.aspect = width / height;
+-      // Keep the card comfortably inside narrow frames.
+-      camera.position.z = width / height < 0.9 ? 15 : 12.5;
+-      camera.updateProjectionMatrix();
+-      dirty = true;
++    const place = (p: Packet, u: number) => {
++      const pt = p.path.getPointAtLength(u * p.path.getTotalLength());
++      p.g.setAttribute('transform', `translate(${pt.x - p.width / 2},${pt.y - 8})`);
+     };
+-
+-    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+-    const up = new Vector3(0, 1, 0);
+-
+-    const render = () => {
+-      const p = ease(progress);
+-      card.rotation.set(-0.06, -0.45 * (1 - p), 0);
+-      for (const t of slips) {
+-        t.g.position.lerpVectors(t.from, t.to, p);
+-        t.g.rotation.set(
+-          t.fromRot.x * (1 - p) + card.rotation.x,
+-          t.fromRot.y * (1 - p) + card.rotation.y,
+-          t.fromRot.z * (1 - p),
+-        );
+-        // Docked slips ride on the card's surface.
+-        if (p > 0) t.g.position.applyAxisAngle(up, card.rotation.y * p);
+-      }
+-      renderer.render(scene, camera);
+-      dirty = false;
++    const placePackage = (go: number) => {
++      const pt = out.getPointAtLength(ease(go) * out.getTotalLength());
++      pkg.setAttribute('transform', `translate(${pt.x - 69},${pt.y - 42})`);
++      pkg.style.opacity = go <= 0 ? '0' : String(ease(Math.min(1, go * 2)));
+     };
+ 
+-    resize();
+-    window.addEventListener('resize', resize);
+-    render();
+     if (reduced) {
+-      window.addEventListener('resize', render);
++      // One still, readable frame: every agent on, the package delivered, a few packets mid-path.
++      agents.forEach((a) => a.classList.add('is-on'));
++      placePackage(1);
++      packets.forEach((p, k) => {
++        place(p, 0.25 + (k % 4) * 0.15);
++        p.g.style.opacity = k % 2 ? '0' : '1';
++      });
+       return;
+     }
+ 
++    // 0 at the top of the page, 1 after scrolling 60% of a screen, while the hero is in view.
++    let progress = 0;
+     window.addEventListener('alibi:scroll', (e) => {
+       const { scroll } = (e as CustomEvent<{ scroll: number }>).detail;
+-      progress = Math.min(1, Math.max(0, scroll / (host.offsetHeight * 0.75)));
+-      dirty = true;
++      progress = Math.min(1, Math.max(0, scroll / (window.innerHeight * 0.6)));
+     });
+-    new IntersectionObserver(([entry]) => (visible = entry.isIntersecting)).observe(host);
+ 
+-    // Render only when something changed and the scene is on screen.
+-    const loop = () => {
+-      if (visible && dirty) render();
+-      requestAnimationFrame(loop);
++    const frame = (now: number) => {
++      const t = now / 1000;
++      // Each packet travels for 55% of its cycle and rests unseen for the rest, so a few are
++      // on screen at once and none pile up at the engine.
++      for (const p of packets) {
++        const c = (p.offset + t * p.speed) % 1;
++        const u = Math.min(1, c / 0.55);
++        place(p, u);
++        p.g.style.opacity = String(
++          c > 0.55 ? 0 : u < 0.1 ? u / 0.1 : u > 0.75 ? (1 - u) / 0.25 : 1,
++        );
++      }
++      // Scroll moves the engine on; at the top of the page it cycles slowly on its own.
++      const phase = progress > 0.05 ? progress : ((t / 6) % 1) * 0.75;
++      agents.forEach((a, i) =>
++        a.classList.toggle('is-on', phase > 0.15 + i * 0.12 && phase < 0.95),
++      );
++      placePackage(Math.min(1, Math.max(0, (phase - 0.62) / 0.3)));
++    };
++
++    let raf = 0;
++    const loop = (now: number) => {
++      frame(now);
++      raf = requestAnimationFrame(loop);
+     };
+-    requestAnimationFrame(loop);
++    new IntersectionObserver(([entry]) => {
++      if (entry?.isIntersecting && !raf) raf = requestAnimationFrame(loop);
++      if (!entry?.isIntersecting && raf) {
++        cancelAnimationFrame(raf);
++        raf = 0;
++      }
++    }).observe(root);
+   }
+ 
+-  if (host && canvas) start(host, canvas);
++  const root = document.querySelector<HTMLElement>('[data-hero-stream]');
++  if (root) start(root);
+ </script>
+diff --git a/web/apps/alibi/src/lib/screens.ts b/web/apps/alibi/src/lib/screens.ts
+index 7fea588..2754042 100644
+--- a/web/apps/alibi/src/lib/screens.ts
++++ b/web/apps/alibi/src/lib/screens.ts
+@@ -51,8 +51,3 @@ export function takeFlash(cookies: AstroCookies): Flash | null {
+     return null;
+   }
+ }
+-
+-/** Only return to pages inside the app. */
+-export function safeReturn(path: string | null): string {
+-  return path && /^\/app\/[A-Za-z0-9._~\-/#]*$/.test(path) ? path : '/app/';
+-}
+diff --git a/web/apps/alibi/src/pages/app/act.ts b/web/apps/alibi/src/pages/app/act.ts
+index b217588..daa144c 100644
+--- a/web/apps/alibi/src/pages/app/act.ts
++++ b/web/apps/alibi/src/pages/app/act.ts
+@@ -4,36 +4,43 @@
+  * then sends her back to the screen with the outcome. The backend decides
+  * everything; a refusal is shown in its own words (shared/CONTRACTS.md).
+  *
+- * Approving also sends the package, so an approval form carries
+- * `result_page=sent`: its outcome (a receipt, a refusal, or "not sent")
+- * lands on the request's dedicated result screen instead of the request page.
++ * Approval stays on the review page. Dispatch goes to the receipt or refusal page.
+  */
+ import type { APIRoute } from 'astro';
+ import { ALIBI_API_ORIGIN } from 'astro:env/server';
+ 
+ import { forwardAction } from '@alibi/ui/api';
+ import { asDispatch } from '@/lib/api/guards';
+-import { backendHeaders, safeReturn, setFlash } from '@/lib/screens';
++import { backendHeaders, setFlash } from '@/lib/screens';
+ 
+ export const prerender = false;
+ 
+-const CONTROL_FIELDS = new Set(['action', 'return_to', 'result_page']);
++const REQUEST_ACTION =
++  /^\/requests\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/(run|restore|approve|dispatch|remove\/(?:record|txn)\/[A-Za-z0-9][A-Za-z0-9._-]{0,127})$/;
++const APPROVAL_FIELDS = ['digest', 'audience', 'policy_version'] as const;
+ 
+ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
++  if (request.headers.get('origin') !== new URL(request.url).origin) {
++    return new Response('Cross-site request refused.', { status: 403 });
++  }
++
+   const form = await request.formData();
+   const path = String(form.get('action') ?? '');
+-  const returnTo = safeReturn(form.get('return_to') as string | null);
+-  const toResult = form.get('result_page') === 'sent' && returnTo.endsWith('/');
++  const action = REQUEST_ACTION.exec(path);
++  if (!action) return new Response('Unknown request action.', { status: 400 });
+ 
++  const [, id, kind] = action;
++  const returnTo = `/app/requests/${id}/`;
+   const body: Record<string, string> = {};
+-  for (const [key, value] of form) {
+-    if (!CONTROL_FIELDS.has(key) && typeof value === 'string') body[key] = value;
++  if (kind === 'approve') {
++    for (const field of APPROVAL_FIELDS) body[field] = String(form.get(field) ?? '');
+   }
+ 
+   const result = await forwardAction({
+     origin: ALIBI_API_ORIGIN,
+     path,
+     body,
++    encoding: 'form',
+     headers: backendHeaders(),
+   });
+ 
+@@ -51,5 +58,5 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
+     );
+   }
+ 
+-  return redirect(toResult ? `${returnTo}sent/` : returnTo, 303);
++  return redirect(kind === 'dispatch' ? `${returnTo}sent/` : returnTo, 303);
+ };
+diff --git a/web/apps/alibi/src/pages/app/requests/[id]/sent.astro b/web/apps/alibi/src/pages/app/requests/[id]/sent.astro
+index 21a5a0b..f32d765 100644
+--- a/web/apps/alibi/src/pages/app/requests/[id]/sent.astro
++++ b/web/apps/alibi/src/pages/app/requests/[id]/sent.astro
+@@ -1,7 +1,6 @@
+ ---
+ /**
+- * `/app/requests/<id>/sent/`: what happened when Maya approved, which also
+- * sends. Either the bank's receipt, or the backend's refusal in its own words
++ * `/app/requests/<id>/sent/`: the outcome after Maya sends her approved package. Either the bank's receipt, or the backend's refusal in its own words
+  * (the demo's live-refusal moment), or "nothing was sent" when the backend
+  * could not be reached. Shown once, from the action's result; revisiting the
+  * page goes back to the request.
+@@ -126,7 +125,7 @@ const short = (digest: string) => (digest.length > 22 ? `${digest.slice(0, 22)}
+ 
+     {flash.kind === 'unavailable' && (
+       <section class="result" aria-labelledby="result-title">
+-        <h1 id="result-title">Nothing was sent</h1>
++        <h1 id="result-title">Delivery status unavailable</h1>
+         <p class="lede">{flash.message}</p>
+         <p class="actions">
+           <a class="btn btn--primary" href={back}>
+diff --git a/web/apps/merchant/src/components/SellerNav.astro b/web/apps/merchant/src/components/SellerNav.astro
+new file mode 100644
+index 0000000..44b3cbe
+--- /dev/null
++++ b/web/apps/merchant/src/components/SellerNav.astro
+@@ -0,0 +1,46 @@
++---
++/** Tabs across the seller hub. */
++interface Props {
++  current: 'overview' | 'orders' | 'payouts' | 'messages' | 'settings';
++}
++const { current } = Astro.props;
++const tabs = [
++  { key: 'overview', href: '/seller/', label: 'Overview' },
++  { key: 'orders', href: '/seller/orders/', label: 'Orders' },
++  { key: 'payouts', href: '/seller/payouts/', label: 'Payouts' },
++  { key: 'messages', href: '/seller/messages/', label: 'Messages' },
++  { key: 'settings', href: '/account/settings/', label: 'Settings' },
++];
++---
++
++<nav class="seller-nav" aria-label="Seller hub">
++  {tabs.map((t) => (
++    <a href={t.href} aria-current={t.key === current ? 'page' : undefined}>
++      {t.label}
++    </a>
++  ))}
++</nav>
++
++<style>
++  .seller-nav {
++    display: flex;
++    gap: var(--space-xs);
++    overflow-x: auto;
++    border-bottom: 1px solid var(--c-line);
++    margin-bottom: var(--space-md);
++  }
++
++  a {
++    padding: var(--space-xs) var(--space-sm);
++    text-decoration: none;
++    color: var(--c-ink-soft);
++    border-bottom: 3px solid transparent;
++    white-space: nowrap;
++  }
++
++  a[aria-current='page'] {
++    color: var(--c-ink);
++    font-weight: 700;
++    border-bottom-color: var(--c-shop);
++  }
++</style>
+diff --git a/web/apps/merchant/src/data/account.ts b/web/apps/merchant/src/data/account.ts
+new file mode 100644
+index 0000000..2a6cce4
+--- /dev/null
++++ b/web/apps/merchant/src/data/account.ts
+@@ -0,0 +1,215 @@
++/**
++ * Maya's seller account as Mock Marketplace itself shows it. SYNTHETIC.
++ * Copied from data's marketplace view of case 1,
++ * `agents/data/out/merchant_view/case_0001.json` (built from
++ * `agents/data/out/cases/case_0001.json`); tests/account.test.ts fails if it
++ * drifts. Amounts are integer pence, times UTC.
++ */
++
++export interface Order {
++  orderRef: string;
++  title: string;
++  soldAt: string;
++  priceMinor: number;
++  feeMinor: number;
++  status: string;
++  recordId: string;
++}
++
++export interface Refund {
++  refundRef: string;
++  orderRef: string;
++  refundedAt: string;
++  amountMinor: number;
++  reason: string;
++  recordId: string;
++}
++
++export interface Payout {
++  payoutRef: string;
++  requestedAt: string;
++  amountMinor: number;
++  status: string;
++  settledAt: string;
++  destination: string;
++  coversOrderRefs: string[];
++  recordId: string;
++}
++
++export interface Notification {
++  sentAt: string;
++  title: string;
++  body: string;
++  recordId: string;
++}
++
++export interface Purchase {
++  boughtAt: string;
++  title: string;
++  amountMinor: number;
++  recordId: string;
++}
++
++export const orders: Order[] = [
++  {
++    orderRef: 'MM-48001',
++    title: 'Vintage denim jacket',
++    soldAt: '2026-10-05T10:00:00Z',
++    priceMinor: 30000,
++    feeMinor: 750,
++    status: 'Completed',
++    recordId: 'rec-0001-001',
++  },
++  {
++    orderRef: 'MM-48017',
++    title: 'Wool coat, size 10',
++    soldAt: '2026-10-06T16:00:00Z',
++    priceMinor: 25000,
++    feeMinor: 625,
++    status: 'Completed',
++    recordId: 'rec-0001-003',
++  },
++  {
++    orderRef: 'MM-48042',
++    title: 'Leather boots and two scarves',
++    soldAt: '2026-10-07T22:00:00Z',
++    priceMinor: 40000,
++    feeMinor: 1000,
++    status: 'Completed',
++    recordId: 'rec-0001-006',
++  },
++  {
++    orderRef: 'MM-48066',
++    title: 'Cashmere jumper and silk scarf',
++    soldAt: '2026-10-09T04:00:00Z',
++    priceMinor: 35000,
++    feeMinor: 875,
++    status: 'Completed',
++    recordId: 'rec-0001-008',
++  },
++  {
++    orderRef: 'MM-48081',
++    title: 'Pleated midi skirt',
++    soldAt: '2026-10-10T10:00:00Z',
++    priceMinor: 20000,
++    feeMinor: 500,
++    status: 'Completed',
++    recordId: 'rec-0001-010',
++  },
++  {
++    orderRef: 'MM-48107',
++    title: 'Bundle: 5 summer dresses',
++    soldAt: '2026-10-11T16:00:00Z',
++    priceMinor: 45000,
++    feeMinor: 1125,
++    status: 'Completed',
++    recordId: 'rec-0001-013',
++  },
++  {
++    orderRef: 'MM-48122',
++    title: 'Two cotton shirts',
++    soldAt: '2026-10-12T22:00:00Z',
++    priceMinor: 15000,
++    feeMinor: 375,
++    status: 'Completed',
++    recordId: 'rec-0001-015',
++  },
++  {
++    orderRef: 'MM-48139',
++    title: 'Bundle: 3 winter knits',
++    soldAt: '2026-10-14T04:00:00Z',
++    priceMinor: 30000,
++    feeMinor: 750,
++    status: 'Completed',
++    recordId: 'rec-0001-017',
++  },
++];
++
++export const refunds: Refund[] = [
++  {
++    refundRef: 'MM-48017-R1',
++    orderRef: 'MM-48017',
++    refundedAt: '2026-10-07T12:00:00Z',
++    amountMinor: 10000,
++    reason: 'Button missing on arrival (partial refund)',
++    recordId: 'rec-0001-005',
++  },
++  {
++    refundRef: 'MM-48081-R1',
++    orderRef: 'MM-48081',
++    refundedAt: '2026-10-11T06:00:00Z',
++    amountMinor: 8000,
++    reason: 'Hem slightly damaged (partial refund)',
++    recordId: 'rec-0001-012',
++  },
++];
++
++export const payouts: Payout[] = [
++  {
++    payoutRef: 'PO-0001-01',
++    requestedAt: '2026-10-26T09:00:00Z',
++    amountMinor: 216000,
++    status: 'Paid to bank',
++    settledAt: '2026-10-27T16:00:00Z',
++    destination: 'Bank account ending 00',
++    coversOrderRefs: [
++      'MM-48001',
++      'MM-48017',
++      'MM-48042',
++      'MM-48066',
++      'MM-48081',
++      'MM-48107',
++      'MM-48122',
++      'MM-48139',
++    ],
++    recordId: 'rec-0001-021',
++  },
++];
++
++export const notifications: Notification[] = [
++  {
++    sentAt: '2026-10-26T08:00:00Z',
++    title: 'Funds available',
++    body: 'Good news! £2,160.00 from your recent sales is now available in your seller balance. Withdrawal PO-0001-01 to your linked bank account has been requested.',
++    recordId: 'rec-0001-020',
++  },
++];
++
++/** Maya's own purchases. Private to her: Alibi never shares this. */
++export const purchases: Purchase[] = [
++  {
++    boughtAt: '2026-10-14T10:00:00Z',
++    title: 'Prescription eyewear',
++    amountMinor: 4500,
++    recordId: 'rec-0001-019',
++  },
++];
++
++export const totals = {
++  salesMinor: 240000,
++  refundsMinor: 18000,
++  feesMinor: 6000,
++  netMinor: 216000,
++} as const;
++
++const dateFmt = new Intl.DateTimeFormat('en-GB', {
++  day: 'numeric',
++  month: 'short',
++  year: 'numeric',
++  timeZone: 'UTC',
++});
++const timeFmt = new Intl.DateTimeFormat('en-GB', {
++  hour: '2-digit',
++  minute: '2-digit',
++  timeZone: 'UTC',
++});
++
++/** "5 Oct 2026" from a UTC ISO time. */
++export function day(iso: string): string {
++  return dateFmt.format(new Date(iso));
++}
++
++/** "5 Oct 2026, 10:00 UTC" from a UTC ISO time. */
++export function when(iso: string): string {
++  return `${dateFmt.format(new Date(iso))}, ${timeFmt.format(new Date(iso))} UTC`;
++}
+diff --git a/web/apps/merchant/src/layouts/ShopLayout.astro b/web/apps/merchant/src/layouts/ShopLayout.astro
+index fa62ea2..c94506e 100644
+--- a/web/apps/merchant/src/layouts/ShopLayout.astro
++++ b/web/apps/merchant/src/layouts/ShopLayout.astro
+@@ -17,6 +17,7 @@ const pageTitle = title ? `${title} · ${shop.name}` : shop.name;
+ const nav = [
+   { href: '/', label: 'Shop' },
+   { href: '/checkout/', label: 'Basket' },
++  { href: '/seller/', label: 'Seller hub' },
+   { href: '/account/settings/', label: 'Account' },
+ ];
+ ---
+diff --git a/web/apps/merchant/src/pages/seller/index.astro b/web/apps/merchant/src/pages/seller/index.astro
+new file mode 100644
+index 0000000..e4d71b4
+--- /dev/null
++++ b/web/apps/merchant/src/pages/seller/index.astro
+@@ -0,0 +1,149 @@
++---
++/** Seller hub overview: what Maya sold in October and where the money went. */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import SellerNav from '@/components/SellerNav.astro';
++import { formatGBP, seller } from '@/data/shop';
++import { day, notifications, orders, payouts, totals, when } from '@/data/account';
++
++const payout = payouts[0]!;
++const latest = [...orders].reverse().slice(0, 3);
++---
++
++<ShopLayout title="Seller hub">
++  <h1>Hello, {seller.name}</h1>
++  <SellerNav current="overview" />
++
++  <section aria-labelledby="month-title" class="panel">
++    <h2 id="month-title">October 2026</h2>
++    <dl class="figures">
++      <div>
++        <dt>Sales</dt>
++        <dd>{formatGBP(totals.salesMinor)}</dd>
++      </div>
++      <div>
++        <dt>Refunds</dt>
++        <dd>−{formatGBP(totals.refundsMinor)}</dd>
++      </div>
++      <div>
++        <dt>Seller fees (2.5%)</dt>
++        <dd>−{formatGBP(totals.feesMinor)}</dd>
++      </div>
++      <div class="net">
++        <dt>Your earnings</dt>
++        <dd>{formatGBP(totals.netMinor)}</dd>
++      </div>
++    </dl>
++  </section>
++
++  <section aria-labelledby="payout-title" class="panel">
++    <h2 id="payout-title">Latest payout</h2>
++    <p>
++      <strong>{formatGBP(payout.amountMinor)}</strong> · <code>{payout.payoutRef}</code> ·
++      <span class="status-paid">✓ {payout.status}</span>
++    </p>
++    <p class="meta">
++      Requested {when(payout.requestedAt)}. Arrived {when(payout.settledAt)} in your{' '}
++      {payout.destination.toLowerCase()}.
++    </p>
++    <a href="/seller/payouts/">All payouts</a>
++  </section>
++
++  <section aria-labelledby="orders-title" class="panel">
++    <h2 id="orders-title">Recent orders</h2>
++    <ul class="list">
++      {latest.map((o) => (
++        <li>
++          <span>{o.title}</span>
++          <span class="meta">
++            <code>{o.orderRef}</code> · {day(o.soldAt)}
++          </span>
++          <span class="amount">{formatGBP(o.priceMinor)}</span>
++        </li>
++      ))}
++    </ul>
++    <a href="/seller/orders/">All {orders.length} orders</a>
++  </section>
++
++  <section aria-labelledby="msg-title" class="panel">
++    <h2 id="msg-title">Messages</h2>
++    {notifications.map((n) => (
++      <p>
++        <strong>{n.title}</strong> <span class="meta">{when(n.sentAt)}</span>
++        <br />
++        {n.body}
++      </p>
++    ))}
++    <a href="/seller/messages/">Open messages</a>
++  </section>
++</ShopLayout>
++
++<style>
++  .panel {
++    margin-block: var(--space-md);
++    padding: var(--space-md);
++    background: var(--c-surface);
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++  }
++
++  h2 {
++    font-size: var(--t-md);
++  }
++
++  .figures {
++    display: grid;
++    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
++    gap: var(--space-sm);
++    margin: 0;
++  }
++
++  .figures dt {
++    color: var(--c-ink-soft);
++    font-size: var(--t-sm);
++  }
++
++  .figures dd {
++    margin: 0;
++    font-size: var(--t-lg);
++    font-variant-numeric: tabular-nums;
++  }
++
++  .net dd {
++    font-weight: 800;
++  }
++
++  .meta {
++    color: var(--c-ink-soft);
++    font-size: var(--t-sm);
++  }
++
++  .status-paid {
++    color: var(--c-ok);
++    font-weight: 700;
++  }
++
++  .list {
++    list-style: none;
++    margin: 0 0 var(--space-sm);
++    padding: 0;
++  }
++
++  .list li {
++    display: grid;
++    grid-template-columns: 1fr auto;
++    gap: 0 var(--space-sm);
++    padding-block: var(--space-xs);
++    border-bottom: 1px solid var(--c-line);
++  }
++
++  .list .meta {
++    grid-column: 1;
++  }
++
++  .amount {
++    grid-column: 2;
++    grid-row: 1 / span 2;
++    align-self: center;
++    font-variant-numeric: tabular-nums;
++  }
++</style>
+diff --git a/web/apps/merchant/src/pages/seller/messages/index.astro b/web/apps/merchant/src/pages/seller/messages/index.astro
+new file mode 100644
+index 0000000..cdcbbe0
+--- /dev/null
++++ b/web/apps/merchant/src/pages/seller/messages/index.astro
+@@ -0,0 +1,45 @@
++---
++/** Messages the marketplace sent Maya. The balance-release note is the one the demo turns on. */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import SellerNav from '@/components/SellerNav.astro';
++import { notifications, when } from '@/data/account';
++---
++
++<ShopLayout title="Messages">
++  <h1>Messages</h1>
++  <SellerNav current="messages" />
++  <ul class="inbox">
++    {notifications.map((n) => (
++      <li>
++        <h2>{n.title}</h2>
++        <p class="meta">{when(n.sentAt)}</p>
++        <p>{n.body}</p>
++      </li>
++    ))}
++  </ul>
++</ShopLayout>
++
++<style>
++  .inbox {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++    max-width: var(--measure);
++  }
++
++  li {
++    padding: var(--space-md);
++    background: var(--c-surface);
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++  }
++
++  h2 {
++    font-size: var(--t-md);
++  }
++
++  .meta {
++    color: var(--c-ink-soft);
++    font-size: var(--t-sm);
++  }
++</style>
+diff --git a/web/apps/merchant/src/pages/seller/orders/index.astro b/web/apps/merchant/src/pages/seller/orders/index.astro
+new file mode 100644
+index 0000000..877c5b9
+--- /dev/null
++++ b/web/apps/merchant/src/pages/seller/orders/index.astro
+@@ -0,0 +1,154 @@
++---
++/** Every order and refund on Maya's account in October 2026. */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import SellerNav from '@/components/SellerNav.astro';
++import { formatGBP } from '@/data/shop';
++import { day, orders, refunds } from '@/data/account';
++---
++
++<ShopLayout title="Orders">
++  <h1>Orders</h1>
++  <SellerNav current="orders" />
++
++  <section aria-labelledby="sold-title">
++    <h2 id="sold-title">Sold ({orders.length})</h2>
++    <div class="table-wrap">
++      <table>
++        <thead>
++          <tr>
++            <th scope="col">Date</th>
++            <th scope="col">Order</th>
++            <th scope="col">Item</th>
++            <th scope="col" class="num">
++              Price
++            </th>
++            <th scope="col" class="num">
++              Seller fee
++            </th>
++            <th scope="col">Status</th>
++          </tr>
++        </thead>
++        <tbody>
++          {orders.map((o) => (
++            <tr>
++              <td data-label="Date">{day(o.soldAt)}</td>
++              <td data-label="Order">
++                <code>{o.orderRef}</code>
++              </td>
++              <td data-label="Item">{o.title}</td>
++              <td data-label="Price" class="num">
++                {formatGBP(o.priceMinor)}
++              </td>
++              <td data-label="Seller fee" class="num">
++                −{formatGBP(o.feeMinor)}
++              </td>
++              <td data-label="Status">✓ {o.status}</td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  </section>
++
++  <section aria-labelledby="refund-title">
++    <h2 id="refund-title">Refunds ({refunds.length})</h2>
++    <div class="table-wrap">
++      <table>
++        <thead>
++          <tr>
++            <th scope="col">Date</th>
++            <th scope="col">Refund</th>
++            <th scope="col">Order</th>
++            <th scope="col">Reason</th>
++            <th scope="col" class="num">
++              Amount
++            </th>
++          </tr>
++        </thead>
++        <tbody>
++          {refunds.map((r) => (
++            <tr>
++              <td data-label="Date">{day(r.refundedAt)}</td>
++              <td data-label="Refund">
++                <code>{r.refundRef}</code>
++              </td>
++              <td data-label="Order">
++                <code>{r.orderRef}</code>
++              </td>
++              <td data-label="Reason">{r.reason}</td>
++              <td data-label="Amount" class="num">
++                −{formatGBP(r.amountMinor)}
++              </td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </div>
++  </section>
++</ShopLayout>
++
++<style>
++  section {
++    margin-block: var(--space-lg);
++  }
++
++  h2 {
++    font-size: var(--t-md);
++  }
++
++  .table-wrap {
++    overflow-x: auto;
++  }
++
++  table {
++    width: 100%;
++    border-collapse: collapse;
++  }
++
++  th,
++  td {
++    text-align: left;
++    padding: var(--space-xs);
++    border-bottom: 1px solid var(--c-line);
++  }
++
++  .num {
++    text-align: right;
++    font-variant-numeric: tabular-nums;
++  }
++
++  @media (max-width: 599px) {
++    thead {
++      position: absolute;
++      clip: rect(0 0 0 0);
++      width: 1px;
++      height: 1px;
++      overflow: hidden;
++    }
++
++    table,
++    tbody,
++    tr,
++    td {
++      display: block;
++      width: 100%;
++    }
++
++    tr {
++      padding-block: var(--space-xs);
++      border-bottom: 1px solid var(--c-line);
++    }
++
++    td {
++      border: 0;
++      padding: 0;
++      text-align: left;
++    }
++
++    td::before {
++      content: attr(data-label) ': ';
++      color: var(--c-ink-soft);
++      font-size: var(--t-sm);
++    }
++  }
++</style>
+diff --git a/web/apps/merchant/src/pages/seller/payouts/index.astro b/web/apps/merchant/src/pages/seller/payouts/index.astro
+new file mode 100644
+index 0000000..642dd7b
+--- /dev/null
++++ b/web/apps/merchant/src/pages/seller/payouts/index.astro
+@@ -0,0 +1,121 @@
++---
++/** Payouts to Maya's bank account, with what each one covers. */
++import ShopLayout from '@/layouts/ShopLayout.astro';
++import SellerNav from '@/components/SellerNav.astro';
++import { formatGBP } from '@/data/shop';
++import { orders, payouts, refunds, totals, when } from '@/data/account';
++---
++
++<ShopLayout title="Payouts">
++  <h1>Payouts</h1>
++  <SellerNav current="payouts" />
++
++  {payouts.map((p) => (
++    <article class="payout" aria-labelledby={`p-${p.payoutRef}`}>
++      <h2 id={`p-${p.payoutRef}`}>
++        {formatGBP(p.amountMinor)} <code>{p.payoutRef}</code>
++      </h2>
++      <p class="status-paid">✓ {p.status}</p>
++      <dl>
++        <dt>Requested</dt>
++        <dd>{when(p.requestedAt)}</dd>
++        <dt>Arrived</dt>
++        <dd>{when(p.settledAt)}</dd>
++        <dt>Paid to</dt>
++        <dd>{p.destination}</dd>
++      </dl>
++      <h3>What it covers</h3>
++      <table>
++        <tbody>
++          <tr>
++            <td>{orders.length} orders</td>
++            <td class="num">{formatGBP(totals.salesMinor)}</td>
++          </tr>
++          <tr>
++            <td>{refunds.length} refunds</td>
++            <td class="num">−{formatGBP(totals.refundsMinor)}</td>
++          </tr>
++          <tr>
++            <td>Seller fees</td>
++            <td class="num">−{formatGBP(totals.feesMinor)}</td>
++          </tr>
++          <tr class="total">
++            <td>Paid out</td>
++            <td class="num">{formatGBP(totals.netMinor)}</td>
++          </tr>
++        </tbody>
++      </table>
++      <p class="meta">Orders {p.coversOrderRefs.join(', ')}.</p>
++    </article>
++  ))}
++
++  <p class="meta">
++    Money from a sale first becomes available in your seller balance. A payout is the transfer from
++    that balance to your bank account.
++  </p>
++</ShopLayout>
++
++<style>
++  .payout {
++    padding: var(--space-md);
++    background: var(--c-surface);
++    border: 1px solid var(--c-line);
++    border-radius: var(--radius-md);
++    max-width: var(--measure);
++  }
++
++  h2 {
++    font-size: var(--t-lg);
++    margin-bottom: var(--space-2xs);
++  }
++
++  h3 {
++    font-size: var(--t-base);
++    margin-top: var(--space-md);
++  }
++
++  .status-paid {
++    color: var(--c-ok);
++    font-weight: 700;
++  }
++
++  dl {
++    display: grid;
++    grid-template-columns: max-content 1fr;
++    gap: var(--space-3xs) var(--space-sm);
++  }
++
++  dt {
++    color: var(--c-ink-soft);
++  }
++
++  dd {
++    margin: 0;
++  }
++
++  table {
++    width: 100%;
++    border-collapse: collapse;
++  }
++
++  td {
++    padding: var(--space-3xs) 0;
++    border-bottom: 1px solid var(--c-line);
++  }
++
++  .total td {
++    font-weight: 800;
++    border-top: 2px solid var(--c-ink);
++    border-bottom: 0;
++  }
++
++  .num {
++    text-align: right;
++    font-variant-numeric: tabular-nums;
++  }
++
++  .meta {
++    color: var(--c-ink-soft);
++    font-size: var(--t-sm);
++  }
++</style>
+diff --git a/web/apps/merchant/tests/account.test.ts b/web/apps/merchant/tests/account.test.ts
+new file mode 100644
+index 0000000..09e7efc
+--- /dev/null
++++ b/web/apps/merchant/tests/account.test.ts
+@@ -0,0 +1,47 @@
++import { describe, expect, it } from 'vitest';
++
++import view from '../../../../agents/data/out/merchant_view/case_0001.json';
++import { notifications, orders, payouts, purchases, refunds, totals } from '../src/data/account';
++
++// Data's marketplace view of case 1 (agents/data/out/merchant_view/case_0001.json). Read-only.
++
++describe("Maya's seller account matches data's marketplace view of case 1", () => {
++  it('copies every order, refund, payout, notification and purchase exactly', () => {
++    expect(
++      orders.map((o) => [o.orderRef, o.title, o.soldAt, o.priceMinor, o.feeMinor, o.recordId]),
++    ).toEqual(
++      view.orders.map((o) => [
++        o.order_ref,
++        o.title,
++        o.sold_at,
++        o.price_minor,
++        o.fee_minor,
++        o.record_id,
++      ]),
++    );
++    expect(
++      refunds.map((r) => [r.refundRef, r.orderRef, r.refundedAt, r.amountMinor, r.recordId]),
++    ).toEqual(
++      view.refunds.map((r) => [
++        r.refund_ref,
++        r.order_ref,
++        r.refunded_at,
++        r.amount_minor,
++        r.record_id,
++      ]),
++    );
++    expect(payouts.map((p) => [p.payoutRef, p.amountMinor, p.settledAt, p.recordId])).toEqual(
++      view.payouts.map((p) => [p.payout_ref, p.amount_minor, p.settled_at, p.record_id]),
++    );
++    expect(notifications.map((n) => n.body)).toEqual(view.notifications.map((n) => n.body));
++    expect(purchases.map((p) => p.recordId)).toEqual(view.purchases.map((p) => p.record_id));
++  });
++
++  it('adds up to the £2,160 payout', () => {
++    expect(totals.netMinor).toBe(view.totals.net_minor);
++    expect(totals.salesMinor - totals.refundsMinor - totals.feesMinor).toBe(216000);
++    expect(orders.reduce((s, o) => s + o.priceMinor, 0)).toBe(totals.salesMinor);
++    expect(orders.reduce((s, o) => s + o.feeMinor, 0)).toBe(totals.feesMinor);
++    expect(refunds.reduce((s, r) => s + r.amountMinor, 0)).toBe(totals.refundsMinor);
++  });
++});
+diff --git a/web/packages/ui/src/api.ts b/web/packages/ui/src/api.ts
+index 0cd9a3e..f261a0c 100644
+--- a/web/packages/ui/src/api.ts
++++ b/web/packages/ui/src/api.ts
+@@ -93,6 +93,7 @@ interface ActionOptions {
+   headers?: Record<string, string>;
+   fetchImpl?: typeof fetch;
+   timeoutMs?: number;
++  encoding?: 'form';
+ }
+ 
+ /** True for a same-backend path such as `/requests/x/approve`; rejects URLs and `//host`. */
+@@ -111,8 +112,13 @@ export async function forwardAction(opts: ActionOptions): Promise<ActionResult>
+   try {
+     response = await fetchImpl(new URL(opts.path, opts.origin), {
+       method: 'POST',
+-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...opts.headers },
+-      body: JSON.stringify(opts.body),
++      headers: {
++        Accept: 'application/json',
++        'Content-Type':
++          opts.encoding === 'form' ? 'application/x-www-form-urlencoded' : 'application/json',
++        ...opts.headers,
++      },
++      body: opts.encoding === 'form' ? new URLSearchParams(opts.body) : JSON.stringify(opts.body),
+       signal: AbortSignal.timeout(opts.timeoutMs ?? 8000),
+     });
+   } catch {

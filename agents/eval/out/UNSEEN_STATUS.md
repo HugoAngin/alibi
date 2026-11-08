@@ -1,5 +1,7 @@
 # Unseen evaluation status
 
+Current gate: candidate3 `58bf0d4` public rehearsal and fresh probe receipt have completed. All six model/rules workers completed without failures, timeouts or retries. Official safe-complete is agents 1/2, one-pass 0/2, rules 1/2; second scorer is 0/2 for all, with the exact-citation-set disagreement explained in `PUBLIC_REHEARSAL.md`. Both bank gate receipts verified; SP-23/SP-24 failed and 28 probes remain unexercised. Public replay record `4830677ba8` verifies these retained results. The timed checkpoint path passed synthetic tests; no hidden capture has started.
+
 Owner: Verify unseen data workflow chat. The master coordination chat handles public integration and probe evidence. Only this evaluator chat launches the unseen capture.
 
 Superseding instruction at 11:16 UTC: use `sealed-candidate-3` at `58bf0d4a199f5ad3833fa9bde751d31140219975`, containing the facts fix and trace clipping. The remote tag has been verified. Public model and probe gates are starting in parallel; use `--variants 3`, retain the 12:50 stop and publish a completed-so-far checkpoint at 12:05 if still running.

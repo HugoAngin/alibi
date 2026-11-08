@@ -302,7 +302,7 @@ def classify_question(text: str, request: RequestForContext) -> Classification:
     """
     breakdown_only = bool(_BREAKDOWN_ONLY.search(text)) \
         and not _CUE_WORDS.search(_EXPLAIN_ONLY.sub(" ", text))
-    if request.txn_ids and not breakdown_only:
+    if request.txn_ids and not breakdown_only and not _NOT_SOURCE.search(text):
         named = tuple(sorted({txn_id.lower() for txn_id in request.txn_ids
                               if _names(text, txn_id)}))
         if named:

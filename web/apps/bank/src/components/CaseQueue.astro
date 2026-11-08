@@ -1,0 +1,1270 @@
+---
+/**
+ * The case queue with its slide-over case panel. Clicking a case slides a panel in from the
+ * right with everything the bank knows, which is not much: one credit, a reason it was flagged,
+ * and the gaps. The panel's footer carries "Request customer's Alibi". Pressing it turns the panel
+ * into a one-screen review of exactly what will be asked, then a single Send.
+ *
+ * Every state is a real URL, rendered on the server: / (queue), /cases/<id>/ (panel open),
+ * /cases/<id>/request/ (review step). With JavaScript the same screens switch in place without a
+ * reload; without it, every link and form still works.
+ */
+import RequestAlibiButton from '@alibi/ui/RequestAlibiButton.astro';
+
+import { cases, day, formatGBP, when, type FraudCase } from '@/data/cases';
+import { statusLabel } from '@/lib/caseState';
+import type { Queue } from '@/lib/queue';
+
+interface Props {
+  queue: Queue;
+  openId?: string;
+  step?: 'case' | 'request';
+}
+
+const { queue, openId, step = 'case' } = Astro.props;
+const counts = {
+  all: cases.length,
+  open: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Open').length,
+  awaiting: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Awaiting customer').length,
+  received: cases.filter((c) => statusLabel(c, queue.states[c.id]!) === 'Alibi received').length,
+  closed: cases.filter((c) => c.status === 'closed').length,
+};
+const filters = [
+  { id: 'all', label: 'All', n: counts.all },
+  { id: 'Open', label: 'Open', n: counts.open },
+  { id: 'Awaiting customer', label: 'Awaiting customer', n: counts.awaiting },
+  { id: 'Alibi received', label: 'Alibi received', n: counts.received },
+  { id: 'Closed', label: 'Closed', n: counts.closed },
+].filter((f) => f.id === 'all' || f.n > 0);
+
+const amount = (c: FraudCase) =>
+  c.txn.amountMinor < 0 ? `−${formatGBP(-c.txn.amountMinor)}` : formatGBP(c.txn.amountMinor);
+const direction = (c: FraudCase) =>
+  c.txn.amountMinor < 0 ? 'Outgoing payment' : 'Incoming credit';
+const statusKey = (label: string) => label.toLowerCase().replace(/\s+/g, '-');
+const flash = queue.flash;
+---
+
+<div class="queue" data-queue>
+  <header class="queue-head">
+    <div>
+      <h1>Cases</h1>
+      <p class="sub">
+        {counts.open} open · {counts.awaiting} awaiting customer
+        {counts.received > 0 && ` · ${counts.received} with an Alibi package`}
+      </p>
+    </div>
+    {!queue.live && (
+      <p class="preview-note">
+        <span class="dot" aria-hidden="true"></span>
+        Preview. {queue.previewReason}
+      </p>
+    )}
+  </header>
+
+  <div class="tabs" role="toolbar" aria-label="Filter cases">
+    {filters.map((f, i) => (
+      <button
+        type="button"
+        class="tab"
+        data-filter={f.id}
+        aria-pressed={i === 0 ? 'true' : 'false'}
+      >
+        {f.label}
+        <span class="tab-n">{f.n}</span>
+      </button>
+    ))}
+  </div>
+
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Case</th>
+          <th scope="col">Customer</th>
+          <th scope="col" class="col-reason">
+            Reason flagged
+          </th>
+          <th scope="col" class="num">
+            Amount
+          </th>
+          <th scope="col" class="col-priority">
+            Priority
+          </th>
+          <th scope="col">Status</th>
+          <th scope="col" class="col-opened">
+            Opened
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {cases.map((c) => {
+          const label = statusLabel(c, queue.states[c.id]!);
+          return (
+            <tr
+              data-row={c.id}
+              data-status={label}
+              aria-selected={openId === c.id ? 'true' : undefined}
+            >
+              <td>
+                <a class="row-link" href={`/cases/${c.id}/`} data-open={c.id}>
+                  <code>{c.id}</code>
+                </a>
+              </td>
+              <td>
+                <span class="customer">{c.customer}</span>
+                <code class="meta">{c.accountRef}</code>
+              </td>
+              <td class="col-reason">{c.reason}</td>
+              <td class="num">{amount(c)}</td>
+              <td class="col-priority">
+                <span class={`prio prio--${c.priority}`}>
+                  <span class="prio-bar" aria-hidden="true"></span>
+                  {c.priority[0]!.toUpperCase() + c.priority.slice(1)}
+                </span>
+              </td>
+              <td>
+                <span class={`status status--${statusKey(label)}`}>{label}</span>
+              </td>
+              <td class="col-opened">{day(c.openedAt)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="scrim" data-scrim hidden={!openId}></div>
+
+{cases.map((c) => {
+  const s = queue.states[c.id]!;
+  const isOpen = openId === c.id;
+  const label = statusLabel(c, s);
+  const canRequest = s.kind === 'not_requested';
+  return (
+    <aside
+      class="drawer"
+      class:list={{ 'is-open': isOpen }}
+      id={`case-${c.id}`}
+      data-drawer={c.id}
+      data-step={isOpen ? step : 'case'}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`case-${c.id}-title`}
+      hidden={!isOpen}
+    >
+      {/* ---------------------------------------------------------------- the case */}
+      <section
+        class="pane pane--case"
+        aria-hidden={isOpen && step === 'request' ? 'true' : undefined}
+      >
+        <header class="drawer-head">
+          <div class="head-top">
+            <code class="case-id">{c.id}</code>
+            <span class={`status status--${statusKey(label)}`}>{label}</span>
+            <a class="close" href="/" data-close aria-label="Close case">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                <path
+                  d="M4 4l8 8M12 4l-8 8"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </a>
+          </div>
+          <h2 id={`case-${c.id}-title`} tabindex="-1">
+            {c.customer}
+          </h2>
+          <p class="meta-line">
+            <code>{c.accountRef}</code> · Opened {when(c.openedAt)}
+          </p>
+        </header>
+
+        <div class="drawer-body">
+          {isOpen && flash && step === 'case' && (
+            <div class={`flash flash--${flash.kind}`} role="status">
+              {flash.kind === 'refused' ? (
+                <>
+                  <strong>Refused by the bank service</strong>
+                  <code>{flash.refusal.code}</code>
+                  <span>{flash.refusal.reason}</span>
+                </>
+              ) : (
+                <span>{flash.message}</span>
+              )}
+            </div>
+          )}
+
+          {(s.kind === 'requested' || s.kind === 'received') && (
+            <section class="progress" aria-labelledby={`p-${c.id}`}>
+              <h3 id={`p-${c.id}`}>Alibi request</h3>
+              <ol class="steps">
+                <li class="done">
+                  <span class="step-dot" aria-hidden="true"></span>
+                  <span>
+                    Request sent <code>{s.requestId}</code>
+                  </span>
+                  <span class="step-when">{s.kind === 'requested' ? when(s.sentAt) : ''}</span>
+                </li>
+                <li class:list={{ done: s.kind === 'received', now: s.kind === 'requested' }}>
+                  <span class="step-dot" aria-hidden="true"></span>
+                  <span>{c.customer} reviews what to share</span>
+                </li>
+                <li class:list={{ done: s.kind === 'received' }}>
+                  <span class="step-dot" aria-hidden="true"></span>
+                  <span>Signed package received</span>
+                  <span class="step-when">{s.kind === 'received' ? when(s.receivedAt) : ''}</span>
+                </li>
+              </ol>
+              {s.kind === 'requested' && c.request && (
+                <p class="hint">
+                  Reply due by {when(c.request.expiresAt)}. Nothing changes on the account
+                  automatically.
+                </p>
+              )}
+            </section>
+          )}
+
+          <div class="amount-card">
+            <p class="amount-label">{direction(c)} under review</p>
+            <p class="amount">{amount(c)}</p>
+            <dl class="facts">
+              <div>
+                <dt>Booked</dt>
+                <dd>{when(c.txn.bookedAt)}</dd>
+              </div>
+              <div>
+                <dt>Payer reference</dt>
+                <dd>
+                  <code>{c.txn.description}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>Transaction</dt>
+                <dd>
+                  <code>{c.txn.id}</code>
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <dl class="rows">
+            <div>
+              <dt>Why it was flagged</dt>
+              <dd>{c.reason}</dd>
+            </div>
+            <div>
+              <dt>Priority</dt>
+              <dd>
+                <span class={`prio prio--${c.priority}`}>
+                  <span class="prio-bar" aria-hidden="true"></span>
+                  {c.priority[0]!.toUpperCase() + c.priority.slice(1)}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>Restriction</dt>
+              <dd class:list={{ restricted: c.restriction !== 'None' }}>{c.restriction}</dd>
+            </div>
+          </dl>
+
+          <div class="knowns">
+            <section aria-labelledby={`k-${c.id}`}>
+              <h3 id={`k-${c.id}`}>What the bank can see</h3>
+              <ul>
+                {c.known.map((k) => (
+                  <li>{k}</li>
+                ))}
+              </ul>
+            </section>
+            {c.unknown.length > 0 && (
+              <section class="unknowns" aria-labelledby={`u-${c.id}`}>
+                <h3 id={`u-${c.id}`}>What it cannot see</h3>
+                <ul>
+                  {c.unknown.map((u) => (
+                    <li>{u}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        </div>
+
+        <footer class="drawer-foot">
+          {canRequest && c.request && (
+            <>
+              <RequestAlibiButton
+                href={`/cases/${c.id}/request/`}
+                variant="solid"
+                block
+                data-request={c.id}
+              />
+              <p class="foot-note">
+                {c.customer} chooses what to share. You receive a signed package you can verify.
+              </p>
+            </>
+          )}
+          {s.kind === 'received' && (
+            <a class="btn btn--primary btn--block" href={s.href}>
+              Open the Alibi package
+            </a>
+          )}
+          {s.kind === 'requested' && (
+            <p class="foot-note">
+              Waiting for {c.customer}. The package will appear in the Alibi inbox.
+            </p>
+          )}
+          {s.kind === 'unavailable' && (
+            <>
+              <RequestAlibiButton
+                href="#"
+                variant="solid"
+                block
+                disabledReason="This customer has not connected Alibi."
+              />
+              <p class="foot-note">
+                This customer has not connected Alibi. Contact them through the usual channels.
+              </p>
+            </>
+          )}
+          {s.kind === 'closed' && <p class="foot-note">This case is closed.</p>}
+        </footer>
+      </section>
+
+      {/* -------------------------------------------------------- the request step */}
+      {c.request && canRequest && (
+        <section class="pane pane--request" aria-labelledby={`r-${c.id}-title`}>
+          <header class="drawer-head">
+            <div class="head-top">
+              <a class="back" href={`/cases/${c.id}/`} data-back={c.id}>
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M10 3L5 8l5 5"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Case <code>{c.id}</code>
+              </a>
+              <a class="close" href="/" data-close aria-label="Close case">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+                  <path
+                    d="M4 4l8 8M12 4l-8 8"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </a>
+            </div>
+            <h2 id={`r-${c.id}-title`} tabindex="-1">
+              Request {c.customer}’s Alibi
+            </h2>
+            <p class="meta-line">Review what will be asked, then send.</p>
+          </header>
+
+          <div class="drawer-body">
+            {isOpen && flash && step === 'request' && (
+              <div class={`flash flash--${flash.kind}`} role="alert">
+                {flash.kind === 'refused' ? (
+                  <>
+                    <strong>Refused by the bank service</strong>
+                    <code>{flash.refusal.code}</code>
+                    <span>{flash.refusal.reason}</span>
+                  </>
+                ) : (
+                  <span>{flash.message}</span>
+                )}
+              </div>
+            )}
+
+            <section class="ask" aria-labelledby={`q-${c.id}`}>
+              <h3 id={`q-${c.id}`}>Alibi will ask</h3>
+              <ol class="questions">
+                {c.request.questions.map((q, i) => (
+                  <li>
+                    <span class="q-n" aria-hidden="true">
+                      {i + 1}
+                    </span>
+                    <span>
+                      {q.text}
+                      <code class="meta">{q.id}</code>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            <dl class="rows">
+              <div>
+                <dt>About</dt>
+                <dd>
+                  <span class="chip">
+                    <code>{c.txn.id}</code> · {amount(c)} · {day(c.txn.bookedAt)}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Reply by</dt>
+                <dd>{when(c.request.expiresAt)}</dd>
+              </div>
+              <div>
+                <dt>Who sees it</dt>
+                <dd>
+                  Only Bank A. {c.customer} picks what to share and approves it before anything is
+                  sent.
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <footer class="drawer-foot">
+            <form method="post" action="/act/" class="send">
+              <input type="hidden" name="kind" value="request" />
+              <input type="hidden" name="case_id" value={c.id} />
+              <input type="hidden" name="return_to" value={`/cases/${c.id}/`} />
+              <button type="submit" class="btn btn--alibi btn--block" disabled={!queue.live}>
+                Send request
+              </button>
+            </form>
+            <p class="foot-note">
+              {queue.live
+                ? `Sent through Bank A’s Alibi connection as ${c.request.id}.`
+                : 'Preview: the bank service is not connected here, so sending is off.'}
+            </p>
+          </footer>
+        </section>
+      )}
+    </aside>
+  );
+})}
+
+<style>
+  /* ------------------------------------------------------------------ queue */
+  .queue-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 4px;
+  }
+
+  .sub {
+    margin: 0;
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+
+  .preview-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 6px 12px;
+    border: 1px solid var(--c-line);
+    border-radius: 999px;
+    background: var(--c-surface);
+    color: var(--c-ink-soft);
+    font-size: 0.8125rem;
+  }
+
+  .preview-note .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--c-warn);
+  }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--c-ink-soft);
+    font: 500 var(--t-sm) / 1 var(--font-sans);
+    cursor: pointer;
+    transition: background-color 140ms var(--ease);
+  }
+
+  .tab:hover {
+    background: var(--c-raised);
+  }
+
+  .tab[aria-pressed='true'] {
+    background: var(--c-surface);
+    border-color: var(--c-line);
+    color: var(--c-ink);
+    box-shadow: 0 1px 2px rgb(17 24 39 / 0.05);
+  }
+
+  .tab-n {
+    font: 500 0.75rem / 1 var(--font-mono);
+    color: var(--c-ink-faint);
+  }
+
+  .table-card {
+    overflow-x: auto;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    background: var(--c-surface);
+    box-shadow: 0 1px 2px rgb(17 24 39 / 0.04);
+  }
+
+  th {
+    padding: 10px 16px;
+    background: #fafbfc;
+    color: var(--c-ink-faint);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0 16px;
+    height: 56px;
+    vertical-align: middle;
+    font-size: var(--t-sm);
+  }
+
+  tbody tr {
+    position: relative;
+    transition: background-color 140ms var(--ease);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  tbody tr:hover {
+    background: #f9fafb;
+  }
+
+  tbody tr[aria-selected='true'] {
+    background: var(--c-bank-soft);
+    box-shadow: inset 3px 0 0 var(--c-bank);
+  }
+
+  tbody tr[hidden] {
+    display: none;
+  }
+
+  /* The whole row is the case link. */
+  .row-link {
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .row-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .row-link code {
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+
+  .customer {
+    display: block;
+    font-weight: 500;
+  }
+
+  .meta {
+    display: block;
+    color: var(--c-ink-faint);
+    font-size: 0.75rem;
+  }
+
+  .col-reason {
+    color: var(--c-ink-soft);
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  .col-opened {
+    color: var(--c-ink-faint);
+    white-space: nowrap;
+  }
+
+  .prio {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--c-ink-soft);
+  }
+
+  .prio-bar {
+    width: 18px;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, currentColor 33%, transparent 33%) var(--c-raised);
+  }
+
+  .prio--high .prio-bar {
+    background: var(--c-bad);
+  }
+
+  .prio--medium .prio-bar {
+    background: linear-gradient(90deg, var(--c-warn) 60%, var(--c-raised) 60%);
+  }
+
+  .prio--low .prio-bar {
+    background: linear-gradient(90deg, var(--c-ink-faint) 30%, var(--c-raised) 30%);
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: var(--c-raised);
+    color: var(--c-ink-soft);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .status--open {
+    background: #fef3e2;
+    color: #92400e;
+  }
+
+  .status--awaiting-customer {
+    background: var(--c-bank-soft);
+    color: var(--c-bank);
+  }
+
+  .status--alibi-received {
+    background: #e7f5ec;
+    color: var(--c-ok);
+  }
+
+  .status--closed {
+    color: var(--c-ink-faint);
+  }
+
+  /* ----------------------------------------------------------------- drawer */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgb(17 24 39 / 0.28);
+    opacity: 1;
+    transition: opacity 260ms var(--ease);
+  }
+
+  .scrim.is-hiding {
+    opacity: 0;
+  }
+
+  .drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(560px, 100vw);
+    background: var(--c-surface);
+    box-shadow: var(--shadow-float);
+    transform: translateX(0);
+    transition: transform 320ms var(--ease);
+    overflow: hidden;
+  }
+
+  .drawer.is-entering,
+  .drawer.is-leaving {
+    transform: translateX(100%);
+  }
+
+  .drawer[hidden] {
+    display: none;
+  }
+
+  .pane {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    background: var(--c-surface);
+    transition:
+      transform 300ms var(--ease),
+      opacity 200ms var(--ease);
+  }
+
+  /* The request step slides in over the case, inside the same panel. */
+  .drawer[data-step='case'] .pane--request {
+    transform: translateX(24px);
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .drawer[data-step='request'] .pane--case {
+    transform: translateX(-24px);
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .drawer-head {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--c-line);
+  }
+
+  .head-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .case-id {
+    font-size: 0.8125rem;
+    color: var(--c-ink-soft);
+  }
+
+  .close {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    margin-left: auto;
+    border-radius: 8px;
+    color: var(--c-ink-soft);
+    transition: background-color 140ms var(--ease);
+  }
+
+  .close:hover,
+  .back:hover {
+    background: var(--c-raised);
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    margin-left: -8px;
+    padding: 0 8px;
+    border-radius: 8px;
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+    text-decoration: none;
+  }
+
+  .drawer-head h2 {
+    font-size: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+    outline: none;
+  }
+
+  .meta-line {
+    margin: 0;
+    color: var(--c-ink-faint);
+    font-size: 0.8125rem;
+  }
+
+  .drawer-body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 20px 24px 24px;
+    display: grid;
+    align-content: start;
+    gap: 20px;
+  }
+
+  .amount-card {
+    padding: 20px;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    background: #fafbfc;
+  }
+
+  .amount-label {
+    margin: 0 0 4px;
+    color: var(--c-ink-soft);
+    font-size: 0.8125rem;
+  }
+
+  .amount {
+    margin: 0 0 16px;
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .facts {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .facts div,
+  .rows div {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+  }
+
+  dt {
+    color: var(--c-ink-faint);
+    font-size: 0.8125rem;
+  }
+
+  dd {
+    margin: 0;
+    font-size: var(--t-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .rows {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+  }
+
+  .restricted {
+    color: var(--c-bad);
+    font-weight: 500;
+  }
+
+  .knowns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .knowns section {
+    padding: 16px;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+  }
+
+  .knowns .unknowns {
+    border-style: dashed;
+    border-color: var(--c-line-strong);
+    background: repeating-linear-gradient(-45deg, transparent 0 8px, rgb(17 24 39 / 0.02) 8px 16px);
+  }
+
+  h3 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+
+  .knowns ul {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 6px;
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
+  }
+
+  .unknowns li::marker {
+    content: '? ';
+    color: var(--c-ink-faint);
+    font-family: var(--font-mono);
+  }
+
+  .progress {
+    padding: 16px;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+  }
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+    font-size: var(--t-sm);
+  }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: 12px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    color: var(--c-ink-faint);
+  }
+
+  .steps li.done,
+  .steps li.now {
+    color: var(--c-ink);
+  }
+
+  .step-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--c-line-strong);
+  }
+
+  .done .step-dot {
+    background: var(--c-ok);
+    border-color: var(--c-ok);
+  }
+
+  .now .step-dot {
+    border-color: var(--c-bank);
+    box-shadow: 0 0 0 3px var(--c-bank-soft);
+  }
+
+  .step-when {
+    color: var(--c-ink-faint);
+    font-size: 0.75rem;
+  }
+
+  .hint {
+    margin: 12px 0 0;
+    color: var(--c-ink-faint);
+    font-size: 0.8125rem;
+  }
+
+  .drawer-foot {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--c-line);
+    background: var(--c-surface);
+  }
+
+  .foot-note {
+    margin: 10px 0 0;
+    color: var(--c-ink-faint);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+
+  .flash {
+    display: grid;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--c-line);
+    font-size: var(--t-sm);
+  }
+
+  .flash--ok {
+    background: #e7f5ec;
+    border-color: rgb(21 128 61 / 0.25);
+  }
+
+  .flash--refused,
+  .flash--unavailable {
+    background: #fdecec;
+    border-color: rgb(185 28 28 / 0.25);
+  }
+
+  /* ---------------------------------------------------------- request step */
+  .questions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+
+  .questions li {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    font-size: 0.9375rem;
+    line-height: 1.45;
+  }
+
+  .questions .meta {
+    margin-top: 6px;
+  }
+
+  .q-n {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    font: 500 0.75rem / 1 var(--font-mono);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--c-raised);
+    font-size: 0.8125rem;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 10px;
+    font: 600 0.9375rem / 1 var(--font-sans);
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color 140ms var(--ease),
+      transform 120ms var(--ease);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .btn--block {
+    width: 100%;
+  }
+
+  .btn--alibi {
+    background: var(--c-alibi);
+    color: var(--c-alibi-ink);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+  }
+
+  .btn--alibi:hover:not(:disabled) {
+    background: #262a33;
+  }
+
+  .btn--primary {
+    background: var(--c-bank);
+    color: #fff;
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .send {
+    margin: 0;
+  }
+
+  @media (max-width: 860px) {
+    .col-reason,
+    .col-opened,
+    .col-priority {
+      display: none;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .knowns {
+      grid-template-columns: 1fr;
+    }
+    .facts div,
+    .rows div {
+      grid-template-columns: 1fr;
+      gap: 2px;
+    }
+    .drawer-head,
+    .drawer-body,
+    .drawer-foot {
+      padding-inline: 16px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .drawer,
+    .pane,
+    .scrim {
+      transition: none;
+    }
+  }
+</style>
+
+<script>
+  /*
+   * In-place navigation for the queue: open a case, step into the request, go back, close. Each
+   * state keeps its real URL, so reload, back/forward and sharing a link all land on the same
+   * screen the server renders.
+   */
+  const queue = document.querySelector<HTMLElement>('[data-queue]');
+  const scrim = document.querySelector<HTMLElement>('[data-scrim]');
+  const drawers = new Map(
+    [...document.querySelectorAll<HTMLElement>('[data-drawer]')].map((d) => [d.dataset.drawer!, d]),
+  );
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let current: HTMLElement | null =
+    [...drawers.values()].find((d) => d.classList.contains('is-open')) ?? null;
+  let lastRow: HTMLElement | null = null;
+
+  function parse(path: string): { id?: string; step: 'case' | 'request' } {
+    const m = path.match(/^\/cases\/([^/]+)\/(request\/)?$/);
+    return m
+      ? { id: decodeURIComponent(m[1]!), step: m[2] ? 'request' : 'case' }
+      : { step: 'case' };
+  }
+
+  function select(id?: string) {
+    for (const row of document.querySelectorAll<HTMLElement>('[data-row]')) {
+      if (row.dataset.row === id) row.setAttribute('aria-selected', 'true');
+      else row.removeAttribute('aria-selected');
+    }
+  }
+
+  function focusHeading(d: HTMLElement) {
+    const pane = d.querySelector<HTMLElement>(
+      d.dataset.step === 'request' ? '.pane--request h2' : '.pane--case h2',
+    );
+    pane?.focus({ preventScroll: true });
+  }
+
+  function open(id: string, step: 'case' | 'request') {
+    const d = drawers.get(id);
+    if (!d) return;
+    if (step === 'request' && !d.querySelector('.pane--request')) step = 'case';
+    if (current && current !== d) {
+      current.hidden = true;
+      current.classList.remove('is-open');
+    }
+    d.dataset.step = step;
+    if (current !== d) {
+      d.hidden = false;
+      d.classList.add('is-open');
+      if (!reduced) {
+        d.classList.add('is-entering');
+        requestAnimationFrame(() => requestAnimationFrame(() => d.classList.remove('is-entering')));
+      }
+    }
+    if (scrim) {
+      scrim.hidden = false;
+      scrim.classList.remove('is-hiding');
+    }
+    queue?.setAttribute('inert', '');
+    document.documentElement.style.overflow = 'hidden';
+    current = d;
+    select(id);
+    focusHeading(d);
+  }
+
+  function close() {
+    const d = current;
+    if (!d) return;
+    current = null;
+    select(undefined);
+    queue?.removeAttribute('inert');
+    document.documentElement.style.overflow = '';
+    const done = () => {
+      d.hidden = true;
+      d.classList.remove('is-open', 'is-leaving');
+      if (scrim) scrim.hidden = true;
+      lastRow?.querySelector<HTMLElement>('.row-link')?.focus({ preventScroll: true });
+    };
+    if (reduced) return done();
+    d.classList.add('is-leaving');
+    scrim?.classList.add('is-hiding');
+    d.addEventListener('transitionend', done, { once: true });
+  }
+
+  function go(path: string) {
+    if (location.pathname !== path) history.pushState(null, '', path);
+    const { id, step } = parse(path);
+    if (id) open(id, step);
+    else close();
+  }
+
+  document.addEventListener('click', (e) => {
+    const me = e as MouseEvent;
+    if (me.metaKey || me.ctrlKey || me.shiftKey || me.button !== 0) return;
+    const t = e.target as HTMLElement;
+    const openLink = t.closest<HTMLAnchorElement>('[data-open]');
+    if (openLink) {
+      e.preventDefault();
+      lastRow = openLink.closest('tr');
+      return go(`/cases/${openLink.dataset.open}/`);
+    }
+    const req = t.closest<HTMLAnchorElement>('[data-request]');
+    if (req) {
+      e.preventDefault();
+      return go(`/cases/${req.dataset.request}/request/`);
+    }
+    const back = t.closest<HTMLAnchorElement>('[data-back]');
+    if (back) {
+      e.preventDefault();
+      return go(`/cases/${back.dataset.back}/`);
+    }
+    if (t.closest('[data-close]') || t.closest('[data-scrim]')) {
+      e.preventDefault();
+      return go('/');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && current) go('/');
+  });
+
+  window.addEventListener('popstate', () => {
+    const { id, step } = parse(location.pathname);
+    if (id) open(id, step);
+    else close();
+  });
+
+  // Filters: show only the rows with that status.
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-filter]')];
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => {
+      for (const t of tabs) t.setAttribute('aria-pressed', String(t === tab));
+      const f = tab.dataset.filter;
+      for (const row of document.querySelectorAll<HTMLElement>('[data-row]'))
+        row.hidden = f !== 'all' && row.dataset.status !== f;
+    });
+  }
+
+  if (current) {
+    queue?.setAttribute('inert', '');
+    document.documentElement.style.overflow = 'hidden';
+  }
+</script>

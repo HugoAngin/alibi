@@ -1,5 +1,5 @@
 /**
- * POST /act/: the console's two analyst actions (decision, follow-up). The backend path is built
+ * POST /act/: the console's three analyst actions (request, decision, follow-up). The backend path is built
  * on the server from a fixed kind and a validated ID (src/lib/actions.ts); the form never supplies
  * a path. Requires a same-origin POST and a signed analyst session; otherwise nothing is sent
  * upstream and the Bank A credential is never used. Refusals from the backend are shown verbatim.
@@ -57,7 +57,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
   else
     setFlash(cookies, {
       kind: 'ok',
-      message: 'Recorded. The screen shows the backend’s current state.',
+      message:
+        fields.kind === 'request'
+          ? 'Request sent. The customer has it in their Alibi.'
+          : 'Recorded. The screen shows the backend’s current state.',
     });
   return redirect(returnTo, 303);
 };

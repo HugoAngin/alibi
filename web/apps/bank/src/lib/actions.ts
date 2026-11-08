@@ -1,5 +1,5 @@
 /**
- * The bank console's only two actions, mapped to Bank A routes on the server. The form never
+ * The bank console's only three actions, mapped to Bank A routes on the server. The form never
  * supplies a backend path: it names a fixed kind and an ID, both validated here, and only the
  * allowlisted fields are forwarded (eval, 04:17Z: /act/ must not forward arbitrary paths with the
  * Bank A credential). `handleAct` makes no upstream call unless the request is same-origin, carries
@@ -8,9 +8,11 @@
 
 import type { ActionResult } from '@alibi/ui/api';
 
+import { findCase } from '../data/cases';
+
 import { BANK_ROUTES, type BankTarget } from './bankApi';
 
-export type ActKind = 'decision' | 'followup';
+export type ActKind = 'decision' | 'followup' | 'request';
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DECISIONS = new Set(['clear', 'escalate', 'request_more']);
@@ -64,6 +66,12 @@ export function planAction(
       path: BANK_ROUTES.disposition(target, id),
       body: { decision: 'request_more', reason, requested_evidence: [question] },
     };
+  }
+  if (kind === 'request') {
+    // The form names a case; the request ID comes from the case itself, never from the form.
+    const request = findCase(fields.case_id)?.request;
+    if (!request) return { ok: false, reason: 'this case has no Alibi request' };
+    return { ok: true, path: BANK_ROUTES.rfc(target), body: { request_id: request.id } };
   }
   return { ok: false, reason: 'unknown action' };
 }

@@ -1,8 +1,10 @@
 ---
 /**
- * Shell for the simulated bank console: dense, internal-tool styling that
- * overrides the shared tokens. The Alibi button keeps Alibi's colours, as an
- * integrated third-party action would.
+ * Shell for the simulated bank console: a quiet, dense internal tool. The
+ * bank's chrome stays graphite with one steel-teal accent for selection and
+ * focus; the Alibi buttons keep Alibi's own black, as an integrated
+ * third-party action would, so they are the one bold thing on the screen.
+ * The shared tokens are overridden here, so every console page follows.
  */
 import '@alibi/ui/base.css';
 
@@ -10,11 +12,20 @@ import { analyst, bank } from '@/data/cases';
 
 interface Props {
   title?: string;
+  /** Which top-level section is current, for the nav. */
+  section?: 'cases' | 'inbox' | 'sign-in';
+  /** Wider main column for the case queue. */
+  wide?: boolean;
 }
 
-const { title } = Astro.props;
+const { title, section, wide = false } = Astro.props;
 const pageTitle = title ? `${title} · ${bank.name} ${bank.unit}` : `${bank.name} ${bank.unit}`;
-import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
+const fonts =
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
+const nav = [
+  { href: '/', label: 'Cases', id: 'cases' },
+  { href: '/inbox/', label: 'Alibi inbox', id: 'inbox' },
+] as const;
 ---
 
 <!doctype html>
@@ -25,25 +36,48 @@ import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
     <meta name="robots" content="noindex" />
     <title>{pageTitle}</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href={fonts} />
   </head>
   <body>
-    <ReplayBanner />
     <a class="skip-link" href="#main">
       Skip to content
     </a>
     <p class="simulated">Simulated bank system for the Alibi demo. Synthetic data only.</p>
     <header class="console-header">
-      <a class="console-name" href="/">
-        {bank.name} · {bank.unit}
-      </a>
-      <nav aria-label="Console">
-        <a href="/">Cases</a>
-        <a href="/inbox/">Alibi inbox</a>
-        <a href="/sign-in/">Sign in</a>
-      </nav>
-      <span>Signed in as {analyst.name}</span>
+      <div class="console-inner" class:list={{ wide }}>
+        <a class="console-name" href="/">
+          <span class="mark" aria-hidden="true">
+            A
+          </span>
+          <span>
+            <strong>{bank.name}</strong>
+            <span class="unit">{bank.unit}</span>
+          </span>
+        </a>
+        <nav aria-label="Console">
+          {nav.map((n) => (
+            <a href={n.href} aria-current={section === n.id ? 'page' : undefined}>
+              {n.label}
+            </a>
+          ))}
+        </nav>
+        <div class="who">
+          <span class="avatar" aria-hidden="true">
+            {analyst.name
+              .split(' ')
+              .map((p) => p[0])
+              .join('')}
+          </span>
+          <span class="who-name">{analyst.name}</span>
+          <a href="/sign-in/" aria-current={section === 'sign-in' ? 'page' : undefined}>
+            Sign in
+          </a>
+        </div>
+      </div>
     </header>
-    <main id="main" class="console-main">
+    <main id="main" class="console-main" class:list={{ wide }}>
       <slot />
     </main>
   </body>
@@ -51,38 +85,179 @@ import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
 
 <style is:global>
   :root {
-    --c-bg: #eef0f3;
-    --c-console: #2b3440;
+    /* Cool graphite ramp: an operations tool people sit in all day. */
+    --c-bg: #f5f6f8;
+    --c-surface: #ffffff;
+    --c-raised: #eef0f3;
+    --c-line: rgb(17 24 39 / 0.09);
+    --c-line-strong: rgb(17 24 39 / 0.16);
+    --c-ink: #111827;
+    --c-ink-soft: #4b5565;
+    --c-ink-faint: #6b7487;
+    --c-console: #111827;
+    /* The bank's own accent: selection, focus and the current nav item. */
+    --c-bank: #0f6e7d;
+    --c-bank-soft: #e6f2f4;
+    --c-ok: #15803d;
+    --c-warn: #a16207;
+    --c-bad: #b91c1c;
+    --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
     --t-base: 0.9375rem;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --shadow-float: 0 12px 32px rgb(17 24 39 / 0.12), 0 1px 2px rgb(17 24 39 / 0.06);
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--c-bank);
+    outline-offset: 2px;
+  }
+
+  .simulated {
+    font-size: var(--t-xs);
   }
 </style>
 
 <style>
   .console-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--gutter);
+    position: sticky;
+    top: 0;
+    z-index: 20;
     background: var(--c-console);
-    color: var(--c-surface);
-    font-size: var(--t-sm);
+    color: #e5e7eb;
+  }
+
+  .console-inner {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    max-width: var(--page-max);
+    height: 56px;
+    margin-inline: auto;
+    padding-inline: 24px;
+  }
+
+  .console-inner.wide,
+  .console-main.wide {
+    max-width: 88rem;
   }
 
   .console-name {
-    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     text-decoration: none;
+    font-size: var(--t-sm);
+    line-height: 1.2;
   }
 
-  .console-header nav {
+  .console-name strong {
+    display: block;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .unit {
+    color: #9ca3af;
+    font-size: 0.75rem;
+  }
+
+  .mark {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--c-bank);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  nav {
     display: flex;
-    gap: var(--space-sm);
+    gap: 4px;
+    margin-left: 16px;
+  }
+
+  nav a,
+  .who a {
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-size: var(--t-sm);
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 140ms var(--ease);
+  }
+
+  nav a:hover,
+  .who a:hover {
+    background: rgb(255 255 255 / 0.08);
+  }
+
+  nav a[aria-current='page'] {
+    background: rgb(255 255 255 / 0.1);
+    color: #fff;
+  }
+
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    font-size: var(--t-sm);
+  }
+
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #374151;
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 600;
   }
 
   .console-main {
     max-width: var(--page-max);
     margin-inline: auto;
-    padding: var(--space-md) var(--gutter) var(--space-2xl);
+    padding: 32px 24px 80px;
+  }
+
+  @media (max-width: 720px) {
+    .console-inner {
+      gap: 12px;
+      padding-inline: 16px;
+    }
+    .unit,
+    .who-name {
+      display: none;
+    }
+    nav {
+      margin-left: 0;
+    }
+    nav a,
+    .who a {
+      padding: 6px 8px;
+    }
+    .console-main {
+      padding: 20px 16px 64px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .console-name > span:not(.mark) {
+      display: none;
+    }
   }
 </style>

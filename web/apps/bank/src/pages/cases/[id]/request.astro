@@ -1,114 +1,29 @@
 ---
 /**
- * Compose a Request for Context. The analyst picks the questions; scope is
- * fixed to the case's transaction. The audience is never a form field: the
- * backend takes it from the bank's credential (execution SP-20, SP-24).
- * Sending is not wired yet: it will go to the mock bank service, which
- * delivers the RFC to the customer's Alibi.
+ * "Request customer's Alibi": the panel's review step. It shows exactly what will be asked (the
+ * case's own request, from data's case file), what it is about, the reply deadline and who sees
+ * the answer, then one Send. The form names only the case; /act/ picks the request ID on the
+ * server and posts it to the bank service's /rfc. The audience is never a form field: the backend
+ * takes it from the bank's credential (execution SP-20, SP-24).
  */
-import type { GetStaticPaths } from 'astro';
-
-// Built from the fixed case list, so prerendered.
-export const prerender = true;
-
+import CaseQueue from '@/components/CaseQueue.astro';
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
-import { bank, cases, formatGBP, questions, type FraudCase } from '@/data/cases';
+import { findCase } from '@/data/cases';
+import { loadQueue } from '@/lib/queue';
 
-export const getStaticPaths = (() =>
-  cases
-    .filter((c) => c.status !== 'closed')
-    .map((c) => ({ params: { id: c.id }, props: { fraudCase: c } }))) satisfies GetStaticPaths;
+export const prerender = false;
 
-interface Props {
-  fraudCase: FraudCase;
-}
+const fraudCase = findCase(Astro.params.id);
+if (!fraudCase) return new Response('Case not found', { status: 404 });
 
-const { fraudCase: c } = Astro.props;
-const defaults = new Set(['q.source_of_funds', 'q.breakdown']);
+const loaded = await loadQueue(Astro.cookies);
+if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
+// Only a case that can still be asked has a request step.
+if (loaded.queue.states[fraudCase.id]?.kind !== 'not_requested')
+  return Astro.redirect(`/cases/${fraudCase.id}/`, 303);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
-<ConsoleLayout title={`Request context · ${c.id}`}>
-  <p>
-    <a href={`/cases/${c.id}/`}>← Case {c.id}</a>
-  </p>
-  <h1>Request customer’s Alibi</h1>
-
-  <form class="panel" method="get" action="#" aria-describedby="not-wired">
-    <fieldset>
-      <legend>Scope</legend>
-      <p>
-        Transaction <code>{c.txn.id}</code>, {formatGBP(c.txn.amountMinor)}, booked
-        <code>{c.txn.bookedAt}</code>. Recipient <code>{bank.id}</code>.
-      </p>
-      <input type="hidden" name="txn_ids" value={c.txn.id} />
-    </fieldset>
-
-    <fieldset>
-      <legend>Questions</legend>
-      {questions.map((q) => (
-        <label>
-          <input type="checkbox" name="question_ids" value={q.id} checked={defaults.has(q.id)} />
-          {q.text} <code>{q.id}</code>
-        </label>
-      ))}
-    </fieldset>
-
-    <label class="expiry">
-      Respond within
-      <select name="expires_in_days">
-        <option value="3">3 days</option>
-        <option value="7" selected>
-          7 days
-        </option>
-        <option value="14">14 days</option>
-      </select>
-    </label>
-
-    <p id="not-wired" class="note">
-      Not wired yet. Sending will go through the mock bank service to the customer’s Alibi. The
-      customer decides what to share; nothing about their account changes automatically.
-    </p>
-    <button type="submit" disabled>
-      Send request
-    </button>
-  </form>
+<ConsoleLayout title={`Request Alibi · ${fraudCase.id}`} section="cases" wide>
+  <CaseQueue queue={loaded.queue} openId={fraudCase.id} step="request" />
 </ConsoleLayout>
-
-<style>
-  h1 {
-    font-size: var(--t-lg);
-  }
-
-  .panel {
-    max-width: var(--measure);
-    padding: var(--space-md);
-    background: var(--c-surface);
-    border: 1px solid var(--c-line);
-  }
-
-  fieldset {
-    border: 0;
-    padding: 0;
-    margin: 0 0 var(--space-md);
-  }
-
-  legend {
-    font-weight: 700;
-    margin-bottom: var(--space-2xs);
-  }
-
-  label {
-    display: block;
-    margin-block: var(--space-2xs);
-  }
-
-  .note {
-    font-size: var(--t-sm);
-    color: var(--c-ink-soft);
-  }
-
-  button {
-    min-height: 40px;
-    padding-inline: var(--space-md);
-  }
-</style>

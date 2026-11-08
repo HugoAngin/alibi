@@ -64,6 +64,8 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 01:25Z: execution idle, offered (a) policy compiler and filter, (b) approval store and dispatch gate, (c) reconciliation reference, (d) an S-session slice. Assigned (a) then (b) in `agents/execution/`, as `agents.execution.api` `compile_policy` / `apply_policy` and `approval_gate`; declined (c) because eval owns `agents.eval.settlement`; (d) queued for Arnav. Pinned a Policy row in CONTRACTS.
 - 01:30Z: eval progress (1b2d8eb): `agents.eval.api.attempt` resolves all 47 probe IDs, 46 with HTTP handlers and SP-47 via execution's raw-store harness. 752 tests pass with 6 S3a xfails. Live runs still wait on the app and fixture hooks. No reply needed.
 - 01:31Z: eval taking the rules and single-Flash baselines under `agents/eval`, asked for the prediction shape, gate import path and core review SHA. None on `main` (`alibi/` has only REPORTS, agents/prompts, llm, tests). Pinned an interim Prediction row mirroring data's gold; gate owner is S5; SHA queued for Arnav.
+- 01:32Z: execution done (0d60c78): `compile_policy`, `apply_policy`, `record_index` in `agents.execution.api`, matching the Policy row; 40/40 on the fixture, 7/12 correct and 0 leaks on 12 pre-committed held-out paraphrases (results records 9a0a1cdabb and d9601d98d6). Starting (b) approval_gate. eval asked to verify.
+- 01:33Z: data done (da8289f): 10 synthetic receipt images in `agents/data/out/receipts/` with truth in `receipts.json`, for S3's vision import; two more with cases 71 to 80. Pinned in the Case schema row. No reply needed.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

@@ -75,7 +75,8 @@ Continues from F1 step 10.
 | # | Actor | Request | Expect |
 | --- | --- | --- | --- |
 | 1 | analyst_a1 | `POST /bank/bank_a/packages/P1/disposition` `disposition=request_more&note=Need the settlement record for PO-0001-01` | `200`, disposition stored with `package_digest` D2; `analyst` from the credential, not the form; audit `disposition.recorded` |
-| 2 | analyst_a1 | `POST /bank/bank_a/requests` `parent_request_id=rfc-0001-01&period_from=…&period_to=…&question=Provide the settlement record for payout PO-0001-01.` | `201`, new `request_id` `rfc-0001-03`, `parent_request_id: rfc-0001-01`, `audience: bank_a`. Scope is the posted fields only (SP-39) |
+| 2 | analyst_a1 | `POST /bank/bank_a/requests` `parent_request_id=rfc-0001-01&question=Provide the settlement record for payout PO-0001-01.` (scope fields left empty) | `201`, new `request_id` `rfc-0001-03`, `parent_request_id: rfc-0001-01`, `audience: bank_a`, scope inherited from the parent: `txn_ids: [txn-0001-004]`, `period: null`. Question text cannot widen it (SP-39) |
+| 2b | analyst_a1 | same, with `period_from=2026-01-01T00:00:00Z&period_to=2026-11-01T00:00:00Z` (wider than the parent) | `409`, `code: scope_wider_than_parent`, reason `follow-up scope must stay within rfc-0001-01; send a new request to ask about a wider scope.`, audit `rfc.refused`. No `rfc-0001-03` created |
 | 3 | system | delivery of `rfc-0001-03` through the bank connection | audit `rfc.received` for `rfc-0001-03` with parent |
 | 4 | maya | `GET /passport` | requests list shows `rfc-0001-03` as `new`, linked to its parent |
 | 5 | maya | `POST /requests/rfc-0001-03/run` | `200`, draft D3. **No new import**: source record count and IDs equal those before step 1 |
@@ -116,4 +117,4 @@ Continues from F1 step 10.
 | RFC intake | ⚠ `POST /connect/bank/rfcs` | placeholder until S2 |
 | Merchant correction | ⚠ `POST /connect/merchant/events` | placeholder until S2 |
 
-Open for lead: the follow-up form only carries a period, but `rfc-0001-01` is transaction-scoped. Per the RFC scope row, the follow-up form needs a `txn_ids` option or must inherit the parent's `txn_ids` when the period is left empty.
+Follow-up scope (lead, 7a7ba1e, RFC scope row): a `request_more` follow-up keeps the parent's scope kind and values by default; the form must offer both scope choices like intake. Widening beyond the parent is a new RFC, not a follow-up (F2 step 2b). The S4 form fix and the S2 route contract are queued for Arnav; ⚠ placeholders stay marked until then.

@@ -10,7 +10,7 @@ Role: `execution` (sirExile44). Writes only in `agents/execution/`. Spec: `docs/
 2026-11-08, lead work order 00:45Z (5107aca), all posted done:
 - (1) `out/policy_rules.jsonl` + `out/policy_material.json`, 40 rules vs s3a `policy_parse.json` schema. Generator `policy_fixture.py`. 7e51e7f.
 - (2) `out/injections.jsonl`, 25 strings on dev cases 1/2. Generator `injection_fixture.py`. a27fcad.
-- (3) `out/consent_matrix.md`, triggers C1–C16 + HTTP flows F1–F3. Routes from S4 form actions; RFC intake and merchant events are placeholders. b5cf448.
+- (3) `out/consent_matrix.md`, triggers C1–C16 + HTTP flows F1–F3. Routes from S4 form actions; RFC intake and merchant events are placeholders. b5cf448. F2 updated to inherited txn_ids per lead 7a7ba1e (follow-up keeps parent scope; wider = new RFC).
 - (4) `out/CONTROLS_SLIDE.md`, six threat rows → control, IDs, evidence; README limits draft. 06d22b1.
 
 Eval need 00:45Z: SP-25..SP-32 verifier probes. Plan prepared in `out/verifier_probes.json` (11 steps, 3 checks) via `verifier_probes.py`; `api.verifier_probe_plan()` is in `score_probe_steps` format. Expected codes match eval's reference verifier.

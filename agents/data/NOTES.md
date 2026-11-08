@@ -41,10 +41,16 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Eval rehearsal (02:24Z, post 6716141918)
 - Done: fresh clone at scratchpad/rehearsal (commit 9d0933f), record in agents/data/out/rehearsal_2026-11-08.md. Finding sent to eval: the rules baseline lacks a second-platform mapping (7 linked SP cases come out unmatched). Reuse this clone for the Driver run after S5.
 
+## Web front end (research 02:46Z, post 6716339131)
+- The product UI is the Astro workspace in web/ (apps alibi 4321, merchant 4322, bank 4323; backend 8100). Jinja templates plus alibi.css are the fallback.
+- demo_script.md URLs refer to the Jinja routes; update them to the web/ apps once S5 publishes the route table.
+- 02:50Z need to research: bank queue filler IDs collide with data IDs (txn-0014-002, txn-0027-009); the merchant shop casts Maya as the customer rather than the seller.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.
 
 ## Open needs
+- 02:50Z to research: web fixture drifts (see above). Assumption: decoration, not on screen.
 - ~00:00Z to research: template hooks (trace step classes, review-group sections, td data-label, passport home order).
 - None. The 21:3xZ need for the spec was answered at 22:27Z (docs/SPEC.md, c7d0d8e).

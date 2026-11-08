@@ -1,4 +1,5 @@
-"""Sealing: write and verify round-trip, and a changed byte in cases, gold or config is detected."""
+"""Sealing: write and verify round-trip, and a changed byte in cases, gold or config is detected.
+Expected lengths are derived from the loaded case set."""
 from __future__ import annotations
 
 import json
@@ -42,7 +43,8 @@ def verify(sealed: dict, capsys) -> tuple[int, str]:
 def test_write_and_verify_roundtrip(sealed, capsys):
     manifest = write(sealed, capsys)
     assert jsonschema_lite.errors(load_schema("manifest"), manifest) == []
-    assert len(manifest["cases"]["entries"]) == 40 and len(manifest["gold"]["entries"]) == 40
+    n = len(sealed["cases"])
+    assert len(manifest["cases"]["entries"]) == n and len(manifest["gold"]["entries"]) == n
     assert [f["file"] for f in manifest["cases"]["files"]] == ["part_a.jsonl", "part_b.jsonl"]
     assert manifest["cases"]["entries"][0]["request_ids"] == ["rfc-0001-01", "rfc-0001-02"]
     assert manifest["scoring"]["rules_version"] == "alibi.eval.scoring.v2"
@@ -124,9 +126,10 @@ def test_write_refuses_gold_in_cases_and_mismatched_gold(sealed, capsys):
     with pytest.raises(EvalError, match="carries gold"):
         seal.build_manifest(sealed["root"], sealed["gold"])
     with_gold.unlink()
+    last = sealed["cases"][-1]["case_number"]
     write_jsonl(sealed["gold"], [{"case_number": c["case_number"], "gold": c["gold"]}
-                                 for c in sealed["cases"][:39]])
-    with pytest.raises(EvalError, match="cases without gold \\[40\\]"):
+                                 for c in sealed["cases"][:-1]])
+    with pytest.raises(EvalError, match=f"cases without gold \\[{last}\\]"):
         seal.build_manifest(sealed["root"], sealed["gold"])
 
 
@@ -135,5 +138,5 @@ def test_gold_file_accepts_a_keyed_object(sealed, capsys):
     keyed.write_text(json.dumps({str(c["case_number"]): c["gold"] for c in sealed["cases"]}),
                      encoding="utf-8")
     manifest = seal.build_manifest(sealed["root"], keyed, model_config=sealed["config"], purpose="dev")
-    assert len(manifest["gold"]["entries"]) == 40
+    assert len(manifest["gold"]["entries"]) == len(sealed["cases"])
     assert manifest["gold"]["entries"][0]["sha256"] == seal.gold_entries(sealed["gold"])[1][0]["sha256"]

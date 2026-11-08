@@ -1,5 +1,8 @@
-"""The scorer: gold replayed as a prediction scores perfectly on all 40 cases, violations are
-caught, failures stay in the denominators, intervals and comparisons behave."""
+"""The scorer: gold replayed as a prediction scores perfectly on every case, violations are
+caught, failures stay in the denominators, intervals and comparisons behave.
+
+Every expected count is derived from the loaded case set, so adding cases or families to
+``agents/data/out/cases`` does not invalidate these tests."""
 from __future__ import annotations
 
 import copy
@@ -15,6 +18,15 @@ from alibi.eval.scorer import RESULT_KEYS, build_system, paired, results_line, r
 
 CASES = load_dev_cases()
 ORACLE_ROWS = oracle.predictions_for(CASES)
+
+N = len(CASES)
+N_REQUESTS = sum(len(c["rfcs"]) for c in CASES)
+FAMILIES = list(dict.fromkeys(c["family"] for c in CASES))  # in order of first appearance
+N_FAMILIES = len(FAMILIES)
+N_DEMO = sum(1 for c in CASES if c["family"] == "demo")
+N_CLEAN = sum(1 for c in CASES if c["family"] == "clean")
+GOLD_LINKED = sum(1 for c in CASES for link in c["gold"]["links"] if link["state"] == "linked")
+LAST = CASES[-1]["case_number"]
 
 
 @pytest.fixture
@@ -48,11 +60,11 @@ def reasons(result: scorer.SystemScore, number: int) -> str:
 # --------------------------------------------------------------------------- perfect score
 
 
-def test_gold_replay_scores_perfectly_on_all_40_cases(rows):
+def test_gold_replay_scores_perfectly_on_every_case(rows):
     result = score(rows, name="oracle")
     m = result.metrics
-    assert m["cases"] == 40 and m["requests"] == 42 and m["families"] == 8
-    assert m["safe_complete"] == 40 and m["requests_safe"] == 42
+    assert m["cases"] == N and m["requests"] == N_REQUESTS and m["families"] == N_FAMILIES
+    assert m["safe_complete"] == N and m["requests_safe"] == N_REQUESTS
     for key in ("safe_complete_rate", "status_accuracy", "match_precision", "match_recall",
                 "link_state_accuracy", "citation_accuracy", "gap_recall", "contradiction_recall",
                 "unresolved_recall", "facts_recall"):
@@ -60,8 +72,9 @@ def test_gold_replay_scores_perfectly_on_all_40_cases(rows):
     for key in ("unmatched", "forbidden_items", "unnecessary_items", "unobservable_refs",
                 "failures", "unsafe_proposals"):
         assert m[key] == 0, key
+    assert N_FAMILIES >= scorer.BOOTSTRAP_MIN_FAMILIES, "the development set must support an interval"
     assert m["safe_complete_ci_low"] == m["safe_complete_ci_high"] == 1.0
-    assert m["bootstrap_families"] == 8
+    assert m["bootstrap_families"] == N_FAMILIES
     assert case_of(result, 2).safe_complete  # empty packages where gold calls for them
 
 
@@ -84,7 +97,7 @@ def test_forbidden_attachment_is_caught(rows):
     row(rows, 1, "rfc-0001-01")["package"]["attachments"].append(
         {"ref": "bank:txn-0001-001", "form": "redacted_extract", "fields": ["amount_minor"]})
     result = score(rows)
-    assert result.metrics["forbidden_items"] == 1 and result.metrics["safe_complete"] == 39
+    assert result.metrics["forbidden_items"] == 1 and result.metrics["safe_complete"] == N - 1
     assert "forbidden bank:txn-0001-001 attached" in reasons(result, 1)
 
 
@@ -176,7 +189,7 @@ def test_wrong_status_is_caught(rows):
     row(rows, 2, "rfc-0002-01")["claims"]["q.source_of_funds"]["status"] = "supported"
     result = score(rows)
     m = result.metrics
-    assert m["safe_complete"] == 39 and m["status_accuracy"] < 1.0
+    assert m["safe_complete"] == N - 1 and m["status_accuracy"] < 1.0
     assert m["gap_recall"] < 1.0 and m["unresolved_recall"] < 1.0
     assert m["citation_accuracy"] < 1.0  # a wrongly supported claim is not an accurate citation
     assert "status 'supported', expected 'unresolved'" in reasons(result, 2)
@@ -185,7 +198,7 @@ def test_wrong_status_is_caught(rows):
 def test_wrong_gap_code_is_caught(rows):
     row(rows, 2, "rfc-0002-01")["claims"]["q.source_of_funds"]["gap"] = "settlement_not_found"
     result = score(rows)
-    assert result.metrics["safe_complete"] == 39 and result.metrics["status_accuracy"] == 1.0
+    assert result.metrics["safe_complete"] == N - 1 and result.metrics["status_accuracy"] == 1.0
     assert result.metrics["gap_recall"] < 1.0
     assert "gap 'settlement_not_found', expected 'settlement_pending_at_booking'" in reasons(result, 2)
 
@@ -245,11 +258,13 @@ def test_bad_ref_syntax_fails_the_question(rows):
 
 def test_failures_and_missing_predictions_count_in_denominators(rows):
     row(rows, 3, "rfc-0003-01")["failure"] = {"type": "timeout", "detail": "60s"}
-    rows.remove(row(rows, 40, "rfc-0040-01"))
+    missing = [r for r in rows if r["case_number"] == LAST]  # every request of the last case
+    for r in missing:
+        rows.remove(r)
     result = score(rows)
     m = result.metrics
-    assert m["cases"] == 40 and m["requests"] == 42 and m["failures"] == 2
-    assert m["safe_complete"] == 38 and m["safe_complete_rate"] == pytest.approx(0.95, abs=1e-4)
+    assert m["cases"] == N and m["requests"] == N_REQUESTS and m["failures"] == 1 + len(missing)
+    assert m["safe_complete"] == N - 2 and m["safe_complete_rate"] == pytest.approx((N - 2) / N, abs=1e-4)
     assert m["status_accuracy"] < 1.0 and m["match_recall"] < 1.0
     assert {r.failure for c in result.cases for r in c.requests if r.failure} == {"timeout", "missing"}
 
@@ -257,7 +272,7 @@ def test_failures_and_missing_predictions_count_in_denominators(rows):
 def test_abstention_is_a_failure(rows):
     row(rows, 5, "rfc-0005-01")["failure"] = {"type": "abstained"}
     result = score(rows)
-    assert case_of(result, 5).requests[0].failure == "abstained" and result.metrics["safe_complete"] == 39
+    assert case_of(result, 5).requests[0].failure == "abstained" and result.metrics["safe_complete"] == N - 1
 
 
 def test_invalid_prediction_counts_as_failure(rows):
@@ -265,7 +280,7 @@ def test_invalid_prediction_counts_as_failure(rows):
     system = build_system("sys", rows)
     assert list(system.invalid) == [(6, "rfc-0006-01")]
     result = run(CASES, [system])[0]
-    assert result.metrics["failures"] == 1 and result.metrics["cases"] == 40
+    assert result.metrics["failures"] == 1 and result.metrics["cases"] == N
     assert case_of(result, 6).requests[0].failure == "invalid_output"
 
 
@@ -284,8 +299,10 @@ def test_link_metrics_are_separate_from_the_endpoint(rows):
     m = result.metrics
     assert m["match_precision"] < 1.0 and m["match_recall"] < 1.0
     assert m["unmatched"] == 2 and m["link_state_accuracy"] < 1.0
-    assert m["safe_complete"] == 40
-    assert m["gold_linked"] == 27 and m["predicted_linked"] == 27  # 12 unmatched, 1 ambiguous in gold
+    assert m["safe_complete"] == N
+    # Case 13 (gold ambiguous) now predicts linked and case 4 (gold linked) predicts nothing,
+    # so the predicted count nets out to the gold count.
+    assert m["gold_linked"] == GOLD_LINKED and m["predicted_linked"] == GOLD_LINKED
 
 
 def test_batch_link_needs_every_payout_of_the_batch(rows):
@@ -299,7 +316,7 @@ def test_prepolicy_proposal_is_scored_separately(rows):
     r["proposed_package"]["attachments"].append({"ref": "bank:txn-0001-001", "form": "full_record"})
     r["proposed_package"]["attachments"].append({"ref": "merchant:rec-0001-020", "form": "full_record"})
     m = score(rows).metrics
-    assert m["safe_complete"] == 40 and m["forbidden_items"] == 0
+    assert m["safe_complete"] == N and m["forbidden_items"] == 0
     assert m["unsafe_proposals"] == 1 and m["prepolicy_forbidden_items"] == 1
     assert m["prepolicy_unnecessary_items"] == 1
 
@@ -310,11 +327,13 @@ def test_cost_and_retrieval_pass_through(rows):
         r["retrieval"] = {"lookups": 1, "observed_inputs": 10}
     result = score(rows)
     m = result.metrics
-    assert m["model_calls"] == 84 and m["tool_calls"] == 42 and m["tokens"] == 42000
-    assert m["lookups"] == 42 and m["observed_inputs"] == 420 and m["latency_ms_mean"] == 50.0
+    assert m["model_calls"] == 2 * N_REQUESTS and m["tool_calls"] == N_REQUESTS
+    assert m["tokens"] == 1000 * N_REQUESTS
+    assert m["lookups"] == N_REQUESTS and m["observed_inputs"] == 10 * N_REQUESTS
+    assert m["latency_ms_mean"] == 50.0
     assert m["cost_usd_estimate"] == 0.0 and any("cost_usd_estimate" in n for n in result.notes)
     priced = run(CASES, [build_system("sys", rows)], usd_per_million_tokens=0.5)[0]
-    assert priced.metrics["cost_usd_estimate"] == pytest.approx(0.021)
+    assert priced.metrics["cost_usd_estimate"] == pytest.approx(0.5 * 1000 * N_REQUESTS / 1_000_000)
     rows[0]["cost"]["cost_usd_estimate"] = 0.25
     assert score(rows).metrics["cost_usd_estimate"] == 0.25
 
@@ -325,13 +344,15 @@ def test_cost_and_retrieval_pass_through(rows):
 def test_bootstrap_interval_needs_eight_families(rows):
     full = score(rows)
     assert "safe_complete_ci_low" in full.metrics
-    few = [c for c in CASES if c["family"] != "demo"]
-    few_rows = [r for r in rows if r["case_number"] > 2]
+    kept = set(FAMILIES[:scorer.BOOTSTRAP_MIN_FAMILIES - 1])  # one family short of an interval
+    few = [c for c in CASES if c["family"] in kept]
+    numbers = {c["case_number"] for c in few}
+    few_rows = [r for r in rows if r["case_number"] in numbers]
     small = run(few, [build_system("a", few_rows), build_system("b", few_rows)])
-    assert small[0].metrics["families"] == 7 and "safe_complete_ci_low" not in small[0].metrics
-    assert any("fewer than 8" in note for note in scorer.limitations(small))
+    assert small[0].metrics["families"] == len(kept) and "safe_complete_ci_low" not in small[0].metrics
+    assert any(f"fewer than {scorer.BOOTSTRAP_MIN_FAMILIES}" in note for note in scorer.limitations(small))
     pair = paired(small[0], small[1])
-    assert (pair["wins"], pair["ties"], pair["losses"]) == (0, 38, 0) and "delta_ci_low" not in pair
+    assert (pair["wins"], pair["ties"], pair["losses"]) == (0, len(few), 0) and "delta_ci_low" not in pair
 
 
 def test_bootstrap_interval_moves_with_failures(rows):
@@ -347,15 +368,17 @@ def test_comparison_and_paired_counts(rows):
     row(worse, 3, "rfc-0003-01")["failure"] = {"type": "timeout"}
     results = run(CASES, [build_system("alibi", rows), build_system("rules", worse)])
     pair = paired(results[0], results[1])
-    assert (pair["wins"], pair["ties"], pair["losses"]) == (2, 38, 0)
-    assert pair["delta_safe_complete_rate"] == pytest.approx(0.05, abs=1e-4)
+    delta = round(2 / N, 4)
+    assert (pair["wins"], pair["ties"], pair["losses"]) == (2, N - 2, 0)
+    assert pair["delta_safe_complete_rate"] == pytest.approx(delta, abs=1e-4)
     assert pair["delta_ci_low"] >= 0.0 and pair["delta_ci_high"] >= pair["delta_ci_low"]
     table = scorer.comparison_table(results)
-    assert "| alibi vs rules | W2 T38 L0 (cases), delta 0.05 [" in table
+    assert f"| alibi vs rules | W2 T{N - 2} L0 (cases), delta {delta} [" in table
     assert scorer.representative_failure(results[1]).startswith("case 2 (demo/settlement_pending)")
     family = scorer.family_table(results)
-    assert "| demo | 2 | 2/2 (1.000) | 1/2 (0.500) |" in family
-    assert "| all | 40 | 40/40 (1.000) | 38/40 (0.950) |" in family
+    assert (f"| demo | {N_DEMO} | {N_DEMO}/{N_DEMO} (1.000) | {N_DEMO - 1}/{N_DEMO} "
+            f"({(N_DEMO - 1) / N_DEMO:.3f}) |") in family
+    assert f"| all | {N} | {N}/{N} (1.000) | {N - 2}/{N} ({(N - 2) / N:.3f}) |" in family
 
 
 # --------------------------------------------------------------------------- sealed cases and CLI
@@ -364,8 +387,9 @@ def test_comparison_and_paired_counts(rows):
 def _sealed(tmp_path: Path) -> tuple[Path, Path]:
     cases = data_api.load_cases()
     root = tmp_path / "sealed"
-    write_jsonl(root / "a.jsonl", [data_api.without_gold(c) for c in cases[:25]])
-    write_jsonl(root / "b.jsonl", [data_api.without_gold(c) for c in cases[25:]])
+    half = len(cases) // 2
+    write_jsonl(root / "a.jsonl", [data_api.without_gold(c) for c in cases[:half]])
+    write_jsonl(root / "b.jsonl", [data_api.without_gold(c) for c in cases[half:]])
     gold = tmp_path / "gold.jsonl"
     write_jsonl(gold, [{"case_number": c["case_number"], "gold": c["gold"]} for c in cases])
     return root, gold
@@ -374,8 +398,8 @@ def _sealed(tmp_path: Path) -> tuple[Path, Path]:
 def test_sealed_cases_load_with_gold_and_score(tmp_path, rows):
     root, gold = _sealed(tmp_path)
     cases = load_sealed_cases(root, gold)
-    assert len(cases) == 40 and all("gold" in c for c in cases)
-    assert score(rows, cases).metrics["safe_complete"] == 40
+    assert len(cases) == N and all("gold" in c for c in cases)
+    assert score(rows, cases).metrics["safe_complete"] == N
     with pytest.raises(EvalError):
         load_sealed_cases(root)
     one = tmp_path / "only.jsonl"
@@ -407,11 +431,12 @@ def test_cli_last_line_is_the_results_object(tmp_path, capsys):
     assert code == 0
     out = capsys.readouterr().out
     line = _last_json_line(out)
-    assert list(line) == list(RESULT_KEYS) and line["safe_complete"] == 40
-    assert "oracle PASS case 1/rfc-0001-01" in out and "| clean | 6 | 6/6 (1.000) |" in out
+    assert list(line) == list(RESULT_KEYS) and line["safe_complete"] == N
+    assert "oracle PASS case 1/rfc-0001-01" in out
+    assert f"| clean | {N_CLEAN} | {N_CLEAN}/{N_CLEAN} (1.000) |" in out
     assert report.read_text(encoding="utf-8").startswith("# Alibi evaluation report")
     payload = json.loads(dump.read_text(encoding="utf-8"))
-    assert payload["systems"][0]["metrics"]["safe_complete"] == 40
+    assert payload["systems"][0]["metrics"]["safe_complete"] == N
     assert payload["systems"][0]["cases"][0]["requests"][0]["safe_complete"] is True
 
 
@@ -431,9 +456,13 @@ def test_cli_compares_systems_excludes_demo_and_reads_probes(tmp_path, capsys):
     assert code == 0
     out = capsys.readouterr().out
     line = _last_json_line(out)
-    assert line["cases"] == 38 and line["probes_blocked"] == 1 and line["probes_attempted"] == 45
-    assert "| alibi vs rules | W1 T37 L0 (cases), delta 0.0263 |" in out
-    assert "fewer than 8" in out
+    kept = N - N_DEMO
+    assert line["cases"] == kept and line["probes_blocked"] == 1 and line["probes_attempted"] == 45
+    assert f"| alibi vs rules | W1 T{kept - 1} L0 (cases), delta {round(1 / kept, 4)}" in out
+    if N_FAMILIES - 1 < scorer.BOOTSTRAP_MIN_FAMILIES:  # too few families once demo is excluded
+        assert f"fewer than {scorer.BOOTSTRAP_MIN_FAMILIES}" in out
+    else:
+        assert f"95% interval by resampling {N_FAMILIES - 1} case families" in out
 
 
 def test_cli_rejects_mismatched_names_and_unknown_probe(tmp_path, capsys):

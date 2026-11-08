@@ -1,0 +1,142 @@
+{
+  "scope": "Hosted HTTP behavior with disposable invalid markers. Hosted logs were not inspected.",
+  "probe_id": "SP-46",
+  "passed": true,
+  "checks": [
+    {
+      "path": "/passport",
+      "case": "ordinary query",
+      "status": 401,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "token",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "access_token",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "bearer",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "key",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "passcode",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "%74oken",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "access%5Ftoken",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "api_key",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/passport",
+      "case": "ToKeN",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "ordinary query",
+      "status": 401,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "token",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "access_token",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "bearer",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "key",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "passcode",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "%74oken",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "access%5Ftoken",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "api_key",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/bank/inbox",
+      "case": "ToKeN",
+      "status": 400,
+      "passed": true
+    },
+    {
+      "path": "/healthz",
+      "case": "service health",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/bank/admin/reset",
+      "case": "internal route",
+      "status": 404,
+      "passed": true
+    }
+  ],
+  "router_source_commit": "4fb85f2415e07f1a727aad34897464d964ec747a",
+  "checked_at_utc": "2026-11-08T11:10:57Z",
+  "origin": "https://eliohd--alibi-backend-backend.us-east.modal.run"
+}

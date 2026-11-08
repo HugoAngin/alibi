@@ -49,6 +49,11 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Demo runs locally on the presenter's laptop (Astro dev server + three services). Public URL is Tamim's Modal stretch, not a dependency.
 - Bank tokens stay server-side behind the action proxy, never in the browser bundle.
 
+## Elio's direction, 2026-11-08 ~02:05Z
+- Hosting: all three Astro sites on Cloudflare Workers; they call the team's Python backend server-side through a Cloudflare Tunnel (one source of truth). D1 only for web-side state (Clerk-linked accounts, merchant connections, bank case queue). Not yet posted to lead.
+- Clerk: app `alibi-app` (app_3LnvqaoNElTnELV7Pq6JsiFozUa), development instance, keys in web/apps/alibi/.env (git-ignored, never read). Join = /sign-up/ (hash routing) -> /app/. Production keys need a domain Elio owns.
+- Landing (acdd607): liquid-glass island header (text wordmark "alibi"; Core, Simulate, Join), 3D passport hero in three.js (evidence tiles dock on scroll), Lenis, Core = engine / merchant+bank integration / user control. /simulate/ = Maya's case beside the live app in a phone frame. Priority was landing first; demo path wiring next.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

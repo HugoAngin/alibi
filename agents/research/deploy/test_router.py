@@ -112,6 +112,8 @@ def test_credentials_in_the_url_are_refused_before_any_upstream_call():
         "/passport?x=1&api_key=abc",
         "/passport?%74oken=abc",
         "/passport?%2574oken=abc",
+        "/bank/inbox?bearer=abc",
+        "/bank/session?passcode=abc",
     ]:
         r = c.get(path)
         assert r.status_code == 400, path

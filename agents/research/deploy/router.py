@@ -89,7 +89,9 @@ def is_blocked(path: str) -> bool:
 
 #: Query names that carry a credential. A URL ends up in access logs, history and referrers, so
 #: credentials must travel in the Authorization header; such URLs are refused (eval SP-46).
-CREDENTIAL_PARAMS = {"token", "access_token", "api_key", "apikey", "key", "secret", "password", "auth"}
+CREDENTIAL_PARAMS = {
+    "token", "access_token", "bearer", "key", "api_key", "apikey", "passcode", "password", "secret", "auth",
+}
 
 
 def has_credential(query: str) -> bool:

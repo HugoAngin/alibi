@@ -243,6 +243,10 @@ for p in sys.argv[1:]:
                     "rate_limited": rate_limited, "effective_timeout_seconds": round(timeout, 3),
                     "retry_based_throttle": retry_observed, "call_cap": "candidate default (120)",
                     "usage_log_sha256": sha256(log.read_bytes()).hexdigest()}
+        if failure:
+            from agents.eval.candidate_diagnostics import from_stderr
+            metadata["failure_diagnostics"] = from_stderr(
+                stderr_path, failure=failure, returncode=child.returncode)
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2))
     return rows, metadata
 

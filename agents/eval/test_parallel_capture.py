@@ -184,3 +184,21 @@ def test_adapter_failure_result_does_not_abort():
     assert not result['metadata']['aborted']
     assert result['metadata']['abort_reason'] is None
     assert result['metadata']['completed'] == 6
+
+
+def test_deadline_during_setup_is_not_an_integrity_abort(monkeypatch):
+    now = datetime.now(timezone.utc)
+    current = [now]
+    deadline = now + timedelta(seconds=1)
+    monkeypatch.setattr(scheduler, '_now', lambda: current[0])
+
+    def run(_job):
+        current[0] = deadline + timedelta(seconds=1)
+        raise TimeoutError('deadline reached during setup')
+
+    result = scheduler.schedule(range(3), run, workers=1, deadline=deadline, stop_on_error=True)
+    assert result['metadata']['deadline_reached']
+    assert not result['metadata']['aborted']
+    assert result['metadata']['errors'] == 1
+    assert result['metadata']['not_started'] == 2
+    assert all(row['reason'] == 'deadline' for row in result['outcomes'][1:])

@@ -91,7 +91,8 @@ def schedule(jobs: Iterable[Any], run_job: Callable[[Any], Any], *, workers: int
                 try:
                     result = future.result()
                 except Exception as exc:
-                    if stop_on_error and not counts["aborted"]:
+                    setup_expired = isinstance(exc, TimeoutError) and deadline is not None and _now() >= deadline
+                    if stop_on_error and not counts["aborted"] and not setup_expired:
                         counts["aborted"] = True
                         counts["abort_reason"] = type(exc).__name__
                     finish(index, "error", error=type(exc).__name__)

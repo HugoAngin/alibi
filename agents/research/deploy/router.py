@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from urllib.parse import unquote
+from urllib.parse import parse_qsl, unquote
 
 import httpx
 from starlette.applications import Starlette
@@ -87,6 +87,22 @@ def is_blocked(path: str) -> bool:
     return "admin" in parts or bool(parts and parts[0] in BLOCKED_ROOTS)
 
 
+#: Query names that carry a credential. A URL ends up in access logs, history and referrers, so
+#: credentials must travel in the Authorization header; such URLs are refused (eval SP-46).
+CREDENTIAL_PARAMS = {"token", "access_token", "api_key", "apikey", "key", "secret", "password", "auth"}
+
+
+def has_credential(query: str) -> bool:
+    """True when the query string names a credential, however it is cased or encoded."""
+    for _ in range(3):  # decode stacked encodings of the query itself
+        decoded = unquote(query)
+        if decoded == query:
+            break
+        query = decoded
+    names = {name.strip().lower() for name, _ in parse_qsl(query, keep_blank_values=True)}
+    return bool(names & CREDENTIAL_PARAMS)
+
+
 def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient | None = None) -> Starlette:
     ups = upstreams or upstreams_from_env()
     http = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0))
@@ -102,6 +118,14 @@ def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient
         return JSONResponse({"ok": True, "services": status})
 
     async def forward(request: Request) -> Response:
+        if has_credential(request.url.query):
+            return JSONResponse(
+                {
+                    "code": "credential_in_url",
+                    "reason": "Send credentials in the Authorization header, not in the URL.",
+                },
+                400,
+            )
         up, upstream_path = pick(request.url.path, ups)
         try:
             url = httpx.URL(up.origin + upstream_path + (f"?{request.url.query}" if request.url.query else ""))
@@ -135,4 +159,4 @@ app = build_app()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), access_log=False)

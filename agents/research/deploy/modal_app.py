@@ -142,6 +142,10 @@ def backend() -> None:
     for recipient in BOOT_RFCS:
         _issue(recipient)
     subprocess.Popen(
-        ["python", "-m", "uvicorn", "agents.research.deploy.router:app", "--host", "0.0.0.0", "--port", str(ROUTER_PORT)],
+        [
+            "python", "-m", "uvicorn", "agents.research.deploy.router:app",
+            "--host", "0.0.0.0", "--port", str(ROUTER_PORT),
+            "--no-access-log",  # URLs never reach the logs (eval SP-46)
+        ],
         cwd=REMOTE,
     )

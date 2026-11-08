@@ -3,7 +3,7 @@
 import httpx
 from starlette.testclient import TestClient
 
-from agents.research.deploy.router import Upstream, build_app, is_blocked, pick
+from agents.research.deploy.router import Upstream, build_app, has_credential, is_blocked, pick
 
 UPS = [
     Upstream("merchant", "/merchant", "http://merchant.test"),
@@ -100,3 +100,28 @@ def test_unreachable_service_is_reported_not_invented():
     r = c.get("/bank/inbox")
     assert r.status_code == 503
     assert r.json()["code"] == "service_unavailable"
+
+
+def test_credentials_in_the_url_are_refused_before_any_upstream_call():
+    c, calls = recording_client()
+    for path in [
+        "/passport?token=abc",
+        "/bank/inbox?token=abc",
+        "/bank/bank_a/inbox?TOKEN=abc",
+        "/passport?access_token=abc",
+        "/passport?x=1&api_key=abc",
+        "/passport?%74oken=abc",
+        "/passport?%2574oken=abc",
+    ]:
+        r = c.get(path)
+        assert r.status_code == 400, path
+        assert r.json()["code"] == "credential_in_url"
+    assert calls == []
+
+
+def test_ordinary_queries_still_pass():
+    assert not has_credential("since=1&limit=20")
+    assert not has_credential("")
+    c, calls = recording_client()
+    assert c.get("/merchant/events?since=1").status_code == 200
+    assert len(calls) == 1

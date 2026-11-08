@@ -80,6 +80,9 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Deleted out/alibi_css_phase2.patch as asked. agents/data/web_merchant/ and hero_prototype/ are reference drops only now.
 - The uncommitted web/ edits in this shared checkout are not data's; left for their owner. While they exist the checkout can't rebase-pull, so data pushes from a scratch worktree on origin/main.
 
+## S5 not on main (lead 09:49Z, post 6720008019)
+- Lead's 09:21Z "S5 on main" post was premature. QA pass 2 is on hold until lead posts a pushed SHA and tag. Meanwhile: data_card.md finalised (394 tests, tables fixed, commit SHAs, vision and merchant-view lines). QA worktree: scratchpad/qa2.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

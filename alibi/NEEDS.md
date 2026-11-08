@@ -18,3 +18,21 @@ file another session owns and the exact change.
 3. **Replay recordings live under `alibi/fixtures/replays/`.** The S3 brief asks for
    `fixtures/replays/<case>_<variant>.json`; this session added only that new directory and did
    not touch the existing fixture files or `alibi/fixtures/maya.py`.
+4. **Core policy targets for the Gemini parser (`alibi/core/policy.py`, `alibi/core/schemas.py`).**
+   `alibi.agents.policy_parse` maps the team's typed proposals (`agents.execution.api.compile_policy`
+   shape) to `DenyRule` / `GeneraliseRule` / `AgeRule` / `RecipientRule`. Core cannot express, and
+   the parser lists under `PolicyParse.core_reasons`: (a) `deny` or `recipient_restrict` with
+   target `category` or `merchant` (core rules scope by record kind only; add `categories: list[str]`
+   and `issuers: list[Ident]` to `_RuleBase`, matched against `items.category` and `issuer_id`);
+   (b) `recipient_restrict` narrower than the whole package (`RecipientRule` has no target; add the
+   same scoping fields plus `fields`); (c) record kinds `bank_credit` / `bank_debit` (bank rows have
+   no `RecordKind`; a sign-based scope on `BankTxn.amount_pence` would do); (d) the team fields
+   `counterparty_name`, `destination`, `release_reference`, which have no core field path; (e)
+   `alert_preference`, which is not a disclosure rule and needs a home outside `Policy.rules`.
+   Until then the integration session should enforce those proposals with
+   `agents.execution.api.apply_policy`, or hold the package when any such rule is present.
+5. **Usage on a schema failure (`alibi/llm/client.py`).** `SchemaValidationError` carries only `problems`,
+   so a billed call whose answer failed the schema is counted as one `model_calls` by both the agents
+   runner (`alibi.agents.roles.call_cost`) and the one-pass baseline, but its tokens are reported as 0.
+   Add `usage: Usage` to `SchemaValidationError` (the client already has it in `_parse_and_validate`)
+   and `roles.run_role` / `one_pass.propose` will pick it up through `getattr(exc, "usage", None)`.

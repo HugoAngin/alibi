@@ -64,15 +64,17 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["lookup_settlement", "refresh_txn", "merchant_lookup", "none"]
+                  "enum": ["lookup_settlement", "lookup_payouts_covering", "lookup_by_date", "refresh_txn", "merchant_lookup", "none"]
                 },
                 "args": {
                   "type": "object",
+                  "description": "Only the keys the check needs: lookup_settlement {payout_reference, merchant_id?}; lookup_payouts_covering {record_id}; lookup_by_date {payout_date YYYY-MM-DD}; refresh_txn {txn_id}; merchant_lookup {merchant_id}; none {}.",
                   "properties": {
                     "payout_reference": {"type": "string"},
                     "txn_id": {"type": "string"},
                     "merchant_id": {"type": "string"},
-                    "record_id": {"type": "string"}
+                    "record_id": {"type": "string"},
+                    "payout_date": {"type": "string", "description": "YYYY-MM-DD"}
                   }
                 },
                 "reason": {"type": "string", "maxLength": 300}

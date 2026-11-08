@@ -57,8 +57,12 @@ def test_challenger_prompt_covers_next_action_and_settlement_distinction():
     assert "Platform balance versus bank settlement" in p.system
     assert "seller balance" in p.system
     next_action = p.schema["properties"]["next_action"]
-    assert next_action["properties"]["type"]["enum"] == ["lookup_settlement", "refresh_txn", "none"]
+    assert next_action["properties"]["type"]["enum"] == [
+        "lookup_settlement", "lookup_payouts_covering", "lookup_by_date", "refresh_txn", "none"]
+    assert "payout_date" in next_action["properties"]["args"]["properties"]
     assert "args" in next_action["required"]
+    assert "lookup_payouts_covering" in p.system and "lookup_by_date" in p.system
+    assert "lookup_results" in p.system
     example = expected_outputs(p)[0]
     assert example["proposed_status"] == "unresolved"
     assert example["bank_settlement_established"] is False

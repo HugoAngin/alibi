@@ -53,6 +53,10 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Unverified Astro draft is in the scratchpad (merchant_draft/): src/data/account.ts, tests/account.test.ts, components/SellerNav.astro, pages seller/{index,orders,payouts,messages}, plus a nav link in the layout. Copy into web/apps/merchant once granted, run pnpm format and verify, then wire connect after the S5 route table.
 - Plan: seller dashboard (sales, refunds, fees, the balance-release message, payout PO-0001-01 settled 27 Oct), a messages page, a payouts page, connect wired to the backend with a fallback notice, and a fixtures test against case_0001.json.
 
+## Landing hero (research 04:22Z, post 6717182136; spec agents/research/out/HERO_STREAM.md)
+- Not yet assigned (lead must grant web/apps/alibi/src/components/site/). Flagged on the board: generic synthetic merchant names instead of Amazon/Deliveroo/Uniqlo unless Elio confirms.
+- SVG prototype in scratchpad/hero/index.html. Elements: sources (Mock Marketplace from case 1, 4 generic shops, 2 bank accounts, mule-pattern check) with packets flowing along paths into the engine with its 4 agents; scroll lights the agents and sends the signed package to Bank A (rfc-0001-01). Reduced motion gives a still frame; rendering only runs while visible. Checked at 1440 and 375 (no horizontal scroll; labels small on phone). Port the figure, style and script into HeroScene.astro when granted.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

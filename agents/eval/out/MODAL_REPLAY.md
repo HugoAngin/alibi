@@ -1,10 +1,33 @@
 # Alibi replay deployment on Modal
 
-This is the earlier replay proposal. The current team plan targets the live demo on Research's existing Modal app, with the local stack as fallback. Research owns that deployment. Reuse it for any later hosted replay if the team requests one. The checks below apply to a separately labelled replay of public synthetic data. [Current hosting plan](../../../web/docs/hosting.md)
+Research owns the existing Modal deployment. The S5 entry point below replaces its health-only startup with the public Case 1 demo. The later sections retain the earlier replay plan. [Current hosting plan](../../../web/docs/hosting.md)
 
 ## Live deployment handoff
 
-Eval prepares and tests the existing `alibi-backend` app after the path assignment and S5 runbook land. Research deploys it from Elio’s workspace and shares the logs and health result. The router currently answers `/healthz` with all three service flags false. Its top-level `ok` indicates only that the router responded.
+The new entry point keeps Modal app name `alibi-backend` and function name `backend`, which target the existing URL from the same Elio workspace and environment. It starts S5's three loopback services, checks connector and feed seeds, forwards one RFC from each bank, then binds the public router. Hosted health returns 503 if any service is down. The router refuses public connector intake, feed, package delivery, admin and query-token login paths. The holder and bank use server-side bearer credentials.
+
+Deploy from a tracked-only stage. Run from the checkout that has the launcher commit. By default this uses the exact S5 freeze for backend source and overlays only the three reviewed launcher files from the current commit. The stage contains public synthetic cases and no local data, gold or credentials.
+
+```bash
+git fetch origin --tags
+candidate=$(git rev-parse 'sealed-candidate^{commit}')
+launcher=$(git rev-parse HEAD)
+stage=$(mktemp -d /tmp/alibi-modal-s5.XXXXXX)
+uv run --frozen python -m agents.eval.deploy.replay_stage release \
+  --candidate "$candidate" --dest "$stage" > "$stage.manifest.json"
+for file in router.py s5_host.py s5_modal.py; do
+  git show "$launcher:agents/eval/deploy/$file" > "$stage/agents/eval/deploy/$file"
+done
+cd "$stage"
+ALIBI_MODE=rules ALIBI_MODAL_SECRET=alibi-backend \
+  uvx --from modal==1.6.3 modal deploy agents/eval/deploy/s5_modal.py
+```
+
+The Modal Secret needs `ALIBI_HOLDER_TOKEN`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN` and a valid Fernet `ALIBI_MASTER_KEY`. Configure the same holder bearer as the holder Worker's server-only `ALIBI_HOLDER_TOKEN`, and the Bank A bearer as the bank Worker's `BANK_A_TOKEN`. The analyst also needs the bank Worker's `BANK_SESSION_SECRET` and `ANALYST_PASSCODE`. For agents mode set `ALIBI_MODE=agents` and add `GEMINI_API_KEY` to the Modal Secret. Use `ALIBI_REPLAY=1 ALIBI_MODE=agents` only for a labelled replay. The default rules mode was tested locally from the staged backend.
+
+Verify hosted `/healthz` returns all three flags true. With no bearer, `/passport` should return 401 and connector intake should return 404. Then sign in to the holder and bank Workers and check the real package handoff and an analyst disposition.
+
+## Earlier replay staging notes
 
 Prepare the deploy from a tracked-only snapshot of the approved commit. The deployment module imported successfully from this layout with Modal 1.6.3. The existing ignore patterns alone allow arbitrary untracked JSON files under a mounted directory. This snapshot excludes untracked exports, credentials and scratch data from the deployment input.
 

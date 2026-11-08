@@ -62,8 +62,10 @@ RUNTIME = (
     r"shared/splits\.json",
     r"agents/data/api\.py",
     r"agents/data/out/(?:index|merchant_registry)\.json",
+    r"agents/execution/(?:api|policy)\.py",
+    r"agents/execution/out/policy_material\.json",
     r"agents/research/deploy/(?:modal_app|router)\.py",
-    r"agents/eval/deploy/router\.py",
+    r"agents/eval/deploy/(?:router|s5_host|s5_modal)\.py",
 )
 
 #: Public synthetic inputs: development cases 1 to 80 only (shared/CONTRACTS.md,
@@ -92,7 +94,8 @@ REQUIRED_RELEASE = (
 
 #: Every tracked entry under these roots is checked for symlinks, submodules
 #: and secret-shaped names, whether or not it is allowlisted.
-SCAN_ROOTS = ("alibi/", "tools/", "shared/", "agents/data/", "agents/research/deploy/", "agents/eval/deploy/")
+SCAN_ROOTS = ("alibi/", "tools/", "shared/", "agents/data/", "agents/execution/",
+              "agents/research/deploy/", "agents/eval/deploy/")
 
 REGULAR = ("100644", "100755")
 

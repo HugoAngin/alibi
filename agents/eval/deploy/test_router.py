@@ -30,9 +30,9 @@ def fake_backend(request: httpx.Request) -> httpx.Response:
 class Recorder:
     """Fake services that record every request the router sends them."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, hosted=False) -> None:
         self.calls: list[tuple[str, str, bytes]] = []
-        self.app = build_app(UPS, httpx.AsyncClient(transport=httpx.MockTransport(self.handle)))
+        self.app = build_app(UPS, httpx.AsyncClient(transport=httpx.MockTransport(self.handle)), hosted=hosted)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.calls.append((request.method, request.url.host, request.url.raw_path))
@@ -244,3 +244,20 @@ def test_unreachable_service_is_reported_not_invented():
     h = c.get("/healthz")
     assert h.status_code == 200
     assert h.json() == {"ok": True, "services": {"merchant": False, "bank": False, "app": False}}
+
+
+def test_hosted_health_fails_closed():
+    transport = httpx.MockTransport(lambda _: httpx.Response(503))
+    with TestClient(build_app(UPS, httpx.AsyncClient(transport=transport), hosted=True)) as hosted:
+        health = hosted.get("/healthz")
+        assert health.status_code == 503 and health.json()["ok"] is False
+
+
+@pytest.mark.parametrize("path", [
+    "/connect/merchant/webhook", "/connect/bank/rfc", "/bank/%2564eliver", "/bank/feed/transactions",
+    "/passport?%74oken=synthetic",
+])
+def test_hosted_router_never_forwards_internal_connectors_or_query_login(path):
+    upstream = Recorder(hosted=True)
+    assert serve(upstream.app, "POST", path)[0] == 404
+    assert not upstream.calls

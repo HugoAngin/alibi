@@ -44,7 +44,7 @@ def upstreams_from_env(env: dict[str, str] | None = None) -> list[Upstream]:
 
 
 # Reserved upstream roots. The admin segment is reserved at every depth.
-BLOCKED_ROOTS = {"seed", "reset", "__debug"}
+BLOCKED_ROOTS = frozenset({"seed", "reset", "__debug"})
 
 #: Headers that belong to one hop and must not be forwarded.
 HOP_BY_HOP = {
@@ -69,21 +69,23 @@ def pick(path: str, upstreams: list[Upstream]) -> tuple[Upstream, str]:
     return upstreams[-1], path
 
 
-def is_blocked(path: str) -> bool:
+def is_blocked(path: str, *, roots: frozenset[str] = BLOCKED_ROOTS) -> bool:
     """Refuse internal paths even if a further decode exposes a reserved segment."""
     for _ in range(6):
         decoded = unquote(path)
         if decoded == path:
             parts = path.casefold().split("/")
             root = normpath(path).lstrip("/").partition("/")[0].casefold()
-            return "admin" in parts or root in BLOCKED_ROOTS
+            return "admin" in parts or root in roots
         path = decoded
     return True
 
 
-def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient | None = None) -> Starlette:
+def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient | None = None,
+              *, hosted: bool = False) -> Starlette:
     ups = upstreams or upstreams_from_env()
     http = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0), trust_env=False)
+    blocked_roots = BLOCKED_ROOTS | {"connect", "deliver", "feed"} if hosted else BLOCKED_ROOTS
 
     async def healthz(_: Request) -> Response:
         status = {}
@@ -93,7 +95,8 @@ def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient
                 status[up.name] = r.status_code < 500
             except httpx.HTTPError:
                 status[up.name] = False
-        return JSONResponse({"ok": True, "services": status})
+        ready = not hosted or all(status.values())
+        return JSONResponse({"ok": ready, "services": status}, status_code=200 if ready else 503)
 
     async def forward(request: Request) -> Response:
         up, upstream_path = pick(request.url.path, ups)
@@ -103,7 +106,8 @@ def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient
             return JSONResponse({"code": "invalid_path", "reason": "The request path is invalid."}, 400)
         # httpx normalizes dot segments and url.path applies the decoding the
         # upstream router sees. Check that path before making an upstream call.
-        if is_blocked(url.path):
+        query_login = hosted and any(key.casefold() == "token" for key in request.query_params)
+        if is_blocked(url.path, roots=blocked_roots) or query_login:
             return JSONResponse({"code": "not_public", "reason": "This route is internal to the backend."}, 404)
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP}
         try:

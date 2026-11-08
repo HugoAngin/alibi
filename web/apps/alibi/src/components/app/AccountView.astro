@@ -1,10 +1,12 @@
 ---
 /**
  * The Account screen, for `/app/account/` (the signed-in holder) and `/simulate/account/` (Maya's,
- * shown to a visitor, read-only). Who is signed in (Clerk), the holder's financial passport,
- * exporting their data, and the way back to the website. In the simulation there is nobody to
- * sign in or out and no export; links stay in the simulation (src/lib/simulation.ts).
+ * shown to a visitor read-only, or acted as by the presenter in the live demo). Who is signed in
+ * (Clerk), the holder's financial passport, exporting their data, and the way back to the website.
+ * In the simulation there is nobody to sign in or out and no export; links stay in the simulation
+ * (src/lib/simulation.ts).
  */
+import { ALIBI_SIMULATE_ACTIONS } from 'astro:env/server';
 import { SignOutButton } from '@clerk/astro/components';
 
 import BaseLayout from '@/layouts/BaseLayout.astro';
@@ -18,6 +20,8 @@ interface Props {
 }
 
 const { simulation = false } = Astro.props;
+// The live demo (ALIBI_SIMULATE_ACTIONS=1): the presenter acts as Maya, so it is not read-only.
+const liveDemo = simulation && ALIBI_SIMULATE_ACTIONS === '1';
 const loaded = await loadPassport();
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
@@ -36,7 +40,9 @@ const holder = loaded.source === 'missing' ? 'Maya' : loaded.data.holder.name;
 const name = user?.fullName || user?.username || holder;
 const email = user?.primaryEmailAddress?.emailAddress ?? null;
 const sub = simulation
-  ? 'Simulation · read-only'
+  ? liveDemo
+    ? 'Live demo · acting as Maya'
+    : 'Simulation · read-only'
   : demo
     ? 'Local demo session'
     : (email ?? (user ? 'Signed in' : 'Not signed in'));
@@ -81,7 +87,11 @@ const chevron = 'M9 6l6 6-6 6';
             <a class="row" href="/sign-up/" target="_top">
               <span>
                 Start your own alibi
-                <small>This is Maya’s account; nothing here can be changed</small>
+                <small>
+                  {liveDemo
+                    ? `You’re acting as ${holder} in the live demo`
+                    : `This is ${holder}’s account; nothing here can be changed`}
+                </small>
               </span>
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d={chevron} />

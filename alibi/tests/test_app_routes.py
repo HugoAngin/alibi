@@ -797,3 +797,12 @@ def test_date_only_alibi_now_is_accepted_and_bad_values_fail_clearly():
     assert settings_from_env({"ALIBI_NOW": "2026-11-05"}).fixed_now == datetime(2026, 11, 5, tzinfo=timezone.utc)
     with pytest.raises(ValueError, match="ALIBI_NOW must be"):
         settings_from_env({"ALIBI_NOW": "yesterday"})
+
+
+def test_unknown_routes_and_methods_answer_in_the_refusal_shape(client):
+    r = client.get("/nope", headers=JSON)
+    assert r.status_code == 404 and r.json()["code"] == "not_found"
+    m = client.get("/tick", headers=JSON)
+    assert m.status_code == 405 and m.json()["code"] == "method_not_allowed"
+    detail = client.get(f"/requests/{client.rid}", headers=JSON).json()
+    assert detail["request"]["signature"] == {"verified": True, "key_id": "bank_a"}

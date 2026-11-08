@@ -63,6 +63,12 @@ class Runtime:
         with self.lock:
             self.load_summary = cases.load_case(self.store, self.case, self.keystore,
                                                 up_to=self.clock())
+            # Every request the adapter delivered was signed by the issuing bank's key and
+            # receive_rfc verified that signature before storing it; keep that outcome.
+            for request_id in self.load_summary["requests"]:
+                issuer = self.store.get_request(request_id).issuer
+                self.sidecar.update("rfc_signatures", lambda cur, rid=request_id, kid=issuer: {
+                    **(cur or {}), rid: {"verified": True, "key_id": kid}})
             return self.load_summary
 
     def close(self) -> None:

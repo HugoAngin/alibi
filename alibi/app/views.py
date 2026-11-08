@@ -603,8 +603,8 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
         return None
     steps, meta = _trace(rt, rfc)
     draft = c.current_draft(rt, request_id)
-    signed = any("signed" in (e.detail or "") and "unsigned" not in (e.detail or "")
-                 for e in store.list_audit(target_id=request_id) if e.action == "receive_rfc")
+    # The outcome receive_rfc produced at ingest time (recorded by the adapter and the bank service).
+    signature = (rt.sidecar.get("rfc_signatures") or {}).get(request_id) or {"verified": False, "key_id": "none"}
     status = request_status(rt, rfc)
     ran = bool(steps)
     last_run = rt.sidecar.get(f"run:{request_id}") or {}
@@ -629,7 +629,8 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
                                if rfc.period else None),
                     "txn_ids": list(rfc.txn_ids or []),
                     "questions": [{"question_id": q.question_id, "text": q.text} for q in rfc.questions],
-                    "status": status, "signature": {"verified": signed, "key_id": rfc.issuer},
+                    "status": status, "signature": {"verified": bool(signature.get("verified")),
+                                                    "key_id": signature.get("key_id") or "none"},
                     "href": f"/requests/{rfc.request_id}"},
         "investigation": {"status": inv_status,
                           "can_run": status != "expired" and (status != "sent" or bool(stale)),

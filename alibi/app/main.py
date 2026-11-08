@@ -17,6 +17,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request
 from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -54,6 +55,16 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     app = FastAPI(title="Alibi", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runtime = rt
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        """Unknown routes and wrong methods answer in the refusal shape too."""
+        code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "http_error")
+        reason = str(exc.detail) if exc.detail else code.replace("_", " ")
+        if wants_json(request):
+            return JSONResponse({"version": UI_VERSION, "code": code, "reason": reason}, status_code=exc.status_code)
+        return HTMLResponse(f"<!doctype html><title>{htmlmod.escape(code)} · Alibi</title><h1>{htmlmod.escape(code)}</h1>"
+                            f"<p>{htmlmod.escape(reason)}</p>", status_code=exc.status_code)
 
     @app.exception_handler(RequestValidationError)
     async def bad_request(request: Request, exc: RequestValidationError) -> Response:

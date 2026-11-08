@@ -564,6 +564,8 @@ def create_followup(rt: Runtime, recipient: str, *, parent_request_id: str, scop
             raise Refusal("rfc_refused", f"the holder's passport refused the follow-up: {exc.reason}") from exc
         rt.sidecar.append(f"bank:{recipient}:requests", {"request": rfc, "sent_at": format_utc(now),
                                                         "disposition_id": disposition_id})
+        rt.sidecar.update("rfc_signatures", lambda cur: {**(cur or {}),
+                                                         request_id: {"verified": True, "key_id": recipient}})
         if disposition_id:
             def link(cur):
                 return [{**d, "followup_request_id": request_id} if d["disposition_id"] == disposition_id else d

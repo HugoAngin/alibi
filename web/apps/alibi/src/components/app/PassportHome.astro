@@ -15,6 +15,7 @@ import { TRUST_COOKIE, parseTrusted } from '@/lib/trust';
 import { loadContext } from '@alibi/ui/api';
 
 import ActivityRow from './ActivityRow.astro';
+import DashboardSection from './DashboardSection.astro';
 import {
   CLAIM_MARK,
   LINK_MARK,
@@ -29,6 +30,7 @@ import {
   isTxnDetail,
   merchants as merchantsOf,
   plainName,
+  type ContextEntry,
   type TxnDetail,
 } from './home';
 
@@ -37,8 +39,8 @@ interface Props {
 }
 
 const { data } = Astro.props;
-const MERCHANTS_ON_HOME = 3;
-const ACTIVITY_ON_HOME = 4;
+const ACTIVITY_ON_HOME = 3;
+const CONNECTIONS_ON_HOME = 2;
 
 const details = new Map<string, TxnDetail>();
 await Promise.all(
@@ -57,10 +59,15 @@ await Promise.all(
 const trusted = parseTrusted(Astro.cookies.get(TRUST_COOKIE)?.value);
 const items = activity(data);
 const recent = items.slice(0, ACTIVITY_ON_HOME);
-const earlier = items.slice(ACTIVITY_ON_HOME);
 const bankList = banksOf(data);
 const merchantList = merchantsOf(data);
-const timeline = byMonth(contextTimeline(data, details));
+const context = contextTimeline(data, details);
+const latest = context[0];
+const timeline = byMonth(context);
+const contextText = (entry: ContextEntry) =>
+  entry.linkedCount > 0 && entry.sources.length === 0
+    ? 'Linked evidence details are unavailable here.'
+    : entry.context;
 const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'debit') =>
   `${direction === 'credit' ? '+' : '−'}${money({ ...m, minor: Math.abs(m.minor) })}`;
 ---
@@ -71,101 +78,176 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     <h1 class="statement">{headline(data)}</h1>
   </section>
 
-  <section class="sec sec--activity" aria-labelledby="activity-title" id="requests">
-    <h2 id="activity-title" class="sec-title">
-      Recent activity
-    </h2>
+  <DashboardSection
+    id="requests"
+    title="Recent activity"
+    action="View all activity"
+    count={items.length}
+    class="activity-card"
+  >
+    <Fragment slot="preview">
+      {recent.length === 0 ? (
+        <p class="quiet">No requests or alerts yet.</p>
+      ) : (
+        <ul class="preview-list">
+          {recent.map((item) => (
+            <li>
+              <span class="preview-name">{item.from}</span>
+              <span class="preview-meta">
+                {item.title} · {day(item.at)}
+              </span>
+              <span
+                class:list={[
+                  'preview-state',
+                  (item.state === 'awaiting' || item.state === 'open') && 'preview-state--waiting',
+                ]}
+              >
+                {item.label}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Fragment>
     {items.length === 0 && <p class="quiet">No requests or alerts yet.</p>}
     <ul class="rows">
-      {recent.map((i) => (
+      {items.map((i) => (
         <ActivityRow item={i} trusted={i.audience ? trusted.has(i.audience) : false} />
       ))}
     </ul>
-    {earlier.length > 0 && (
-      <details class="more">
-        <summary>Show {earlier.length} more</summary>
-        <ul class="rows">
-          {earlier.map((i) => (
-            <ActivityRow item={i} trusted={i.audience ? trusted.has(i.audience) : false} />
+  </DashboardSection>
+
+  <DashboardSection
+    id="banks"
+    title="Banks"
+    action="View all banks"
+    count={bankList.length}
+    class="banks-card"
+  >
+    <Fragment slot="preview">
+      {bankList.length === 0 ? (
+        <p class="quiet">No bank has contacted your passport yet.</p>
+      ) : (
+        <ul class="preview-list">
+          {bankList.slice(0, CONNECTIONS_ON_HOME).map((bank) => (
+            <li>
+              <span class="preview-name">
+                {bank.name}
+                {trusted.has(bank.audience) && <span class="trusted">Trusted</span>}
+              </span>
+              <span class="preview-meta">
+                {bank.feed ? 'Account feed connected' : 'Sends you requests'}
+              </span>
+              {bank.awaiting > 0 && (
+                <span class="preview-state preview-state--waiting">
+                  {bank.awaiting} awaiting review
+                </span>
+              )}
+            </li>
           ))}
         </ul>
-      </details>
-    )}
-  </section>
-
-  <div class="side">
-    <section class="sec" aria-labelledby="banks-title">
-      <h2 id="banks-title" class="sec-title">
-        Banks <span class="count">{bankList.length}</span>
-      </h2>
-      {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
-      <ul class="banks">
-        {bankList.map((b) => (
-          <li>
-            <a class="bank" href={`/app/banks/${encodeURIComponent(b.audience)}/`}>
-              <span class="mono mono--lg mono--ink" aria-hidden="true">
-                {initials(b.name)}
-              </span>
-              <span class="bank-name">
-                {b.name}
-                {trusted.has(b.audience) && <span class="trusted">Trusted</span>}
-              </span>
-              <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
-              <span class="small">
-                {b.awaiting > 0
-                  ? `${b.awaiting} awaiting your review`
-                  : b.packagesSent > 0
-                    ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
-                    : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
-              </span>
-            </a>
-          </li>
-        ))}
-      </ul>
-    </section>
-
-    <section class="sec" aria-labelledby="merchants-title">
-      <div class="sec-head">
-        <h2 id="merchants-title" class="sec-title">
-          Merchants <span class="count">{merchantList.length}</span>
-        </h2>
-        {merchantList.length > MERCHANTS_ON_HOME && (
-          <a class="see-all" href="/app/merchants/">
-            See all
-          </a>
-        )}
-      </div>
-      {merchantList.length === 0 && <p class="quiet">No merchant is connected yet.</p>}
-      <ul class="rows">
-        {merchantList.slice(0, MERCHANTS_ON_HOME).map((m) => (
-          <li class="row">
-            <span class="mono" aria-hidden="true">
-              {initials(m.name)}
-            </span>
-            <span class="row-body">
-              <span class="row-title">{plainName(m.name)}</span>
-              <span class="small">
-                {m.record_count} records · synced {day(m.last_synced_at)}
-              </span>
-            </span>
-            <span class="trust" title={TRUST_MARK[m.trust].label}>
-              <span aria-hidden="true">{TRUST_MARK[m.trust].mark}</span> {TRUST_MARK[m.trust].label}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {merchantList.length > 0 && (
-        <a class="row-link" href="/app/merchants/">
-          View all merchants and their details
-        </a>
       )}
-    </section>
-  </div>
+    </Fragment>
+    {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
+    <ul class="banks">
+      {bankList.map((b) => (
+        <li>
+          <a class="bank" href={`/app/banks/${encodeURIComponent(b.audience)}/`}>
+            <span class="mono mono--lg mono--ink" aria-hidden="true">
+              {initials(b.name)}
+            </span>
+            <span class="bank-name">
+              {b.name}
+              {trusted.has(b.audience) && <span class="trusted">Trusted</span>}
+            </span>
+            <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
+            <span class="small">
+              {b.awaiting > 0
+                ? `${b.awaiting} awaiting your review`
+                : b.packagesSent > 0
+                  ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
+                  : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </DashboardSection>
 
-  <section class="sec sec--context" aria-labelledby="context-title">
-    <h2 id="context-title" class="sec-title">
-      Financial context
-    </h2>
+  <DashboardSection
+    id="merchants"
+    title="Merchants"
+    action="View all merchants"
+    count={merchantList.length}
+    class="merchants-card"
+  >
+    <Fragment slot="preview">
+      {merchantList.length === 0 ? (
+        <p class="quiet">No merchant is connected yet.</p>
+      ) : (
+        <ul class="preview-list">
+          {merchantList.slice(0, CONNECTIONS_ON_HOME).map((merchant) => (
+            <li>
+              <span class="preview-name">{plainName(merchant.name)}</span>
+              <span class="preview-meta">
+                {merchant.record_count} records · synced {day(merchant.last_synced_at)}
+              </span>
+              <span class="preview-state">{TRUST_MARK[merchant.trust].label}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Fragment>
+    {merchantList.length === 0 && <p class="quiet">No merchant is connected yet.</p>}
+    <ul class="rows">
+      {merchantList.map((m) => (
+        <li class="row">
+          <span class="mono" aria-hidden="true">
+            {initials(m.name)}
+          </span>
+          <span class="row-body">
+            <span class="row-title">{plainName(m.name)}</span>
+            <span class="small">
+              {m.record_count} records · synced {day(m.last_synced_at)}
+            </span>
+          </span>
+          <span class="trust" title={TRUST_MARK[m.trust].label}>
+            {TRUST_MARK[m.trust].label}
+          </span>
+        </li>
+      ))}
+    </ul>
+    {merchantList.length > 0 && (
+      <a class="row-link" href="/app/merchants/">
+        View all merchants and their details
+      </a>
+    )}
+  </DashboardSection>
+
+  <DashboardSection
+    id="financial-context"
+    title="Financial context"
+    action="View transaction history"
+    class="context-card"
+  >
+    <Fragment slot="preview">
+      {latest ? (
+        <div class="latest">
+          <div class="latest-line">
+            <span class="preview-name">{describe(latest.title).title}</span>
+            <span class:list={['amount', `amount--${latest.direction}`]}>
+              {signed(latest.amount, latest.direction)}
+            </span>
+          </div>
+          <p class="preview-meta">
+            {day(latest.at)} · {LINK_MARK[latest.linkState].label}
+          </p>
+          <p class="latest-context">{contextText(latest)}</p>
+        </div>
+      ) : (
+        <p class="quiet">No transactions yet.</p>
+      )}
+    </Fragment>
     <p class="quiet">
       Your transactions, joined to the records that explain them and what Alibi could establish.
       {data.evidence_status.linked} of {data.evidence_status.total} linked · checked{' '}
@@ -194,26 +276,26 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
                     {describe(e.title).line && (
                       <span class="entry-line2">{describe(e.title).line}</span>
                     )}
-                    {e.context && <span class="entry-context">{e.context}</span>}
+                    {e.context && <span class="entry-context">{contextText(e)}</span>}
                     <span class="entry-tags">
                       <span class:list={['tag', `tag--${e.linkState}`]}>
-                        <span aria-hidden="true">{LINK_MARK[e.linkState].mark}</span>
                         {e.linkState === 'linked' && e.linkedCount > 0
                           ? `Linked to ${e.linkedCount}`
                           : LINK_MARK[e.linkState].label}
                       </span>
                       {e.claims.map((c) => (
                         <span class:list={['tag', `tag--${c.status}`]}>
-                          <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>
                           {CLAIM_MARK[c.status].label}
                           {c.bank && ` for ${c.bank}`}
                         </span>
                       ))}
-                      <span class="src-count">
-                        {e.sources.length === 0
-                          ? 'Bank record only'
-                          : `${e.sources.length} related ${e.sources.length === 1 ? 'record' : 'records'}`}
-                      </span>
+                      {(e.sources.length > 0 || e.linkedCount === 0) && (
+                        <span class="src-count">
+                          {e.sources.length === 0
+                            ? 'Bank record only'
+                            : `${e.sources.length} related ${e.sources.length === 1 ? 'record' : 'records'}`}
+                        </span>
+                      )}
                     </span>
                   </span>
                 </summary>
@@ -232,7 +314,6 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
                   {e.sources.map((s) => (
                     <li>
                       <span class="trust">
-                        <span aria-hidden="true">{TRUST_MARK[s.trust].mark}</span>{' '}
                         {TRUST_MARK[s.trust].label}
                         {s.via_lookup && ' · by lookup'}
                       </span>
@@ -250,7 +331,6 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
                   {e.claims.map((c) => (
                     <li>
                       <span class="trust">
-                        <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>{' '}
                         {CLAIM_MARK[c.status].label}
                         {c.bank && ` · asked by ${c.bank}`}
                       </span>
@@ -272,7 +352,7 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
         </ol>
       </div>
     ))}
-  </section>
+  </DashboardSection>
 </div>
 
 <style>
@@ -291,17 +371,26 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     vertical-align: middle;
   }
 
-  /* Wide screens: activity beside banks and merchants, the financial context below. */
-  @media (min-width: 960px) {
+  .dash {
+    display: grid;
+    gap: 14px;
+  }
+
+  @media (min-width: 760px) {
     .dash {
-      display: grid;
-      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-      column-gap: 56px;
-      align-items: start;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 18px;
     }
-    .hello,
-    .sec--context {
+    .hello {
       grid-column: 1 / -1;
+    }
+    .dash :global(.activity-card),
+    .dash :global(.context-card) {
+      grid-column: span 7;
+    }
+    .dash :global(.banks-card),
+    .dash :global(.merchants-card) {
+      grid-column: span 5;
     }
     .dash .statement {
       max-width: 24ch;
@@ -326,37 +415,72 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     max-width: 16ch;
   }
 
-  .sec {
-    margin-top: 40px;
+  .preview-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
 
-  .sec-head {
+  .preview-list li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding-block: 10px;
+    border-top: 1px solid var(--a-line);
+  }
+
+  .preview-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .preview-list .preview-meta {
+    grid-row: 2;
+  }
+
+  .preview-meta,
+  .preview-state {
+    margin: 0;
+    color: var(--a-faint);
+    font-size: var(--t-xs);
+  }
+
+  .preview-state {
+    align-self: start;
+    justify-self: end;
+    max-width: 12ch;
+    text-align: right;
+    font-weight: 500;
+  }
+
+  .preview-state--waiting {
+    color: var(--a-accent);
+  }
+
+  .latest {
+    padding-left: 12px;
+    border-left: 2px solid var(--a-accent);
+  }
+
+  .latest-line {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 3px;
   }
 
-  .sec-title {
-    margin: 0 0 12px;
-    font: 600 1.05rem/1.2 var(--a-display);
-    letter-spacing: -0.01em;
+  .latest-context {
+    margin: 8px 0 0;
+    color: var(--a-soft);
+    font-size: var(--t-sm);
+    line-height: 1.45;
   }
 
-  .count {
-    margin-left: 4px;
-    font: 500 0.85rem/1 var(--a-body);
-    color: var(--a-faint);
-  }
-
-  .see-all,
   .row-link {
+    color: var(--a-accent);
     font-size: var(--t-sm);
     font-weight: 500;
-    color: var(--a-accent);
-    text-decoration: none;
-  }
-
-  .row-link {
     display: inline-block;
     margin-top: 6px;
   }
@@ -368,7 +492,7 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
   }
 
   .quiet {
-    margin: -4px 0 12px;
+    margin: 0 0 8px;
   }
 
   .rows {
@@ -418,15 +542,6 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
   .mono--ink {
     background: var(--a-ink);
     color: var(--s-paper);
-  }
-
-  .more summary {
-    padding-block: 8px;
-    font-size: var(--t-sm);
-    font-weight: 500;
-    color: var(--a-accent);
-    cursor: pointer;
-    list-style: none;
   }
 
   .banks {
@@ -498,7 +613,6 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
   }
 
   .entry summary::-webkit-details-marker,
-  .more summary::-webkit-details-marker,
   :global(.fixture-note summary::-webkit-details-marker) {
     display: none;
   }

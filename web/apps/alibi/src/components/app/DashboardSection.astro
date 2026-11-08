@@ -1,0 +1,196 @@
+---
+interface Props {
+  id: string;
+  title: string;
+  count?: number;
+  action: string;
+  class?: string;
+}
+
+const { id, title, count, action, class: placement } = Astro.props;
+const titleId = `${id}-title`;
+const dialogId = `${id}-dialog`;
+const actionId = `${id}-action`;
+const dialogTitleId = `${dialogId}-title`;
+---
+
+<section {id} class:list={['dashboard-card', placement]} aria-labelledby={titleId}>
+  <h2 class="card-title" id={titleId}>
+    <button
+      type="button"
+      class="open"
+      aria-haspopup="dialog"
+      aria-controls={dialogId}
+      aria-describedby={actionId}
+    >
+      <span>
+        {title}
+        {count !== undefined && <span class="count">{count}</span>}
+      </span>
+      <span class="action" id={actionId} aria-hidden="true">
+        {action}
+      </span>
+    </button>
+  </h2>
+  <div class="preview">
+    <slot name="preview" />
+  </div>
+  <dialog id={dialogId} aria-labelledby={dialogTitleId}>
+    <div class="dialog-head">
+      <h2 id={dialogTitleId}>{title}</h2>
+      <form method="dialog">
+        <button class="close" type="submit" autofocus>
+          Close
+        </button>
+      </form>
+    </div>
+    <div class="dialog-body">
+      <slot />
+    </div>
+  </dialog>
+</section>
+
+<script>
+  for (const trigger of document.querySelectorAll<HTMLButtonElement>('.dashboard-card .open')) {
+    const dialog = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+    if (!(dialog instanceof HTMLDialogElement)) continue;
+    trigger.addEventListener('click', () => dialog.showModal());
+    dialog.addEventListener('close', () => trigger.focus());
+  }
+</script>
+
+<style>
+  .dashboard-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: clamp(15px, 2vw, 24px);
+    border: 1px solid var(--a-line);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--s-paper) 68%, white);
+  }
+
+  .dashboard-card:has(.open:hover) {
+    border-color: var(--a-faint);
+  }
+
+  .dashboard-card:has(.open:focus-visible) {
+    outline: 2px solid var(--a-accent);
+    outline-offset: 3px;
+  }
+
+  .card-title {
+    margin: 0;
+    font: 600 1.15rem/1.2 var(--a-display);
+  }
+
+  .open {
+    display: flex;
+    width: 100%;
+    min-height: 28px;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .open::after {
+    position: absolute;
+    inset: 0;
+    content: '';
+  }
+
+  .count {
+    margin-inline-start: 7px;
+    color: var(--a-faint);
+    font: 500 var(--t-xs)/1 var(--a-body);
+  }
+
+  .action {
+    flex: 0 0 auto;
+    color: var(--a-accent);
+    font: 500 var(--t-xs)/1.25 var(--a-body);
+  }
+
+  .preview {
+    margin-top: 12px;
+  }
+
+  dialog {
+    inset: 0;
+    width: min(42rem, calc(100% - 32px));
+    max-width: none;
+    max-height: min(48rem, calc(100dvh - 40px));
+    margin: auto;
+    padding: 0;
+    overflow: auto;
+    border: 1px solid var(--a-line);
+    border-radius: 20px;
+    background: var(--s-paper);
+    color: var(--a-ink);
+    overscroll-behavior: contain;
+  }
+
+  dialog::backdrop {
+    background: rgb(31 27 22 / 0.42);
+  }
+
+  .dialog-head {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px clamp(16px, 4vw, 28px);
+    border-bottom: 1px solid var(--a-line);
+    background: var(--s-paper);
+  }
+
+  .dialog-head h2 {
+    margin: 0;
+    font: 600 1.35rem/1.2 var(--a-display);
+  }
+
+  .close {
+    min-height: 44px;
+    padding-inline: 12px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--a-tint);
+    color: var(--a-ink);
+    font: 500 var(--t-sm)/1 var(--a-body);
+    cursor: pointer;
+  }
+
+  .close:focus-visible {
+    outline: 2px solid var(--a-accent);
+    outline-offset: 2px;
+  }
+
+  .dialog-body {
+    padding: 16px clamp(16px, 4vw, 28px) 28px;
+  }
+
+  @media (max-width: 599px) {
+    dialog {
+      inset: auto 0 0;
+      width: 100%;
+      max-height: 85dvh;
+      margin: 0;
+      border-radius: 20px 20px 0 0;
+    }
+
+    .dialog-body {
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+    }
+  }
+</style>

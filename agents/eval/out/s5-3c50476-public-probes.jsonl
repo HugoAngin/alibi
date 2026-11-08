@@ -1,0 +1,47 @@
+{"probe_id": "SP-01", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 409", "GET HTTP 200"]}
+{"probe_id": "SP-02", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 409", "GET HTTP 200", "POST HTTP 200", "POST HTTP 200", "GET HTTP 200", "GET HTTP 200"]}
+{"probe_id": "SP-03", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 409", "GET HTTP 200"]}
+{"probe_id": "SP-04", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: rfc_followup", "audit": []}
+{"probe_id": "SP-05", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: expired_request", "audit": []}
+{"probe_id": "SP-06", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: correction_event", "audit": []}
+{"probe_id": "SP-07", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: policy_bump_payload", "audit": []}
+{"probe_id": "SP-08", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: correction_event", "audit": []}
+{"probe_id": "SP-09", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 200", "POST HTTP 200", "GET HTTP 200", "GET HTTP 200", "POST HTTP 200", "GET HTTP 200", "GET HTTP 200", "POST HTTP 409", "GET HTTP 200", "GET HTTP 200", "GET HTTP 200"]}
+{"probe_id": "SP-10", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: denied_value", "audit": []}
+{"probe_id": "SP-11", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: denied_value", "audit": []}
+{"probe_id": "SP-12", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: denied_metadata_value", "audit": []}
+{"probe_id": "SP-13", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: withheld_entity", "audit": []}
+{"probe_id": "SP-14", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: partial_record_id", "audit": []}
+{"probe_id": "SP-15", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: private_value", "audit": []}
+{"probe_id": "SP-16", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: ambiguous_rule", "audit": []}
+{"probe_id": "SP-17", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "GET HTTP 200", "GET HTTP 200"]}
+{"probe_id": "SP-18", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "GET HTTP 404", "GET HTTP 404"]}
+{"probe_id": "SP-19", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing route: package_pdf", "audit": ["GET HTTP 200", "GET HTTP 404", "GET HTTP 200", "GET HTTP 404"]}
+{"probe_id": "SP-20", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "GET HTTP 200", "GET HTTP 200", "GET HTTP 200"]}
+{"probe_id": "SP-21", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "GET HTTP 403", "GET HTTP 200", "GET HTTP 403", "GET HTTP 200", "GET HTTP 403"]}
+{"probe_id": "SP-22", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "expected evidence was inconclusive", "audit": ["POST HTTP 400"]}
+{"probe_id": "SP-23", "kind": "refusal", "outcome": "not_blocked", "passed": false, "detail": "", "audit": ["POST HTTP 201"]}
+{"probe_id": "SP-24", "kind": "refusal", "outcome": "not_blocked", "passed": false, "detail": "", "audit": ["POST HTTP 201", "POST HTTP 201"]}
+{"probe_id": "SP-25", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409"]}
+{"probe_id": "SP-26", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "POST HTTP 409", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409"]}
+{"probe_id": "SP-27", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "GET HTTP 200", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409", "GET HTTP 200"]}
+{"probe_id": "SP-28", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409"]}
+{"probe_id": "SP-29", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409", "POST HTTP 422", "GET HTTP 200", "GET HTTP 409", "GET HTTP 409"]}
+{"probe_id": "SP-30", "kind": "control", "outcome": "not_blocked", "passed": true, "detail": "acceptance postconditions met", "audit": ["GET HTTP 200", "POST HTTP 200"]}
+{"probe_id": "SP-31", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "", "audit": ["GET HTTP 200", "POST HTTP 200", "POST HTTP 200", "POST HTTP 409", "GET HTTP 200", "GET HTTP 200"]}
+{"probe_id": "SP-32", "kind": "control", "outcome": "not_blocked", "passed": true, "detail": "acceptance postconditions met", "audit": ["GET HTTP 200", "GET HTTP 200"]}
+{"probe_id": "SP-33", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing route: merchant_events", "audit": []}
+{"probe_id": "SP-34", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing route: merchant_events", "audit": []}
+{"probe_id": "SP-35", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing route: merchant_events", "audit": []}
+{"probe_id": "SP-36", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing route: import_ingest", "audit": []}
+{"probe_id": "SP-37", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing route: merchant_events", "audit": []}
+{"probe_id": "SP-38", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp38", "audit": []}
+{"probe_id": "SP-39", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: rfc_followup_wide_text", "audit": []}
+{"probe_id": "SP-40", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp40", "audit": []}
+{"probe_id": "SP-41", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp41", "audit": []}
+{"probe_id": "SP-42", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp42", "audit": []}
+{"probe_id": "SP-43", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp43", "audit": []}
+{"probe_id": "SP-44", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp44", "audit": []}
+{"probe_id": "SP-45", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp45", "audit": []}
+{"probe_id": "SP-46", "kind": "refusal", "outcome": "not_run", "passed": null, "detail": "missing fixture: sp46", "audit": []}
+{"probe_id": "SP-47", "kind": "refusal", "outcome": "blocked", "passed": true, "detail": "isolated passport store, configured layout", "audit": []}

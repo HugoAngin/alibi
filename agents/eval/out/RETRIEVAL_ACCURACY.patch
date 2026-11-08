@@ -1,6 +1,39 @@
+--- a/alibi/connectors/clients.py
++++ b/alibi/connectors/clients.py
+@@ -39,6 +39,10 @@
+ CONNECTOR_ACTOR = "connector"
+ # A lookup key value travels in a path or a query string: one line, no path syntax, bounded.
+ _KEY_VALUE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,127}$")   # the core Ident pattern
++# A key sent only as a query parameter (encoded by the HTTP client, never part of the path) may
++# also carry the inner spaces the core ``Ref`` pattern allows, such as ``SPLAT W32 2695``.
++_QUERY_KEY_VALUE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.:@ -]{0,62}[A-Za-z0-9_.:@-])?$")
++_QUERY_KEYS = frozenset({"payout_reference"})
+ # What the trace summary keeps of a merchant answer: short scalars only (``_summary``).
+ SUMMARY_TEXT_LIMIT = 64
+ MAX_SAFE_INT = 2**53
+@@ -203,7 +207,8 @@
+         if len(given) != 1 or next(iter(given)) not in LOOKUP_KEYS:
+             raise ValueError(f"give exactly one of {', '.join(LOOKUP_KEYS)}")
+         (name, value), = given.items()
+-        if not isinstance(value, str) or not _KEY_VALUE.match(value):
++        pattern = _QUERY_KEY_VALUE if name in _QUERY_KEYS else _KEY_VALUE
++        if not isinstance(value, str) or not pattern.match(value) or "  " in value:
+             raise ValueError(f"{name} must be a short identifier without path characters")
+         if name == "payout_reference":
+             path, params = "/settlements", {"payout_reference": value}
 --- a/alibi/core/investigate_rules.py
 +++ b/alibi/core/investigate_rules.py
-@@ -397,6 +397,7 @@
+@@ -226,6 +226,9 @@
+ _REF_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9-]{3,}")
+ _REF_PREFIX = re.compile(r"[A-Z]+")
+ _REF = TypeAdapter(Ref)
++# A reference written in issuer text: four or more letters, digits and hyphens as a whole token
++# (same shape as the one-pass baseline's fixed retrieval); a letter and a digit are required.
++_TEXT_REF = re.compile(r"(?<![\w-])[A-Za-z0-9][A-Za-z0-9-]{3,}(?![\w-])")
+ _ORIGIN = "the credit's origin remains unresolved"
+ 
+ 
+@@ -397,6 +400,7 @@
      excluded: list[EvidenceRecord]     # payouts the decision ruled out explicitly
      signals: list[str]
      summary: str
@@ -8,7 +41,46 @@
  
  
  class _Run:
-@@ -676,6 +677,8 @@
+@@ -413,6 +417,9 @@
+         self.combined: dict[str, _Outcome] = {}   # after the one-payout-one-credit rule
+         self.bank: dict[str, BankTxn] = {}
+         self.fetched: dict[str, EvidenceRecord] = {}   # payment_ref -> lookup result, reused
++        # txn_id -> (payout record_id, issuer-verified records whose text named its reference)
++        self.attested: dict[str, tuple[str, list[EvidenceRecord]]] = {}
++        self.waiting: dict[str, list[EvidenceRecord]] = {}   # txn_id -> named pending payouts
+         self.question_id: str | None = None
+         log_step = getattr(gateway, "log_step", None)
+         self.log_step = log_step if callable(log_step) else None
+@@ -660,6 +667,28 @@
+             if fetched is not None:
+                 found.append(fetched)
+                 match = _match(txn, found, self.window)
++        if match.payout is None and match.state == LinkState.UNMATCHED and not match.excluded:
++            named = self.fetch_by_issuer_text(txn, found)
++            # A named payout still pending is not a source (it had not settled when last
++            # observed); one that fits the credit is kept only to name that gap.
++            waiting = {rid: pair for rid, pair in named.items()
++                       if pair[0].status in PENDING_STATUSES}
++            named = {rid: pair for rid, pair in named.items() if rid not in waiting}
++            fits = [record for record, _ in waiting.values()
++                    if record.amount_pence == txn.amount_pence and _compatible(record, txn)
++                    and txn.booked_at - record.occurred_at <= self.window]
++            if fits:
++                self.waiting[txn.txn_id] = fits
++            if named:
++                found += [record for record, _ in named.values()]
++                match = _match(txn, found, self.window)
++                if match.payout is not None and match.payout.record_id in named:
++                    record, sources = named[match.payout.record_id]
++                    self.attested[txn.txn_id] = (record.record_id, sources)
++                    match.signals.append(
++                        f"{_ids(sources, keys=True)} (issuer-verified) "
++                        f"name{'s' if len(sources) == 1 else ''} {record.payment_ref}, the payment "
++                        f"reference of {record.ref().key()}, retrieved by settlement lookup.")
+         link = Link(
+             link_id=make_id("lnk", self.run_id, txn.txn_id), txn_ref=txn.ref(),
+             link_state=match.state, record_ref=match.payout.ref() if match.payout else None,
+@@ -676,6 +705,8 @@
                            "candidates": [p.record_id for p in match.candidates]})
          if match.payout is None:
              return self.unlinked(txn, match)
@@ -17,7 +89,113 @@
          return self.linked(txn, match)
  
      def fetch_by_credit_reference(self, txn: BankTxn, found: list[EvidenceRecord]
-@@ -827,6 +830,112 @@
+@@ -717,6 +748,78 @@
+                                   "kind": record.kind.value, "status": record.status or "none"})
+                 return record
+         return None
++
++    def fetch_by_issuer_text(self, txn: BankTxn, found: list[EvidenceRecord]
++                             ) -> dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]]:
++        """Bounded retrieval from explicit issuer references: when nothing in the passport or
++        on the credit matches, the payout references written in the text of this subject's
++        issuer-verified records (messages, notices, statements) are looked up as written, at
++        most ``MAX_REFERENCE_LOOKUPS`` of them. A text line that also carries one of the
++        credit's own references is read first (an issuer statement mapping the bank's
++        reference to its payout), then records in observed order. Self-supplied text never
++        opens a lookup, the gateway still checks scope and signer, and a returned record is a
++        candidate only when it is an issuer-verified payout of this subject carrying exactly
++        that reference; it must still match the credit by amount, currency and date. Returns
++        ``record_id -> (payout, records naming it)``."""
++        records, _ = self.read("list_records", "list_records messages",
++                               lambda: self.gateway.list_records(kinds=[RecordKind.MESSAGE]))
++        texts = sorted((r for r in records or [] if r.subject_ref == self.request.subject_ref
++                        and r.source_trust == SourceTrust.ISSUER_VERIFIED and r.text),
++                       key=lambda r: (r.occurred_at, r.record_id))
++        if not texts:
++            return {}
++        carried = reference_tokens(txn)
++        known = {p.payment_ref.upper() for p in found if p.payment_ref} | carried \
++            | set(self.fetched)
++        ranked: dict[str, tuple[int, list[EvidenceRecord]]] = {}
++        order = 0
++        for record in texts:
++            own = {ref.upper() for ref in (record.payment_ref, record.settlement_ref,
++                                           record.withdrawal_ref) if ref}
++            for line in (record.text or "").splitlines():
++                tokens = [t for t in _TEXT_REF.findall(line)
++                          if re.search(r"[A-Za-z]", t) and re.search(r"\d", t)]
++                mapped = any(t.upper() in carried for t in tokens)
++                for token in tokens:
++                    key = token.upper()
++                    if key in known or key in own or not _is_ref(token):
++                        continue
++                    rank, sources = ranked.get(token, ((0 if mapped else 1, order), []))
++                    if mapped:
++                        rank = (0, rank[1])
++                    if record not in sources:
++                        sources.append(record)
++                    ranked[token] = (rank, sources)
++                    order += 1
++        chosen = sorted(ranked, key=lambda t: ranked[t][0])[:MAX_REFERENCE_LOOKUPS]
++        out: dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]] = {}
++        for token in chosen:
++            sources = ranked[token][1]
++            record, err = self.read("lookup_settlement", f"lookup_settlement {token}",
++                                    lambda token=token: self.gateway.lookup_settlement(token))
++            if record is None:
++                if err is None:
++                    self.note("note", tool="lookup_settlement", refs=[s.ref() for s in sources],
++                              reason=f"The lookup for {token}, named by issuer text, returned "
++                                     "no record.", args={"payment_ref": token})
++                continue
++            record = self.current(record)
++            if record.subject_ref != self.request.subject_ref or not record.payment_ref \
++                    or record.payment_ref != token or record.kind != RecordKind.PAYOUT \
++                    or record.source_trust != SourceTrust.ISSUER_VERIFIED \
++                    or any(s.issuer_id != record.issuer_id for s in sources):
++                continue
++            self.fetched[record.payment_ref] = record
++            out[record.record_id] = (record, sources)
++            self.note("validation", tool="lookup_settlement",
++                      refs=[txn.ref(), *(s.ref() for s in sources), record.ref()],
++                      reason=(f"The lookup for {token}, named by issuer-verified "
++                              f"{_ids(sources, keys=True)}, returned payout {record.ref().key()}, "
++                              "which is taken as a candidate."),
++                      args={"payment_ref": token},
++                      result={"record_id": record.record_id, "revision": record.revision,
++                              "kind": record.kind.value, "status": record.status or "none"})
++        return out
+ 
+     def unlinked(self, txn: BankTxn, match: _Match) -> _Outcome:
+         if match.state == LinkState.AMBIGUOUS:
+@@ -742,6 +845,14 @@
+                             f"{'s' if len(match.excluded) != 1 else ''} with the same amount "
+                             "occurred after the booking and cannot explain it.")
+                 code = GAP_SETTLEMENT_NOT_FOUND
++                waiting = self.waiting.get(txn.txn_id) if not match.excluded else None
++                if waiting:
++                    code = GAP_PENDING_AT_BOOKING
++                    gap += (" Payout " + "; ".join(
++                        f"{p.ref().key()} ({p.payment_ref}, "
++                        f"{_money(p.amount_pence, p.currency)}) was still {p.status} when last "
++                        f"observed at {format_utc(p.occurred_at)}" for p in waiting)
++                        + ", so it had not settled when the credit was booked.")
+             evidence = [txn.ref(), *(p.ref() for p in match.excluded)]
+             reason = "No payout matched the credit."
+         return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), match.summary,
+@@ -805,7 +916,10 @@
+                             "No settlement record for the linked payout.", gap=code,
+                             detail=" ".join(gaps), **base)
+         assert calc is not None
+-        status, reason, code, gap, refs_text = _verdict(txn, payout, settlement, calc, self.window)
++        attested = self.attested.get(txn.txn_id)
++        sources = attested[1] if attested and attested[0] == payout.record_id else []
++        status, reason, code, gap, refs_text = _verdict(txn, payout, settlement, calc, self.window,
++                                                        attested=sources)
+         if refs_text:
+             parts.append(refs_text)
+         if status == ClaimStatus.SUPPORTED and own:
+@@ -827,6 +941,112 @@
                       "settled_at": [format_utc(effective)] if effective is not None else []}
          return _Outcome(status, statement + ".", " ".join(parts), reason, gap=code, detail=gap,
                          facts=facts, **base)
@@ -130,7 +308,7 @@
  
      def settlement_for(self, payout: EvidenceRecord, txn: BankTxn
                         ) -> tuple[EvidenceRecord | None, str, list[str]]:
-@@ -1156,6 +1265,18 @@
+@@ -1156,6 +1376,18 @@
                      carried.setdefault(p.record_id, (
                          f"{s.settlement_ref}, the settlement reference of {s.ref().key()} for "
                          f"{p.payment_ref}, the payment reference of"))
@@ -149,12 +327,10 @@
      named = [p for p in payouts if p.record_id in carried]
      if named:
          fits = [p for p in named if _compatible(p, txn)]
-@@ -1210,6 +1331,35 @@
-         summary += (f" {_ids(late, keys=True)} has the same amount but occurred after the "
-                     "booking, so it cannot explain the credit.")
+@@ -1212,6 +1444,35 @@
      return _Match(METHOD_AMOUNT_DATE, LinkState.UNMATCHED, None, None, [], late, signals, summary)
-+
-+
+ 
+ 
 +def _settlement_batch(txn: BankTxn, payouts: list[EvidenceRecord],
 +                      tokens: frozenset[str]) -> list[EvidenceRecord]:
 +    """The payouts of the one settlement batch the credit names, else ``[]``. A batch is the
@@ -182,12 +358,45 @@
 +            or sum(p.amount_pence or 0 for p in members) != txn.amount_pence:
 +        return []
 +    return members
- 
- 
++
++
  def _compatible(payout: EvidenceRecord, txn: BankTxn) -> bool:
+     return payout.currency == txn.currency and payout.occurred_at <= txn.booked_at
+ 
+@@ -1265,7 +1526,7 @@
+ 
+ 
+ def _verdict(txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
+-             calc: Calculation, window: timedelta
++             calc: Calculation, window: timedelta, *, attested: list[EvidenceRecord] = ()
+              ) -> tuple[ClaimStatus, str, str | None, str | None, str | None]:
+     """Claim status for a linked credit with no explicit conflict (``_conflict``), from
+     explicit fields only.
+@@ -1320,6 +1581,21 @@
+                 f"References: the credit carries {listed}, not {settlement.settlement_ref}.")
+     named = sorted({r for r in (payout.payment_ref, settlement.payment_ref,
+                                 settlement.settlement_ref) if r and r.upper() in tokens})
++    if not named and attested and payout.source_trust == SourceTrust.ISSUER_VERIFIED \
++            and settlement.source_trust == SourceTrust.ISSUER_VERIFIED \
++            and all(s.issuer_id == payout.issuer_id for s in attested):
++        # The issuer's own signed text names the payout's reference; the payout it returned
++        # matches the credit uniquely by amount, currency and date, and settled in time.
++        refs_text = (f"References: the credit carries none, but issuer-verified "
++                     f"{_ids(list(attested), keys=True)} names {payout.payment_ref}, and that "
++                     "payout is the only one matching the credit's amount and date.")
++        if reconcile.credit_supported(calc, window=window):
++            return (ClaimStatus.SUPPORTED,
++                    f"Settlement {stl} is {status} by the booking, the amounts reconcile and the "
++                    f"issuer's own record names {payout.payment_ref}.", None, None, refs_text)
++        return (ClaimStatus.UNRESOLVED, "The reconciliation does not support the credit.",
++                GAP_SETTLEMENT_NOT_FOUND, "The reconciliation does not support the credit.",
++                refs_text)
+     if not named:
+         return (ClaimStatus.UNRESOLVED, "Only amounts and dates tie the credit to the payout.",
+                 GAP_SETTLEMENT_NOT_FOUND,
 --- /dev/null
-+++ b/alibi/tests/test_settlement_batch.py	2026-11-08 12:55:44
-@@ -0,0 +1,99 @@
++++ b/alibi/tests/test_settlement_batch.py
+@@ -0,0 +1,201 @@
 +"""Settlement batches: one bank credit carrying the settlement reference that an issuer gave
 +several of its own signed payouts (public bundled-payment cases 9-12 and focused negative
 +variants of case 9; rules mode, no network)."""
@@ -195,12 +404,13 @@
 +from __future__ import annotations
 +
 +import copy
++import json
 +from datetime import datetime, timezone
 +from types import SimpleNamespace
 +
 +from agents.data.api import load_case
 +from alibi.adapter import run_case
-+from alibi.core.investigate_rules import _settlement_batch
++from alibi.core.investigate_rules import MAX_REFERENCE_LOOKUPS, _settlement_batch
 +from alibi.core.schemas import SourceTrust
 +
 +
@@ -287,3 +497,104 @@
 +    assert _settlement_batch(_TXN, [a, _rec("r2", 200, "PO-2")], frozenset({"BATCH-2"})) == []
 +    assert _settlement_batch(_TXN, [a, _rec("r2", 200, "PO-2", currency="EUR")], _TOKENS) == []
 +    assert _settlement_batch(_TXN, [a], _TOKENS) == []
++
++
++# --------------------------------------------------------------------------- issuer-text references
++
++
++def _first(case, tmp_path, name="c"):
++    preds = _rules(case, tmp_path, name)
++    return next(iter(preds.values()))
++
++
++def test_public_hidden_reference_cases_retrieve_the_issuer_named_payout(tmp_path):
++    for n in (41, 44, 48, 49, 50):
++        gold = load_case(n)["gold"]
++        rid = next(iter(gold["answers"]))
++        pred = _rules(n, tmp_path, f"c{n}")[rid]
++        assert pred["retrieval"]["lookups"] <= 2 * MAX_REFERENCE_LOOKUPS, n
++        for qid, want in gold["answers"][rid].items():
++            got = pred["claims"][qid]
++            assert got["status"] == "supported", (n, qid, got.get("gap"))
++            assert got["facts"] == want["facts"], (n, qid)
++        assert pred["links"][0]["payout_record_ids"] == gold["links"][0]["payout_record_ids"], n
++
++
++def test_issuer_named_payout_still_pending_is_not_linked(tmp_path):
++    for n in (2, 20):
++        gold = load_case(n)["gold"]
++        rid = next(iter(gold["answers"]))
++        pred = _rules(n, tmp_path, f"c{n}")[rid]
++        assert pred["links"][0]["state"] == "unmatched", n
++        for qid in ("q.source_of_funds", "q.breakdown"):
++            assert pred["claims"][qid]["status"] == "unresolved"
++            assert pred["claims"][qid]["gap"].startswith("settlement_pending_at_booking"), n
++
++
++def test_self_supplied_text_never_opens_a_lookup(tmp_path):
++    case = copy.deepcopy(load_case(41))
++    case.pop("gold", None)
++    notice = next(d for d in case["merchant_deliveries"] if d["event"]["kind"] == "notice")
++    case["merchant_deliveries"].remove(notice)
++    record = dict(notice["event"], import_source="holder pasted email")
++    case["imports"].append({"received_at": notice["received_at"], "record": record})
++    pred = _first(case, tmp_path)
++    assert pred["claims"]["q.source_of_funds"]["status"] != "supported"
++    assert "PO-0041-02" not in json.dumps(pred["links"])
++
++
++def test_issuer_named_payout_must_still_match_the_amount(tmp_path):
++    case = copy.deepcopy(load_case(48))
++    case.pop("gold", None)
++    for d in case["bank_deliveries"]:
++        if d["row"]["txn_id"] == "txn-0048-005":
++            d["row"]["amount_minor"] += 1
++    pred = _first(case, tmp_path)
++    assert pred["claims"]["q.source_of_funds"]["status"] != "supported"
++    assert pred["links"][0]["state"] != "linked"
++
++
++def test_alias_in_holder_csv_stays_unresolved(tmp_path):
++    """Case 45 maps the bank's withdrawal id only in the holder's own import: no trust, no
++    lookup of the payout it names, so the source stays unresolved (gold expects supported;
++    this is a deliberate safe miss)."""
++    pred = _first(45, tmp_path)
++    assert pred["claims"]["q.source_of_funds"]["status"] == "unresolved"
++
++
++# --------------------------------------------------------------------------- spaced references
++
++
++def test_public_case73_spaced_transfer_reference_is_looked_up(tmp_path):
++    gold = load_case(73)["gold"]
++    rid = next(iter(gold["answers"]))
++    pred = _rules(73, tmp_path)[rid]
++    assert pred["retrieval"]["lookups"] <= MAX_REFERENCE_LOOKUPS
++    for qid, want in gold["answers"][rid].items():
++        assert pred["claims"][qid]["status"] == "supported", qid
++        assert pred["claims"][qid]["facts"] == want["facts"], qid
++
++
++def test_lookup_key_spaces_only_in_query_keys():
++    import pytest
++    from alibi.connectors.clients import MerchantClient
++
++    class Recorder:
++        def __init__(self):
++            self.calls = []
++
++        def get(self, path, params=None, headers=None):
++            self.calls.append((path, params))
++            raise RuntimeError("stop after the request is formed")
++
++    http = Recorder()
++    client = MerchantClient(http)
++    with pytest.raises(RuntimeError):
++        client.lookup(payout_reference="SPLAT W32 2695")
++    assert http.calls == [("/settlements", {"payout_reference": "SPLAT W32 2695"})]
++    for bad in ("SPLAT  W32", " SPLAT", "SPLAT ", "PO/0001", "a\nb", "x" * 65):
++        with pytest.raises(ValueError):
++            client.lookup(payout_reference=bad)
++    with pytest.raises(ValueError):
++        client.lookup(record_id="rec 0001")
++    assert len(http.calls) == 1

@@ -1,0 +1,139 @@
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -420,6 +420,7 @@
+         # txn_id -> (payout record_id, issuer-verified records whose text named its reference)
+         self.attested: dict[str, tuple[str, list[EvidenceRecord]]] = {}
+         self.waiting: dict[str, list[EvidenceRecord]] = {}   # txn_id -> named pending payouts
++        self.text_dependencies: dict[str, list[EvidenceRef]] = {}  # private clue/read revisions
+         self.question_id: str | None = None
+         log_step = getattr(gateway, "log_step", None)
+         self.log_step = log_step if callable(log_step) else None
+@@ -488,7 +489,11 @@
+             question_id=question.question_id,
+             statement=_clip(outcome.statement), status=outcome.status,
+             rationale=_clip(rationale), evidence_refs=answered_refs(outcome.status, outcome.evidence),
+-            examined_refs=examined_refs(outcome.status, outcome.evidence, outcome.calculation),
++            examined_refs=_unique([
++                *examined_refs(outcome.status, outcome.evidence, outcome.calculation),
++                *(ref for txn_id in self.request.txn_ids or []
++                  for ref in self.text_dependencies.get(txn_id, [])
++                  if found.category in (SOURCE_OF_FUNDS, BREAKDOWN))]),
+             calculation=answered_calculation(outcome.status, outcome.calculation),
+             gap=_clip(outcome.gap) if outcome.gap else None,
+             gap_detail=_clip(outcome.detail) if outcome.detail else None,
+@@ -795,6 +800,9 @@
+         out: dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]] = {}
+         for token in chosen:
+             sources = ranked[token][1]
++            # The clue affects retrieval even when the lookup finds no record. Retain it
++            # privately so a corrected reference invalidates the old conclusion and consent.
++            self.text_dependencies.setdefault(txn.txn_id, []).extend(s.ref() for s in sources)
+             record, err = self.read("lookup_settlement", f"lookup_settlement {token}",
+                                     lambda token=token: self.gateway.lookup_settlement(token))
+             if record is None:
+@@ -811,6 +819,7 @@
+                 continue
+             self.fetched[record.payment_ref] = record
+             out[record.record_id] = (record, sources)
++            self.text_dependencies[txn.txn_id].append(record.ref())
+             self.note("validation", tool="lookup_settlement",
+                       refs=[txn.ref(), *(s.ref() for s in sources), record.ref()],
+                       reason=(f"The lookup for {token}, named by issuer-verified "
+@@ -850,9 +859,9 @@
+                     code = GAP_PENDING_AT_BOOKING
+                     gap += (" Payout " + "; ".join(
+                         f"{p.ref().key()} ({p.payment_ref}, "
+-                        f"{_money(p.amount_pence, p.currency)}) was still {p.status} when last "
++                        f"{_money(p.amount_pence, p.currency)}) was {p.status} when "
+                         f"observed at {format_utc(p.occurred_at)}" for p in waiting)
+-                        + ", so it had not settled when the credit was booked.")
++                        + "; the available records do not establish settlement by the credit's booking.")
+             evidence = [txn.ref(), *(p.ref() for p in match.excluded)]
+             reason = "No payout matched the credit."
+         return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), match.summary,
+--- /dev/null
++++ b/alibi/tests/test_text_lookup_safety.py
+@@ -0,0 +1,83 @@
++"""Public issuer-text retrieval preserves private revision dependencies and scope."""
++import json
++
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi import api
++from alibi.adapter import _World, _run
++from alibi.connectors.case_source import CaseClock, parse_time
++from alibi.core.ingest import import_self_supplied
++from alibi.core.schemas import ClaimStatus, SigningDomain
++from alibi.gateway import Gateway, ScopeError
++
++
++PAYOUT = "rec-0041-020"
++CLUE = "rec-0041-022"
++
++
++@pytest.mark.parametrize("pending, corrected", [(True, PAYOUT), (True, CLUE), (False, CLUE)])
++def test_text_dependency_correction_invalidates_claim_and_consent(tmp_path, pending, corrected):
++    case = without_gold(load_case(41))
++    if pending:
++        event = next(d["event"] for d in case["merchant_lookup"]
++                     if d["event"]["record_id"] == PAYOUT)
++        event.update(status="pending", settled_at=None)
++    at = parse_time(case["rfcs"][0]["issued_at"], "at")
++    world = _World(case, tmp_path / "world")
++    try:
++        world.seed(CaseClock(case, at))
++        rfc = world.store.get_request(case["rfcs"][0]["request_id"])
++        result, _ = _run(world, "rules", rfc, at, None)
++        want = ClaimStatus.UNRESOLVED if pending else ClaimStatus.SUPPORTED
++        assert all(c.status == want for c in result.claims)
++        assert all(CLUE in {ref.ref_id for ref in c.examined_refs} for c in result.claims)
++        if pending:
++            assert all(PAYOUT in {ref.ref_id for ref in c.examined_refs} for c in result.claims)
++            for c in result.claims:
++                assert "had not settled when" not in (c.gap_detail or "")
++                assert "do not establish settlement" in (c.gap_detail or "")
++                assert c.evidence_refs == [] and c.calculation is None
++        draft = api.build_review(world.store, rfc.request_id, audience=rfc.audience, now=at)
++        approval = api.approve(world.store, draft.draft_id, holder_id="holder_maya", now=at)
++        assert CLUE not in json.dumps(draft.body.to_json_dict())
++        if pending:
++            assert draft.body.attachments == []
++        body = world.store.get_source(corrected).to_event().to_json_dict()
++        body.update(event_id="public-text-correction-two", revision=2, corrects_revision=1,
++                    correction_reason="Public synthetic correction")
++        if corrected == PAYOUT:
++            body.update(status="settled", effective_at=body["occurred_at"])
++        else:
++            body["text"] = "The previous withdrawal reference was incorrect; please check it."
++        payload = {"event": body, "signature": world.keystore.sign(
++            body, kid="merchant_mock", domain=SigningDomain.RECORD).to_json_dict()}
++        put = api.ingest_merchant_event(world.store, payload, registry=world.registry, now=at)
++        assert {c.claim_id for c in result.claims} <= set(put.invalidated["claims"])
++        assert draft.draft_id in put.invalidated["drafts"]
++        assert approval.approval_id in put.invalidated["approvals"]
++        with pytest.raises(api.ApprovalError):
++            api.sign_and_package(world.store, approval.approval_id, keystore=world.keystore, now=at)
++    finally:
++        world.close()
++
++
++def test_unsigned_text_cannot_open_new_lookup_scope(tmp_path):
++    case = without_gold(load_case(41))
++    at = parse_time(case["rfcs"][0]["issued_at"], "at")
++    world = _World(case, tmp_path / "scope")
++    try:
++        world.seed(CaseClock(case, at))
++        import_self_supplied(world.store, {"record_id": "unsigned-clue", "kind": "message",
++                              "text": "Please look up PO-UNSIGNED-991.",
++                              "occurred_at": case["rfcs"][0]["issued_at"]},
++                              subject_ref=world.subject, now=at)
++        calls = []
++        gateway = Gateway(world.store, subject_ref=world.subject, run_id="scope-control",
++                          registry=world.registry, now=at,
++                          settlement_lookup=lambda ref: calls.append(ref))
++        with pytest.raises(ScopeError):
++            gateway.lookup_settlement("PO-UNSIGNED-991")
++        assert calls == []
++    finally:
++        world.close()

@@ -16,8 +16,12 @@ Owner: `execution`. Built to [`../out/WEB_BANK_NOTES.md`](../out/WEB_BANK_NOTES.
 | `src/components/Verification.astro` | Three visibly different panels; a rejected package shows only the verifier's reasons |
 | `src/components/Evidence.astro` | Evidence by question, settlement timing, reconciliation recomputed by the verifier, contradictions, generic gaps |
 | `src/components/Decision.astro` | Read-only analyst, required reason, final clear/escalate, follow-up that keeps the parent's scope |
-| `src/pages/act.ts` | Forwards decision and follow-up to the backend action path with `forwardAction`; refusals verbatim |
+| `src/lib/actions.ts` | The only two actions (`decision`, `followup`): fixed kind + validated ID -> server-built Bank A path, allowlisted fields; `handleAct` refuses cross-site, unauthenticated and unknown requests before any upstream call |
+| `src/lib/session.ts` | Signed analyst session (HMAC-SHA256 cookie via WebCrypto), constant-time compare |
+| `src/pages/act.ts` | POST endpoint: same-origin + signed session required, then `forwardAction` to the server-built path; refusals verbatim |
+| `src/pages/session.ts`, `src/pages/sign-in.astro` | Demo analyst sign-in with a passcode; sign-in disabled when its secrets are unset |
 | `tests/view.test.ts`, `tests/analyst.test.ts` | Pure logic, and the built-in data checked against `agents/data/out/cases/case_0001.json` |
+| `tests/actions.test.ts` | No upstream call for the reported exploit (`action=/merchant/admin/seed`), unauthenticated, cross-site and path-trick requests; allowed actions send only allowlisted fields to the server-built path; session tamper and expiry |
 
 ## Edits to existing files (research-owned until the grant)
 
@@ -25,13 +29,17 @@ Owner: `execution`. Built to [`../out/WEB_BANK_NOTES.md`](../out/WEB_BANK_NOTES.
    ```js
    // Bank A's credential for the backend, forwarded as a bearer token from the server only.
    BANK_A_TOKEN: envField.string({ context: 'server', access: 'secret', optional: true }),
+   // Analyst sign-in: the demo passcode and the key that signs the session cookie.
+   ANALYST_PASSCODE: envField.string({ context: 'server', access: 'secret', optional: true }),
+   BANK_SESSION_SECRET: envField.string({ context: 'server', access: 'secret', optional: true }),
    ```
-   Research sets the Worker secret `BANK_A_TOKEN` once the backend publishes the bank credential.
+   Research sets the three Worker secrets. Without `BANK_SESSION_SECRET` and `ANALYST_PASSCODE`, sign-in is disabled and no action can reach the backend; with `ALIBI_API_ORIGIN` set, the inbox and package pages redirect to `/sign-in/` until the analyst signs in.
 2. `web/apps/bank/src/layouts/ConsoleLayout.astro`, in the header before "Signed in as":
    ```astro
    <nav aria-label="Console">
      <a href="/">Cases</a>
      <a href="/inbox/">Alibi inbox</a>
+     <a href="/sign-in/">Sign in</a>
    </nav>
    ```
    with `.console-header nav { display: flex; gap: var(--space-sm); }`.

@@ -4,8 +4,9 @@
  * - The analyst name is shown read-only; the backend takes identity from the credential.
  * - A reason is required. Clear and escalate are final for the package.
  * - A follow-up keeps the parent request's scope; asking about more is a new request.
- * Forms post to /act/, which forwards to the action path the backend's context gave. With the
- * built-in preview (no backend) the forms are shown but disabled, and say why.
+ * Forms post to /act/ with a fixed kind and an ID; the server builds the Bank A path and requires a
+ * signed analyst session (src/lib/actions.ts). With the built-in preview (no backend) the forms are
+ * shown but disabled, and say why.
  */
 import type { AnalystPackage } from '@/lib/types';
 import { DECISION_LABEL, actionEnabled, followupScope, isFinal } from '@/lib/view';
@@ -47,9 +48,9 @@ const scope = followupScope(pkg);
     <p class="final">Final for this package. A new package needs a new decision.</p>
   ) : (
     <form method="post" action="/act/">
-      <input type="hidden" name="action" value={form.action} />
+      <input type="hidden" name="kind" value="decision" />
+      <input type="hidden" name="package_id" value={pkg.package.package_id} />
       <input type="hidden" name="return_to" value={returnTo} />
-      <input type="hidden" name="analyst_name" value={form.analyst_name} />
       <fieldset disabled={!canDecide}>
         <legend>Your decision</legend>
         {form.options.map((o) => (
@@ -76,7 +77,7 @@ const scope = followupScope(pkg);
     <h2 id="followup-title">Request more from the customer</h2>
     <p class="consent">{follow.consent_note}</p>
     <form method="post" action="/act/">
-      <input type="hidden" name="action" value={follow.action} />
+      <input type="hidden" name="kind" value="followup" />
       <input type="hidden" name="return_to" value={returnTo} />
       <input type="hidden" name="parent_request_id" value={follow.parent_request_id} />
       <fieldset disabled={!canFollow}>

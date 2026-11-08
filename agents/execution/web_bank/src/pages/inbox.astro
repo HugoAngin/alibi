@@ -4,15 +4,19 @@
  * with the bank's credential, or shows the built-in case 1 preview. Only packages bound to this
  * bank are listed; the backend enforces that, not this page (SP-17).
  */
-import { ALIBI_API_ORIGIN, BANK_A_TOKEN } from 'astro:env/server';
+import { ALIBI_API_ORIGIN, BANK_A_TOKEN, BANK_SESSION_SECRET } from 'astro:env/server';
 
 import { loadContext } from '@alibi/ui/api';
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
 import { inboxFixture } from '@/data/analyst';
+import { SESSION_COOKIE, verifySession } from '@/lib/session';
 import { ROUTES, backendHeaders, isInbox } from '@/lib/screens';
 import { CLAIM_LABEL, authVerdict, showsClaimCounts } from '@/lib/view';
 
 export const prerender = false;
+
+const analyst = await verifySession(BANK_SESSION_SECRET, Astro.cookies.get(SESSION_COOKIE)?.value, Date.now());
+if (ALIBI_API_ORIGIN && !analyst) return Astro.redirect('/sign-in/', 303);
 
 const loaded = await loadContext({
   origin: ALIBI_API_ORIGIN,

@@ -20,6 +20,10 @@ Outcomes, as in eval's HTTP runtime:
 The report holds outcomes and redacted evidence only: relative file paths, the encoding that
 matched and a short sha256 of the matched value, never the value itself.
 
+Result on the real store (agents.lead.api.open_store, 2026-11-08): with the master key supplied
+(ALIBI_MASTER_KEY or the master_key argument) -> blocked; in the default layout the store writes
+master.key beside passport.db -> not_blocked (key co-located), though no canary is readable at rest.
+
 A store adapter is any object with:
     root: pathlib.Path                  the directory the app persists to
     key_material: list[bytes]           every secret that must not sit beside the data
@@ -145,6 +149,12 @@ def probe(store, *, run_id: str | None = None) -> dict:
     if not root.is_dir() or not any(p.is_file() for p in root.rglob("*")):
         return {**report, "outcome": NOT_RUN, "reason": "store directory missing or empty after persist"}
     found = inspect_store(root, canaries, [k for k in store.key_material if k])
+    if hasattr(store, "close"):
+        store.close()
+        found_after = inspect_store(root, canaries, [k for k in store.key_material if k])
+        seen = {(f["path"], f["kind"], f["encoding"]) for f in found["findings"]}
+        found["findings"] += [f for f in found_after["findings"] if (f["path"], f["kind"], f["encoding"]) not in seen]
+        found["files"] = found_after["files"] if len(found_after["files"]) >= len(found["files"]) else found["files"]
     key_files = [f["path"] for f in found["files"]
                  if any(w in Path(f["path"]).name.lower() for w in ("key", ".env", "secret"))]
     outcome = NOT_BLOCKED if found["findings"] or key_files else BLOCKED
@@ -207,13 +217,70 @@ class Base64Store(PlaintextStore):
         return base64.b64decode((self.root / "evidence.b64").read_bytes())
 
 
-def app_store():
-    """The published passport store, once it lands on main. None until then."""
+class AlibiStore:
+    """The real passport store (agents.lead.api.open_store), in one of two layouts.
+
+    default     open_store(<root>/passport.db) with ALIBI_MASTER_KEY unset, keystore at the default
+                sibling <root>/keys: mirrors data/alibi/ out of the box
+    configured  master key passed in (as from ALIBI_MASTER_KEY in a secret store), keystore in a
+                separate directory outside the data root
+    Canaries go in through the authorised path (load_fixture, then import_self_supplied) and are
+    read back through it (Store.get_raw_payload, decrypted).
+    """
+
+    def __init__(self, root: Path, layout: str = "default", outside: Path | None = None):
+        self.root, self.layout = Path(root), layout
+        self.outside = Path(outside) if outside else None
+        self.master = None
+        self.key_material: list[bytes] = []
+        self._store = self._record = None
+
+    def persist(self, case):
+        from agents.lead.api import default_keystore, import_self_supplied, load_fixture, open_store
+
+        self.root.mkdir(parents=True, exist_ok=True)
+        saved = os.environ.pop("ALIBI_MASTER_KEY", None)
+        try:
+            if self.layout == "configured":
+                self.master = base64.urlsafe_b64encode(hashlib.sha256(b"SYNTHETIC SP-47 master key").digest())
+                store = open_store(self.root / "passport.db", master_key=self.master)
+                keys = default_keystore(self.outside / "keys")
+            else:
+                store = open_store(self.root / "passport.db")
+                keys = default_keystore(self.root / "keys")
+                self.master = (self.root / "master.key").read_bytes().strip()
+        finally:
+            if saved is not None:
+                os.environ["ALIBI_MASTER_KEY"] = saved
+        self._store = store
+        self.key_material = [self.master, base64.urlsafe_b64decode(self.master)]
+        fx = load_fixture(store, "supported", keystore=keys)
+        texts = [d["event"][f] for d in case["merchant_deliveries"] for f in ("item", "message")
+                 if isinstance(d["event"].get(f), str)]
+        result = import_self_supplied(store, {
+            "kind": "receipt", "amount_pence": 4500, "currency": "GBP", "occurred_at": "2026-10-14T10:00:00Z",
+            "status": "paid", "schema_version": "alibi.merchant_event.v1", "subject_ref": fx["subject_ref"],
+            "text": " | ".join(texts),
+            "items": [{"category": "synthetic", "description": t, "quantity": 1, "unit_amount_pence": 1} for t in texts],
+        }, subject_ref=fx["subject_ref"], now=fx["now"])
+        self._record = (result.record.record_id, result.record.revision)
+
+    def read_all(self):
+        return json.dumps(self._store.get_raw_payload(*self._record)).encode()
+
+    def close(self):
+        if self._store is not None:
+            self._store.close()
+
+
+def app_store(layout: str = "default", base: Path | None = None):
+    """The real passport store adapter, or None if alibi's API is not importable."""
     try:
-        from alibi.passport.store import probe_adapter  # expected hook; name to confirm with lead/S1
+        import agents.lead.api  # noqa: F401
     except ImportError:
         return None
-    return probe_adapter()
+    base = Path(base or tempfile.mkdtemp(prefix="sp47-"))
+    return AlibiStore(base / "data_root", layout, outside=base / "secrets")
 
 
 def controls(run_id: str = "control") -> dict:
@@ -248,11 +315,17 @@ def main() -> None:
     summary = {"sp47_controls_passed": sum(ctrl[k] == v for k, v in EXPECTED_CONTROLS.items()),
                "sp47_controls": len(EXPECTED_CONTROLS)}
     if "--controls" not in sys.argv:
-        app = probe(app_store())
-        print(f"app store          {app['outcome']:12} {app.get('reason', '')}")
-        for f in app.get("findings", []):
-            print(f"  finding {f['kind']} in {f['path']} ({f['view']}, {f['encoding']}, {f['value']})")
-        summary["sp47_app_outcome"] = app["outcome"]
+        for layout in ("default", "configured"):
+            app = probe(app_store(layout))
+            print(f"alibi store {layout:10} {app['outcome']:12} {app.get('reason', '')}")
+            for f in app.get("findings", []):
+                print(f"  finding {f['kind']} in {f['path']} ({f['view']}, {f['encoding']}, {f['value']})")
+            if app.get("key_named_files"):
+                print(f"  key-named files beside the data: {app['key_named_files']}")
+            if app.get("files"):
+                print(f"  scanned {app['files_scanned']} files, {app['stored_bytes']} bytes, {app['canaries']} canaries")
+            code = {BLOCKED: 1, NOT_BLOCKED: 0, NOT_RUN: -1}[app["outcome"]]
+            summary[f"sp47_{layout}_blocked"] = code
     print(json.dumps(summary))
     if not ok:
         sys.exit(1)

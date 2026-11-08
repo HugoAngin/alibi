@@ -15,8 +15,16 @@ class Controls(unittest.TestCase):
     def test_all_controls_as_expected(self):
         self.assertEqual(p.controls(), p.EXPECTED_CONTROLS)
 
-    def test_app_store_not_run_until_published(self):
-        self.assertEqual(p.probe(p.app_store())["outcome"], "not_run")
+    def test_alibi_store_configured_key_passes(self):
+        report = p.probe(p.app_store("configured"))
+        self.assertEqual(report["outcome"], "blocked", report)
+        self.assertEqual(report["findings"], [])
+
+    def test_alibi_store_default_layout_keeps_key_beside_data(self):
+        report = p.probe(p.app_store("default"))
+        self.assertEqual(report["outcome"], "not_blocked")
+        self.assertEqual({f["kind"] for f in report["findings"]}, {"key"})  # evidence itself stays ciphertext
+        self.assertIn("master.key", report["key_named_files"])
 
 
 class Detection(unittest.TestCase):

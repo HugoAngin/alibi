@@ -66,7 +66,11 @@ uv run --frozen python -m agents.eval.verify_demo_handoff --config "$ALIBI_ROUTE
 The gate exercises valid approval and dispatch with no credential, each bank
 credential, and then the holder credential. It checks both routed inboxes,
 matches each accepted receipt to the signed body and exact RFC, and checks
-that the other recipient gets 404. A successful run leaves two public receipts
+that the other recipient gets 404. For release verification add
+`--registry "$ALIBI_PUBLIC_REGISTRY"` using the separately pinned trust registry
+from the disposable stack. Add `--at` with the fixed UTC fixture time if needed.
+Both banks then require an independent check of the signed envelope and
+included issuer signatures. A successful run leaves two public receipts
 available for profile generation against the direct loopback services.
 
 After dispatching one public Case 1 package to each bank, generate the native

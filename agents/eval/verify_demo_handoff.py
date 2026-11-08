@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from agents.eval import http_probe_consent as consent
 from agents.eval.http_probe_runtime import ProbeSession, ProbeUnavailable
+from agents.eval.native_verify import verify_native
+from agents.eval.verify_package import VerificationError, _evaluation_time, _read_object
+from alibi.core import canon
 
 
 CASE_ONE = (("bank_a", "rfc-0001-01"), ("bank_b", "rfc-0001-02"))
@@ -45,7 +49,7 @@ def _check_auth(session: ProbeSession, path: str, phase: str, fields: dict | Non
     return statuses
 
 
-def check(session: ProbeSession) -> dict:
+def check(session: ProbeSession, *, registry: dict | None = None, at: datetime | None = None) -> dict:
     """Send Case 1 to both banks and prove the public inboxes see the actual receipts."""
     facts = {}
     for recipient, request_id in CASE_ONE:
@@ -66,10 +70,19 @@ def check(session: ProbeSession) -> dict:
         auth_dispatch = _check_auth(session, dispatch, "dispatch")
         for bank in (recipient, other):
             consent._fresh_inbox(session, bank, request_id)
-        package_id, delivered = consent._check_delivery(
-            session, consent._dispatch(session, request_id), recipient, digest)
-        if delivered["package"]["body"].get("request_id") != request_id:
+        dispatch_response = consent._dispatch(session, request_id)
+        if not dispatch_response.is_success:
+            raise ProbeUnavailable(f"{recipient} approved dispatch returned HTTP {dispatch_response.status_code}")
+        package_id, delivered = consent._check_delivery(session, dispatch_response, recipient, digest)
+        package = delivered["package"]
+        if package["body"].get("request_id") != request_id:
             raise ProbeUnavailable(f"{recipient} signed package did not bind the expected request")
+        if registry is not None:
+            try:
+                verify_native(package, canon.canonical_bytes(package), registry, recipient=recipient,
+                              now=at or _evaluation_time(None), request_id=request_id)
+            except VerificationError as exc:
+                raise ProbeUnavailable(f"{recipient} independent verification refused the envelope ({exc.code})") from exc
         rows = consent._inbox_rows(consent._bank_inbox(session, recipient))
         matching = [row for row in rows if row["request_id"] == request_id]
         if len(matching) != 1 or matching[0]["package_id"] != package_id or matching[0].get("status") != "verified":
@@ -82,6 +95,8 @@ def check(session: ProbeSession) -> dict:
             raise ProbeUnavailable(f"foreign package read returned HTTP {foreign.status_code} instead of 404")
         facts[recipient] = {"approve_refusals": auth_approve, "dispatch_refusals": auth_dispatch,
                             "verified_receipts": 1, "foreign_status": foreign.status_code}
+        if registry is not None:
+            facts[recipient]["independent_verification"] = True
     return {"case": 1, "banks": facts}
 
 
@@ -89,13 +104,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True,
                         help="private profile for a disposable Case 1 router and bank")
+    parser.add_argument("--registry", type=Path, help="separately pinned native public key registry")
+    parser.add_argument("--at", help="UTC verification time for the fixture (default: current time)")
     args = parser.parse_args(argv)
+    try:
+        registry = _read_object(args.registry, "invalid_registry") if args.registry else None
+        at = _evaluation_time(args.at)
+    except (OSError, VerificationError):
+        parser.error("use a readable JSON registry and a valid UTC verification time")
     try:
         session = _session(json.loads(args.config.read_text(encoding="utf-8")))
     except (OSError, ValueError, KeyError, TypeError):
         parser.error("config needs one loopback router, its /bank prefix and three distinct synthetic tokens")
     try:
-        result = check(session)
+        result = check(session, registry=registry, at=at)
     except ProbeUnavailable as exc:
         print(json.dumps({"passed": False, "reason": str(exc)}))
         return 1

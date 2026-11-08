@@ -1,0 +1,45 @@
+diff --color -ruN -x _ orig/alibi/baselines/one_pass.py tree/alibi/baselines/one_pass.py
+--- orig/alibi/baselines/one_pass.py	2026-11-08 13:14:54
++++ tree/alibi/baselines/one_pass.py	2026-11-08 13:15:38
+@@ -697,6 +697,15 @@
+                    "checked against this credit.")
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), gap,
+                             f"Merchant records unavailable ({self.records_err}).", gap=gap, evidence=[txn.ref()])
++        releases = [r for r in records if r.kind == RecordKind.MESSAGE and r.amount_pence is not None
++                    and r.amount_pence == abs(txn.amount_pence)]
++        if not any(r.kind == RecordKind.PAYOUT for r in records) and releases:
++            # Already-observed evidence only: a same-amount 'released to balance' message with no
++            # payout record is a release to the platform balance, not a settlement to the bank.
++            gap = (f"{GAP_BALANCE_RELEASE}: {', '.join(r.record_id for r in releases)} records a release "
++                   "to the platform balance of the credit's amount, not a settlement to the bank.")
++            return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary() or gap,
++                            "Balance release only.", gap=gap, evidence=[txn.ref()])
+         if not any(r.kind == RecordKind.PAYOUT for r in records):
+             gap = f"{GAP_NO_RECORDS}: the passport holds no payout record for this subject."
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary() or gap,
+diff --color -ruN -x _ orig/alibi/tests/test_one_pass_release_gap.py tree/alibi/tests/test_one_pass_release_gap.py
+--- orig/alibi/tests/test_one_pass_release_gap.py	1970-01-01 01:00:00
++++ tree/alibi/tests/test_one_pass_release_gap.py	2026-11-08 13:15:54
+@@ -0,0 +1,22 @@
++"""One-pass labels a same-amount balance release with no payout as balance_release_not_settlement
++from already-retrieved evidence (no extra model calls or lookups); no records stays no_merchant_records."""
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi.adapter import run_cases
++from alibi.eval import scorer
++from alibi.llm.fake import FakeClient
++
++
++@pytest.mark.parametrize("number,gap", [(17, "balance_release_not_settlement"),
++                                        (18, "balance_release_not_settlement"),
++                                        (32, "no_merchant_records")])
++def test_release_only_gap_label(tmp_path, number, gap):
++    case = load_case(number)
++    client = FakeClient({"*": {"claims": [], "disclosures": [], "rationale": "offline"}})
++    run_cases([without_gold(case)], "one_pass", out=tmp_path, root=tmp_path / "stores",
++              client=client, log=lambda _: None)
++    result = scorer.run([case], [scorer.load_predictions(tmp_path / "one_pass.jsonl")])[0]
++    questions = [q for r in result.cases[0].requests for q in r.questions]
++    assert questions and all(q.predicted_status == "unresolved" and q.predicted_gap == gap for q in questions)
++    assert result.metrics["forbidden_items"] == 0

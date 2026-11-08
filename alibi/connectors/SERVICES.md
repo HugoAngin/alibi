@@ -54,8 +54,28 @@ still served by the lookup routes.
 | `GET /records/{record_id}` | Every visible event for that record (all revisions, deduplicated by `event_id`). | `{as_of, query: {record_id}, records: [envelope...]}`; `404 not_found` when none |
 | `GET /settlements?payout_reference=` | Payout records with exactly that reference visible now (pushed and lookup-only). No fuzzy matching. | `{as_of, query, records: [...]}` (empty list when none) |
 | `GET /payouts?covers=rec-...` or `?payout_date=YYYY-MM-DD` or `?from=YYYY-MM-DD&to=YYYY-MM-DD` (inclusive, at most 31 days) or `?payout_reference=` | Payouts by one key, through `CaseClock.lookup`. Several keys or none: `400 invalid_query`. | `{as_of, query, records: [...]}` |
-| `GET /admin/lookups` | Served lookups, for eval's `lookups` count. | `{lookups: [{at, route, query, record_ids}]}` |
-| `GET /admin/state` | | `{case_number, as_of, pushed, corrections, lookups_served}` |
+| `GET /admin/lookups` | Served lookups that passed validation (empty results included), for eval's `lookups` count. | `{lookups: [{at, route, query, record_ids}]}` |
+| `GET /admin/deliveries` | The webhook log with the exact pushed payloads, in push order, so a passport that was not reachable at seed time replays the pushes (`clients.bootstrap`). | `{as_of, deliveries: [{seq, event_id, record_id, revision, received_at, outcome, reason, payload_sha256, payload: {event, signature}}]}` |
+| `GET /admin/state` | | `{case_number, as_of, pushed: [log entries without payloads], corrections, lookups_served: int}` |
+
+Merchant details settled during the build:
+
+- Before any seed, every route but `GET /` (which returns `case_number` and `as_of` as `null`),
+  `GET /admin/lookups` and `GET /admin/state` refuses `404 unknown_case`.
+- `as_of` on seed and advance must be a full timezone-aware timestamp (`400 invalid_time`); it is
+  floored to a whole UTC second, so pushes and lookups agree on visibility.
+- Pushes follow the case's `merchant_deliveries` list order (the data layer's arrival order), which
+  is also `gold.ingest` index order. Log entries carry `payload_sha256` so a retry can be checked.
+- `/admin/correct` also refuses `revision` and `event_id` in `changes`, and an empty
+  `correction_reason` (`400 invalid_correction`); a change that no longer fits the core schema is
+  `400 invalid_correction` too. `event_id` of a correction is `<old event_id>-r<revision>`.
+- `/payouts`: a malformed date is `400 invalid_time`; `from` without `to`, `from > to`, more than
+  31 days, an empty value, several keys or none is `400 invalid_query`. `payout_date` accepts any
+  ISO spelling `date.fromisoformat` takes and is normalised before the lookup.
+- Results after a correction follow `agents.data.api.lookup`: pushed deliveries (corrections
+  appended) first, then lookup-only records. Consumers must not rely on revision order.
+- A sink that raises or returns an unknown status is logged as outcome `error` with the exception
+  type only; the route never fails.
 
 Admin routes are unauthenticated local demo controls. Lookup routes are open: the passport's
 gateway binds lookups to the subject's own issuers.
@@ -98,13 +118,43 @@ The `rfc_sink` is `alibi.connectors.plug.RfcSink`: `sink(signed_request, recipie
 | `GET /feed/transactions?cursor=&limit=` | feed token | The read-only feed (`alibi/connectors/bank_feed.py`): visible bank rows in arrival order from the cursor. Cursor is opaque text `c:<n>` (rows already served); `limit` default 100, max 500. | `{connection_id, account_ref, as_of, source_version: "mock_bank_feed.v1", transactions: [case rows], next_cursor, has_more}` |
 | `GET /feed/transactions/{txn_id}` | feed token | Latest visible row for one transaction. | `{as_of, source_version, transaction: row}`; `404 not_found` |
 
+Bank details settled during the build:
+
+- Before a seed every recipient route (audit included) is `404 not_found`; admin routes work.
+- `POST /rfc` only issues case RFCs whose `issued_at <= as_of` (`404 unknown_request` otherwise), and
+  refuses a custom request whose `issued_at` is after the clock (`400 invalid_request`). So at the
+  default clock (2026-11-02T09:00Z) `bank_b`'s `rfc-0001-02` (issued 2026-11-04T14:00Z) needs
+  `POST /admin/advance?as_of=2026-11-04T14:00:00Z` (or seeding there) first.
+- A custom request with `parent_request_id` must name one of this recipient's own sent requests
+  and obeys the follow-up scope rule. A custom or body-supplied request id must be an Ident, must
+  not be any case RFC id and must be unused by this recipient (`400 invalid_request` /
+  `invalid_disposition`), so one bank cannot squat the other's id in the passport.
+- `forwarded` outcomes are `accepted`, `refused` or `error` (a raising sink is reported as
+  `error` with the exception type; the request is still stored).
+- Rejected inbox entries keep only the receipt, `{authentication, errors}` and digests; ids
+  quoted in reasons and audit are quoted only when they pass the core `Ident` pattern.
+- Disposition bounds: `reason` at most 300 characters, `question_ids` Idents, `requested_evidence`
+  entries at most 1000 characters (`400 invalid_disposition`).
+- Non-JCS numbers or deeply nested JSON on `/deliver` are `400 invalid_package`.
+- The disposition's `package_digest` is the bare SHA-256 hex of the canonical package (the same
+  value as the receipt's `package_sha256`).
+
 ## Bank feed client (`alibi/connectors/bank_feed.py`)
 
-- `FeedServer(clock, account_ref, connection_id)` with pure methods `page(cursor, limit) -> dict` and
-  `latest(txn_id) -> dict | None`; the bank service wraps them in the two routes above.
-- Transports: an object with `page(cursor, limit) -> dict` and `txn(txn_id) -> dict | None`:
-  `LocalFeed(server)` and `HttpFeed(base_url, token, client=None)` (httpx or a TestClient-like
-  `.get(path, params=, headers=)`).
+- `FeedServer(clock, account_ref, connection_id)` (positional or keyword) with pure methods
+  `page(cursor, limit) -> dict` and `latest(txn_id) -> dict | None`; the bank service wraps them in
+  the two routes above. A cursor beyond the rows ever served, a non-ASCII-digit cursor or a limit
+  outside 1..500 raises `Refusal("invalid_query")`.
+- Transports: an object with `page(cursor, limit) -> dict` and `txn(txn_id) -> {as_of,
+  source_version, transaction: row} | None` (the route body, because `refresh` needs the feed's
+  `as_of` for provenance): `LocalFeed(server)` and `HttpFeed(base_url, token, client=None)` (httpx
+  or a TestClient-like `.get(path, params=, headers=)`). Non-2xx answers other than a 404 on the
+  txn route, non-JSON bodies and wrong shapes raise `FeedError` naming the status or step only.
+- `FeedClient.sync` validates every page before writing (`FeedError` for a page that is not a
+  page or reports `has_more` without advancing the cursor), audits a row it cannot map as a
+  refused batch, and leaves the cursor untouched on any failure. The cursor is positional per
+  connection: re-seeding the bank to another case under the same connection id and store would
+  skip rows, so use a fresh store or connection id per case.
 - `FeedClient(transport, store, *, subject_ref, connection_id)`:
   `sync(now=None) -> {"pages", "inserted", "duplicate", "corrected", "stale", "cursor"}` reads from
   the store's cursor (`store.get_cursor("bank_feed", connection_id)`), maps rows with
@@ -122,15 +172,27 @@ The `rfc_sink` is `alibi.connectors.plug.RfcSink`: `sink(signed_request, recipie
   case-shaped (mapped) or already core-shaped (passed through). Whatever it claims, the stored
   record is `self_supplied` under a `self_` id.
 
-## Plug (`alibi/connectors/plug.py`)
+## Plug (`alibi/connectors/plug.py`, `alibi/connectors/clients.py`)
 
-- `webhook_sink(store, registry, *, subject_ref)` and `rfc_sink(store, registry)` (phase 1).
-- Phase 2: `MerchantClient(transport)` with `settlement_lookup(payment_ref) -> {event, signature} | None`
-  (the gateway's `SettlementLookup`) and `lookup(gateway=None, **one_key) -> [envelope]` (logs a
-  `TraceEvent` via `gateway.log_step` when a gateway is given); `connect(...)` returning the
-  `settlement_lookup` / `txn_refresh` kwargs for `alibi.api.run_investigation`; `bootstrap(...)`
-  that seeds a passport from the running services (merchant seed, feed sync, imports, RFC issue
-  and intake).
+- `plug.webhook_sink(store, registry, *, subject_ref)` and `plug.rfc_sink(store, registry)`: the
+  passport's merchant webhook and RFC intake as in-process callables (`{"status": inserted |
+  duplicate | corrected | stale | refused | error}` and `{"status": accepted | refused | error}`).
+- `clients.MerchantClient(client)` (an `httpx.Client` with `base_url`, or a `TestClient`):
+  `settlement_lookup(payment_ref) -> {event, signature} | None` (the gateway's `SettlementLookup`,
+  the highest visible revision, `extra` stripped), `lookup(gateway=None, question_id=None,
+  **one_key) -> [envelope]` (with a gateway, one `tool_call` trace event by actor `connector`,
+  tool `merchant_lookup`, with the query and a summary of ids, revisions, kinds and statuses),
+  `seed`, `advance`, `retry`, `correct`, `deliveries`, `state`.
+- `clients.BankClient(client, token, recipient=)`: `issue_rfc`, `requests_sent`, `deliver(package) ->
+  (status, body)` (never raises on a rejection), `inbox`, `package`, `attachments`, `disposition`,
+  `audit`, `seed`, `advance`. Refusals raise `ClientError(status, code, reason)`.
+- `clients.connect(merchant, feed) -> {"settlement_lookup", "txn_refresh"}` to splat into
+  `alibi.api.run_investigation(store, request_id, registry=registry, now=now, **connect(m, f))`.
+- `clients.bootstrap(store, registry, *, case, merchant, banks, feed=None, as_of=None, sink=None)`
+  seeds a passport from the services: merchant seed (pushes, or a replay of `GET /admin/deliveries`
+  into the sink when the merchant has none), bank seeds, feed sync, visible imports, and each
+  bank's visible RFCs issued and received. Idempotent.
+- `plug` re-exports the client names lazily, so `from alibi.connectors.plug import connect` works.
 
 ## Demo runner (`alibi/demo_services.py`)
 
@@ -142,5 +204,8 @@ tokens file path (never the tokens), serves until `--timeout` seconds pass or Ct
 
 `unauthenticated`, `not_found`, `unknown_case`, `unknown_event`, `unknown_record`, `unknown_request`,
 `invalid_request`, `invalid_time`, `invalid_query`, `invalid_correction`, `invalid_disposition`,
-`invalid_package`, `clock_backwards`, `request_expired`, `audience_mismatch`, `package_id_reused`,
-`package_rejected`, `disposition_final`, `scope_wider_than_parent`, `sink_unavailable`.
+`invalid_package`, `method_not_allowed`, `clock_backwards`, `request_expired`, `audience_mismatch`,
+`package_id_reused`, `package_rejected`, `disposition_final`, `scope_wider_than_parent`,
+`sink_unavailable`. Unknown paths are `404 not_found` ("no such route"), wrong methods
+`405 method_not_allowed`, and a route's plain `ValueError` is `400 invalid_request` naming only the
+exception type.

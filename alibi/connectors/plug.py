@@ -6,8 +6,10 @@ This module is the only place the connectors touch the passport. Everything goes
 requests through ``receive_rfc``. Refusals come back as data (``{"status": "refused", ...}``),
 never as exceptions, so a simulated service can report them without knowing the core.
 
-Phase 1 of S2 ships the sinks; the gateway callables and the merchant/bank clients follow in
-the same file (phase 2).
+The clients that call the running services, the ``connect`` helper that hands the merchant's
+``settlement_lookup`` and the feed's ``refresh`` to ``run_investigation``, and ``bootstrap`` live in
+``alibi.connectors.clients`` and are re-exported here lazily (``from alibi.connectors.plug import
+MerchantClient, BankClient, connect, bootstrap``), because ``clients`` imports the sinks below.
 """
 
 from __future__ import annotations
@@ -22,7 +24,18 @@ from alibi.core.ingest import IngestError
 from alibi.core.signing import TrustRegistry
 from alibi.core.store import Store, StoreError
 
-__all__ = ["RfcSink", "Sink", "SinkResult", "rfc_sink", "webhook_sink"]
+__all__ = ["BankClient", "ClientError", "MerchantClient", "RfcSink", "Sink", "SinkResult",
+           "bootstrap", "connect", "rfc_sink", "webhook_sink"]
+
+_CLIENT_NAMES = ("BankClient", "ClientError", "MerchantClient", "bootstrap", "connect")
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy re-export of ``alibi.connectors.clients`` (PEP 562), which imports this module."""
+    if name in _CLIENT_NAMES:
+        from alibi.connectors import clients
+        return getattr(clients, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # A merchant webhook sink: (signed payload, received_at ISO text) -> outcome dict.
 Sink = Callable[[dict[str, Any], str], dict[str, Any]]

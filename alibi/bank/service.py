@@ -27,7 +27,6 @@ from typing import Any
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter, ValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from alibi import api
 from alibi.connectors import keys
@@ -39,7 +38,7 @@ from alibi.connectors.case_source import (
     map_rfc,
     parse_time,
 )
-from alibi.connectors.http import Refusal, install_refusals, refusal_body
+from alibi.connectors.http import Refusal, install_refusals
 from alibi.connectors.plug import RfcSink
 from alibi.core import canon
 from alibi.core.canon import CanonError
@@ -825,18 +824,6 @@ def create_bank_app(*, keystore: DemoKeystore, registry: TrustRegistry,
     app = FastAPI(title="Alibi mock bank", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.bank = bank
     install_refusals(app)
-
-    @app.exception_handler(StarletteHTTPException)
-    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # noqa: ARG001
-        # Unmatched routes and wrong methods keep the {code, reason} shape; the path and
-        # method are not echoed. (The shared home for this is http.install_refusals.)
-        if exc.status_code == 404:
-            body = refusal_body("not_found", "no such route")
-        elif exc.status_code == 405:
-            body = refusal_body("invalid_request", "the method is not allowed on this route")
-        else:
-            body = refusal_body("invalid_request", "the request could not be served")
-        return JSONResponse(status_code=exc.status_code, content=body, headers=exc.headers)
 
     def _bearer(request: Request) -> str | None:
         header = request.headers.get("authorization") or ""

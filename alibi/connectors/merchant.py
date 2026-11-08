@@ -517,6 +517,14 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
     def lookups() -> dict[str, Any]:
         return {"lookups": [entry.summary() for entry in state.lookups]}
 
+    @app.get("/admin/deliveries")
+    def deliveries() -> dict[str, Any]:
+        """The webhook log with the exact pushed payloads, in push order, so a passport that
+        was not reachable at seed time can replay the pushes (``clients.bootstrap``)."""
+        return {"as_of": None if state.clock is None else state.clock.as_of_text,
+                "deliveries": [{**d.summary(), "payload": copy.deepcopy(d.payload)}
+                               for d in state.pushed]}
+
     @app.get("/admin/state")
     def admin_state() -> dict[str, Any]:
         return state.snapshot()

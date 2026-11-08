@@ -60,7 +60,30 @@ to the merchant record, or confirm `description` / `settlement_ref` as the inten
 
 S2's services use: `unauthenticated`, `not_found`, `unknown_case`, `unknown_event`, `unknown_record`,
 `unknown_request`, `invalid_request`, `invalid_time`, `invalid_query`, `invalid_correction`,
-`invalid_disposition`, `invalid_package`, `clock_backwards`, `request_expired`, `audience_mismatch`,
+`invalid_disposition`, `invalid_package`, `method_not_allowed`, `clock_backwards`, `request_expired`, `audience_mismatch`,
 `package_id_reused`, `package_rejected`, `disposition_final`, `scope_wider_than_parent`,
 `sink_unavailable`. `audience_mismatch`, `package_id_reused`, `request_expired`, `disposition_final`
 and `scope_wider_than_parent` already appear in `agents/execution/out/consent_matrix.md`.
+
+## 6. The pinned period question is classed as "several totals" (`alibi/core/investigate_rules.py`)
+
+`q.sales_refunds_in_period` reads "Please provide documented marketplace sales and refunds between
+01 October 2026 and 31 October 2026." `classify_question` sees two kinds (orders, refunds) and no
+net cue, so the rules engine answers `unresolved` ("names several totals") and bank_b's package
+carries no evidence. Data's gold expects `supported` with the sales and refund records attached
+(two documented totals, not a net figure).
+
+Ask: when a period question names several kinds without a net cue, answer with one documented
+total per kind (two calculations, or one claim per kind), instead of `several_totals`.
+
+## 7. A redelivered superseded revision is reported `duplicate`, not `stale` (`alibi/core/store.py`)
+
+Case 23 redelivers revision 1 of `rec-0023-009` after revision 2 was accepted. `put_source` finds
+the same `(record_id, revision)` row with identical content and returns `duplicate`, although that
+row is no longer active; data's gold calls it `stale_revision_ignored`. The passport state is
+right (revision 2 stays active, both revisions in history); only the outcome label differs. S2's
+merchant log reports the sink's word, so eval's ingest comparison must accept `duplicate` for
+that outcome (the merchant tests do).
+
+Ask: return `stale` when the matched existing row is inactive (`PutResult.active` is already
+`False` there).

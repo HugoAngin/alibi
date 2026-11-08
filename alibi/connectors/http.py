@@ -6,8 +6,9 @@ Every refusal is a 4xx with the body ``{"code": <stable snake_case code>, "reaso
 same way, as ``invalid_request``, so a front end never sees FastAPI's own error shape.
 
 ``Refusal`` is raised anywhere in a route; ``install_refusals(app)`` turns it, request
-validation errors and plain ``ValueError``/``MappingError`` into that body. Reasons name ids,
-fields and codes only, never payload contents or credentials.
+validation errors, plain ``ValueError``/``MappingError`` and Starlette's own 404/405 (unknown
+path, wrong method) into that body. Reasons name ids, fields and codes only, never payload
+contents, paths or credentials.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from alibi.connectors.case_source import MappingError
 
@@ -37,6 +39,7 @@ CODES = {
     "invalid_correction": 400,
     "invalid_disposition": 400,
     "invalid_package": 400,
+    "method_not_allowed": 405,
     "clock_backwards": 409,
     "request_expired": 409,
     "audience_mismatch": 409,
@@ -93,5 +96,23 @@ def install_refusals(app: FastAPI) -> FastAPI:
     @app.exception_handler(MappingError)
     async def _mapping(request: Request, exc: MappingError) -> JSONResponse:  # noqa: ARG001
         return JSONResponse(status_code=400, content=refusal_body("invalid_request", _clip(exc)))
+
+    @app.exception_handler(ValueError)
+    async def _value(request: Request, exc: ValueError) -> JSONResponse:  # noqa: ARG001
+        # A plain ValueError from a route is a malformed request, never a server fault. Only
+        # the exception type is echoed: its text may quote request values.
+        return JSONResponse(status_code=400, content=refusal_body(
+            "invalid_request", f"the request could not be processed ({type(exc).__name__})"))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(request: Request, exc: StarletteHTTPException) -> JSONResponse:  # noqa: ARG001
+        # Unknown paths and wrong methods keep the contract shape; the path is not echoed.
+        if exc.status_code == 404:
+            body = refusal_body("not_found", "no such route")
+        elif exc.status_code == 405:
+            body = refusal_body("method_not_allowed", "the method is not allowed on this route")
+        else:
+            body = refusal_body("invalid_request", "the request could not be served")
+        return JSONResponse(status_code=exc.status_code, content=body, headers=exc.headers)
 
     return app

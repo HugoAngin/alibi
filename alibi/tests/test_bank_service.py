@@ -476,7 +476,7 @@ def test_unknown_routes_and_methods_keep_the_refusal_shape(client):
     assert split.status_code == 404 and split.json()["code"] == "not_found"
     assert "passwd" not in json.dumps(split.json())
     wrong_method = client.delete("/inbox", headers=auth("bank_a"))
-    assert wrong_method.status_code == 405 and wrong_method.json()["code"] == "invalid_request"
+    assert wrong_method.status_code == 405 and wrong_method.json()["code"] == "method_not_allowed"
     assert set(wrong_method.json()) == {"code", "reason"}
 
 

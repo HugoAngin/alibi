@@ -63,19 +63,20 @@
          missing = [record_id for record_id in wanted if record_id not in held]
          if missing:
              return None, GAP_MISSING_CITED, (
-@@ -1238,6 +1244,17 @@
+@@ -1238,6 +1244,18 @@
  # --------------------------------------------------------------------------- matching
  
  
 +def _allocated_payouts(link: Link) -> set[str]:
 +    """Every member of a linked batch, or the sole payout of an ordinary linked credit.
 +
-+    Linked candidates are the matched members; ambiguous candidates reserve no allocation.
-+    Using the persisted candidates also protects a secondary batch member across requests.
++    Rules reference links store batch members in candidates. Agent links may retain unchosen
++    alternatives there, so their candidates must not be treated as allocated payouts.
 +    """
 +    if link.link_state != LinkState.LINKED or link.record_ref is None:
 +        return set()
-+    return {link.record_ref.ref_id, *(ref.ref_id for ref in link.candidates)}
++    refs = link.candidates if link.method == METHOD_REFERENCE else []
++    return {link.record_ref.ref_id, *(ref.ref_id for ref in refs)}
 +
 +
  def _match(txn: BankTxn, found: Iterable[EvidenceRecord], window: timedelta,
@@ -83,7 +84,7 @@
      """Match a credit to payouts: by a reference it carries, else by amount and date.
 --- /dev/null
 +++ b/alibi/tests/test_batch_dependencies.py
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,114 @@
 +"""Public synthetic batches retain stale-source and exclusive-allocation safeguards."""
 +import copy
 +import json
@@ -184,3 +185,17 @@
 +               for c in second["claims"].values())
 +    assert second["package"]["attachments"] == []
 +    assert earlier_id not in json.dumps(second["package"])
++
++
++def test_agent_link_alternatives_do_not_reserve_unchosen_payouts():
++    from types import SimpleNamespace
++    from alibi.core.investigate_rules import _allocated_payouts
++    from alibi.core.schemas import LinkState
++    first, alternate = SimpleNamespace(ref_id="first"), SimpleNamespace(ref_id="alternate")
++    link = SimpleNamespace(link_state=LinkState.LINKED, record_ref=first,
++                           candidates=[first, alternate], method="agent")
++    assert _allocated_payouts(link) == {"first"}
++    link.method = "reference"
++    assert _allocated_payouts(link) == {"first", "alternate"}
++    link.link_state = LinkState.AMBIGUOUS
++    assert _allocated_payouts(link) == set()

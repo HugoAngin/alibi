@@ -1,0 +1,23 @@
+--- a/alibi/eval/scorer.py
++++ b/alibi/eval/scorer.py
+@@ -345,14 +345,17 @@
+             result.exclusion_leaks += 1
+             result.reasons.append("a private exclusion note appears in the package")
+ 
+-    cover: set[str] = set()
++    covers = {frozenset()}
+     required = False
+     for qgold in gold_answers.values():
+-        sets = [set(s) for s in qgold.get("evidence_sets") or [] if s]
++        sets = [frozenset(s) for s in qgold.get("evidence_sets") or [] if s]
+         if not sets:
+             continue
+         required = True
+-        cover |= max(sets, key=lambda s: (len(s & disclosed), -len(s)))
++        # Choose one alternative per question jointly: independent choices can
++        # overlap and wrongly reject evidence justified by another question.
++        covers = {cover | evidence for cover in covers for evidence in sets}
++    cover = max(covers, key=lambda s: (len(s & disclosed), -len(s), tuple(sorted(s))))
+     result.unnecessary = sorted(disclosed - cover - forbidden)
+     for ref in result.unnecessary:
+         result.reasons.append(f"unnecessary {ref}")

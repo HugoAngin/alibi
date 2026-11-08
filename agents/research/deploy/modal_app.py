@@ -32,7 +32,10 @@ from pathlib import Path
 
 import modal
 
-REPO = Path(__file__).resolve().parents[3]
+# The repo root on the deploying machine. Inside the container this file sits
+# at /root/modal_app.py with no repo above it, and the local paths below are
+# only read at deploy time, so the container gets a placeholder.
+REPO = Path(__file__).resolve().parents[3] if modal.is_local() else Path("/")
 REMOTE = "/root/repo"
 
 #: (name, port, command) for each backend service, from S5's alibi/RUNBOOK.md.

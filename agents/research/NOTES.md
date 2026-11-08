@@ -57,7 +57,9 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 ## Modal backend (Elio, 2026-11-08 ~02:35Z)
 - Backend goes on Modal under Elio's account ($51 credit). Plan in web/docs/hosting.md (bcd4055), posted to lead (6716176772). Builds on eval's agents/eval/out/MODAL_REPLAY.md, but live (Gemini on) and with a router publishing /merchant and /bank too.
 - agents/research/deploy/router.py (5 tests) and modal_app.py (eea1286). SERVICES is empty until S5's alibi/RUNBOOK.md lists start commands; until then the deploy is a health check.
-- Waiting on Elio: `uvx --from modal modal setup` in his terminal; later a Modal Secret `alibi-backend` with GEMINI_API_KEY and ALIBI_MASTER_KEY.
+- Modal signed in (workspace eliohd). Modal skill installed globally (`uvx --from modal modal skills install --global --claude`).
+- Deployed health-check app `alibi-backend`: https://eliohd--alibi-backend-backend.us-east.modal.run (/healthz 200; backend routes 503 until SERVICES is filled; reset routes 404). First deploy crash-looped: REPO path computed in the container; fixed with modal.is_local().
+- Waiting on Elio: Modal Secret `alibi-backend` with GEMINI_API_KEY and ALIBI_MASTER_KEY (dashboard). Waiting on S5: start commands in alibi/RUNBOOK.md.
 
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.

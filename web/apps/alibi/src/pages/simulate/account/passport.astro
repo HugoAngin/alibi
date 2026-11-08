@@ -1,0 +1,11 @@
+---
+/**
+ * `/simulate/account/passport/`: Maya's financial passport and signed packages for any visitor,
+ * read-only (src/components/app/EvidencePassportView.astro). No downloads.
+ */
+import EvidencePassportView from '@/components/app/EvidencePassportView.astro';
+
+export const prerender = false;
+---
+
+<EvidencePassportView simulation />

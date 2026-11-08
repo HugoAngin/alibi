@@ -1,0 +1,11 @@
+---
+/**
+ * `/simulate/account/`: Maya's Account screen for any visitor, read-only
+ * (src/components/app/AccountView.astro). No sign-in, sign-out or export.
+ */
+import AccountView from '@/components/app/AccountView.astro';
+
+export const prerender = false;
+---
+
+<AccountView simulation />

@@ -6,25 +6,54 @@
  * page, and out of the pocket rise her shopping profiles (Amazon, Deliveroo, UNIQLO, UCL) as file
  * dividers and her bank cards (Santander, NatWest).
  *
- * CSS 3D transforms, no WebGL. The script only writes a few custom properties per frame (turn,
- * open, and each item's rise), and runs only while the hero is on screen. Without JavaScript, or
+ * The folio itself is src/components/passport/PassportFolio.astro. The script only writes its pose
+ * (turn, open, and each item's rise), and runs only while the hero is on screen. Without JavaScript, or
  * with reduced motion, the folio shows open at a fixed angle and the page scrolls normally.
  *
  * Facts come from case 1 (holder `maya-001`, accounts ••4417 and ••0921, 1,284 records since 2022).
  */
 import { Show } from '@clerk/astro/components';
 
-const profiles = [
-  { name: 'UCL', logo: '/logos/ucl.png', role: 'Tuition and refunds', tint: '#e9e3f3' },
-  { name: 'UNIQLO', logo: '/logos/uniqlo.png', role: 'Purchases and refunds', tint: '#f6e3df' },
-  { name: 'Deliveroo', logo: '/logos/deliveroo.png', role: 'Rider earnings', tint: '#e3eaf6' },
-  { name: 'Amazon', logo: '/logos/amazon.png', role: 'Seller payouts', tint: '#fbf3e2' },
-];
+import PassportFolio from '@/components/passport/PassportFolio.astro';
+import { FOLIO_TINTS, type FolioContents } from '@/lib/passportFolio';
 
-const cards = [
-  { bank: 'NatWest', logo: '/logos/natwest.png', last4: '0921', kind: 'natwest' },
-  { bank: 'Santander', logo: '/logos/santander.png', last4: '4417', kind: 'santander' },
-];
+const maya: FolioContents = {
+  holder: 'Maya',
+  subjectRef: 'maya-001',
+  since: '2022',
+  profiles: [
+    { name: 'UCL', logo: '/logos/ucl.png', role: 'Tuition and refunds', tint: FOLIO_TINTS[0] },
+    {
+      name: 'UNIQLO',
+      logo: '/logos/uniqlo.png',
+      role: 'Purchases and refunds',
+      tint: FOLIO_TINTS[1],
+    },
+    {
+      name: 'Deliveroo',
+      logo: '/logos/deliveroo.png',
+      role: 'Rider earnings',
+      tint: FOLIO_TINTS[2],
+    },
+    { name: 'Amazon', logo: '/logos/amazon.png', role: 'Seller payouts', tint: FOLIO_TINTS[3] },
+  ],
+  featured: {
+    role: 'Seller payouts',
+    title: 'Amazon seller account',
+    stamp: 'signed',
+    meta: 'Payout PO-0001-01 · £2,160.00',
+  },
+  cards: [
+    { bank: 'NatWest', logo: '/logos/natwest.png', last4: '0921', kind: 'natwest' },
+    { bank: 'Santander', logo: '/logos/santander.png', last4: '4417', kind: 'santander' },
+  ],
+  facts: [
+    { label: 'Merchants', value: '4 connected' },
+    { label: 'Banks', value: '2 read-only' },
+    { label: 'Shared with', value: 'You decide' },
+  ],
+  pocket: { title: '1,284 signed records', sub: '4 merchants · 2 banks · since 2022' },
+};
 ---
 
 <header class="pf s-wrap" data-pf>
@@ -53,124 +82,11 @@ const cards = [
 
   <div class="pf-track">
     <div class="pf-sticky">
-      <div
-        class="pf-scene"
-        role="img"
-        aria-label="Maya’s Alibi financial passport, a cerulean folio that opens to show her passport page, file dividers for her Amazon, Deliveroo, UNIQLO and UCL profiles, and her Santander and NatWest bank cards."
-      >
-        <div class="pf-shadow" aria-hidden="true"></div>
-        <div class="pf-scale" aria-hidden="true">
-          <div class="pf-obj">
-            {/* Back cover: outside, and the lining you see once the folio is open. */}
-            <div class="pf-face pf-back-out"></div>
-            <div class="pf-face pf-lining"></div>
-
-            {/* Spine (the hinge) and the right edge, where the contents show when closed. */}
-            <div class="pf-spine"></div>
-            <div class="pf-edge"></div>
-
-            {/* File dividers, one per shopping profile, each tab at its own place. */}
-            {profiles.map((p, i) => (
-              <div
-                class="pf-item pf-divider"
-                data-pf-item
-                data-a={0.3 + i * 0.05}
-                data-b={0.62 + i * 0.05}
-                style={`--i:${i}; --tint:${p.tint}; --tab:${10 + i * 67}px; --z:${2 + i * 2}px; --y0:-26px; --y1:${-40 - (3 - i) * 22}px; --r:0deg`}
-              >
-                <span class="pf-tab">
-                  <img src={p.logo} alt="" loading="eager" decoding="async" />
-                </span>
-                <span class="pf-div-body">
-                  {i === profiles.length - 1 && (
-                    <>
-                      <span class="pf-div-role">{p.role}</span>
-                      <span class="pf-div-name">{p.name} seller account</span>
-                      <span class="pf-div-meta">
-                        <span class="pf-stamp">signed</span>
-                        <span>Payout PO-0001-01 · £2,160.00</span>
-                      </span>
-                    </>
-                  )}
-                </span>
-              </div>
-            ))}
-
-            {/* Bank cards, tucked in the pocket. */}
-            {cards.map((c, i) => (
-              <div
-                class:list={['pf-item', 'pf-card', `pf-card--${c.kind}`]}
-                data-pf-item
-                data-a={0.46 + i * 0.07}
-                data-b={0.8 + i * 0.07}
-                style={`--x:${16 + i * 88}px; --z:${11 + i * 2}px; --y0:214px; --y1:${84 + i * 26}px; --r:${i ? 4 : -5}deg`}
-              >
-                <span class="pf-card-top">
-                  <span class="pf-card-logo">
-                    <img src={c.logo} alt="" loading="eager" decoding="async" />
-                  </span>
-                  <span class="pf-card-n">•• {c.last4}</span>
-                </span>
-                <span class="pf-chip"></span>
-                <span class="pf-card-ro">Read-only feed</span>
-              </div>
-            ))}
-
-            {/* The pocket the contents sit in. */}
-            <div class="pf-pocket">
-              <span class="pf-pocket-wm">alibi</span>
-              <span class="pf-pocket-n">1,284 signed records</span>
-              <span class="pf-pocket-s">4 merchants · 2 banks · since 2022</span>
-            </div>
-
-            {/* Front cover: outside, and the passport page on its inside. */}
-            <div class="pf-cover">
-              <div class="pf-face pf-front">
-                <span class="pf-front-wm">alibi</span>
-              </div>
-
-              <div class="pf-face pf-page">
-                <div class="pf-paper">
-                  <p class="pf-page-h">
-                    <span class="pf-page-wm">alibi</span>
-                    <span>Financial passport</span>
-                  </p>
-                  <div class="pf-id">
-                    <span class="pf-photo">M</span>
-                    <dl>
-                      <div>
-                        <dt>Holder</dt>
-                        <dd>Maya</dd>
-                      </div>
-                      <div>
-                        <dt>Passport no.</dt>
-                        <dd class="pf-mono">maya-001</dd>
-                      </div>
-                      <div>
-                        <dt>History from</dt>
-                        <dd>2022</dd>
-                      </div>
-                    </dl>
-                  </div>
-                  <dl class="pf-sources">
-                    <div>
-                      <dt>Merchants</dt>
-                      <dd>4 connected</dd>
-                    </div>
-                    <div>
-                      <dt>Banks</dt>
-                      <dd>2 read-only</dd>
-                    </div>
-                    <div>
-                      <dt>Shared with</dt>
-                      <dd>You decide</dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="pf-scene">
+        <PassportFolio
+          {...maya}
+          label="Maya’s Alibi financial passport, a cerulean folio that opens to show her passport page, file dividers for her Amazon, Deliveroo, UNIQLO and UCL profiles, and her Santander and NatWest bank cards."
+        />
       </div>
     </div>
   </div>
@@ -179,25 +95,8 @@ const cards = [
 <style>
   /* ------------------------------------------------------------------ layout */
   .pf {
-    --W: 290px;
-    --H: 400px;
-    --T: 18px;
-    --navy: #437c90;
-    --navy-2: #3a6e81;
-    --navy-3: #2f5b6b;
-    --foil: var(--s-ink);
-
-    /* Resting pose without JavaScript or with reduced motion: open, slightly turned. */
-    --open: 1;
-    --rx: 8deg;
-    --ry: 12deg;
-    --rz: -1deg;
-    --fy: 0px;
-    /* Offset of the folio within its column (the script lines it up with the copy). */
-    --ox: 0px;
-    --oy: 24px;
-    --k: 0.9;
-
+    /* The folio's pose (--open, --ry, --k, ...) is written here by the script and inherited.
+     * Without it, PassportFolio's defaults show the passport open. */
     display: grid;
     grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
     gap: clamp(24px, 4vw, 64px);
@@ -249,8 +148,6 @@ const cards = [
   .pf-scene {
     position: absolute;
     inset: 0;
-    perspective: 1700px;
-    perspective-origin: 50% 40%;
   }
 
   /* Once the script runs, the scene pins while the visitor scrolls past it. */
@@ -268,470 +165,6 @@ const cards = [
     top: 0;
     height: 100vh;
     min-height: 0;
-  }
-
-  /* ------------------------------------------------------------ 3D object */
-  .pf-shadow {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: calc(var(--W) * (1 + var(--open)) * var(--k));
-    height: 70px;
-    transform: translate(calc(-50% + var(--ox)), calc(var(--H) * var(--k) * 0.5 + var(--oy) - 4px));
-    border-radius: 50%;
-    background: radial-gradient(closest-side, rgb(31 27 22 / 0.22), transparent);
-    filter: blur(8px);
-  }
-
-  .pf-scale {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform-style: preserve-3d;
-    transform: translate(var(--ox), calc(var(--fy) + var(--oy))) scale(var(--k));
-  }
-
-  /* The object's left edge is the spine, at the centre of the scene. It is shifted left by half
-   * its width when closed, so it always turns about its visual centre. */
-  .pf-obj {
-    position: absolute;
-    left: 0;
-    top: calc(var(--H) / -2);
-    width: var(--W);
-    height: var(--H);
-    transform-style: preserve-3d;
-    transform-origin: 0 50%;
-    transform: rotateX(var(--rx)) rotateY(var(--ry)) rotateZ(var(--rz))
-      translateX(calc((1 - var(--open)) * var(--W) / -2));
-  }
-
-  .pf-face,
-  .pf-item,
-  .pf-pocket,
-  .pf-spine,
-  .pf-edge,
-  .pf-cover {
-    position: absolute;
-    backface-visibility: hidden;
-  }
-
-  .pf-face {
-    inset: 0;
-    border-radius: 4px 16px 16px 4px;
-  }
-
-  /* Leather: cerulean gradients and a fine grain. */
-  .pf-back-out,
-  .pf-lining,
-  .pf-front,
-  .pf-spine,
-  .pf-pocket,
-  .pf-page {
-    background-color: var(--navy);
-    background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E"),
-      linear-gradient(150deg, var(--navy) 0%, var(--navy-2) 60%, var(--navy-3) 100%);
-  }
-
-  .pf-back-out {
-    transform: rotateY(180deg) translateZ(1px);
-    border-radius: 16px 4px 4px 16px;
-  }
-
-  .pf-lining {
-    background-image:
-      repeating-linear-gradient(135deg, rgb(255 255 255 / 0.025) 0 2px, transparent 2px 9px),
-      linear-gradient(180deg, #3d7285, #2f5b6b);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
-  }
-
-  .pf-spine {
-    left: 0;
-    top: 0;
-    width: var(--T);
-    height: var(--H);
-    transform-origin: 0 50%;
-    transform: rotateY(-90deg);
-    background-image: linear-gradient(90deg, var(--navy-3), var(--navy-2) 50%, var(--navy-3));
-  }
-
-  /* The right edge: the stack of cards and dividers between the covers. Gone once open. */
-  .pf-edge {
-    left: var(--W);
-    top: 10px;
-    width: var(--T);
-    height: calc(var(--H) - 20px);
-    transform-origin: 0 50%;
-    transform: rotateY(90deg) translateX(calc(var(--T) * -1));
-    background: repeating-linear-gradient(
-      90deg,
-      #f4efe4 0 2px,
-      #d9d1c2 2px 3px,
-      #e6dccb 3px 5px,
-      #c9bfae 5px 6px
-    );
-    opacity: calc(1 - var(--open) * 4);
-  }
-
-  /* ------------------------------------------------------- file dividers */
-  .pf-item {
-    left: var(--x, 6px);
-    top: 0;
-    transform: translate3d(0, calc(var(--y0) + (var(--y1) - var(--y0)) * var(--t, 1)), var(--z))
-      rotate(calc(var(--r) * var(--t, 1)));
-  }
-
-  .pf-divider {
-    width: calc(var(--W) - 12px);
-    height: 236px;
-  }
-
-  .pf-tab {
-    position: absolute;
-    top: 0;
-    left: var(--tab);
-    width: 62px;
-    height: 27px;
-    display: grid;
-    place-items: center;
-    border-radius: 7px 7px 0 0;
-    background: var(--tint);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7);
-  }
-
-  .pf-tab img {
-    max-width: 44px;
-    max-height: 14px;
-    object-fit: contain;
-  }
-
-  .pf-div-body {
-    position: absolute;
-    inset: 26px 0 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 0 8px 4px 4px;
-    background: var(--tint);
-    box-shadow:
-      0 -1px 0 rgb(31 27 22 / 0.06),
-      0 -6px 12px -8px rgb(31 27 22 / 0.35);
-  }
-
-  .pf-div-role {
-    font: 500 10px/1.2 var(--s-font-body);
-    color: rgb(31 27 22 / 0.62);
-  }
-
-  .pf-div-name {
-    font: 600 15px/1.15 var(--s-font-display);
-    letter-spacing: -0.01em;
-    color: var(--s-ink);
-    margin-top: 2px;
-  }
-
-  .pf-div-meta {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font: 500 10px/1 var(--s-font-mono);
-    color: var(--s-ink-soft);
-  }
-
-  .pf-stamp {
-    padding: 2px 5px;
-    border: 1px solid rgb(67 124 144 / 0.45);
-    border-radius: 3px;
-    color: var(--s-accent);
-  }
-
-  /* -------------------------------------------------------------- cards */
-  .pf-card {
-    width: 176px;
-    height: 111px;
-    padding: 12px 14px;
-    border-radius: 10px;
-    color: #fff;
-    box-shadow:
-      0 -6px 14px -8px rgb(0 0 0 / 0.5),
-      inset 0 1px 0 rgb(255 255 255 / 0.18);
-  }
-
-  .pf-card--santander {
-    background: linear-gradient(135deg, #e3262e, #a50f17);
-  }
-
-  .pf-card--natwest {
-    background: linear-gradient(135deg, #5a2b86, #2e0f4f);
-  }
-
-  .pf-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .pf-card-logo {
-    display: grid;
-    place-items: center;
-    height: 20px;
-    padding: 0 7px;
-    border-radius: 5px;
-    background: #fff;
-  }
-
-  .pf-card-logo img {
-    max-width: 62px;
-    max-height: 11px;
-    object-fit: contain;
-  }
-
-  .pf-card-n {
-    font: 500 11px/1 var(--s-font-mono);
-    letter-spacing: 0.04em;
-  }
-
-  .pf-chip {
-    display: block;
-    width: 26px;
-    height: 19px;
-    margin-top: 14px;
-    border-radius: 4px;
-    background:
-      linear-gradient(90deg, transparent 45%, rgb(0 0 0 / 0.18) 45% 55%, transparent 55%),
-      linear-gradient(0deg, transparent 45%, rgb(0 0 0 / 0.18) 45% 55%, transparent 55%),
-      linear-gradient(135deg, #f1dfa6, #c7a75b);
-  }
-
-  .pf-card-ro {
-    display: block;
-    margin-top: 12px;
-    font: 500 9px/1 var(--s-font-body);
-    opacity: 0.8;
-  }
-
-  /* ------------------------------------------------------------- pocket */
-  .pf-pocket {
-    left: 0;
-    right: 0;
-    top: 192px;
-    bottom: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    gap: 4px;
-    padding: 0 22px 24px;
-    border-radius: 0 6px 16px 4px;
-    transform: translateZ(calc(var(--T) - 2px));
-    color: var(--foil);
-    box-shadow:
-      0 -10px 18px -10px rgb(0 0 0 / 0.55),
-      inset 0 1px 0 rgb(255 255 255 / 0.12);
-  }
-
-  /* Stitching, inset from the edge. */
-  .pf-pocket::before {
-    content: '';
-    position: absolute;
-    inset: 8px;
-    border: 1px dashed rgb(255 255 255 / 0.4);
-    border-radius: 2px 4px 10px 2px;
-  }
-
-  /* Thumb notch at the top of the pocket. */
-  .pf-pocket::after {
-    content: '';
-    position: absolute;
-    top: -1px;
-    left: 50%;
-    width: 64px;
-    height: 18px;
-    transform: translateX(-50%);
-    border-radius: 0 0 40px 40px;
-    background: #2c5564;
-    box-shadow: inset 0 -2px 3px rgb(0 0 0 / 0.35);
-  }
-
-  .pf-pocket-wm {
-    font: 600 22px/1 var(--s-font-display);
-    letter-spacing: -0.01em;
-    color: #000;
-    text-shadow: 0 1px 0 rgb(255 255 255 / 0.18);
-  }
-
-  .pf-pocket-n {
-    font: 500 12px/1.2 var(--s-font-body);
-  }
-
-  .pf-pocket-s {
-    font: 400 10px/1.2 var(--s-font-mono);
-    opacity: 0.7;
-  }
-
-  /* -------------------------------------------------------------- cover */
-  .pf-cover {
-    inset: 0;
-    transform-style: preserve-3d;
-    transform-origin: 0 50%;
-    transform: translateZ(var(--T)) rotateY(calc(var(--open) * -172deg));
-    backface-visibility: visible;
-  }
-
-  .pf-front {
-    color: var(--foil);
-    box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.06),
-      inset 6px 0 10px -6px rgb(0 0 0 / 0.5);
-  }
-
-  /* Light on the cover falls away as it swings open, and on the passport page as it lands. */
-  .pf-front::after,
-  .pf-page::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  .pf-front::after {
-    background: linear-gradient(90deg, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.55));
-    opacity: calc(var(--open) * 1.4);
-  }
-
-  .pf-page::after {
-    background: linear-gradient(270deg, rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.5));
-    opacity: calc((1 - var(--open)) * 1.6);
-  }
-
-  /* The wordmark runs along the spine edge, reading upwards, in black. */
-  .pf-front-wm {
-    position: absolute;
-    left: 30px;
-    bottom: 26px;
-    transform-origin: 0 0;
-    transform: rotate(-90deg);
-    font: 700 60px/1 var(--s-font-display);
-    letter-spacing: -0.02em;
-    /* Debossed: the letters are pressed into the leather like a crater. This layer draws only
-     * the rim (the lower lip catches a thin highlight, the upper edge a soft shadow); the floor
-     * of the crater is the ::after layer on top, because Chrome paints text-shadow over a
-     * text-clipped background. The text is turned -90deg, so local right is screen up and local
-     * left is screen down. */
-    color: transparent;
-    text-shadow:
-      -1px 0 0 rgb(255 255 255 / 0.34),
-      -2px 0 2px rgb(255 255 255 / 0.12),
-      1px 0 1px rgb(0 0 0 / 0.4);
-  }
-
-  /* The crater floor: dark where the near wall shades it (screen top), lifting towards the far
-   * wall that catches the light, with the leather grain showing through. */
-  .pf-front-wm::after {
-    content: 'alibi';
-    position: absolute;
-    inset: 0;
-    color: transparent;
-    text-shadow: none;
-    background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .12 0'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)'/%3E%3C/svg%3E"),
-      linear-gradient(to left, #02080b 0%, #0a1b22 40%, #1f3f4b 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-  }
-
-  /* --------------------------------------------------------- passport page */
-  .pf-page {
-    transform: rotateY(180deg) translateZ(1px);
-    border-radius: 16px 4px 4px 16px;
-    padding: 10px;
-  }
-
-  .pf-paper {
-    position: relative;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    padding: 18px 18px 14px;
-    border-radius: 10px 3px 3px 10px;
-    overflow: hidden;
-    color: var(--s-ink);
-    background:
-      repeating-radial-gradient(
-        circle at 110% 120%,
-        transparent 0 7px,
-        rgb(67 124 144 / 0.055) 7px 8px
-      ),
-      repeating-radial-gradient(
-        circle at -20% -10%,
-        transparent 0 9px,
-        rgb(31 122 74 / 0.04) 9px 10px
-      ),
-      linear-gradient(160deg, #fbf8f1, #efe8da);
-  }
-
-  .pf-page-h {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin: 0;
-    font: 500 11px/1 var(--s-font-body);
-    color: var(--s-ink-soft);
-  }
-
-  .pf-page-wm {
-    font: 600 18px/1 var(--s-font-display);
-    color: #000;
-  }
-
-  .pf-id {
-    display: grid;
-    grid-template-columns: 78px 1fr;
-    gap: 14px;
-  }
-
-  .pf-photo {
-    display: grid;
-    place-items: center;
-    height: 96px;
-    border-radius: 6px;
-    background: linear-gradient(160deg, #dceaef, #bdd5de);
-    font: 500 40px/1 var(--s-font-display);
-    color: rgb(67 124 144 / 0.75);
-  }
-
-  .pf-paper dl {
-    display: grid;
-    gap: 8px;
-    margin: 0;
-  }
-
-  .pf-paper dt {
-    font: 500 8.5px/1 var(--s-font-body);
-    color: var(--s-ink-faint);
-    margin-bottom: 3px;
-  }
-
-  .pf-paper dd {
-    margin: 0;
-    font: 500 13px/1.1 var(--s-font-body);
-  }
-
-  .pf-mono {
-    font-family: var(--s-font-mono) !important;
-    font-size: 12px !important;
-  }
-
-  .pf-sources {
-    grid-template-columns: repeat(3, 1fr);
-    padding-top: 12px;
-    border-top: 1px solid rgb(31 27 22 / 0.1);
-  }
-
-  .pf-sources dd {
-    font-size: 11px;
   }
 
   /* --------------------------------------------------------- small screens */

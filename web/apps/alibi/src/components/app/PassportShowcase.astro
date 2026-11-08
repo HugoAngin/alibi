@@ -1,0 +1,103 @@
+---
+/**
+ * The holder's financial passport on the dashboard: the landing page's 3D folio, filled from their
+ * own passport home (connections, records, who they shared with). On Account it rests closed and
+ * opens when pointed at or focused; on the passport page it is shown open. Reduced motion skips
+ * the opening animation.
+ */
+import PassportFolio from '@/components/passport/PassportFolio.astro';
+import type { PassportHome } from '@/lib/api/types';
+import { folioFromPassport } from '@/lib/passportFolio';
+
+interface Props {
+  data: PassportHome;
+  /** Show it open (the passport page) instead of closed until pointed at (Account). */
+  open?: boolean;
+}
+
+const { data, open = false } = Astro.props;
+const contents = folioFromPassport(data);
+const merchants = contents.profiles.map((p) => p.name);
+const banks = contents.cards.map((c) => c.bank);
+const label =
+  `${contents.holder}’s Alibi financial passport` +
+  (merchants.length ? `, holding ${merchants.join(', ')}` : '') +
+  (banks.length ? ` and ${banks.join(', ')}` : '') +
+  '.';
+---
+
+<div class:list={['showcase', open ? 'showcase--open' : 'showcase--closed']}>
+  <PassportFolio {...contents} label={label} />
+</div>
+
+<style>
+  .showcase {
+    --fy: 0px;
+    --oy: 18px;
+    height: 300px;
+    transition:
+      --open 900ms cubic-bezier(0.22, 1, 0.36, 1),
+      --reveal 1100ms cubic-bezier(0.22, 1, 0.36, 1) 150ms,
+      --rx 900ms cubic-bezier(0.22, 1, 0.36, 1),
+      --ry 900ms cubic-bezier(0.22, 1, 0.36, 1),
+      --rz 900ms cubic-bezier(0.22, 1, 0.36, 1),
+      --k 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Closed and tilted, the tabs of what is inside peeking out of the top. */
+  .showcase--closed {
+    --open: 0;
+    --reveal: 0;
+    --rx: 14deg;
+    --ry: -24deg;
+    --rz: -6deg;
+    --k: 0.6;
+  }
+
+  /* Pointed at, or focused through the link around it: it opens. */
+  .showcase--closed:hover,
+  :global(a:focus-visible) .showcase--closed {
+    --open: 0.94;
+    --reveal: 1;
+    --rx: 8deg;
+    --ry: 12deg;
+    --rz: -2deg;
+    --k: 0.5;
+  }
+
+  .showcase--open {
+    --open: 1;
+    --reveal: 1;
+    --rx: 8deg;
+    --ry: 12deg;
+    --rz: -2deg;
+    --k: 0.52;
+  }
+
+  @media (min-width: 700px) {
+    .showcase {
+      height: 380px;
+    }
+
+    .showcase--closed {
+      --k: 0.74;
+    }
+
+    .showcase--closed:hover,
+    :global(a:focus-visible) .showcase--closed {
+      --k: 0.64;
+    }
+
+    .showcase--open {
+      height: 460px;
+      --k: 0.82;
+      --oy: 34px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .showcase {
+      transition: none;
+    }
+  }
+</style>

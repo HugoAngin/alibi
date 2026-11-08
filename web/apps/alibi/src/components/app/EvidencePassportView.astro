@@ -1,0 +1,180 @@
+---
+/**
+ * The evidence passport screen, for `/app/account/passport/` (the signed-in holder) and
+ * `/simulate/account/passport/` (Maya's, read-only). The holder's financial passport, open, and
+ * each package they approved and sent, with the signed JSON the backend produced for it (the
+ * existing export). They decide which bank receives a package; this page makes no claim about
+ * what a bank accepts. In the simulation the signed files are not offered for download.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import PassportShowcase from '@/components/app/PassportShowcase.astro';
+import { requestHref } from '@/components/app/home';
+import { day, when } from '@/lib/format';
+import { loadPassport } from '@/lib/passport';
+
+interface Props {
+  /** `/simulate/account/passport/`: Maya's, read-only, for any visitor. */
+  simulation?: boolean;
+}
+
+const { simulation = false } = Astro.props;
+const loaded = await loadPassport();
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const packages =
+  loaded.source === 'missing'
+    ? []
+    : [...loaded.data.sharing_history].sort((a, b) => b.sent_at.localeCompare(a.sent_at));
+// The backend serves one signed package per request (its current one), so only the newest
+// package of each request offers the download; older rows stay as history.
+const downloadable = new Set(
+  simulation
+    ? []
+    : packages
+        .filter((p) => p.status !== 'superseded')
+        .filter((p, i, all) => all.findIndex((q) => q.request_id === p.request_id) === i)
+        .map((p) => p.package_id),
+);
+const STATUS: Record<string, string> = {
+  delivered: 'Delivered',
+  acknowledged: 'Received by the bank',
+  superseded: 'Replaced by a newer package',
+  expired: 'Expired',
+};
+const whose = simulation && loaded.source !== 'missing' ? `${loaded.data.holder.name}’s` : 'Your';
+---
+
+<BaseLayout title="Financial passport" view="app">
+  <AppFrame
+    active="account"
+    simulation={simulation}
+    holder={loaded.source === 'missing' ? undefined : loaded.data.holder.name}
+    fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+  >
+    <a class="back" href="/app/account/">
+      ← Account
+    </a>
+    {loaded.source === 'missing' ? (
+      <p class="lede">{loaded.reason}</p>
+    ) : (
+      <>
+        <div class="card">
+          <PassportShowcase data={loaded.data} open />
+        </div>
+        <h1 class="title">{whose} financial passport</h1>
+        <p class="lede">
+          Everything that explains {simulation ? whose : 'your'} money, in one place: the merchants
+          and banks connected to it, and the packages shared from it. Each package is signed and
+          holds only what was approved for the one bank chosen.
+          {!simulation &&
+            ' Download the current package for a request as the signed file the backend sent.'}
+        </p>
+
+        <section class="packages" id="packages" aria-labelledby="packages-title">
+          <h2 id="packages-title" class="sec-title">
+            Signed packages
+          </h2>
+          {packages.length === 0 && (
+            <p class="lede">
+              Nothing shared yet. When you approve a bank’s request and send it, the signed package
+              appears here.
+            </p>
+          )}
+          <ul class="list">
+            {packages.map((p) => (
+              <li class="pkg">
+                <p class="pkg-title">
+                  {p.item_count} {p.item_count === 1 ? 'item' : 'items'} to {p.recipient}
+                </p>
+                <p class="pkg-meta">
+                  Sent {when(p.sent_at)} · valid until {day(p.expires_at)} ·{' '}
+                  {STATUS[p.status] ?? p.status}
+                </p>
+                <p class="pkg-actions">
+                  {downloadable.has(p.package_id) && (
+                    <a href={`${requestHref(p.request_id)}export.json`} download>
+                      Download signed JSON
+                    </a>
+                  )}
+                  <a href={requestHref(p.request_id)}>View the request</a>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </>
+    )}
+  </AppFrame>
+</BaseLayout>
+
+<style>
+  .back {
+    font-size: var(--t-sm);
+    color: var(--a-accent);
+    text-decoration: none;
+  }
+
+  .card {
+    margin-top: 18px;
+  }
+
+  .title {
+    margin: 28px 0 8px;
+    font: 500 1.6rem/1.15 var(--a-display);
+    letter-spacing: -0.02em;
+  }
+
+  .lede {
+    font-size: var(--t-sm);
+    color: var(--a-soft);
+  }
+
+  .packages {
+    margin-top: 32px;
+  }
+
+  .sec-title {
+    margin: 0 0 8px;
+    font: 600 1.05rem/1.2 var(--a-display);
+  }
+
+  .list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .pkg {
+    padding-block: 14px;
+  }
+
+  .pkg + .pkg {
+    border-top: 1px solid var(--a-line);
+  }
+
+  .pkg p {
+    margin: 0;
+  }
+
+  .pkg-title {
+    font-weight: 600;
+  }
+
+  .pkg-meta {
+    font-size: var(--t-xs);
+    color: var(--a-faint);
+  }
+
+  .pkg-actions {
+    display: flex;
+    gap: 18px;
+    margin-top: 8px !important;
+    font-size: var(--t-sm);
+    font-weight: 500;
+  }
+
+  .pkg-actions a {
+    color: var(--a-accent);
+    text-decoration: none;
+  }
+</style>

@@ -1,6 +1,6 @@
 /**
- * `/simulate/` keeps Home and request links inside the simulation, and leaves every other app link
- * (Account, merchants, exports, actions) on `/app/`, which needs sign-in.
+ * `/simulate/` keeps Home, request, Account and passport links inside the simulation, and leaves
+ * every other app link (merchants, profile, exports, actions) on `/app/`, which needs sign-in.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -17,9 +17,19 @@ describe('simulationLinks', () => {
     );
   });
 
-  it('leaves Account, merchants, exports and form actions alone', () => {
+  it('keeps Account and the passport page in the simulation', () => {
+    expect(simulationLinks('<a href="/app/account/">Account</a>')).toBe(
+      '<a href="/simulate/account/">Account</a>',
+    );
+    expect(simulationLinks('<a href="/app/account/passport/">x</a>')).toBe(
+      '<a href="/simulate/account/passport/">x</a>',
+    );
+  });
+
+  it('leaves merchants, profile, exports and form actions alone', () => {
     const html =
-      '<a href="/app/account/"></a><a href="/app/merchants/"></a>' +
+      '<a href="/app/merchants/"></a><a href="/app/account/profile/"></a>' +
+      '<a href="/app/account/export.json"></a>' +
       '<a href="/app/requests/rfc-0001-01/export.json"></a><form action="/app/act"></form>';
     expect(simulationLinks(html)).toBe(html);
   });

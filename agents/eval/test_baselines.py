@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agents.data.api import canonical_case, without_gold
+from agents.data.api import canonical_case, load_case, without_gold
 from agents.eval.api import predict_baseline, propose_baseline
+from alibi.eval.scorer import build_system
 from alibi.llm.client import CallBudget, RawResponse
 from alibi.llm.config import FLASH
 
@@ -14,16 +15,27 @@ from alibi.llm.config import FLASH
 def test_rules_public_control_has_both_requests_and_no_model_calls():
     case = without_gold(canonical_case())
     [bank_a, bank_b] = [request["request_id"] for request in case["rfcs"]]
-    result = predict_baseline(case, "rules")
-    assert result["system"] == "rules" and result["case_number"] == 1
-    assert set(result["answers"]) == {bank_a, bank_b}
-    assert result["model_calls"] == result["tokens"] == 0
-    assert result["breakdown_minor"] == {"sales": 240000, "refunds": 18000, "fees": 6000, "net": 216000}
-    assert result["links"] == [{"txn_id": "txn-0001-004", "state": "linked", "payout_record_ids": ["rec-0001-021"]}]
-    assert result["request_telemetry"][bank_a]["lookups"] > 0
-    assert result["request_telemetry"][bank_b]["lookups"] == 0
-    source = result["answers"][bank_a]["q.source_of_funds"]
-    assert source["evidence_sets"] == [["bank:txn-0001-004", "merchant:rec-0001-021"]]
+    first, second = predict_baseline(case, "rules")
+    assert first["system"] == "rules" and first["case_number"] == 1
+    assert [first["request_id"], second["request_id"]] == [bank_a, bank_b]
+    assert first["cost"]["model_calls"] == first["cost"]["tokens"] == 0
+    breakdown = first["proposed_package"]["claims"]["q.breakdown"]
+    assert breakdown["facts"]["breakdown_minor"] == {"sales": 240000, "refunds": 18000, "fees": 6000, "net": 216000}
+    assert first["links"] == [{"txn_id": "txn-0001-004", "state": "linked", "payout_record_ids": ["rec-0001-021"]}]
+    assert first["retrieval"]["lookups"] > 0 and second["retrieval"]["lookups"] == 0
+    source = first["proposed_package"]["claims"]["q.source_of_funds"]
+    assert source["evidence_refs"] == ["bank:txn-0001-004", "merchant:rec-0001-021"]
+    assert first["claims"] == {} and first["package"] is None
+    assert first["failure"]["type"] == "unavailable"
+    assert not build_system("rules", [first, second]).invalid
+
+
+def test_pending_payout_has_no_supporting_breakdown_or_citations():
+    first, *_ = predict_baseline(without_gold(load_case(2)), "rules")
+    claims = first["proposed_package"]["claims"]
+    assert claims["q.breakdown"]["status"] == "unresolved"
+    assert claims["q.breakdown"]["gap"] == "settlement_pending_at_booking"
+    assert claims["q.breakdown"]["facts"] == {} and claims["q.breakdown"]["evidence_refs"] == []
 
 
 def test_one_pass_uses_same_fixed_evidence_without_future_or_gold(tmp_path):
@@ -82,12 +94,40 @@ def test_one_pass_does_not_retry_provider_503(tmp_path):
 
 def test_failed_prediction_preserves_each_request_and_unknown_tokens(tmp_path):
     case = without_gold(canonical_case())
-    result = predict_baseline(case, "one_pass", transport=lambda *_: RawResponse("{}"),
-                              log_path=tmp_path / "log.jsonl", budget=CallBudget(2))
+    rows = predict_baseline(case, "one_pass", transport=lambda *_: RawResponse("{}"),
+                            log_path=tmp_path / "log.jsonl", budget=CallBudget(2))
     requests = {rfc["request_id"] for rfc in case["rfcs"]}
-    assert result["answers"] == dict.fromkeys(requests, {})
-    assert result["failures"] == dict.fromkeys(requests, "invalid_proposal")
-    assert result["model_calls"] == 2 and result["tokens"] is None
+    assert {row["request_id"] for row in rows} == requests
+    for row in rows:
+        assert row["claims"] == {} and row["failure"]["type"] == "invalid_output"
+        assert row["cost"]["model_calls"] == 1 and "tokens" not in row["cost"]
+        assert not row["usage_measured"]
+    assert not build_system("one_pass", rows).invalid
+
+
+@pytest.mark.parametrize("wrong_recipient", [False, True])
+def test_shared_gate_supplies_final_claims_and_must_keep_original_recipient(wrong_recipient):
+    case = without_gold(canonical_case())
+    calls = []
+
+    def gate(evidence, draft):
+        rfc = evidence["rfc"]
+        calls.append(rfc["request_id"])
+        claims = {qid: {**answer, "evidence_refs": [ref["source_id"] for ref in answer["evidence_refs"]]}
+                  for qid, answer in draft["answers"].items()}
+        draft["answers"].clear()
+        return {"claims": claims, "package": {"request_id": rfc["request_id"],
+                                               "audience": "other" if wrong_recipient else rfc["audience"],
+                                               "attachments": []}}
+
+    rows = predict_baseline(case, "rules", gate=gate)
+    assert calls == [rfc["request_id"] for rfc in case["rfcs"]]
+    assert all(row["proposed_package"]["claims"] for row in rows)
+    assert not build_system("rules", rows).invalid
+    if wrong_recipient:
+        assert all(row["package"] is None and row["failure"]["type"] == "invalid_output" for row in rows)
+    else:
+        assert all(row["package"] and row["failure"] is None for row in rows)
 
 
 def test_inputs_with_gold_or_unauthorized_sealed_numbers_are_rejected(monkeypatch):

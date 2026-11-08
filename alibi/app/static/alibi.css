@@ -143,7 +143,7 @@ small, .small { font-size: 0.875rem; }
   color: var(--fg-muted);
 }
 
-.page-title { margin: 1.25rem 0 0.25rem; }
+.page-title { margin: 1.25rem 0 0.25rem; overflow-wrap: anywhere; }   /* "Package pkg_<24 hex>" is one word: wrap it on phones */
 .page-lede { color: var(--fg-muted); margin-bottom: 1rem; }
 
 .stack > * + * { margin-top: 1rem; }

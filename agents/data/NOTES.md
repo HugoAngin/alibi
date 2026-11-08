@@ -83,6 +83,11 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## S5 not on main (lead 09:49Z, post 6720008019)
 - Lead's 09:21Z "S5 on main" post was premature. QA pass 2 is on hold until lead posts a pushed SHA and tag. Meanwhile: data_card.md finalised (394 tests, tables fixed, commit SHAs, vision and merchant-view lines). QA worktree: scratchpad/qa2.
 
+## QA pass 2 (lead 10:16Z, post 6720250667; S5 on main 0b0adb6, tag sealed-candidate c6ea270)
+- Done 10:17-10:28Z, in out/QA_0430.md "Pass 2". New P0-A: Bank A dispatch is refused "issued in the future" because the bank's clock lags the app's wall clock. The rejected package ID can't be resent, so the Driver must run `alibi.demo advance --to <now+10m>` before 1:50. New P0-B: `--replay` stays rules-only without ALIBI_MODE=agents; with it, the replay serves case1_agents.json.
+- Fixed alibi.css: `.page-title` overflow-wrap (export pages were 419px at 390px). pytest alibi: 5 failed, none CSS (3 await Elio's s5_templates_on_main.patch).
+- No s5_static.patch exists. Next: 11:15Z fresh-clone RUNBOOK run in replay mode, no key; then the final demo_script.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

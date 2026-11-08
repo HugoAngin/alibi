@@ -89,6 +89,157 @@
       ],
       "bank_packages": 0,
       "policy_changed": true
+    },
+    "SP-08": {
+      "native_outcome": "blocked",
+      "catalogue_outcome": "not_run",
+      "catalogue_gap": "Native signed event envelope and audit action fields differ from the catalogue profile.",
+      "audit_order": "Match audit event IDs from the holder HTTP view to insertion order in the disposable passport database.",
+      "trials": [
+        {
+          "trial": "trial-1",
+          "offset_ms": 0,
+          "correction_http": 200,
+          "correction_status": "corrected",
+          "dispatch_http": 200,
+          "overlap": true,
+          "timing_us": {
+            "dispatch": [
+              0,
+              63221
+            ],
+            "correction": [
+              168,
+              63151
+            ]
+          },
+          "record_id": "rec-0001-001",
+          "approved_revision": 1,
+          "corrected_revision": 2,
+          "order": [
+            "dispatch.sent",
+            "merchant.corrected"
+          ],
+          "bank_packages": 1,
+          "holder_package_count": 1,
+          "holder_status": "superseded",
+          "signed_refs": [
+            1
+          ],
+          "receipt_and_exact_body_verified": true,
+          "audit_rowids": [
+            34,
+            36
+          ],
+          "superseded_audit_rowid": 35
+        },
+        {
+          "trial": "trial-2",
+          "offset_ms": 3,
+          "correction_http": 200,
+          "correction_status": "corrected",
+          "dispatch_http": 200,
+          "overlap": true,
+          "timing_us": {
+            "dispatch": [
+              0,
+              54319
+            ],
+            "correction": [
+              3901,
+              54229
+            ]
+          },
+          "record_id": "rec-0001-001",
+          "approved_revision": 1,
+          "corrected_revision": 2,
+          "order": [
+            "dispatch.sent",
+            "merchant.corrected"
+          ],
+          "bank_packages": 1,
+          "holder_package_count": 1,
+          "holder_status": "superseded",
+          "signed_refs": [
+            1
+          ],
+          "receipt_and_exact_body_verified": true,
+          "audit_rowids": [
+            34,
+            36
+          ],
+          "superseded_audit_rowid": 35
+        },
+        {
+          "trial": "trial-3",
+          "offset_ms": 7,
+          "correction_http": 200,
+          "correction_status": "corrected",
+          "dispatch_http": 200,
+          "overlap": true,
+          "timing_us": {
+            "dispatch": [
+              0,
+              61440
+            ],
+            "correction": [
+              8928,
+              61382
+            ]
+          },
+          "record_id": "rec-0001-001",
+          "approved_revision": 1,
+          "corrected_revision": 2,
+          "order": [
+            "dispatch.sent",
+            "merchant.corrected"
+          ],
+          "bank_packages": 1,
+          "holder_package_count": 1,
+          "holder_status": "superseded",
+          "signed_refs": [
+            1
+          ],
+          "receipt_and_exact_body_verified": true,
+          "audit_rowids": [
+            34,
+            36
+          ],
+          "superseded_audit_rowid": 35
+        },
+        {
+          "trial": "trial-4",
+          "offset_ms": -2,
+          "correction_http": 200,
+          "correction_status": "corrected",
+          "dispatch_http": 409,
+          "overlap": true,
+          "timing_us": {
+            "correction": [
+              0,
+              13162
+            ],
+            "dispatch": [
+              2500,
+              19321
+            ]
+          },
+          "record_id": "rec-0001-001",
+          "approved_revision": 1,
+          "corrected_revision": 2,
+          "order": [
+            "merchant.corrected",
+            "dispatch.refused"
+          ],
+          "refusal_code": "source_revision_changed",
+          "bank_packages": 0,
+          "holder_package_count": 0,
+          "audit_rowids": [
+            33,
+            35
+          ]
+        }
+      ]
     }
   },
   "sp07_patch_check": {

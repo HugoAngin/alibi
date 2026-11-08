@@ -36,6 +36,23 @@
         200
       ]
     },
+    "SP-36": {
+      "native_outcome": "blocked",
+      "catalogue_outcome": "not_run",
+      "catalogue_gap": "No holder HTTP import route.",
+      "accepted_attack_shapes": [
+        "raw_source_trust_and_copied_proof",
+        "pasted_signed_envelope",
+        "case_claimed_trust"
+      ],
+      "active_imports_after_reopen": 3,
+      "all_imports_self_supplied": true,
+      "all_imports_in_self_namespace": true,
+      "any_import_retained_issuer_proof": false,
+      "genuinely_signed_same_id_control_retained_issuer_trust": true,
+      "unknown_core_trust_field_refused": true,
+      "focused_tests_passed": 78
+    },
     "SP-37": {
       "outcome": "blocked",
       "http_statuses": [

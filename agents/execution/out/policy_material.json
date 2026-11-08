@@ -1,0 +1,47 @@
+{
+  "label": "SYNTHETIC - passport vocabulary for policy parser tests",
+  "decision_date": "2026-11-08",
+  "categories": [
+    "clothing_resale",
+    "health",
+    "rent",
+    "groceries",
+    "transport"
+  ],
+  "merchants": [
+    "mock-marketplace",
+    "synthetic-pharmacy",
+    "synthetic-lettings",
+    "synthetic-grocer"
+  ],
+  "record_kinds": [
+    "sale",
+    "refund",
+    "fee",
+    "purchase",
+    "balance_release",
+    "payout",
+    "settlement",
+    "receipt",
+    "bank_credit",
+    "bank_debit"
+  ],
+  "fields": [
+    "amount_minor",
+    "currency",
+    "occurred_at",
+    "item",
+    "category",
+    "message",
+    "counterparty_name",
+    "description",
+    "payment_reference",
+    "account_ref",
+    "destination",
+    "release_reference"
+  ],
+  "recipients": [
+    "bank_a",
+    "bank_b"
+  ]
+}

@@ -65,3 +65,14 @@ def summarise(outcomes: dict[str, str]) -> dict:
         "controls_allowed": allowed,
         "failed": failed,
     }
+
+
+def load_policy_rules() -> list[dict]:
+    """40 plain-English privacy rules with expected compilations (out/policy_rules.jsonl)."""
+    with (OUT / "policy_rules.jsonl").open(encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def load_policy_material() -> dict:
+    """Passport vocabulary the policy parser receives for the rules above."""
+    return json.loads((OUT / "policy_material.json").read_text(encoding="utf-8"))

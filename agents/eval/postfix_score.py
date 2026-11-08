@@ -11,22 +11,23 @@ from agents.eval.sealed_worker import REPO
 from tools.lockbox import is_open
 
 
-def score(capture, cases, gold_path):
+def score(capture, cases, gold_path, *, mode='rules', nested=False):
     gold = common.read_gold_file(gold_path)
     inputs = common.load_sealed_cases(cases, require_gold=False)
     attacks = {case['case_number'] for case in common.read_jsonl(cases / 'adversarial.jsonl')}
     expected = {(case['case_number'], r['request_id']) for case in inputs for r in case['rfcs']}
     rows = []
-    for path in sorted((capture / 'workers').glob('*/predictions.json')):
+    worker_root = capture / 'workers' / mode if nested else capture / 'workers'
+    for path in sorted(worker_root.glob('*/predictions.json')):
         rows.extend(common.load_json(path))
     keys = [(row['case_number'], row['request_id']) for row in rows]
     if len(keys) != len(set(keys)) or set(keys) != expected:
         raise ValueError('post-hoc prediction denominator is incomplete or duplicated')
     scored_cases = [{**case, 'gold': gold[case['case_number']]} for case in inputs]
     with TemporaryDirectory(prefix='alibi-postfix-score-') as temp:
-        predictions = Path(temp) / 'rules.jsonl'
+        predictions = Path(temp) / f'{mode}.jsonl'
         predictions.write_text(''.join(json.dumps(row) + '\n' for row in rows))
-        system = scorer.load_predictions(predictions, 'rules')
+        system = scorer.load_predictions(predictions, mode)
         return {name: scorer.run(subset, [system], {})[0].metrics for name, subset in (
             ('main', [c for c in scored_cases if c['case_number'] not in attacks]),
             ('adversarial', [c for c in scored_cases if c['case_number'] in attacks]))}
@@ -61,17 +62,20 @@ def main(argv=None):
             raise ValueError('gold commitments changed')
         # Score only completed captures. A partial attempt remains recorded and cannot be
         # made complete by silently dropping absent predictions.
-        result = {'disclosure': DISCLOSURE, 'candidate': runtime['candidate'],
-                  'metrics': score(args.capture, args.cases, args.gold),
+        mode = runtime.get('mode', 'rules')
+        metrics = ({system: score(args.capture, args.cases, args.gold, mode=system, nested=True)
+                    for system in ('agents', 'one_pass', 'rules')} if mode == 'all'
+                   else score(args.capture, args.cases, args.gold, mode=mode))
+        result = {'disclosure': DISCLOSURE, 'candidate': runtime['candidate'], 'mode': mode,
+                  'metrics': metrics,
                   'capture_receipt_sha256': digest(args.capture / 'receipt.json')}
         if seal.gold_entries(args.gold) != (gold_digest, entries):
             raise ValueError('gold changed during scoring')
         output.mkdir(mode=0o700)
         common.write_json(output / 'summary.json', result)
         common.write_json(output / 'receipt.json', {'files': files(output)})
-    print(json.dumps({f'{split}_{name}': value for split, metrics in result['metrics'].items()
-                      for name, value in metrics.items() if type(value) in (int, float)},
-                     sort_keys=True, allow_nan=False))
+    from agents.eval.frozen_summary import _numeric
+    print(json.dumps(_numeric(result['metrics']), sort_keys=True, allow_nan=False))
 
 
 if __name__ == '__main__':

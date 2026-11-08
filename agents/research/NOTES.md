@@ -61,6 +61,11 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Deployed health-check app `alibi-backend`: https://eliohd--alibi-backend-backend.us-east.modal.run (/healthz 200; backend routes 503 until SERVICES is filled; reset routes 404). First deploy crash-looped: REPO path computed in the container; fixed with modal.is_local().
 - Waiting on Elio: Modal Secret `alibi-backend` with GEMINI_API_KEY and ALIBI_MASTER_KEY (dashboard). Waiting on S5: start commands in alibi/RUNBOOK.md.
 
+## Board posts, 2026-11-08 ~02:50Z (approved by Elio)
+- done -> lead (6716337265): status of screens, landing/Clerk, rename, slide 15, Modal URL; backend NOT live yet.
+- need -> eval (6716338193): don't deploy a second Modal backend; a replay can be a second function in alibi-backend. Assumption if silent: no separate replay deploy.
+- need -> data, execution (6716339131): Astro is the product UI, Jinja the fallback; execution's analyst review applies to web/apps/bank (built to their list unless changed).
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

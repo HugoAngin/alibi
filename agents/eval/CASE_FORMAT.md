@@ -76,6 +76,20 @@ window while its RFC remains open, supplied as `expired_request`. SP-09 derives
 the conflicting retry from the stored signed envelope and sends it to the
 disposable bank's `/deliver` route unless overridden by an explicit fixture.
 
+For a fresh S4 rehearsal stack, the optional `ingest_probe_profile` module
+derives the SP-39 follow-up and checks the active-source readback control for
+SP-33 through SP-37. It checks the app is serving the selected public case.
+
+```bash
+uv run --frozen python -m agents.eval.ingest_probe_profile --config "$ALIBI_BASE_PROBES" \
+  --out "$ALIBI_INGEST_PROBES"
+```
+
+SP-39 dispatches a real package through the S4 app's in-process bank and
+checks the retained transaction scope and bank-visible response. SP-33
+through SP-37 also need the app owner's webhook and import submission routes
+and the corresponding attack bodies. Readback alone does not give them an outcome.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash

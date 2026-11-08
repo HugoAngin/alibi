@@ -1,0 +1,544 @@
+diff --git a/alibi/adapter.py b/alibi/adapter.py
+index ce7ad0b..b067087 100644
+--- a/alibi/adapter.py
++++ b/alibi/adapter.py
+@@ -354,8 +354,10 @@ def _run(world: _World, mode: str, rfc: Any, now: datetime, client: Any) -> tupl
+     """Run the investigation in ``mode`` and return ``(InvestigationResult, OnePassRun | None)``."""
+     common = dict(registry=world.registry, now=now, **world.connectors())
+     if mode == "rules":
++        # The holder's explanation goes in as an untrusted claim to check, never as evidence.
+         return api.run_investigation(world.store, rfc.request_id, audience=rfc.audience,
+-                                     mode="rules", **common), None
++                                     mode="rules", holder_claim=world.case.get("holder_claim"),
++                                     **common), None
+     if mode == "agents":
+         return api.run_investigation(world.store, rfc.request_id, audience=rfc.audience,
+                                      mode="agents", client=client, **common), None
+@@ -363,7 +365,8 @@ def _run(world: _World, mode: str, rfc: Any, now: datetime, client: Any) -> tupl
+     # gets the same audit row api.run_investigation(mode="one_pass") would write, so the holder's
+     # passport records every investigation whatever the mode.
+     from alibi.baselines import one_pass
+-    run = one_pass.run_one_pass(world.store, rfc, client=client, **common)
++    run = one_pass.run_one_pass(world.store, rfc, client=client,
++                                holder_claim=world.case.get("holder_claim"), **common)
+     _audit_model_run(world.store, rfc, run.result, actor=one_pass.ACTOR, at=now)
+     return run.result, run
+ 
+diff --git a/alibi/api.py b/alibi/api.py
+index 046f7de..c08c3e1 100644
+--- a/alibi/api.py
++++ b/alibi/api.py
+@@ -577,9 +577,13 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
+                       settlement_lookup: SettlementLookup | None = None,
+                       txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
+                       registry: TrustRegistry | None = None,
+-                      now: datetime | None = None, client: Any = None) -> InvestigationResult:
++                      now: datetime | None = None, client: Any = None,
++                      holder_claim: Any = None) -> InvestigationResult:
+     """Investigate a stored request and save its links, claims and trace.
+ 
++    ``holder_claim`` (rules mode) is the holder's own untrusted account of a credit,
++    ``{txn_id, stated_minor}``; it is checked against the records and never used as evidence.
++
+     ``request`` is a request_id together with ``audience`` (the bank that sent it; without it a
+     bare id must be one bank's alone, else ``AmbiguousRequest``), or the stored
+     ``RequestForContext``, whose own audience is used (an ``audience`` that contradicts it raises ``StoreError``). Without ``gateway`` a
+@@ -636,7 +640,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
+                                                         audience=rfc.audience),
+                           registry=registry, budget=budget, settlement_lookup=settlement_lookup,
+                           txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
+-    result = core_rules.run_investigation(rfc, store, gateway, mode, now=now)
++    result = core_rules.run_investigation(rfc, store, gateway, mode, now=now,
++                                          holder_claim=holder_claim)
+     answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
+                         for claim in result.claims)
+     _audit(store, action="run_investigation", actor=core_rules.ACTOR, outcome="ok", at=at,
+diff --git a/alibi/baselines/one_pass.py b/alibi/baselines/one_pass.py
+index 5f77249..b92c6a8 100644
+--- a/alibi/baselines/one_pass.py
++++ b/alibi/baselines/one_pass.py
+@@ -195,13 +195,14 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
+                  gateway: Any | None = None, settlement_lookup: Callable | None = None,
+                  txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
+                  registry: Any | None = None, now: datetime | None = None,
+-                 model: str | None = None) -> OnePassRun:
++                 model: str | None = None, holder_claim: Any = None) -> OnePassRun:
+     """Run the baseline and return the result with its proposal and counts.
+ 
+     Without ``gateway`` one is built for the request's subject under the next single_call run
+     id, with the connector callables, budget and registry given. The model is called at most
+     once (a ``CallBudget`` of 1). Never raises for a model or connector failure: those become
+-    unresolved claims and typed trace events.
++    unresolved claims and typed trace events. ``holder_claim`` is the holder's own untrusted
++    account of a credit (``{txn_id, stated_minor}``): checked against the records, never evidence.
+     """
+     rfc = request if isinstance(request, RequestForContext) else store.get_request(request)
+     at = _clock(now)
+@@ -217,7 +218,7 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
+         raise ValueError("the gateway is scoped to a different subject than the request")
+     run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id, audience=rfc.audience)
+     run = _Run(rfc, store, gateway, client, run_id=run_id, now=at,
+-               model=model or config.FLASH)
++               model=model or config.FLASH, holder_claim=holder_claim)
+     return run.execute()
+ 
+ 
+@@ -226,8 +227,9 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
+ 
+ class _Run:
+     def __init__(self, rfc: RequestForContext, store: Store, gateway: Any, client: Any, *,
+-                 run_id: str, now: datetime, model: str):
++                 run_id: str, now: datetime, model: str, holder_claim: Any = None):
+         self.rfc, self.store, self.gateway, self.client = rfc, store, gateway, client
++        self.stated = core_rules._stated_breakdowns(holder_claim)   # noqa: SLF001 - shared parser
+         self.run_id, self.now, self.model = run_id, now, model
+         self.material = Material(rfc.subject_ref)
+         self.events: list[dict[str, Any]] = []
+@@ -567,6 +569,20 @@ class _Run:
+             statement = (f"Credit {self.rfc.txn_ids[0]} is made up of sales {sums['sales']} less refunds "
+                          f"{sums['refunds']} and fees {sums['fees']} = {calc.total_pence} pence "
+                          f"{calc.currency}, reconciled in code against the credit.")
++            minor = {**sums, "net": calc.total_pence}
++            stated = self.stated.get(self.rfc.txn_ids[0])
++            if stated is not None and stated != minor:
++                differs = [k for k in ("sales", "refunds", "fees", "net") if stated[k] != minor[k]]
++                said = ", ".join(f"{k} {stated[k]}" for k in differs)
++                found = ", ".join(f"{k} {minor[k]}" for k in differs)
++                return _Outcome(ClaimStatus.CONTRADICTED,
++                                statement + f" The account holder's stated breakdown ({said}) is "
++                                f"contradicted by these records ({found}).",
++                                base.rationale + " The holder's stated figures are an unverified "
++                                "assertion, checked against the issuer records and not used as "
++                                "evidence.",
++                                "The records contradict the holder's stated breakdown.",
++                                evidence=list(base.evidence), calculation=calc)
+             return _Outcome(ClaimStatus.SUPPORTED, statement, base.rationale,
+                             "The breakdown reconciles to the supported credit.",
+                             evidence=list(base.evidence), calculation=calc)
+diff --git a/alibi/core/facts.py b/alibi/core/facts.py
+index b9047fd..2758c94 100644
+--- a/alibi/core/facts.py
++++ b/alibi/core/facts.py
+@@ -49,14 +49,21 @@ _BREAKDOWN_KINDS = {"sales": RecordKind.ORDER, "refunds": RecordKind.REFUND, "fe
+ 
+ def derive_facts(store: Any, request: RequestForContext, question: Question, status: Any,
+                  evidence: Iterable[EvidenceRef], calculation: Calculation | None) -> dict[str, Any]:
+-    """The typed facts a ``supported`` claim asserts; ``{}`` for any other status."""
++    """The typed facts a ``supported`` claim asserts; ``{}`` for any other status, except a
++    ``contradicted`` breakdown, which states the record-derived breakdown that contradicts the
++    holder's figures."""
+     try:
+-        if ClaimStatus(status) != ClaimStatus.SUPPORTED:
+-            return {}
++        claimed = ClaimStatus(status)
+     except ValueError:
+         return {}
++    if claimed not in (ClaimStatus.SUPPORTED, ClaimStatus.CONTRADICTED):
++        return {}
++    if claimed == ClaimStatus.CONTRADICTED and calculation is None:
++        return {}   # a contradiction with no reconciled records states nothing
+     found = rules.classify(question, request)
+     credits = len(request.txn_ids or [])
++    if claimed == ClaimStatus.CONTRADICTED and found.category != rules.BREAKDOWN:
++        return {}
+     if found.category == rules.SOURCE_OF_FUNDS:
+         return _source_facts(store, list(evidence), calculation, credits)
+     if found.category == rules.BREAKDOWN:
+@@ -64,7 +71,7 @@ def derive_facts(store: Any, request: RequestForContext, question: Question, sta
+             return {}
+         return {"breakdown_minor": _breakdown(calculation)}
+     if found.category in _PERIOD and calculation is not None:
+-        return _period_facts(found, calculation)
++        return _period_facts(found, calculation, store)
+     return {}
+ 
+ 
+@@ -112,7 +119,7 @@ def _breakdown(calc: Calculation) -> dict[str, int]:
+     return {**sums, "net": calc.total_pence}
+ 
+ 
+-def _period_facts(found: Any, calc: Calculation) -> dict[str, Any]:
++def _period_facts(found: Any, calc: Calculation, store: Any = None) -> dict[str, Any]:
+     facts: dict[str, Any] = {}
+     for kind in found.kinds:
+         keys = rules._FACT_KEYS.get(kind)
+@@ -121,6 +128,43 @@ def _period_facts(found: Any, calc: Calculation) -> dict[str, Any]:
+         rows = [t for t in calc.terms if t.kind == kind.value]
+         facts[keys[0]] = sum(t.amount_pence for t in rows)
+         facts[keys[1]] = len(rows)
++    by_issuer = _issuer_shares(found, calc, store)
++    if by_issuer is not None:
++        facts["by_issuer"] = by_issuer
+     if found.category == rules.NET_TOTAL:
+         facts["net_minor"] = calc.total_pence
+     return facts
++
++
++def _issuer_shares(found: Any, calc: Calculation, store: Any) -> dict[str, dict[str, int]] | None:
++    """Each issuer's share of a period total's counted terms when they come from more than one
++    issuer, read from the stored records the terms cite; ``None`` for a single issuer or when
++    any term's issuer cannot be read, so a partial split is never stated."""
++    if store is None:
++        return None
++    issuer_of: dict[int, str] = {}
++    for index, term in enumerate(calc.terms):
++        try:
++            record = store.get_source(term.ref.ref_id, term.ref.revision)
++        except Exception:   # noqa: BLE001 - an unreadable term means no split, not a crash
++            return None
++        issuer = getattr(record, "issuer_id", None)
++        if not isinstance(issuer, str) or not issuer:
++            return None
++        issuer_of[index] = issuer
++    issuers = sorted(set(issuer_of.values()))
++    if len(issuers) < 2:
++        return None
++    shares: dict[str, dict[str, int]] = {}
++    for issuer in issuers:
++        share: dict[str, int] = {}
++        for kind in found.kinds:
++            keys = rules._FACT_KEYS.get(kind)
++            if keys is None:
++                continue
++            rows = [t for i, t in enumerate(calc.terms)
++                    if t.kind == kind.value and issuer_of[i] == issuer]
++            share[keys[0]] = sum(t.amount_pence for t in rows)
++            share[keys[1]] = len(rows)
++        shares[issuer] = share
++    return shares
+diff --git a/alibi/core/investigate_rules.py b/alibi/core/investigate_rules.py
+index 2557799..b83fc83 100644
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -50,7 +50,7 @@ saved to the store. No network, no LLM.
+ """
+ 
+ import re
+-from collections.abc import Callable, Iterable
++from collections.abc import Callable, Iterable, Mapping
+ from dataclasses import dataclass, field, replace
+ from datetime import datetime, timedelta
+ from typing import Any
+@@ -330,7 +330,8 @@ def next_run_id(store: Store, request_id: str, *, audience: str) -> str:
+ 
+ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mode: str = "rules",
+                       *, now: datetime | None = None,
+-                      window: timedelta = DEFAULT_WINDOW) -> InvestigationResult:
++                      window: timedelta = DEFAULT_WINDOW,
++                      holder_claim: Mapping[str, Any] | None = None) -> InvestigationResult:
+     """Answer every question in ``request`` with one rules-based claim and save the results.
+ 
+     Reads go through ``gateway`` (``alibi.gateway.Gateway`` or anything with its interface).
+@@ -342,6 +343,10 @@ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mo
+     run with ``run_id=next_run_id(...)``), raises ``ValueError`` before any call. ``window``
+     is both the payout search window around the booking and the settlement window (a
+     settlement supports the credit only when effective at most ``window`` before it).
++    ``holder_claim`` is the account holder's own, untrusted account of a credit
++    (``{txn_id, stated_minor: {sales, refunds, fees, net}}``). It is never evidence and never
++    cited: it is only the specific claim a derived breakdown is checked against, so a breakdown
++    the issuer records contradict is ``contradicted``. Without it the answer is unchanged.
+     """
+     if mode != MODE:
+         raise NotImplementedError(f"mode {mode!r} is not implemented here; the rules "
+@@ -359,7 +364,8 @@ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mo
+         raise ValueError("the gateway records its calls under another run id; build a new "
+                          "gateway for each run with run_id=next_run_id(store, request_id, "
+                          "audience=...)")
+-    run = _Run(request, store, gateway, run_id=run_id, now=now or utc_now(), window=window)
++    run = _Run(request, store, gateway, run_id=run_id, now=now or utc_now(), window=window,
++               holder_claim=holder_claim)
+     claims = [run.answer(question) for question in request.questions]
+     return run.finish(claims)
+ 
+@@ -403,8 +409,10 @@ class _Run:
+     """One rules run: gateway reads, rules trace events and the per-transaction cache."""
+ 
+     def __init__(self, request: RequestForContext, store: Store, gateway: Any, *, run_id: str,
+-                 now: datetime, window: timedelta):
++                 now: datetime, window: timedelta,
++                 holder_claim: Mapping[str, Any] | None = None):
+         self.request, self.store, self.gateway = request, store, gateway
++        self.stated = _stated_breakdowns(holder_claim)
+         self.run_id, self.now, self.window = run_id, now, window
+         self.events: list[dict[str, Any]] = []
+         self.unavailable: list[str] = []
+@@ -547,6 +555,24 @@ class _Run:
+                          f"{payout.payment_ref or 'none'}): sales {minor['sales']} less refunds "
+                          f"{minor['refunds']} and fees {minor['fees']} = {minor['net']} pence "
+                          f"{calc.currency}, reconciled in code against the credit.")
++            stated = self.stated.get(txn_id)
++            if stated is not None and stated != minor:
++                differs = [k for k in ("sales", "refunds", "fees", "net") if stated[k] != minor[k]]
++                said = ", ".join(f"{k} {stated[k]}" for k in differs)
++                found = ", ".join(f"{k} {minor[k]}" for k in differs)
++                self.note("note", reason=_clip(f"Holder-stated breakdown ({said}) differs from "
++                                               f"the issuer records ({found}).", 300),
++                          result={"holder_stated": "contradicted", "fields": ",".join(differs)})
++                return _Outcome(
++                    ClaimStatus.CONTRADICTED,
++                    statement + f" The account holder's stated breakdown ({said}) is "
++                    f"contradicted by these records ({found}).",
++                    base.rationale + " The holder's stated figures are an unverified assertion, "
++                    "checked against the issuer records and not used as evidence.",
++                    "The records contradict the holder's stated breakdown.",
++                    evidence=list(base.evidence), calculation=calc,
++                    facts={"breakdown_minor": minor}, components=base.components,
++                    payout=payout, settlement=base.settlement)
+             return _Outcome(ClaimStatus.SUPPORTED, statement, base.rationale,
+                             "The breakdown reconciles to the supported credit.",
+                             evidence=list(base.evidence), calculation=calc,
+@@ -1051,6 +1077,20 @@ class _Run:
+             amount_key, count_key = _FACT_KEYS[kind]
+             facts[amount_key] = sum(r.amount_pence for r in rows)
+             facts[count_key] = len(rows)
++        issuers = sorted({r.issuer_id for r in counted})
++        if len(issuers) > 1:
++            # Records from more than one issuer: state each issuer's share of the same counted
++            # records, so the combined total can be traced to the platform that documented it.
++            by_issuer: dict[str, dict[str, int]] = {}
++            for issuer in issuers:
++                share: dict[str, int] = {}
++                for kind, rows in groups:
++                    amount_key, count_key = _FACT_KEYS[kind]
++                    mine = [r for r in rows if r.issuer_id == issuer]
++                    share[amount_key] = sum(r.amount_pence for r in mine)
++                    share[count_key] = len(mine)
++                by_issuer[issuer] = share
++            facts["by_issuer"] = by_issuer
+         if net:
+             formula = " ".join(f"{'+' if signs[kind] > 0 else '-'} {_LABELS[kind]} "
+                                f"{sum(r.amount_pence for r in rows)}" for kind, rows in groups)
+@@ -1226,6 +1266,20 @@ def _incompatible(payout: EvidenceRecord, txn: BankTxn) -> str:
+ # --------------------------------------------------------------------------- verdict
+ 
+ 
++def _stated_breakdowns(holder_claim: Mapping[str, Any] | None) -> dict[str, dict[str, int]]:
++    """The holder's stated breakdown per credit, kept only when it names a credit and all four
++    figures are integers; anything else is ignored, so a malformed claim changes nothing."""
++    if not isinstance(holder_claim, Mapping):
++        return {}
++    txn_id, stated = holder_claim.get("txn_id"), holder_claim.get("stated_minor")
++    if not isinstance(txn_id, str) or not txn_id or not isinstance(stated, Mapping):
++        return {}
++    keys = ("sales", "refunds", "fees", "net")
++    if not all(type(stated.get(k)) is int for k in keys):
++        return {}
++    return {txn_id: {k: stated[k] for k in keys}}
++
++
+ def _conflict(txn: BankTxn, payout: EvidenceRecord,
+               settlement: EvidenceRecord | None) -> tuple[str, str, str] | None:
+     """An explicit field that conflicts with the claim that the payout funded the credit, as
+@@ -1297,8 +1351,11 @@ def _verdict(txn: BankTxn, payout: EvidenceRecord, settlement: EvidenceRecord,
+                    "not show that the funds reached the bank.")
+         return ClaimStatus.UNRESOLVED, reason, code, gap, None
+     if calc.balanced is not True:
++        # A different amount leaves part of the credit unexplained; it does not conflict with
++        # a specific claim about where the credit came from (CONTRACTS ClaimStatus), so the
++        # source stays unresolved with the amount_mismatch gap rather than contradicted.
+         if (settlement.amount_pence, settlement.currency) != (txn.amount_pence, txn.currency):
+-            return (ClaimStatus.CONTRADICTED, f"Settlement {stl} amount differs from the credit.",
++            return (ClaimStatus.UNRESOLVED, f"Settlement {stl} amount differs from the credit.",
+                     GAP_AMOUNT_MISMATCH,
+                     f"Settlement {stl} for payout {ref} is for "
+                     f"{_money(settlement.amount_pence, settlement.currency)}, but the credit is "
+diff --git a/alibi/tests/test_answer_accuracy.py b/alibi/tests/test_answer_accuracy.py
+new file mode 100644
+index 0000000..e0d6871
+--- /dev/null
++++ b/alibi/tests/test_answer_accuracy.py
+@@ -0,0 +1,167 @@
++"""Answer accuracy: a holder's stated breakdown is an untrusted claim checked against issuer
++records; a reference-named payout of a different amount leaves the source unresolved; a period
++total spanning several issuers states each issuer's share. Built on mutated copies of the public
++control case, so no expectation depends on a case number's gold."""
++from __future__ import annotations
++
++from types import SimpleNamespace
++
++from agents.data import api as data_api
++from alibi.adapter import run_case
++from alibi.core import facts as core_facts
++from alibi.core import investigate_rules as rules
++from alibi.core.schemas import RecordKind
++
++RFC_A, RFC_B = "rfc-0001-01", "rfc-0001-02"
++TXN = "txn-0001-004"
++
++
++def _control() -> dict:
++    return data_api.without_gold(data_api.load_case(1))
++
++
++def _claims(predictions, request_id):
++    return next(p for p in predictions if p["request_id"] == request_id)["claims"]
++
++
++def _true_breakdown(tmp_path) -> dict:
++    case = _control()
++    case["holder_claim"] = None
++    claims = _claims(run_case(case, "rules", root=tmp_path / "truth"), RFC_A)
++    assert claims["q.breakdown"]["status"] == "supported"
++    return claims["q.breakdown"]["facts"]["breakdown_minor"]
++
++
++def test_stated_breakdown_matching_the_records_stays_supported(tmp_path):
++    truth = _true_breakdown(tmp_path)
++    case = _control()
++    case["holder_claim"] = {"txn_id": TXN, "explanation": "marketplace_payout",
++                            "payout_reference": None, "stated_minor": dict(truth)}
++    claims = _claims(run_case(case, "rules", root=tmp_path / "run"), RFC_A)
++    assert claims["q.breakdown"]["status"] == "supported"
++    assert claims["q.source_of_funds"]["status"] == "supported"
++
++
++def test_stated_breakdown_the_records_contradict_is_contradicted_with_evidence(tmp_path):
++    truth = _true_breakdown(tmp_path)
++    supported = _claims(run_case(_control() | {"holder_claim": None}, "rules",
++                                 root=tmp_path / "base"), RFC_A)["q.breakdown"]
++    # Gross sales stated as the whole net amount, with refunds and fees left out.
++    stated = {"sales": truth["net"], "refunds": 0, "fees": 0, "net": truth["net"]}
++    assert stated != truth
++    case = _control()
++    case["holder_claim"] = {"txn_id": TXN, "explanation": "marketplace_payout",
++                            "payout_reference": None, "stated_minor": stated}
++    claims = _claims(run_case(case, "rules", root=tmp_path / "run"), RFC_A)
++    breakdown = claims["q.breakdown"]
++    assert breakdown["status"] == "contradicted"
++    assert breakdown["gap"] is None
++    # The issuer records that contradict the claim travel with it, and nothing new is cited:
++    # the holder's figures are never evidence.
++    assert sorted(breakdown["evidence_refs"]) == sorted(supported["evidence_refs"])
++    assert all(ref.startswith(("bank:", "merchant:", "import:")) for ref in breakdown["evidence_refs"])
++    # The source of funds does not depend on the holder's arithmetic.
++    assert claims["q.source_of_funds"]["status"] == "supported"
++
++
++def test_stated_breakdown_for_another_credit_or_malformed_changes_nothing(tmp_path):
++    truth = _true_breakdown(tmp_path)
++    wrong = {"sales": truth["net"], "refunds": 0, "fees": 0, "net": truth["net"]}
++    for label, claim in [("other", {"txn_id": "txn-other", "stated_minor": wrong}),
++                         ("floats", {"txn_id": TXN, "stated_minor": {k: float(v) for k, v in
++                                                                     wrong.items()}}),
++                         ("partial", {"txn_id": TXN, "stated_minor": {"sales": 1}}),
++                         ("absent", {"txn_id": TXN})]:
++        case = _control()
++        case["holder_claim"] = claim
++        claims = _claims(run_case(case, "rules", root=tmp_path / label), RFC_A)
++        assert claims["q.breakdown"]["status"] == "supported", label
++
++
++def test_stated_breakdowns_parser_is_conservative():
++    assert rules._stated_breakdowns(None) == {}
++    assert rules._stated_breakdowns("the money is from my shop") == {}
++    assert rules._stated_breakdowns({"txn_id": "t", "stated_minor": {"sales": True, "refunds": 0,
++                                                                     "fees": 0, "net": 1}}) == {}
++    assert rules._stated_breakdowns({"txn_id": "t", "stated_minor": {
++        "sales": 3, "refunds": 1, "fees": 1, "net": 1, "extra": 9}}) == {
++        "t": {"sales": 3, "refunds": 1, "fees": 1, "net": 1}}
++
++
++def test_reference_named_payout_of_another_amount_is_unresolved_amount_mismatch(tmp_path):
++    case = _control()
++    changed = 0
++    for delivery in case["bank_deliveries"]:
++        if delivery["row"]["txn_id"] == TXN:
++            delivery["row"]["amount_minor"] += 7500
++            changed += 1
++    assert changed
++    claims = _claims(run_case(case, "rules", root=tmp_path / "run"), RFC_A)
++    source = claims["q.source_of_funds"]
++    assert source["status"] == "unresolved"
++    assert source["gap"] == "amount_mismatch"
++    assert claims["q.breakdown"]["status"] == "unresolved"
++
++
++def test_single_issuer_period_total_has_no_issuer_split(tmp_path):
++    claims = _claims(run_case(_control(), "rules", root=tmp_path / "run"), RFC_B)
++    (answer,) = claims.values()
++    assert answer["status"] == "supported"
++    assert "by_issuer" not in answer["facts"]
++
++
++def _term(ref_id, kind, amount):
++    return SimpleNamespace(ref=SimpleNamespace(ref_id=ref_id, revision=1), kind=kind.value,
++                           amount_pence=amount, sign=1)
++
++
++class _Store:
++    def __init__(self, issuers):
++        self.issuers = issuers
++
++    def get_source(self, record_id, revision=None):
++        if record_id not in self.issuers:
++            raise KeyError(record_id)
++        return SimpleNamespace(issuer_id=self.issuers[record_id])
++
++
++def test_issuer_shares_split_every_kind_including_empty_ones():
++    found = SimpleNamespace(kinds=(RecordKind.ORDER, RecordKind.REFUND))
++    calc = SimpleNamespace(terms=[_term("a", RecordKind.ORDER, 100), _term("b", RecordKind.REFUND, 5),
++                                  _term("c", RecordKind.ORDER, 40), _term("d", RecordKind.ORDER, 2)])
++    store = _Store({"a": "iss-1", "b": "iss-1", "c": "iss-2", "d": "iss-2"})
++    assert core_facts._issuer_shares(found, calc, store) == {
++        "iss-1": {"sales_minor": 100, "sale_count": 1, "refunds_minor": 5, "refund_count": 1},
++        "iss-2": {"sales_minor": 42, "sale_count": 2, "refunds_minor": 0, "refund_count": 0}}
++
++
++def test_issuer_shares_never_states_a_partial_split():
++    found = SimpleNamespace(kinds=(RecordKind.ORDER,))
++    calc = SimpleNamespace(terms=[_term("a", RecordKind.ORDER, 1), _term("b", RecordKind.ORDER, 2)])
++    assert core_facts._issuer_shares(found, calc, _Store({"a": "x", "b": "x"})) is None
++    assert core_facts._issuer_shares(found, calc, _Store({"a": "x"})) is None
++    assert core_facts._issuer_shares(found, calc, None) is None
++
++
++def _one_pass(case, root):
++    from alibi.llm.fake import FakeClient
++    client = FakeClient({"*": {"claims": [], "disclosures": [], "rationale": "No proposal."}})
++    return run_case(case, "one_pass", root=root, client=client)
++
++
++def test_one_pass_checks_the_same_untrusted_stated_breakdown(tmp_path):
++    base = _claims(_one_pass(_control() | {"holder_claim": None}, tmp_path / "base"), RFC_A)
++    if base["q.breakdown"]["status"] != "supported":
++        # One-pass does not establish this credit offline; there is nothing to contradict.
++        assert base["q.breakdown"]["status"] == "unresolved"
++        return
++    truth = base["q.breakdown"]["facts"]["breakdown_minor"]
++    wrong = {"sales": truth["net"], "refunds": 0, "fees": 0, "net": truth["net"]}
++    case = _control()
++    case["holder_claim"] = {"txn_id": TXN, "stated_minor": wrong}
++    claims = _claims(_one_pass(case, tmp_path / "run"), RFC_A)
++    assert claims["q.breakdown"]["status"] == "contradicted"
++    assert claims["q.breakdown"]["facts"] == {"breakdown_minor": truth}
++    assert sorted(claims["q.breakdown"]["evidence_refs"]) == sorted(base["q.breakdown"]["evidence_refs"])
++    case["holder_claim"] = {"txn_id": TXN, "stated_minor": dict(truth)}
++    assert _claims(_one_pass(case, tmp_path / "same"), RFC_A)["q.breakdown"]["status"] == "supported"
+diff --git a/alibi/tests/test_core_investigation_fixes.py b/alibi/tests/test_core_investigation_fixes.py
+index 9eeaa46..afc2dd1 100644
+--- a/alibi/tests/test_core_investigation_fixes.py
++++ b/alibi/tests/test_core_investigation_fixes.py
+@@ -138,7 +138,7 @@ def test_exactly_five_days_before_the_credit_still_supports_it(passport, keystor
+      "settlement_failed", "status reversed"),
+     ("supported", settlement_at("2026-11-03T11:00:00Z", "2026-11-03T11:30:00Z"), CONTRADICTED,
+      "settlement_after_credit", "after the credit was booked"),
+-    ("supported", lambda fx: fx["lookup_events"][0].update(amount_pence=200000), CONTRADICTED,
++    ("supported", lambda fx: fx["lookup_events"][0].update(amount_pence=200000), UNRESOLVED,
+      "amount_mismatch", "200000 pence GBP, but the credit is 216000"),
+     ("supported", lambda fx: record_of(fx, "po_5001")["related_record_ids"].append("ord_1099"),
+      UNRESOLVED, "missing_cited_record", "ord_1099"),
+diff --git a/alibi/tests/test_investigate_rules.py b/alibi/tests/test_investigate_rules.py
+index 8e1e619..17d45de 100644
+--- a/alibi/tests/test_investigate_rules.py
++++ b/alibi/tests/test_investigate_rules.py
+@@ -498,7 +498,8 @@ def test_matching_amounts_alone_never_support_a_claim(passport, keystore, now):
+ 
+ @pytest.mark.parametrize("change, expected", [
+     ({"status": "reversed"}, CONTRADICTED),
+-    ({"amount_pence": 200000}, CONTRADICTED),
++    # A different amount leaves part of the credit unexplained, not a conflicting claim.
++    ({"amount_pence": 200000}, UNRESOLVED),
+     ({"effective_at": "2026-11-03T11:00:00Z", "occurred_at": "2026-11-03T11:30:00Z"},
+      CONTRADICTED),
+     ({"status": "pending", "effective_at": None, "occurred_at": "2026-11-03T08:00:00Z"},

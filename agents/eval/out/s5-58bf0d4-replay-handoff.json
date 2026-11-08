@@ -142,5 +142,30 @@
       "readOnlyRequestLinks": true
     },
     "scope": "Anonymous browser verification of live dashboard cards, dialogs and simulation routing. Signed-in sharing was tested separately on disposable frontends."
+  },
+  "hosted_claude_design_dashboard": {
+    "web_commit": "b08d4fe",
+    "url": "https://www.alibi-app.workers.dev/simulate/",
+    "widths_px": [
+      1440,
+      390
+    ],
+    "checks": {
+      "opened": 8,
+      "viewports": 2,
+      "redesignLive": true,
+      "simulationLinks": true,
+      "reducedMotion": true
+    },
+    "scope": "Anonymous live dashboard, after the newer design shipped. Keyboard open, Escape and restored focus checked for all dialogs. Mobile positioning checked after animation."
+  },
+  "stage_runner_smoke": {
+    "runner_commit": "02503b2",
+    "argument": "--replay --no-open",
+    "fresh_cycles": 2,
+    "D1_alert_and_D2_D3_requests_verified_in_each": true,
+    "clean_exit": true,
+    "all_three_ports_released": true,
+    "console_exposed_tokens": false
   }
 }

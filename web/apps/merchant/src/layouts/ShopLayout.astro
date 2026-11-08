@@ -20,6 +20,7 @@ const nav = [
   { href: '/seller/', label: 'Seller hub' },
   { href: '/account/settings/', label: 'Account' },
 ];
+import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
 ---
 
 <!doctype html>
@@ -31,6 +32,7 @@ const nav = [
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
+    <ReplayBanner />
     <a class="skip-link" href="#main">
       Skip to content
     </a>

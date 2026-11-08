@@ -94,6 +94,15 @@ export interface SourceRef {
   revision: number;
   trust: Trust;
   href: string;
+  /** Index into this step's `lookups` when the record came from a scoped lookup (UI.md); absent or null otherwise. */
+  via_lookup?: number | null;
+}
+
+export interface CalcTerm {
+  label: string;
+  sign: '+' | '-';
+  amount: Money;
+  source_ids: string[];
 }
 
 export interface TraceStep {
@@ -103,7 +112,14 @@ export interface TraceStep {
   claim: { claim_id: string; text: string; status: ClaimStatus };
   sources: SourceRef[];
   lookups: { tool: string; args_summary: string; result_summary: string; at: string }[];
-  calculation: { expression: string; result: Money; computed_by: string; matches: boolean } | null;
+  calculation: {
+    expression: string;
+    result: Money;
+    computed_by: string;
+    matches: boolean;
+    /** UI.md: the signed lines behind the expression; empty or absent renders no table. */
+    terms?: CalcTerm[];
+  } | null;
   status: ClaimStatus;
   status_reason: string;
   at: string;

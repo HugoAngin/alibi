@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "demo": "node scripts/demo.mjs",
     "dev:alibi": "pnpm --filter @alibi/site dev",
     "dev:merchant": "pnpm --filter @alibi/merchant dev",
     "dev:bank": "pnpm --filter @alibi/bank dev",

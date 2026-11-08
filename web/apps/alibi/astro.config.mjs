@@ -11,6 +11,8 @@ export default defineConfig({
   integrations: [clerk()],
   site: process.env.ALIBI_ORIGIN ?? 'http://localhost:4321',
   adapter: cloudflare({
+    // No debugger port: the three apps run side by side (pnpm demo / pnpm dev) and would collide on 9229.
+    inspectorPort: false,
     // No image transforms yet, so no Cloudflare Images binding is provisioned.
     imageService: 'passthrough',
   }),

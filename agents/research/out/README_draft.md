@@ -34,29 +34,25 @@ The Finance Track asks teams to help a specific person make a better financial d
 
 ## Results
 
-{{PH-18}}
+**The sealed result is negative.** On 44 sealed synthetic cases, authored by our evaluator independently of app development and scored once on frozen commit `58bf0d4`, none of the three systems (our agents, a one-pass Gemini baseline and a rules baseline) produced a safe-complete answer. There is no demonstrated advantage over either baseline.
 
-Scored once on the sealed set: {{PH-03}} cases in {{PH-04}} independent families, plus {{PH-05}} adversarial cases, authored separately from the development data and committed only after the candidate was frozen at {{PH-15}}. All three systems got the same inputs, candidate pool, validation and policy gate. Failures and abstentions count in every denominator.
+| System | Cases | Returned without a worker failure | Failed | Main safe-complete (both scorers) | Adversarial safe-complete |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Agents (Alibi) | 44 | 10 | 34 | 0 of 32 | 0 of 12 |
+| One-pass Gemini | 44 | 10 | 34 | 0 of 32 | 0 of 12 |
+| Rules | 44 | 10 | 34 | 0 of 32 | 0 of 12 |
 
-| Metric (results key) | Rules baseline | One-pass Gemini | Alibi |
-| --- | --- | --- | --- |
-| Safe and complete / cases (`safe_complete`, `cases`) | {{PH-20}} | {{PH-21}} | {{PH-22}} |
-| Match precision / recall, unmatched (`match_precision`, `match_recall`, `unmatched`) | {{PH-23}} | {{PH-24}} | {{PH-25}} |
-| Citation accuracy (`citation_accuracy`) | {{PH-26}} | {{PH-27}} | {{PH-28}} |
-| Gap recall (`gap_recall`) | {{PH-29}} | {{PH-30}} | {{PH-31}} |
-| Forbidden / unnecessary items (`forbidden_items`, `unnecessary_items`) | {{PH-32}} | {{PH-33}} | {{PH-34}} |
-| Unsafe proposals before the policy gate (`unsafe_proposals`) | {{PH-35}} | {{PH-36}} | {{PH-37}} |
-| Lookups and records read (`lookups`, `observed_inputs`) | {{PH-44}} | {{PH-44}} | {{PH-44}} |
-| Model calls, tokens, cost (`model_calls`, `tokens`, `cost_usd_estimate`) | {{PH-39}} | {{PH-39}} | {{PH-39}} |
+- **Why it failed, as far as we know.** Retained error output shows 18 distinct cases failing at ingest, before any reasoning. Observed per system, that is 17 of the agents' 34 failures (13 core payload schema, 4 self-supplied import kind) and 18 each of the one-pass and rules baselines' 34 (13 and 5). In those cases the sealed pack used event kinds and fields our ingest schema rejected, an input-contract gap we had flagged at 01:45 and not closed. The other failures have no saved error output, so their cause is unknown. This run mostly measures that contract mismatch at ingest, not reasoning quality.
+- **No mapping and no rerun.** Adding a mapping after seeing the result would have been a second look at the sealed set, so the frozen result stands.
+- **The capture was interrupted and resumed.** A harness fault interrupted the capture, and it was resumed under continuation rules that lead authorised after the interruption and before the resume. Every original returned result was kept byte-for-byte.
+- **Variants:** 3 frozen variants were tried before this freeze.
+- **Cost:** full cost is unknown. Partial logged cost is about $0.70 over 62 model calls for the agents and about $0.06 over 14 calls for the one-pass baseline; the rules baseline makes no model calls.
+- **Calibration:** the rules baseline was calibrated on public cases while the sealed pack was being authored. We disclose this.
+- **Security probes:** of 17 exercised refusal probes, 15 held and SP-23 and SP-24 failed (see Limits); both acceptance controls passed, and 28 probes were not exercised. The protections held where we tested them: separate approval per bank, signed packages the bank verifies independently, and cross-bank reads refused.
 
-- **Uncertainty:** {{PH-38}}
-- **On cases whose answer needs a lookup:** {{PH-43}}
-- **Security probes:** {{PH-10}} of {{PH-11}} attacks blocked, {{PH-12}} valid controls allowed.
-- **Reuse for a second bank:** {{PH-14}}
-- **One failure:** {{PH-40}}
-- **Reruns:** {{PH-17}}
+Records: `1b235c16e9` (interrupted capture), `e16afeeac5` (continuation) and `f8dc5763b6` (aggregate export), rerun by `eval` with `python3 tools/results.py verify`. Source: `agents/eval/out/UNSEEN_RESULTS.md`; per-system error counts in `agents/eval/out/UNSEEN_ERROR_CLASSES.json`.
 
-Every number above was rerun from a clean checkout by `eval` with `python3 tools/results.py verify`. The records are in `agents/*/out/results.jsonl`.
+**Development results.** Everything else we show, the 80 public cases, the case 1 demo and the probes, is development work on public data and labelled as development. None of it is a held-out result.
 
 ## Method
 
@@ -156,7 +152,7 @@ Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 l
 - **Maya** approves the exact package for one named bank. Any change after that needs a new approval.
 - **The analyst** records clear, escalate or request more, with a reason. Nothing changes on any account automatically.
 
-**Footer number:** `probes_blocked / probes_attempted` and `controls_allowed / controls_attempted` from `agents.execution.api.summarise`, as verified by eval. ⏳
+**Probe totals (development, public probes):** of 17 exercised refusal probes, 15 held (SP-23 and SP-24 failed); both acceptance controls passed; 28 of 47 probes were not exercised.
 
 ## Limits
 
@@ -168,7 +164,9 @@ Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 l
 - Signing proves integrity and which key signed. It does not prove a claim is true; the analyst decides that.
 - Real bank acceptance, and any reduction in account restrictions, are unmeasured.
 - Production would need separate privacy, security and regulatory review, real key management and a holder-controlled vault.
-- ⏳ Any probe that failed in the frozen run, named here with its ID.
+- The sealed evaluation mostly measured an input-contract mismatch at ingest: 18 distinct sealed cases failed before any reasoning (observed 17, 18 and 18 per system), and the remaining failures' cause is unknown. It cannot tell us how well the agents reason.
+- Refusal probes SP-23 and SP-24 failed in the frozen run; 28 of 47 probes were not exercised.
+- On the frozen local app, a `?token=` login URL is accepted and can be logged. The hosted router refuses credential-bearing URLs; the local app does not.
 
 ## Run it
 

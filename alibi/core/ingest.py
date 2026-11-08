@@ -19,12 +19,15 @@ is safe to show the caller.
   A txn id and an account belong to the connection that first delivered them.
 * ``receive_rfc``: a bank's request, bound to the authenticated bank, to the subject's own
   transactions and to the bank's own accounts (``account_refs``, required with ``txn_ids``).
+  A follow-up must stay inside its parent's scope (same scope kind; a period inside the
+  parent's period; ``txn_ids`` a subset of the parent's), else ``scope_wider_than_parent``.
 
 Refusal reasons never echo a JSON key that is not a schema field: such a key is
 sender-chosen text, so it is named only as ``<extra field>``.
 
 Idempotency is the store's: merchant events by ``(connector, issuer_id, event_id)`` plus the
-payload digest, bank txns by ``(txn_id, revision)`` plus content, requests by ``request_id``.
+payload digest, bank txns by ``(txn_id, revision)`` plus content, requests by
+``(issuer, request_id)``, so two banks may use the same request id independently.
 """
 
 import copy
@@ -71,8 +74,8 @@ from alibi.core.store import (
 __all__ = [
     "CONNECTOR_BANK", "CONNECTOR_BANK_REFRESH", "CONNECTOR_IMPORT", "CONNECTOR_LOOKUP",
     "CONNECTOR_RFC", "CONNECTOR_WEBHOOK", "HOLDER", "ISSUER_CONNECTORS", "SELF_SUPPLIED_ISSUER",
-    "TRUST_CLAIM_KEYS", "IngestError", "import_self_supplied", "ingest_bank_txns",
-    "ingest_merchant_event", "receive_rfc",
+    "REFUSAL_SCOPE_WIDER", "TRUST_CLAIM_KEYS", "IngestError", "import_self_supplied",
+    "ingest_bank_txns", "ingest_merchant_event", "receive_rfc",
 ]
 
 CONNECTOR_WEBHOOK = "merchant_webhook"
@@ -507,11 +510,49 @@ def ingest_bank_txns(store: Store, txns: Any, *, subject_ref: str, connection_id
 # --------------------------------------------------------------------------- requests
 
 
+REFUSAL_SCOPE_WIDER = "scope_wider_than_parent"
+
+
+def _scope_widening(store: Store, parent: RequestForContext,
+                    rfc: RequestForContext) -> str | None:
+    """Why ``rfc`` is not structurally inside ``parent``'s scope, or ``None`` when it is.
+
+    A request is transaction-scoped when it has no ``period``, else period-scoped. A follow-up
+    keeps its parent's kind: a transaction-scoped parent takes only a subset of its
+    ``txn_ids``; a period-scoped parent takes only a period inside its own and, when the
+    follow-up also names transactions, only ones booked in the parent's period (and in the
+    parent's ``txn_ids`` when it has any). Ids and times are never echoed.
+    """
+    if parent.period is None:
+        if rfc.period is not None:
+            return "the parent request is transaction-scoped, so a follow-up cannot ask for a period"
+        allowed = set(parent.txn_ids or ())
+        outside = [t for t in rfc.txn_ids or [] if t not in allowed]
+        if outside:
+            return (f"txn_ids name {len(outside)} transaction(s) outside the parent request's "
+                    "txn_ids")
+        return None
+    if rfc.period is None:
+        return "the parent request is period-scoped, so a follow-up must name a period inside it"
+    if rfc.period.from_ < parent.period.from_ or rfc.period.to > parent.period.to:
+        return "the follow-up's period is not inside the parent request's period"
+    for txn_id in rfc.txn_ids or []:
+        if parent.txn_ids is not None and txn_id not in parent.txn_ids:
+            return "txn_ids name a transaction outside the parent request's txn_ids"
+        try:
+            booked_at = store.get_bank_txn(txn_id).booked_at
+        except NotFound:
+            return "txn_ids name a transaction the passport does not hold"
+        if not parent.period.contains(booked_at):
+            return "txn_ids name a transaction booked outside the parent request's period"
+    return None
+
+
 def _check_rfc_scope(store: Store, rfc: RequestForContext,
                      account_refs: Collection[str] | None) -> None:
     """The subject must be held, every txn must be the subject's and on one of the bank's
     own accounts (fail closed: txn_ids without ``account_refs`` are refused), and a parent
-    must be this issuer's request for this subject."""
+    must be this issuer's request for this subject whose scope contains the follow-up's."""
     target = rfc.request_id
     if not store.list_bank_txns(rfc.subject_ref) and not store.list_sources(rfc.subject_ref):
         raise _Refused("the passport holds no subject with that subject_ref", target)
@@ -528,12 +569,15 @@ def _check_rfc_scope(store: Store, rfc: RequestForContext,
             raise _Refused("txn_ids include a transaction outside this request's scope", target)
     if rfc.parent_request_id is not None:
         try:
-            parent = store.get_request(rfc.parent_request_id)
+            parent = store.get_request(rfc.parent_request_id, issuer=rfc.issuer)
         except NotFound:
             parent = None
         if parent is None or parent.issuer != rfc.issuer or parent.subject_ref != rfc.subject_ref:
             raise _Refused("parent_request_id does not name an earlier request from this issuer "
                            "for this subject", target)
+        widening = _scope_widening(store, parent, rfc)
+        if widening is not None:
+            raise _Refused(f"{REFUSAL_SCOPE_WIDER}: {widening}", target)
 
 
 def receive_rfc(store: Store, registry: TrustRegistry | None, payload: Any, *,
@@ -548,8 +592,11 @@ def receive_rfc(store: Store, registry: TrustRegistry | None, payload: Any, *,
     subject must be one the passport holds, every ``txn_id`` must belong to that subject and
     sit on one of ``account_refs`` (the authenticated bank's own accounts; a request naming
     txn_ids is refused without them), and a ``parent_request_id`` must name an earlier request
-    from the same issuer for the same subject. The same ``request_id`` with identical content
-    is idempotent; different content is refused.
+    from the same issuer for the same subject whose scope contains this one (same scope kind,
+    a period inside the parent's, ``txn_ids`` within the parent's; otherwise the refusal
+    reads ``scope_wider_than_parent: ...``). Request ids are the issuer's own namespace: the
+    same issuer sending the same ``request_id`` with identical content is idempotent and with
+    different content is refused, while another bank may use the same id for its own request.
     """
     at = _clock(now)
     fingerprint = _fingerprint(payload)
@@ -589,7 +636,7 @@ def receive_rfc(store: Store, registry: TrustRegistry | None, payload: Any, *,
             except IdempotencyConflict:
                 raise _Refused("request_id was already received with different content",
                                target) from None
-            stored = store.get_request(rfc.request_id)
+            stored = store.get_request(rfc.request_id, issuer=rfc.issuer)
             signed_note = "signed" if envelope is not None else "unsigned"
             verb = "duplicate" if status == "duplicate" else "accepted"
             _audit(store, action="receive_rfc", actor=CONNECTOR_RFC,

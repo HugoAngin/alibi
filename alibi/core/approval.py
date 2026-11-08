@@ -37,33 +37,104 @@ __all__ = [
     "approve",
     "body_refs",
     "calculation_refs",
+    "REFUSAL_TEMPLATES",
     "check_approval",
+    "code_for_reason",
     "consume",
     "current_revisions",
     "merge_refs",
+    "refusal_for",
+    "refusal_reason",
     "require_valid",
 ]
 
 DEFAULT_APPROVAL_TTL = timedelta(minutes=15)
 
+# Consent-matrix refusals (agents/execution/out/consent_matrix.md): code -> the verbatim reason
+# template. They mirror ``agents.execution.approval_gate.CONSENT_MATRIX``; alibi/tests/
+# test_consent_codes.py checks the two stay identical. Placeholders are filled with real ids,
+# digests (first 12 hex characters) and UTC times, never with body content.
+REFUSAL_TEMPLATES: dict[str, str] = {
+    "approval_missing": "dispatch refused: no holder approval recorded for request {request_id}.",
+    "approval_digest_mismatch": (
+        "dispatch refused: approved digest sha256:{approved12} does not match body digest "
+        "sha256:{actual12}; the body changed after approval{change}. Review and approve the "
+        "revised body."),
+    "approval_audience_mismatch": (
+        "dispatch refused: approval is for {approved_audience}; this dispatch is addressed "
+        "to {audience}. Each recipient needs its own approval."),
+    "approval_audience_refused": (
+        "approval refused: request {request_id} is addressed to {request_audience}, "
+        "not {audience}."),
+    "approval_digest_not_current": (
+        "approval refused: the preview you approved (sha256:{approved12}) is no longer the "
+        "current draft (sha256:{current12}). Review the current draft."),
+    "policy_version_changed": (
+        "dispatch refused: privacy rules changed after approval ({old} to {new}). The draft was "
+        "re-filtered; review and approve it again."),
+    "source_revision_changed": (
+        "dispatch refused: cited record {record_id} changed from r{old} to r{new} after "
+        "approval. The draft is stale; review the updated draft."),
+    "approval_expired": "dispatch refused: approval expired at {valid_until}. Review and approve again.",
+    "request_expired": (
+        "dispatch refused: request {request_id} expired at {expires_at}. The bank must send a new "
+        "request."),
+    "approval_request_mismatch": (
+        "dispatch refused: approval {approval_id} is for request {approved_request}, not "
+        "{request_id}. Each request needs its own approval."),
+    "package_id_reused": "dispatch refused: package {package_id} was already sent with a different digest.",
+}
+# The fixed text before the first placeholder, longest first, so a stored reason maps back to
+# its code ("dispatch refused: approval " alone would also match the expiry and audience rows).
+_REASON_PREFIXES: list[tuple[str, str]] = sorted(
+    ((template.split("{", 1)[0], code) for code, template in REFUSAL_TEMPLATES.items()),
+    key=lambda item: -len(item[0]))
+CHANGE_REGENERATED = " (draft regenerated)"   # consent matrix C3's change note
+
+
+def refusal_reason(code: str, **fields: Any) -> str:
+    """The consent-matrix sentence for ``code`` with its placeholders filled."""
+    try:
+        return REFUSAL_TEMPLATES[code].format(**fields)
+    except KeyError as exc:
+        raise ValueError(f"refusal {code!r}: unknown code or missing field {exc}") from None
+
+
+def code_for_reason(reason: str | None) -> str | None:
+    """The consent-matrix code whose sentence ``reason`` is, or None for free text."""
+    if not reason:
+        return None
+    for prefix, code in _REASON_PREFIXES:
+        if reason.startswith(prefix):
+            return code
+    return None
+
 
 class ApprovalError(Exception):
     """An approval cannot be granted or used. ``problems`` lists every reason (safe to show).
 
-    ``code`` and ``reason`` carry the consent-matrix refusal (agents/execution/out/consent_matrix.md)
-    when the first problem maps to one, so HTTP layers can answer ``{code, reason}`` verbatim.
+    ``code`` and ``reason`` carry the consent-matrix refusal (agents/execution/out/consent_matrix.md,
+    ``REFUSAL_TEMPLATES``) when the failure maps to one: ``reason`` is the matrix sentence
+    verbatim with its placeholders filled, so HTTP layers answer ``refusal`` (``{code, reason}``)
+    as is. Outside the matrix ``code`` is None and ``reason`` is the first problem.
     """
 
     def __init__(self, problems: Iterable[str], *, code: str | None = None,
-                 reason: str | None = None):
+                 reason: str | None = None, **fields: Any):
         self.problems = list(problems) or ["the approval is not valid"]
-        self.code = code
+        if code is not None and reason is None and code in REFUSAL_TEMPLATES:
+            reason = refusal_reason(code, **fields)
+        self.code = code if code is not None else code_for_reason(reason)
         self.reason = reason if reason is not None else self.problems[0]
         super().__init__("; ".join(self.problems))
 
     @property
     def refusal(self) -> dict[str, str | None]:
         return {"code": self.code, "reason": self.reason}
+
+
+def _digest12(value: str | None) -> str:
+    return (value or "")[:12] or "unknown"
 
 
 # --------------------------------------------------------------------------- ref helpers
@@ -275,11 +346,90 @@ def check_approval(approval: Approval, *, body: PackageBody | dict, audience: st
     return problems
 
 
+def refusal_for(approval: Approval, *, body: PackageBody | dict, audience: str,
+                request_id: str, policy_version: str, revisions: Mapping[str, int | None],
+                now: datetime | None = None, request_expires_at: datetime | None = None,
+                current_body_sha256: str | None = None, change: str = "",
+                fail_closed: bool = True) -> tuple[str, str] | None:
+    """The consent-matrix ``(code, reason)`` for using ``approval`` on ``body`` now, or None.
+
+    The checks run in the matrix order, so the first failure names the refusal: request expiry
+    (when ``request_expires_at`` is given), the approval window, request id, audience, policy
+    version, every approved source revision, then the body digest (against ``body`` and, when
+    given, ``current_body_sha256``, the digest of the body the request would send now, with
+    ``change`` as the C2/C3 change note). An approval already consumed or invalidated fails
+    closed as ``approval_missing`` unless its stored reason is itself a matrix sentence, which is
+    then returned verbatim (C2). ``fail_closed=False`` returns None instead for such approvals.
+    """
+    if not isinstance(approval, Approval):
+        return ("approval_missing", refusal_reason("approval_missing", request_id=request_id))
+    try:
+        now = _resolve_now(now)
+    except ApprovalError:
+        return None
+    if request_expires_at is not None and now >= request_expires_at:
+        return ("request_expired", refusal_reason(
+            "request_expired", request_id=request_id, expires_at=format_utc(request_expires_at)))
+    if now >= approval.expires_at:
+        return ("approval_expired", refusal_reason(
+            "approval_expired", valid_until=format_utc(approval.expires_at)))
+    parsed = _as_body(body)
+    body_request = parsed.request_id if parsed is not None else request_id
+    if approval.request_id not in (request_id, body_request) or request_id != body_request:
+        other = request_id if request_id != approval.request_id else body_request
+        return ("approval_request_mismatch", refusal_reason(
+            "approval_request_mismatch", approval_id=approval.approval_id,
+            approved_request=approval.request_id, request_id=other))
+    body_audience = parsed.audience if parsed is not None else audience
+    if audience != approval.audience or body_audience != approval.audience:
+        other = audience if audience != approval.audience else body_audience
+        return ("approval_audience_mismatch", refusal_reason(
+            "approval_audience_mismatch", approved_audience=approval.audience, audience=other))
+    if policy_version != approval.policy_version:
+        return ("policy_version_changed", refusal_reason(
+            "policy_version_changed", old=approval.policy_version, new=policy_version))
+    current = revisions if isinstance(revisions, Mapping) else {}
+    for ref in approval.source_revisions:
+        active = current.get(ref.token())
+        if active != ref.revision:
+            record = ref.ref_id if ref.ref_type == "record" else ref.token()
+            return ("source_revision_changed", refusal_reason(
+                "source_revision_changed", record_id=record, old=ref.revision,
+                new=active if active is not None else "none"))
+    try:
+        body_sha256 = digest(body)
+    except CanonError:
+        body_sha256 = None
+    approved_keys = {ref.key() for ref in approval.source_revisions}
+    uncovered = parsed is not None and any(ref.key() not in approved_keys
+                                           for ref in body_refs(parsed))
+    if body_sha256 != approval.body_sha256 or parsed is None or uncovered \
+            or (current_body_sha256 is not None and current_body_sha256 != approval.body_sha256):
+        stored = approval.invalidated_reason
+        if code_for_reason(stored) == "approval_digest_mismatch":
+            return ("approval_digest_mismatch", stored)
+        actual = body_sha256 if body_sha256 != approval.body_sha256 else current_body_sha256
+        return ("approval_digest_mismatch", refusal_reason(
+            "approval_digest_mismatch", approved12=_digest12(approval.body_sha256),
+            actual12=_digest12(actual), change=change))
+    if ApprovalStatus(approval.status) != ApprovalStatus.PENDING:
+        stored_code = code_for_reason(approval.invalidated_reason)
+        if stored_code is not None:
+            return (stored_code, approval.invalidated_reason)
+        if fail_closed:
+            return ("approval_missing", refusal_reason("approval_missing", request_id=request_id))
+    return None
+
+
 def require_valid(approval: Approval, *, body: PackageBody | dict, audience: str,
                   request_id: str, policy_version: str, revisions: Mapping[str, int | None],
                   now: datetime | None = None) -> None:
-    """Raise ``ApprovalError`` listing every problem ``check_approval`` finds."""
+    """Raise ``ApprovalError`` listing every problem ``check_approval`` finds, with the
+    consent-matrix ``code`` and ``reason`` of the first failure in matrix order."""
     problems = check_approval(approval, body=body, audience=audience, request_id=request_id,
                               policy_version=policy_version, revisions=revisions, now=now)
     if problems:
-        raise ApprovalError(problems)
+        refusal = refusal_for(approval, body=body, audience=audience, request_id=request_id,
+                              policy_version=policy_version, revisions=revisions, now=now)
+        code, reason = refusal if refusal else (None, None)
+        raise ApprovalError(problems, code=code, reason=reason)

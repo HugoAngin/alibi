@@ -46,8 +46,8 @@ def answer(*rules, clarifications=(), summary="Summary."):
     return {"rules": list(rules), "clarifications": list(clarifications), "plain_summary": summary}
 
 
-def parse(text, script, **kw):
-    client = FakeClient({text: script})
+def parse(text, script, validate=True, **kw):
+    client = FakeClient({text: script}, validate=validate)
     return parse_rule_text(text, client=client, material=MATERIAL, **kw), client
 
 
@@ -196,7 +196,9 @@ def test_unavailable_becomes_unresolved_with_reason():
 def test_undeclared_field_is_ignored_and_reported():
     data = answer(rule("deny", "field", "account_ref"))
     data["grant_access"] = True
-    out, _ = parse("Don't share my account number.", data)
+    # the closed role schema (REDTEAM fix) stops this at the client; behind a permissive
+    # client the parser layer still drops and reports the field
+    out, _ = parse("Don't share my account number.", data, validate=False)
     assert out.status == "resolved"
     assert out.warnings == ["undeclared field ignored: grant_access"]
 

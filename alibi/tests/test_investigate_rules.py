@@ -368,7 +368,7 @@ def test_contradiction_is_never_supported(passport, keystore, now):
     assert "record:stl_88001@1" in keys(claim.evidence_refs)  # cites the conflicting settlement
     assert claim.calculation.balanced is True  # the amounts still reconcile...
     assert claim.calculation.timing.ok is False  # ...but the timing does not
-    assert "remains unresolved" in claim.gap
+    assert "remains unresolved" in claim.gap_detail
     assert [c.status for c in store.list_claims(request_id=RFC_A)] == [claim.status]
 
 
@@ -385,8 +385,8 @@ def test_ambiguous_payouts_leave_q1_unresolved(passport, keystore, now):
     assert claim.status.value in fx["expected"]["claims"][RFC_A]["q1"]["statuses"]
     assert keys(claim.evidence_refs) == set(fx["expected"]["claims"][RFC_A]["q1"]["evidence"])
     # The gap gives the number of candidates, not their contents.
-    assert claim.gap.startswith("2 payout records")
-    assert not any(word in claim.gap for word in ("po_500", "PO-500", "216000"))
+    assert claim.gap_detail.startswith("2 payout records")
+    assert not any(word in claim.gap_detail for word in ("po_500", "PO-500", "216000"))
     assert "lookup_settlement" not in tools(gateway)  # nothing matched, so nothing to retrieve
 
 
@@ -428,8 +428,8 @@ def test_no_settlement_connector_and_none_in_the_passport_is_unresolved(passport
     assert result.links[0].link_state == LinkState.LINKED  # linked, yet the claim is open
     claim = claim_of(result)
     assert claim.status == UNRESOLVED
-    assert claim.gap.startswith("No settlement record for payout PO-5001")
-    assert "unavailable" in claim.gap
+    assert claim.gap_detail.startswith("No settlement record for payout PO-5001")
+    assert "unavailable" in claim.gap_detail
     ids = {ref.ref_id for ref in claim.evidence_refs}
     assert "msg_7001" not in ids and not any(i.startswith("stl_") for i in ids)
     assert "unavailable: lookup_settlement PO-5001" in result.unavailable
@@ -489,7 +489,7 @@ def test_matching_amounts_alone_never_support_a_claim(passport, keystore, now):
     claim = claim_of(result)
     assert claim.calculation.balanced is True and claim.calculation.timing.ok is True
     assert claim.status == UNRESOLVED
-    assert "alone" in claim.gap
+    assert "alone" in claim.gap_detail
 
 
 @pytest.mark.parametrize("change, expected", [
@@ -521,7 +521,7 @@ def test_explicit_settlement_fields_decide_the_status(passport, keystore, now, c
     assert "record:stl_88001@1" in keys(claim.evidence_refs)
     assert claim.gap
     if "occurred_at" in change and change.get("status") != "pending":
-        assert "after the credit was booked" in claim.gap and "remains unresolved" in claim.gap
+        assert "after the credit was booked" in claim.gap_detail and "remains unresolved" in claim.gap_detail
 
 
 # --------------------------------------------------------------------------- RFC B and totals
@@ -588,7 +588,8 @@ def test_net_totals_fee_totals_and_unmapped_questions(passport, keystore, now):
     assert fees.status == SUPPORTED and fees.calculation.total_pence == 6000
     assert keys(fees.evidence_refs) == {"record:fee_3001@1"}
     other = claim_of(result, "q3")
-    assert (other.status, other.gap, other.evidence_refs) == (UNRESOLVED, UNMAPPED_GAP, [])
+    assert (other.status, other.gap, other.gap_detail, other.evidence_refs) \
+        == (UNRESOLVED, "question_not_mapped", UNMAPPED_GAP, [])
 
 
 # --------------------------------------------------------------------------- other cases
@@ -599,7 +600,7 @@ def test_a_debit_is_unresolved_without_a_link(passport, keystore, now):
     store.save_request(rfc("rfc_d_001", ["What was this payment for?"], txn_ids=["txn_9002"]))
     result, _ = investigate(store, fx, keystore, now, "rfc_d_001")
     claim = claim_of(result)
-    assert claim.status == UNRESOLVED and "debit" in claim.gap
+    assert claim.status == UNRESOLVED and "debit" in claim.gap_detail
     assert result.links == [] and keys(claim.evidence_refs) == {"txn:txn_9002@1"}
 
 
@@ -611,7 +612,7 @@ def test_several_transactions_share_one_claim_and_the_worst_status_wins(passport
                            txn_ids=["txn_9001", "txn_9002"]))
     result, _ = investigate(store, fx, keystore, now, "rfc_e_001")
     claim = claim_of(result)
-    assert claim.status == UNRESOLVED and "debit" in claim.gap
+    assert claim.status == UNRESOLVED and "debit" in claim.gap_detail
     assert {"txn:txn_9001@1", "record:stl_88001@1", "txn:txn_9002@1"} <= keys(claim.evidence_refs)
     assert "txn_9001" in claim.statement and "txn_9002" in claim.statement
     assert [link.txn_ref.ref_id for link in result.links] == ["txn_9001"]
@@ -623,7 +624,7 @@ def test_budget_exhaustion_gives_a_typed_unresolved_reason(passport, keystore, n
     result, gateway = investigate(store, fx, keystore, now, budget=budget)
 
     claim = claim_of(result)
-    assert claim.status == UNRESOLVED and "budget_exceeded" in claim.gap
+    assert claim.status == UNRESOLVED and "budget_exceeded" in claim.gap_detail
     assert result.calls_used == gateway.calls_used == budget
     assert result.unavailable
     assert all(reason.startswith("budget_exceeded: ") for reason in result.unavailable)
@@ -675,7 +676,7 @@ def test_links_claims_and_trace_are_saved(passport, keystore, now):
     assert min(e.seq for e in rules) > max(e.seq for e in stored if e.actor == "gateway")
     (change,) = [e for e in rules if e.step == "status_change"]
     assert change.question_id == "q1" and change.reason
-    assert change.result == {"claim_id": claim.claim_id, "status": "supported"}
+    assert change.result == {"claim_id": claim.claim_id, "status": "supported", "gap": "none"}
     assert keys(change.refs) == keys(claim.evidence_refs)
     (matching,) = [e for e in rules if e.step == "validation" and e.tool == "list_candidates"]
     assert matching.result["link_state"] == "linked" and matching.result["method"] == "reference"
@@ -771,7 +772,7 @@ def test_a_conflicting_settlement_in_the_passport_counts_even_when_the_lookup_wo
     claim = claim_of(result)
     assert claim.status == CONTRADICTED  # the same verdict whether or not the connector is up
     assert "record:stl_88001_ret@1" in keys(claim.evidence_refs)
-    assert "status returned" in claim.gap and "remains unresolved" in claim.gap
+    assert "status returned" in claim.gap_detail and "remains unresolved" in claim.gap_detail
     assert tools(gateway)[2:4] == ["lookup_settlement", "list_records"]
     if lookup:  # the lookup's settled record is named and outweighed by the failed one
         assert "record:stl_88001@1 (status settled)" in claim.rationale
@@ -796,7 +797,7 @@ def test_an_unrecognised_status_leaves_the_total_unresolved(passport, keystore, 
     sales, refunds, fees, net = result.claims
     for claim in (sales, net):  # never a supported partial total
         assert claim.status == UNRESOLVED and claim.calculation is None
-        assert "ord_1003 (on_hold)" in claim.gap
+        assert "ord_1003 (on_hold)" in claim.gap_detail
         assert keys(claim.evidence_refs) == {"record:ord_1003@1"}
     assert (refunds.status, refunds.calculation.total_pence) == (SUPPORTED, 18000)
     assert (fees.status, fees.calculation.total_pence) == (SUPPORTED, 6000)
@@ -857,9 +858,9 @@ def test_a_missing_component_is_named_and_never_hides_a_conflict(passport, keyst
     result, _ = investigate(store, fx, keystore, now)
     claim = claim_of(result)
     assert claim.status == expected
-    assert "ord_1099" in claim.gap and claim.calculation is None
+    assert "ord_1099" in claim.gap_detail and claim.calculation is None
     if expected == CONTRADICTED:
-        assert "status reversed" in claim.gap and "record:stl_88001@1" in keys(claim.evidence_refs)
+        assert "status reversed" in claim.gap_detail and "record:stl_88001@1" in keys(claim.evidence_refs)
 
 
 def test_a_late_pending_settlement_contradicts_even_when_the_budget_cuts_the_components(
@@ -867,7 +868,7 @@ def test_a_late_pending_settlement_contradicts_even_when_the_budget_cuts_the_com
     store, fx = passport("contradiction")
     result, gateway = investigate(store, fx, keystore, now, budget=4)
     claim = claim_of(result)
-    assert claim.status == CONTRADICTED and "budget_exceeded" in claim.gap
+    assert claim.status == CONTRADICTED and "budget_exceeded" in claim.gap_detail
     assert "record:stl_88001@1" in keys(claim.evidence_refs) and claim.calculation is None
     assert result.calls_used == gateway.calls_used == 4
 
@@ -881,7 +882,7 @@ def test_a_failed_settlement_in_another_currency_contradicts(passport, keystore,
     result, _ = investigate(store, fx, keystore, now)
     claim = claim_of(result)
     assert claim.status == CONTRADICTED and claim.calculation is None
-    assert "status reversed" in claim.gap and "does not convert currencies" in claim.gap
+    assert "status reversed" in claim.gap_detail and "does not convert currencies" in claim.gap_detail
 
 
 def test_several_categories_give_a_net_total_only_when_the_question_asks_for_one(
@@ -901,10 +902,17 @@ def test_several_categories_give_a_net_total_only_when_the_question_asks_for_one
     result, _ = investigate(store, fx, keystore, now, "rfc_n_001")
     assert [(c.status, c.calculation.total_pence if c.calculation else None)
             for c in result.claims] == [(SUPPORTED, 18000), (SUPPORTED, 6000),
-                                        (SUPPORTED, 18000), (UNRESOLVED, None),
+                                        (SUPPORTED, 18000), (SUPPORTED, 222000),
                                         (SUPPORTED, 216000)]
+    # Two documented totals in one claim (NEEDS item 6): sales and refunds each stated with
+    # their count, the records cited, and the signed sum carried as a documented_totals calc.
     several = claim_of(result, "q4")
-    assert "sales and refunds" in several.gap and several.evidence_refs == []
+    assert several.gap is None and several.calculation.method == "documented_totals"
+    assert several.facts == {"sales_minor": 240000, "sale_count": 4, "refunds_minor": 18000,
+                             "refund_count": 1}
+    assert "sales total 240000 pence GBP across 4 records" in several.statement
+    assert "refunds total 18000 pence GBP across 1 record" in several.statement
+    assert {ref.ref_id for ref in several.evidence_refs} == {*maya.ORDER_IDS, "rfd_2001"}
 
 
 def test_a_gateway_under_another_run_id_is_refused_before_any_call(passport, keystore, now):
@@ -941,7 +949,7 @@ def test_a_different_settlement_reference_on_the_credit_is_not_supported(passpor
     assert (link.link_state, link.method) == (LinkState.LINKED, "reference")
     claim = claim_of(result)
     assert claim.status == UNRESOLVED
-    assert "STL-99999" in claim.gap and "STL-88001" in claim.gap
+    assert "STL-99999" in claim.gap_detail and "STL-88001" in claim.gap_detail
 
 
 @pytest.mark.parametrize("credit_refs, state", [([], LinkState.AMBIGUOUS),
@@ -963,7 +971,7 @@ def test_a_self_supplied_payout_and_settlement_never_support(passport, keystore,
     assert claim.status == UNRESOLVED
     if state == LinkState.LINKED:
         assert link.record_ref == rref("self_po_9")
-        assert "self-supplied" in claim.gap and "self-supplied" in claim.rationale
+        assert "self-supplied" in claim.gap_detail and "self-supplied" in claim.rationale
         assert "record:self_stl_9@1" in keys(claim.evidence_refs)
 
 
@@ -977,7 +985,7 @@ def test_a_self_supplied_settlement_neither_supports_nor_overrides_issuer_eviden
                               "effective_at": "2026-11-03T07:45:00Z"})
     result, _ = investigate(store, fx, keystore, now, lookup=False)
     claim = claim_of(result)
-    assert claim.status == UNRESOLVED and "self-supplied" in claim.gap
+    assert claim.status == UNRESOLVED and "self-supplied" in claim.gap_detail
     assert "record:self_stl_88001@1" in keys(claim.evidence_refs)
 
     # An issuer-verified pending settlement is not shadowed by a later self-supplied one.
@@ -1012,8 +1020,8 @@ def test_one_payout_never_supports_two_credits(passport, keystore, now):
         ("txn_9003", LinkState.LINKED, rref("po_5001"))]
     claim = claim_of(result)
     assert claim.status == UNRESOLVED
-    assert "also matched to credit txn_9003" in claim.gap
-    assert "also matched to credit txn_9001" in claim.gap
+    assert "also matched to credit txn_9003" in claim.gap_detail
+    assert "also matched to credit txn_9001" in claim.gap_detail
     assert "settled as" not in claim.statement
     assert result.calls_used == 10 and result.unavailable == []
 
@@ -1046,7 +1054,8 @@ def test_source_questions_need_a_cue_about_the_money(passport, keystore, now):
     assert claim_of(result, "q1").status == SUPPORTED
     for question_id in ("q2", "q3"):  # never the credit's supported claim
         other = claim_of(result, question_id)
-        assert (other.status, other.gap, other.evidence_refs) == (UNRESOLVED, UNMAPPED_GAP, [])
+        assert (other.status, other.gap, other.gap_detail, other.evidence_refs) \
+            == (UNRESOLVED, "question_not_mapped", UNMAPPED_GAP, [])
 
 
 @pytest.mark.parametrize("lookup", [True, False], ids=["settled-settlement", "no-settlement"])
@@ -1056,7 +1065,7 @@ def test_a_failed_payout_contradicts_the_claim(passport, keystore, now, lookup):
     result, _ = investigate(store, fx, keystore, now, lookup=lookup)
     claim = claim_of(result)
     assert claim.status == CONTRADICTED
-    assert "status cancelled" in claim.gap and "record:po_5001@1" in keys(claim.evidence_refs)
+    assert "status cancelled" in claim.gap_detail and "record:po_5001@1" in keys(claim.evidence_refs)
 
 
 def test_a_settlement_reference_already_in_the_passport_names_the_payout(passport, keystore,
@@ -1185,7 +1194,7 @@ def test_integration_fallback_and_budget(real, keystore, registry, now):
 
     starved, gateway = real.run(store, fx, rfcs[RFC_A], budget=2)
     claim = claim_of(starved)
-    assert claim.status == UNRESOLVED and "budget_exceeded" in claim.gap
+    assert claim.status == UNRESOLVED and "budget_exceeded" in claim.gap_detail
     assert starved.calls_used == gateway.calls_used == 2
     assert all(r.startswith("budget_exceeded: ") for r in starved.unavailable)
 
@@ -1231,6 +1240,9 @@ def test_integration_self_supplied_imports_never_support(real, now):
     (link,) = result.links
     assert link.record_ref == rref("self_po_9")
     claim = claim_of(result)
-    assert claim.status == UNRESOLVED and "self-supplied" in claim.gap
-    # The connector is never asked about a reference only self-supplied evidence carries.
-    assert any(r.startswith("refused: lookup_settlement") for r in result.unavailable)
+    assert claim.status == UNRESOLVED and "self-supplied" in claim.gap_detail
+    # The credit itself carries TRANSFER, so the gateway may ask the connector about it (NEEDS
+    # item 3); the connector knows nothing, and the self-supplied records never support.
+    lookups = [e for e in result.trace if e.tool == "lookup_settlement" and e.step == "tool_call"]
+    assert lookups and all(e.result == {"found": False} for e in lookups)
+    assert result.unavailable == []

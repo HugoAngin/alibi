@@ -806,3 +806,27 @@ def test_unknown_routes_and_methods_answer_in_the_refusal_shape(client):
     assert m.status_code == 405 and m.json()["code"] == "method_not_allowed"
     detail = client.get(f"/requests/{client.rid}", headers=JSON).json()
     assert detail["request"]["signature"] == {"verified": True, "key_id": "bank_a"}
+
+
+# --------------------------------------------------------------------------- track 1f (JSON everywhere)
+
+
+def test_actions_take_json_bodies_and_dispatch_links_the_package(client):
+    """Appended by track 1f: the approve fields as a JSON object give the same result as the form,
+    and the dispatch result carries absolute links on the default ALIBI_API_ORIGIN."""
+    rid = client.rid
+    assert client.post(f"/requests/{rid}/run", headers=JSON, json={}).status_code == 200
+    ap = client.get(f"/requests/{rid}", headers=JSON).json()["review"]["approval"]
+    wrong = client.post(f"/requests/{rid}/approve", headers=JSON,
+                        json={"digest": ap["digest"], "audience": "bank_b", "policy_version": ap["policy_version"]})
+    assert wrong.status_code == 409 and wrong.json()["code"] == "approval_audience_mismatch"
+    ok = client.post(f"/requests/{rid}/approve", headers=JSON,
+                     json={"digest": ap["digest"], "audience": ap["audience"], "policy_version": ap["policy_version"]})
+    assert ok.status_code == 200 and ok.json()["ok"] is True
+    sent = dispatch_ok(client, rid)
+    assert sent["ok"] is True
+    assert sent["package_url"] == f"http://127.0.0.1:8100/bank/bank_a/packages/{sent['package_id']}"
+    assert sent["export_url"] == f"http://127.0.0.1:8100/requests/{rid}/export.json"
+    assert client.get("/health").json()["api_origin"] == "http://127.0.0.1:8100"
+    before = client.get(f"/requests/{rid}/dispatch", headers=JSON).json()["dispatch"]
+    assert before["package_url"] == sent["package_url"] and before["export_url"] == sent["export_url"]

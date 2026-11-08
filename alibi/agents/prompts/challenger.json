@@ -21,7 +21,8 @@
           "revision": {"type": "integer", "minimum": 1},
           "why": {"type": "string", "maxLength": 200}
         },
-        "required": ["record_id", "revision", "why"]
+        "required": ["record_id", "revision", "why"],
+        "additionalProperties": false
       }
     },
     "conflicting_refs": {
@@ -33,10 +34,14 @@
           "revision": {"type": "integer", "minimum": 1},
           "why": {"type": "string", "maxLength": 200}
         },
-        "required": ["record_id", "revision", "why"]
+        "required": ["record_id", "revision", "why"],
+        "additionalProperties": false
       }
     },
-    "missing_evidence": {"type": "array", "items": {"type": "string", "maxLength": 200}},
+    "missing_evidence": {
+      "type": "array",
+      "items": {"type": "string", "maxLength": 200}
+    },
     "next_action": {
       "type": "object",
       "properties": {
@@ -53,11 +58,13 @@
             "record_id": {"type": "string"},
             "txn_id": {"type": "string"},
             "payout_date": {"type": "string", "description": "YYYY-MM-DD"}
-          }
+          },
+          "additionalProperties": false
         },
         "reason": {"type": "string", "maxLength": 300}
       },
-      "required": ["type", "args", "reason"]
+      "required": ["type", "args", "reason"],
+      "additionalProperties": false
     },
     "trace": {
       "type": "array",
@@ -77,5 +84,6 @@
     "next_action",
     "trace",
     "rationale"
-  ]
+  ],
+  "additionalProperties": false
 }

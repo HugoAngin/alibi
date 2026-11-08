@@ -287,6 +287,7 @@ def signed_settlement(fx, keystore, **over):
 @pytest.mark.parametrize("case, error, message", [
     ("bad_signature", RejectedResult, "signature does not verify"),
     ("wrong_kind", RejectedResult, "other than a settlement"),
+    ("payout_without_status", RejectedResult, "no settlement status"),
     ("wrong_reference", RejectedResult, "another payment reference"),
     ("other_subject", RejectedResult, "subject"),
     ("invalid_json", RejectedResult, "invalid JSON"),
@@ -299,8 +300,11 @@ def test_bad_connector_results_are_rejected(case, error, message, make, passport
             payload["signature"]["sig"] = "0" * 128
             return payload
         if case == "wrong_kind":
+            body = next(e for e in fx["merchant_events"] if e["record_id"] == "ord_1001")
+            return maya.sign_event({**body, "payment_ref": "PO-5001"}, keystore)
+        if case == "payout_without_status":
             body = next(e for e in fx["merchant_events"] if e["record_id"] == "po_5001")
-            return maya.sign_event(body, keystore)
+            return maya.sign_event({k: v for k, v in body.items() if k != "status"}, keystore)
         if case == "wrong_reference":
             return signed_settlement(fx, keystore, payment_ref="PO-5002")
         if case == "other_subject":

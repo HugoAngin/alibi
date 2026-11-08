@@ -501,7 +501,7 @@ def _trace(rt: Runtime, rfc: RequestForContext) -> tuple[list[dict[str, Any]], d
                                if str(getattr(claim.state, "value", claim.state)) != "active" else "")
                               + (status_ev.reason if status_ev and status_ev.reason else claim.rationale))[:300],
             "state": str(getattr(claim.state, "value", claim.state)),
-            "rationale": claim.rationale, "gap": claim.gap,
+            "rationale": claim.rationale, "gap": c.gap_text(claim),
             "at": c.iso(status_ev.at if status_ev else claim.created_at),
         })
     calls = sum(1 for ev in events if ev.actor == "gateway" and ev.step == "tool_call" and ev.outcome == "ok")
@@ -716,7 +716,7 @@ def export_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] | 
                        "calculation": ({"expression": c.expression_for(cl.calculation),
                                         "result": c.money(cl.calculation.total_pence, cl.calculation.currency)}
                                        if cl.calculation else None),
-                       "gap": cl.gap})
+                       "gap": c.gap_text(cl)})
     flashes = list(flashes or [])
     if not signed:
         flashes.append({"kind": "info", "text": "No signed package exists for this request yet. This is "
@@ -743,6 +743,7 @@ def export_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] | 
         },
         "export": {
             "json_href": f"/requests/{request_id}/export.json",
+            "json_url": absolute_url(rt, f"/requests/{request_id}/export.json"),
             "json_filename": f"{pkg.package_id if signed else 'draft-' + request_id}.json",
             "json_size_bytes": len(raw),
             "verify_hint": (f"uv run --frozen python -m agents.eval.verify_package "
@@ -779,8 +780,23 @@ def dispatch_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] 
     ctx["dispatch"] = {**last, "recipient": rt.recipient_name(rfc.audience), "audience": rfc.audience,
                        "retry_action": f"/requests/{request_id}/dispatch",
                        "review_href": f"/requests/{request_id}#review",
-                       "history_href": "/passport#sharing"}
+                       "history_href": "/passport#sharing",
+                       **dispatch_urls(rt, request_id, rfc.audience, last)}
     return ctx
+
+
+def absolute_url(rt: Runtime, path: str) -> str:
+    """``path`` on this backend's published origin (``ALIBI_API_ORIGIN``), for a server-side
+    front end that follows links the app hands out."""
+    return f"{rt.settings.api_origin.rstrip('/')}{path}"
+
+
+def dispatch_urls(rt: Runtime, request_id: str, audience: str, result: dict) -> dict[str, str | None]:
+    """Absolute links for a dispatch result: the recipient's view of the delivered package and the
+    signed JSON. Both are None until a package was delivered."""
+    delivered = result.get("outcome") == "success" and result.get("package_id") not in (None, "none", "pending")
+    return {"package_url": absolute_url(rt, f"/bank/{audience}/packages/{result['package_id']}") if delivered else None,
+            "export_url": absolute_url(rt, f"/requests/{request_id}/export.json") if delivered else None}
 
 
 # --------------------------------------------------------------------------- audit

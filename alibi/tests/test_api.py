@@ -593,7 +593,12 @@ def test_agents_lead_api_reexports_alibi_api():
     assert list(lead.__all__) == list(api.__all__)
     assert len(set(api.__all__)) == len(api.__all__)
     assert CONTRACT_FUNCTIONS <= set(api.__all__)
+    from alibi.app.policy_chain import parse_rule_text as chain
     for name in api.__all__:
+        if name == "parse_rule_text":
+            # the app's parser is the policy chain (Gemini, execution's compiler, core), a RuleParse
+            assert getattr(lead, name) is chain
+            continue
         assert getattr(lead, name) is getattr(api, name)
 
 

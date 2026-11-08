@@ -435,6 +435,7 @@ Preview name `export`, context `ctx_export()`. Inherits the common base context.
     - `summary` str
 - `export` (dict)
   - `json_href` str (download link; `download` attribute set to `json_filename`)
+  - `json_url` str (the same file as an absolute URL on `ALIBI_API_ORIGIN`; JSON consumers only, the template does not read it)
   - `json_filename` str (link text "Download <json_filename>")
   - `json_size_bytes` int (printed "(<n> bytes)")
   - `verify_hint` str (printed in `<code>` after "Verify with")
@@ -468,6 +469,9 @@ Preview names `dispatch_success` and `dispatch_refused`, context `ctx_dispatch(o
   - `retry_action` str | None (refused branch only: POST form with button "Retry dispatch", no fields, rendered only when truthy)
   - `review_href` str (success: `btn btn--ghost` link "Back to the review"; refused: `btn btn--primary` link "Review and approve the revised body")
   - `history_href` str (success branch only: `btn` link "Sharing history"; read from the context but not rendered on refusal)
+  - `audience` str (recipient id, e.g. `bank_a`; JSON consumers only)
+  - `package_url` str | None (absolute URL of the recipient's package page on `ALIBI_API_ORIGIN`, `{origin}/bank/{audience}/packages/{package_id}`; None until a package was delivered; JSON consumers only, the template does not read it)
+  - `export_url` str | None (absolute URL of the signed JSON, `{origin}/requests/{request_id}/export.json`; None until delivered; JSON consumers only)
 
 Forms: POST `dispatch.retry_action` (no fields, button "Retry dispatch", `btn`), refused branch only.
 
@@ -641,45 +645,62 @@ Forms: POST `disposition_form.action` with `decision`, `reason`, `question_ids[]
 
 ## Routes, JSON and credentials (S4 wiring)
 
-Served by `alibi/app/main.py` (`uv run --frozen python -m alibi.app [--port 8100] [--timeout S]`). Every holder and analyst route renders its template context as HTML, or as JSON (the same dict plus `version: "alibi-ui/1"` and `template`) when the request's first `Accept` media type is `application/json`. Form posts redirect (303) in HTML mode and answer `{"version", "ok": true, "location", ...result}` in JSON mode. Refusals answer with a 4xx status and `{"code": <snake_case>, "reason": <the backend's sentence>}`; the HTML path shows the same sentence verbatim (a flash banner, or the dispatch result page).
+Served by `alibi/app/main.py` (`uv run --frozen python -m alibi.app [--port 8100] [--timeout S]`). This is the backend the Astro front end in `web/` calls server-side (`web/docs/backend-integration.md`); the Jinja templates are the fallback and debug view of the same contexts.
 
-| Method and path | Template | Notes |
-| --- | --- | --- |
-| `GET /health` | JSON | `status`, `case`, `mode` (`rules-only`), `replay`, `now`, `db`, `bank_url` |
-| `GET /passport` (and `/`) | `passport/home.html` | |
-| `GET /txn/{txn_id}` | `passport/transaction.html` | |
-| `GET /sources/{record_id}/{revision}` | inline | JSON `{record, fields, revisions}`; a minimal HTML page without a template |
-| `GET /alerts` | `passport/alerts.html` | |
-| `POST /alerts/lookup` (`query`) | `passport/alerts.html` | mock registry check via `agents.data.api.merchant_lookup`; unknown is `unverified` |
-| `POST /tick` | redirect `/alerts` | re-runs the monitor; JSON `{raised, resolved, kept, at}`. The monitor also runs on every start, so alerts exist before anyone asks; the alerts page carries a "Re-run checks now" form bound to `tick_action` |
-| `GET /rules[?interp=<rule_id>&prefill=<text>]` | `passport/rules.html` | |
-| `POST /rules/interpret` (`text`) | redirect | resolved: `/rules?interp=<rule_id>`; unresolved: held for clarification |
-| `POST /rules/{rule_id}/confirm` · `/reject` · `/retire` | redirect `/rules` | confirm and retire save a new policy version through `record_policy` |
-| `POST /rules/held/{rule_id}/clarify` · `/discard` | redirect `/rules` | clarify prefills the form with the held text |
-| `GET /requests` | JSON list | HTML redirects to `/passport#requests` |
-| `GET /requests/{request_id}` | `requests/detail.html` | |
-| `POST /requests/{request_id}/run` | redirect `#trace` | `run_investigation(mode="rules")` then `build_review`; JSON `{run_id, mode, calls_used, claims, draft_id}` |
-| `POST /requests/{request_id}/remove/{ref_type}/{ref_id}` | redirect `#review` | rebuilds the draft with the source removed; an earlier approval no longer matches |
-| `POST /requests/{request_id}/restore` | redirect `#review` | clears the removals |
-| `POST /requests/{request_id}/approve` (`digest`, `audience`, `policy_version`) | redirect `#approval` | refuses `approval_digest_not_current`, `approval_audience_mismatch`, `policy_version_changed` before calling `approve` |
-| `GET /requests/{request_id}/dispatch` | `requests/dispatch.html` | the last dispatch result for the request |
-| `POST /requests/{request_id}/dispatch` | `requests/dispatch.html` | revalidates the approval against the current draft, signs (`sign_and_package`), delivers to `ALIBI_BANK_URL` (`POST {url}/bank/{audience}/receive`) or to this process's bank service when unset; a refusal renders with the refusal's status |
-| `GET /requests/{request_id}/export` | `requests/export.html` | the signed package, or the unsigned current draft before dispatch |
-| `GET /requests/{request_id}/export.json` | file | the signed package as canonical JSON (404 before dispatch) |
-| `GET /audit[?q=&actor=&page=]` | `audit/list.html` | passport audit plus the bank-side entries |
-| `POST /bank/{recipient}/receive` | JSON | the bank connection's delivery endpoint; verifies with `verify_package` bound to the request the bank issued; 200 receipt, 422 `package_rejected`, 409 `package_id_reused` |
-| `GET /bank/{recipient}/inbox[?token=]` | `analyst/inbox.html` | credential required (below) |
-| `GET /bank/{recipient}/requests` | JSON | the requests this recipient issued (case RFCs and follow-ups) |
-| `GET /bank/{recipient}/audit` | JSON | the recipient's own audit entries (receipts, dispositions, refused access); the holder's `/audit` never shows them |
-| `GET /bank/{recipient}/packages/{package_id}[?disposition=<id>]` | `analyst/package.html` | 404 for another recipient's package |
-| `POST /bank/{recipient}/packages/{package_id}/disposition` (`decision`, `reason`, `question_ids[]`, `requested_evidence`) | redirect | `analyst` comes from the credential; `request_more` redirects to the follow-up form; a second decision after `clear`/`escalate` is `disposition_final` |
-| `POST /bank/{recipient}/requests` (`parent_request_id`, `disposition_id`, `scope`, `txn_ids`, `period_from`, `period_to`, `question`) | redirect `#requests-sent` | issues a signed follow-up RFC through `receive_rfc`; scope defaults to the parent's and may not widen (`scope_wider_than_parent`) |
+**JSON mode.** A request is in JSON mode when its first `Accept` media type is `application/json`, or when it carries a `Content-Type: application/json` body. Every holder and analyst GET route then returns its full template context as JSON: the same dict as the template receives, under the variable names documented above, plus `version: "alibi-ui/1"` and `template` (the template path, or `null` for the two routes without one). Every action accepts its fields either as a form post (`application/x-www-form-urlencoded` or multipart) or as a JSON object with the same field names: a repeated form field is a JSON list (`question_ids`, `requested_evidence`, `txn_ids`; a single string is accepted too), and a `null` value reads as the empty string. Both encodings go through the same action function, so the validation and the refusals are identical. In HTML mode an action redirects (303) with a flash; in JSON mode it answers `{"version", "ok": true, "location", ...result}` (201 for a created follow-up; `location` is the page the HTML path would show). A malformed JSON body (not valid JSON, or not an object) is 400 `bad_request` on every action, including the field-less ones (`run`, `remove`, `restore`, `dispatch`, `tick`, `confirm`, `reject`, `retire`, `clarify`, `discard`), which parse the body and then ignore its fields; an empty body or `{}` is fine. Field types are checked rather than coerced: a list sent for a single-valued field (`digest`, `text`, `decision`, `reason`, ...), an object anywhere, or a nested list or object inside a list field is 400 `bad_request` and nothing is recorded. Numbers and booleans read as their text (`1`, `true`).
 
-Recipient credentials: `Authorization: Bearer <token>` (`ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`; demo defaults `demo-token-bank-a`, `demo-token-bank-b`), or the `alibi_bank` session cookie. The inbox alone accepts `?token=<credential>` once as the demo login: it sets the cookie and redirects (303) to the bare inbox URL so the credential leaves the address bar; no other route reads the query string. State-changing POSTs from another origin (`Origin`/`Sec-Fetch-Site` cross-site) are refused with 403 `cross_site_post`; the delivery endpoint is exempt. No credential is 401 `not_authenticated`; a credential for the other recipient is 403 `recipient_mismatch` (audited as `access.refused`). The URL never grants access.
+**Refusals.** Every refusal answers with a 4xx status and `{"version", "code": <snake_case>, "reason": <the backend's sentence>}`, sometimes with extra keys (`expected_digest`, `actual_digest`). The code and the sentence are the `Refusal` the action raised (`alibi/app/actions.py`, `alibi/app/bank.py`), built from the backend's own `ApprovalError`/`PackageError`/`IngestError` text, so the HTML path shows the same sentence verbatim (a flash banner `code: reason`, the dispatch result page, or a plain refused page before any context exists). Unknown routes are 404 `not_found`, wrong methods 405 `method_not_allowed`, and a request FastAPI cannot parse (a non-integer revision) is 400 `bad_request`. Every POST that carries a JSON body may also answer 400 `bad_request` for a malformed body or a wrong field type (see JSON mode), so the route table does not repeat that code per row.
 
-Refusal codes used: `approval_missing`, `approval_digest_mismatch`, `approval_digest_not_current`, `approval_audience_mismatch`, `approval_expired`, `request_expired`, `policy_version_changed`, `source_revision_changed`, `approval_request_mismatch`, `package_id_reused`, `package_rejected`, `scope_wider_than_parent`, `disposition_final`, `not_authenticated`, `recipient_mismatch`, `draft_missing`, `reason_required`, `bad_decision`, `bad_period`, `question_required`, `parent_not_found`, `package_not_found`, `rule_not_pending`, `rule_not_active`, `investigation_failed`, `review_failed`, `not_dispatched` (dispatch page before any attempt).
+**Credentials.**
 
-Environment: `ALIBI_CASE` (1), `ALIBI_DATA_DIR` (`data/alibi/app`), `ALIBI_KEY_DIR` (`data/alibi/keys`), `ALIBI_NOW` (fixed UTC clock; the RFCs expire 2026-11-09T09:00Z and 2026-11-11T14:00Z), `ALIBI_REPLAY=1` (banner), `ALIBI_BANK_URL`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_HOLDER_NAME`, `ALIBI_MASTER_KEY` (store encryption; never printed). Reset one case by deleting `data/alibi/app/case_<n>.db` and `case_<n>.state.json`; `master.key` beside them encrypts every case database there, so delete it only together with all of them. `ALIBI_NOW` accepts a date alone (midnight UTC).
+- Holder: with `ALIBI_HOLDER_TOKEN` set, every holder route (everything except `/`, `/health`, `/static/*` and `/bank/*`) needs `Authorization: Bearer <token>` or the `alibi_holder` session cookie; `GET /passport?token=<token>` once sets the cookie and redirects (303) to `/passport` so the credential leaves the address bar. Missing or wrong is 401 `not_authenticated` (JSON, or a plain refused page); the comparison is constant-time over the UTF-8 bytes, so a credential with non-ASCII characters is simply not recognised (401), never an error. Unset (the demo, and every test), the holder is the demo holder and nothing is asked. `/health` reports `holder_auth: bearer | demo`, never the token.
+- Recipients: `Authorization: Bearer <token>` (`ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`; demo defaults `demo-token-bank-a`, `demo-token-bank-b`), or the `alibi_bank` session cookie. The inbox alone accepts `?token=<credential>` once as the demo login: it sets the cookie and redirects (303) to the bare inbox URL; no other route reads the query string. No credential is 401 `not_authenticated`; a credential for the other recipient is 403 `recipient_mismatch` (audited as `access.refused`); the URL never grants access, so another recipient's package is 404 `not_found` under the right credential.
+
+**Same-origin rule.** A POST is refused with 403 `cross_site_post` when the browser marks it cross-site (`Sec-Fetch-Site: cross-site` or `same-site`) or sends an `Origin` whose host differs from `Host`, **unless** the request carries a bearer `Authorization` header or a JSON body. A browser cannot attach either to a cross-site form post without a CORS preflight, and this app answers no preflight, so such requests come from API clients (the Astro server), and the credential, not the origin, authorises them. Same-origin browser forms and clients that send no `Origin` pass as before. `POST /bank/{recipient}/receive` is exempt (the package itself is signed).
+
+**Absolute URLs.** `ALIBI_API_ORIGIN` (default `http://127.0.0.1:8100`) is the origin this backend is published at. `/health` reports it as `api_origin`, and every absolute link the app hands out is built on it: `package_url` and `export_url` on a dispatch result, `export.json_url` on the export page. Relative `*_href`/`*_action` values are unchanged, so the front end can either follow the absolute links or prefix the relative ones itself.
+
+**Route table.** Request fields are the form or JSON field names; Response is the template whose context is returned (plus `version`, `template`) or the JSON keys; Auth is `none`, `holder` (bearer or cookie when `ALIBI_HOLDER_TOKEN` is set, else none) or `recipient` (bearer or cookie, always).
+
+| Method and path | Request | Response | Auth | Refusals |
+| --- | --- | --- | --- | --- |
+| `GET /health` | | JSON `status`, `version`, `case`, `subject_ref`, `mode` (`rules-only`), `replay`, `now`, `db`, `bank_url`, `api_origin`, `holder_auth` | none | |
+| `GET /` | | 303 to `/passport` | none | |
+| `GET /passport` | `?token=` once (holder demo login) | `passport/home.html` | holder | `not_authenticated` |
+| `GET /txn/{txn_id}` | | `passport/transaction.html` | holder | `not_found` |
+| `GET /sources/{record_id}/{revision}` | | JSON `{record, fields, revisions}` (`template: null`); a minimal HTML page | holder | `not_found`, `bad_request` |
+| `GET /alerts` | | `passport/alerts.html` | holder | |
+| `POST /alerts/lookup` | `query` | `passport/alerts.html` context plus `ok`, `lookup: {query, result}`; mock registry via `agents.data.api.merchant_lookup`, unknown is `unverified` | holder | |
+| `POST /tick` | | `{raised, resolved, kept, at}`; HTML 303 `/alerts`. The monitor also runs on every start; the alerts page carries a "Re-run checks now" form bound to `tick_action` | holder | |
+| `GET /rules` | `?interp=<rule_id>`, `?prefill=<text>` | `passport/rules.html` | holder | |
+| `POST /rules/interpret` | `text` | `{status: resolved, rule_id, interpretation}` (HTML 303 `/rules?interp=<rule_id>`) or `{status: held, rule_id, reason}` | holder | |
+| `POST /rules/{rule_id}/confirm` | | `{policy_version, rules, rebuilt}`; saves a policy version through `record_policy` and rebuilds every draft | holder | `rule_not_pending`, `policy_rejected` |
+| `POST /rules/{rule_id}/reject` | | `{rule_id, status: rejected}` | holder | |
+| `POST /rules/{rule_id}/retire` | | `{policy_version, rules, rebuilt}` | holder | `rule_not_active` |
+| `POST /rules/held/{rule_id}/clarify` | | `{rule_id, text}`; HTML 303 `/rules?prefill=<text>` | holder | |
+| `POST /rules/held/{rule_id}/discard` | | `{rule_id, status: discarded}` | holder | |
+| `GET /requests` | | JSON `requests` list (`template: null`); HTML 303 `/passport#requests` | holder | |
+| `GET /requests/{request_id}` | | `requests/detail.html` | holder | `not_found` |
+| `POST /requests/{request_id}/run` | | `{run_id, mode, calls_used, claims, draft_id, unavailable}`; `run_investigation(mode="rules")` then `build_review` | holder | `not_found`, `request_expired`, `request_already_answered`, `investigation_failed` |
+| `POST /requests/{request_id}/remove/{ref_type}/{ref_id}` | | `{draft_id, digest, removed}`; rebuilds the draft without the source, so an earlier approval no longer matches | holder | `bad_ref`, `item_not_in_draft`, `review_failed` |
+| `POST /requests/{request_id}/restore` | | `{draft_id, digest}` | holder | `review_failed` |
+| `POST /requests/{request_id}/approve` | `digest`, `audience`, `policy_version` | `{approval_id, status, digest, audience, expires_at}` | holder | `request_expired`, `draft_missing`, `approval_digest_not_current`, `approval_audience_mismatch`, `policy_version_changed`, `approval_consumed`, `approval_expired`, `approval_*` from `ApprovalError` |
+| `GET /requests/{request_id}/dispatch` | | `requests/dispatch.html` (`dispatch.package_url`, `dispatch.export_url`) | holder | `not_found` |
+| `POST /requests/{request_id}/dispatch` | | `{ok, outcome, package_id, request_id, recipient, attempted_at, receipt, refusal, package_url, export_url}`; HTML renders `requests/dispatch.html`. Revalidates the approval against the current draft, signs (`sign_and_package`), delivers to `ALIBI_BANK_URL` (`POST {url}/bank/{audience}/receive`) or to this process's bank service; a refusal answers with the refusal's status (HTML: the result page) | holder | `approval_missing`, `draft_missing`, `approval_digest_mismatch`, `source_revision_changed`, `approval_expired`, `policy_version_changed`, `request_expired`, `delivery_rejected`, `package_rejected`, `package_id_reused`, `bank_unreachable` |
+| `GET /requests/{request_id}/export` | | `requests/export.html` (`export.json_url`) | holder | `not_found` |
+| `GET /requests/{request_id}/export.json` | | the signed package as canonical JSON (attachment) | holder | `not_found` before dispatch |
+| `GET /audit` | `?q=`, `?actor=`, `?page=` | `audit/list.html` | holder | |
+| `POST /bank/{recipient}/receive` | the signed package (JSON bytes) | 200 receipt `{receipt_id, package_id, package_sha256, recipient, received_at, accepted, reasons}` | none (signature) | 400 `not_a_package`, 404 `unknown_recipient`, 422 `package_rejected`, 409 `package_id_reused` |
+| `GET /bank/{recipient}/inbox` | `?token=` once (demo login) | `analyst/inbox.html` | recipient | `not_authenticated`, `recipient_mismatch`, `unknown_recipient` |
+| `GET /bank/{recipient}/requests` | | JSON `{recipient, requests}`: the RFCs this recipient issued | recipient | as inbox |
+| `GET /bank/{recipient}/audit` | | JSON `{recipient, entries}`: receipts, dispositions, refused access; the holder's `/audit` never shows them | recipient | as inbox |
+| `GET /bank/{recipient}/packages/{package_id}` | `?disposition=<id>` | `analyst/package.html` | recipient | as inbox, `not_found` for another recipient's package |
+| `POST /bank/{recipient}/packages/{package_id}/disposition` | `decision`, `reason`, `question_ids` (list), `requested_evidence` (list, or one string with one line per item) | the disposition record `{disposition_id, package_id, request_id, analyst, decision, reason, question_ids, requested_evidence, recorded_at, supersedes, ...}`; `analyst` comes from the credential; `request_more` locates the follow-up form | recipient | `package_not_found`, `package_rejected`, `bad_decision`, `reason_required`, `disposition_final` |
+| `POST /bank/{recipient}/requests` | `parent_request_id`, `disposition_id`, `scope` (`txn_ids` or `period`, default the parent's), `txn_ids` (list or comma-separated), `period_from`, `period_to`, `question` | 201 `{request_id, parent_request_id, audience, scope, txn_ids, period, issued_at, expires_at}`; issues a signed follow-up RFC through `receive_rfc` | recipient | `parent_not_found`, `question_required`, `scope_wider_than_parent`, `bad_period`, `rfc_refused` |
+
+Refusal codes used: `approval_missing`, `approval_digest_mismatch`, `approval_digest_not_current`, `approval_audience_mismatch`, `approval_expired`, `approval_consumed`, `approval_invalid`, `request_expired`, `request_already_answered`, `policy_version_changed`, `policy_rejected`, `source_revision_changed`, `approval_request_mismatch`, `package_id_reused`, `package_rejected`, `not_a_package`, `delivery_rejected`, `bank_unreachable`, `bank_bad_response`, `scope_wider_than_parent`, `disposition_final`, `not_authenticated`, `recipient_mismatch`, `unknown_recipient`, `cross_site_post`, `draft_missing`, `item_not_in_draft`, `bad_ref`, `reason_required`, `bad_decision`, `bad_period`, `question_required`, `parent_not_found`, `package_not_found`, `rfc_refused`, `rule_not_pending`, `rule_not_active`, `investigation_failed`, `review_failed`, `bad_request`, `not_found`, `method_not_allowed`, `not_dispatched` (dispatch page before any attempt).
+
+Environment: `ALIBI_CASE` (1), `ALIBI_DATA_DIR` (`data/alibi/app`), `ALIBI_KEY_DIR` (`data/alibi/keys`), `ALIBI_NOW` (fixed UTC clock; the RFCs expire 2026-11-09T09:00Z and 2026-11-11T14:00Z), `ALIBI_REPLAY=1` (banner), `ALIBI_BANK_URL`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_HOLDER_TOKEN` (optional holder bearer token, see Credentials), `ALIBI_API_ORIGIN` (`http://127.0.0.1:8100`; the origin absolute links are built on), `ALIBI_HOLDER_NAME`, `ALIBI_MASTER_KEY` (store encryption; never printed). Reset one case by deleting `data/alibi/app/case_<n>.db` and `case_<n>.state.json`; `master.key` beside them encrypts every case database there, so delete it only together with all of them. `ALIBI_NOW` accepts a date alone (midnight UTC).
 
 Attestation values: the core verifier (`alibi.core.package.verify_package`) emits `issuer_signature` for an attachment carrying a verified issuer signature and `package_signer` for everything else it accepts (redacted extracts, bank transactions, self-supplied imports), so the app shows those two; `none` from the Trust row is reserved and never produced here. The RFC signature badge on the request page records the outcome of `receive_rfc` at ingest time (every case RFC and follow-up is signed by the issuing bank's demo key), not a re-check.
 

@@ -21,7 +21,8 @@ from alibi.core import approval as core_approval
 from alibi.core import canon
 from alibi.core.approval import ApprovalError
 from alibi.core.package import PackageError
-from alibi.core.policy import PolicyError, compile_policy, parse_rule_text
+from alibi.app.policy_chain import parse_rule_text
+from alibi.core.policy import PolicyError, compile_policy
 from alibi.core.schemas import ApprovalStatus, DraftStatus, RequestForContext, format_utc
 from alibi.core.store import NotFound, StoreError
 
@@ -334,7 +335,8 @@ def active_rules(rt: Runtime) -> list[dict[str, Any]]:
         return []
     out = []
     for rule in policy.rules:
-        parsed = parse_rule_text(rule.source_text) if rule.source_text else None
+        # Restate from the deterministic layers only: a page render never spends a model call.
+        parsed = parse_rule_text(rule.source_text, use_gemini=False) if rule.source_text else None
         summary = parsed.interpretation if parsed and parsed.status == "resolved" else _describe(rule)
         out.append({"rule_id": rule.rule_id, "text": rule.source_text or _describe(rule),
                     "kind": rule.type, "summary": summary, "version": policy.version_tag(),
@@ -362,17 +364,28 @@ def held_rules(rt: Runtime) -> list[dict[str, Any]]:
 
 
 def interpret_rule(rt: Runtime, text: str) -> dict[str, Any]:
-    """Parse one plain-English rule. Resolved: a pending interpretation the holder confirms or
-    rejects. Unresolved: held for clarification with the parser's reason."""
-    parsed = parse_rule_text(text)
+    """Parse one plain-English rule through ``alibi.app.policy_chain``: Gemini when this app
+    asks for it (``GEMINI_API_KEY`` exported in the app's environment and replay off), then
+    execution's compiler, then the core parser. Resolved: a pending interpretation the holder
+    confirms or rejects. Unresolved: held for clarification with the parser's reason. The
+    answer carries ``source`` (the layer that answered), ``layers`` (the layers that ran) and
+    ``skipped`` (layer -> why it did not run), so a skipped Gemini layer is never silent."""
+    parsed = parse_rule_text(text, use_gemini=not rt.settings.replay)
     now = rt.now_text()
+    tried = list(getattr(parsed, "tried", []) or [])
+    skipped = dict(getattr(parsed, "skipped", {}) or {})
+    ran = ", ".join(tried) or "core"
+    if skipped:
+        ran += "; skipped " + "; ".join(f"{layer}: {why}" for layer, why in skipped.items())
     if parsed.status != "resolved" or parsed.rule is None:
         rule_id = canon.make_id("held", text.strip(), now)
         rt.sidecar.append("held_rules", {"rule_id": rule_id, "text": text.strip(),
-                                          "reason": parsed.reason or "not understood", "created_at": now})
+                                          "reason": parsed.reason or "not understood", "created_at": now,
+                                          "layers": tried, "skipped": skipped})
         rt.audit(action="interpret_rule", outcome="refused", target_id=rule_id,
-                 detail="rule text held for clarification (1 of 1 unresolved)")
-        return {"status": "held", "rule_id": rule_id, "reason": parsed.reason}
+                 detail=f"rule text held for clarification (1 of 1 unresolved; tried {ran})")
+        return {"status": "held", "rule_id": rule_id, "reason": parsed.reason, "layers": tried,
+                "skipped": skipped}
     rule = parsed.rule.to_json_dict()
     fields = [{"name": k, "value": c.compact(v, 80)} for k, v in rule.items()
               if k not in ("rule_id", "source_text", "type") and v not in ([], None, "")]
@@ -382,11 +395,14 @@ def interpret_rule(rt: Runtime, text: str) -> dict[str, Any]:
               "warnings": ["Rules only restrict sharing. Deny wins over every other rule.",
                            "Confirming re-filters every pending draft; an approved preview must be approved again."],
               "confirm_action": f"/rules/{rule['rule_id']}/confirm",
-              "reject_action": f"/rules/{rule['rule_id']}/reject", "rule": rule}
+              "reject_action": f"/rules/{rule['rule_id']}/reject", "rule": rule,
+              "source": getattr(parsed, "source", "core"), "layers": tried, "skipped": skipped}
     rt.sidecar.update("pending_rules", lambda cur: {**(cur or {}), rule["rule_id"]: interp})
     rt.audit(action="interpret_rule", outcome="ok", target_id=rule["rule_id"],
-             detail=f"resolved as {rule['type']}; awaiting the holder's confirmation")
-    return {"status": "resolved", "rule_id": rule["rule_id"], "interpretation": interp}
+             detail=f"resolved as {rule['type']} by the {interp['source']} parser (tried {ran}); "
+                    f"awaiting the holder's confirmation")
+    return {"status": "resolved", "rule_id": rule["rule_id"], "interpretation": interp,
+            "source": interp["source"], "layers": tried, "skipped": skipped}
 
 
 def pending_interpretation(rt: Runtime, rule_id: str) -> dict[str, Any] | None:

@@ -25,16 +25,21 @@
             "type": "object",
             "properties": {
               "max_age_days": {"type": "integer", "minimum": 0},
-              "recipients": {"type": "array", "items": {"type": "string"}},
+              "recipients": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
               "replacement": {"type": "string"},
               "alert_kind": {"type": "string"},
               "enabled": {"type": "boolean"}
-            }
+            },
+            "additionalProperties": false
           },
           "source_text": {"type": "string", "maxLength": 300},
           "confidence": {"type": "number", "minimum": 0, "maximum": 1}
         },
-        "required": ["rule_id", "kind", "target", "value", "params", "source_text", "confidence"]
+        "required": ["rule_id", "kind", "target", "value", "params", "source_text", "confidence"],
+        "additionalProperties": false
       }
     },
     "clarifications": {
@@ -46,7 +51,8 @@
           "source_text": {"type": "string", "maxLength": 300},
           "question": {"type": "string", "maxLength": 300}
         },
-        "required": ["source_text", "question"]
+        "required": ["source_text", "question"],
+        "additionalProperties": false
       }
     },
     "plain_summary": {
@@ -55,5 +61,6 @@
       "description": "One or two sentences restating the compiled rules for the user to confirm."
     }
   },
-  "required": ["rules", "clarifications", "plain_summary"]
+  "required": ["rules", "clarifications", "plain_summary"],
+  "additionalProperties": false
 }

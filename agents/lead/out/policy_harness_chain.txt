@@ -1,0 +1,21 @@
+rules PR-01  leak       missing [('deny', 'purchase')]
+rules PR-02  safe_wrong missing [('deny', 'health')] (clarified)
+rules PR-04  safe_wrong missing [('recipient_restrict', 'item')] (clarified)
+rules PR-05  leak       missing [('generalise', 'item')]
+rules PR-07  safe_wrong missing [('recipient_restrict', 'synthetic-pharmacy')] (clarified)
+rules PR-08  safe_wrong missing [('deny', 'rent')] (clarified)
+rules PR-09  invalid    value 'text' not in material
+rules PR-10  safe_wrong missing [('generalise', 'counterparty_name')] (clarified)
+rules PR-12  invalid    value 'payment_ref' not in material
+rules PR-13  safe_wrong missing [('recipient_restrict', 'sale')] (clarified)
+rules PR-14  safe_wrong over-restrictive or differently shaped
+rules PR-15  safe_wrong over-restrictive or differently shaped
+rules PR-16  safe_wrong missing [('deny', 'synthetic-grocer')] (clarified)
+rules PR-17  safe_wrong missing [('generalise', 'destination')] (clarified)
+rules PR-18  safe_wrong missing [('deny', 'transport')] (clarified)
+rules PR-34  safe_wrong missing [('deny', 'health'), ('recipient_restrict', 'synthetic-pharmacy')] (clarified)
+rules PR-35  safe_wrong missing [('deny', 'item'), ('recipient_restrict', 'item')] (clarified)
+rules PR-36  safe_wrong missing [('age_limit', '')] (clarified)
+rules PR-39  safe_wrong missing [('deny', 'health')] (clarified)
+{"rules": {"status": "ran", "cases": 40, "correct": 21, "compiled": 6, "held": 32, "safe_wrong": 15, "leaks": 4, "invalid": 2, "errors": 0, "leak_ids": ["PR-01", "PR-05", "PR-09", "PR-12"]}}
+{"rules_available": 1, "rules_cases": 40, "rules_correct": 21, "rules_compiled": 6, "rules_held": 32, "rules_safe_wrong": 15, "rules_leaks": 4, "rules_invalid": 2, "rules_errors": 0}

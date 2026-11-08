@@ -9,7 +9,8 @@
         "record_id": {"type": "string"},
         "revision": {"type": "integer", "minimum": 1}
       },
-      "required": ["record_id", "revision"]
+      "required": ["record_id", "revision"],
+      "additionalProperties": false
     },
     "candidates": {
       "type": "array",
@@ -30,7 +31,8 @@
           },
           "confidence": {"type": "number", "minimum": 0, "maximum": 1}
         },
-        "required": ["record_id", "revision", "relationship", "signals", "confidence"]
+        "required": ["record_id", "revision", "relationship", "signals", "confidence"],
+        "additionalProperties": false
       }
     },
     "decision": {
@@ -49,5 +51,6 @@
     },
     "rationale": {"type": "string", "maxLength": 600}
   },
-  "required": ["entry", "candidates", "decision", "chosen_record_id", "chosen_revision", "rationale"]
+  "required": ["entry", "candidates", "decision", "chosen_record_id", "chosen_revision", "rationale"],
+  "additionalProperties": false
 }

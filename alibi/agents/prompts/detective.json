@@ -27,12 +27,14 @@
                 "record_id": {"type": "string"},
                 "revision": {"type": "integer", "minimum": 1}
               },
-              "required": ["record_id", "revision"]
+              "required": ["record_id", "revision"],
+              "additionalProperties": false
             }
           },
           "suggested_evidence": {"type": "string", "maxLength": 300}
         },
-        "required": ["kind", "summary", "refs", "suggested_evidence"]
+        "required": ["kind", "summary", "refs", "suggested_evidence"],
+        "additionalProperties": false
       }
     },
     "claims": {
@@ -53,10 +55,14 @@
                 "revision": {"type": "integer", "minimum": 1},
                 "role": {"type": "string", "enum": ["confirms", "conflicts", "context"]}
               },
-              "required": ["record_id", "revision", "role"]
+              "required": ["record_id", "revision", "role"],
+              "additionalProperties": false
             }
           },
-          "gaps": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+          "gaps": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 300}
+          },
           "next_checks": {
             "type": "array",
             "items": {
@@ -64,7 +70,14 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["lookup_settlement", "lookup_payouts_covering", "lookup_by_date", "refresh_txn", "merchant_lookup", "none"]
+                  "enum": [
+                    "lookup_settlement",
+                    "lookup_payouts_covering",
+                    "lookup_by_date",
+                    "refresh_txn",
+                    "merchant_lookup",
+                    "none"
+                  ]
                 },
                 "args": {
                   "type": "object",
@@ -75,17 +88,21 @@
                     "merchant_id": {"type": "string"},
                     "record_id": {"type": "string"},
                     "payout_date": {"type": "string", "description": "YYYY-MM-DD"}
-                  }
+                  },
+                  "additionalProperties": false
                 },
                 "reason": {"type": "string", "maxLength": 300}
               },
-              "required": ["type", "args", "reason"]
+              "required": ["type", "args", "reason"],
+              "additionalProperties": false
             }
           }
         },
-        "required": ["claim_id", "question_id", "statement", "status", "refs", "gaps", "next_checks"]
+        "required": ["claim_id", "question_id", "statement", "status", "refs", "gaps", "next_checks"],
+        "additionalProperties": false
       }
     }
   },
-  "required": ["alerts", "claims"]
+  "required": ["alerts", "claims"],
+  "additionalProperties": false
 }

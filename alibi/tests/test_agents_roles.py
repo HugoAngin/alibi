@@ -88,7 +88,8 @@ def test_unknown_references_are_dropped_and_reported(fx):
 
 def test_undeclared_fields_are_reported_not_used(fx):
     answer = dict(CHALLENGER, verdict="trust me")
-    rr = roles.run_challenger(FakeClient({"*": answer}), fx["material"], challenger_input_for(fx))
+    rr = roles.run_challenger(FakeClient({"*": answer}, validate=False), fx["material"],
+                             challenger_input_for(fx))   # the closed schema stops it at a validating client
     assert rr.undeclared == ["verdict"] and not hasattr(rr.output, "verdict")
 
 

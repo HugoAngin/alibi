@@ -664,8 +664,16 @@ is the recipient binding. A signature, when present, must verify in domain `alib
 for that issuer. The request must not have expired, and its subject must be one the passport
 holds. Every `txn_id` must belong to that subject and sit on one of `account_refs`, the bank's
 own accounts. A request naming `txn_ids` without `account_refs` is refused (fail closed). A
-`parent_request_id` must name an earlier request from the same issuer for the same subject.
-The same `request_id` with identical content is idempotent.
+`parent_request_id` must name an earlier request from the same issuer for the same subject,
+and the follow-up must stay inside that parent's scope: the same scope kind (a
+transaction-scoped parent takes no `period`, a period-scoped parent needs one), a `period`
+inside the parent's, and `txn_ids` within the parent's `txn_ids` (or, for a period-scoped
+parent, booked inside its period). A wider follow-up is refused with a reason that starts
+`scope_wider_than_parent:`. Request ids are the issuer's own namespace: the same bank
+resending a `request_id` with identical content is idempotent and with different content is
+refused, while another bank may use the same id for its own request without conflict (the
+store keys requests by `(issuer, request_id)`; `store.get_request(request_id, issuer=...)`
+tells them apart and the bare id resolves to the request received first under it).
 
 RFC A, signed by `bank_a`:
 
@@ -1019,7 +1027,7 @@ The draft for RFC A with no policy (excerpt):
   "body": {
     "request_id": "rfc_a_001",
     "audience": "bank_a",
-    "case_ref": "case_8f4e75517bfc12b4583a4bf6",
+    "case_ref": "case_ac1d4904e078bd5b42bc73d5769db6364633ccc8cc51e6e7ace5065197ef1c7c",
     "scope": {
       "txn_ids": [
         "txn_9001"
@@ -1318,7 +1326,7 @@ txn extract are shown):
     "schema_version": "alibi.package_body.v1",
     "request_id": "rfc_a_001",
     "audience": "bank_a",
-    "case_ref": "case_8f4e75517bfc12b4583a4bf6",
+    "case_ref": "case_ac1d4904e078bd5b42bc73d5769db6364633ccc8cc51e6e7ace5065197ef1c7c",
     "scope": {
       "txn_ids": [
         "txn_9001"
@@ -1459,7 +1467,8 @@ A correction after approval (the `pending_correction` example above) gives:
 
 ```python
 verify_package(package, *, expected_audience, registry=None, now=None,
-               expected_subject=None, expected_request_id=None) -> VerificationResult
+               expected_subject=None, expected_request_id=None,
+               store=None) -> VerificationResult
 ```
 
 The recipient-side check against the pinned registry. It never raises and never writes:
@@ -1488,8 +1497,8 @@ package:
 It gives three separate answers:
 
 - `authentication`: the schema, body digest, recipient binding to `expected_audience` (and,
-  when given, `expected_request_id`), expiry and the Alibi package signature. It says nothing
-  about whether the claims are true.
+  when given, `expected_request_id` and `expected_subject`), expiry and the Alibi package
+  signature. It says nothing about whether the claims are true.
 - `sources`: trust per attachment. A claimed issuer signature is checked against the registry
   in domain `alibi:record:v1` for the attachment's issuer, and its content must match the
   attachment's ref. A failed claimed signature rejects the package. Self-supplied items, bank
@@ -1497,8 +1506,28 @@ It gives three separate answers:
 - `claims`: the status per question, with `calculation_valid` recomputed from the disclosed
   amounts.
 
-`accepted` is true only when authentication is valid and no source check failed. Bank A
-verifying the package above (excerpt: 2 of 9 sources shown):
+`accepted` is true only when authentication is valid and no source check failed.
+
+**Subject binding.** The body's `case_ref` is
+`alibi.core.package.case_binding(audience, parent_request_id or request_id, subject_ref)`:
+`case_` + sha256 over (`alibi:case:v1`, audience, root request id, subject). It is the same for
+every package of one case to one recipient, it does not disclose the subject, and a recipient
+that knows its own request's subject recomputes it. With `expected_subject`, a `case_ref` that
+does not match is an authentication failure (`the package is not bound to the expected
+subject: ...`), so a package whose attachments are all redacted extracts with `subject_ref`
+withheld still cannot verify for another subject. Signed sources must also name that subject.
+
+**Defaults from the stored RFC.** With `store` (the passport store, read only), and when the
+caller leaves `expected_subject` or `expected_request_id` unset, both default from the stored
+request the package names for `expected_audience` (`store.get_request(body.request_id,
+issuer=expected_audience)`): `subject_ref` and `request_id`. An explicit argument always wins.
+When the store does not hold that request the defaults stay empty and the package verifies as
+without a store, so an unknown request is not a rejection. Bank-side callers that open the
+passport store should pass it; callers that cannot must pass both values themselves.
+
+Bank A verifying the package above (excerpt: 2 of 9 sources shown; the digests and `case_ref`
+values in these examples predate the subject binding, so they do not recompute from the
+fixture today):
 
 ```json
 {
@@ -1589,13 +1618,17 @@ and make no network or LLM calls. The conftest fixtures `keystore`, `registry` a
 
 ## Known issues
 
-- Request ids are unique across all banks, not per bank. A bank that sends a `request_id` another
-  bank already used is refused, and the refusal shows that the id exists. Use unique ids, as the
-  fixtures do.
-- `verify_package` binds a package to a subject and a request only when the caller passes
-  `expected_subject` and `expected_request_id`. Without them it still rejects attachments that
-  name more than one subject. The package body does not carry the subject yet, so bank-side
-  callers should always pass both.
+- Request ids are per bank (`(issuer, request_id)`), so two banks may reuse an id. Everything
+  that names a bare `request_id` (claims, drafts, approvals, packages, `run_investigation`,
+  `build_review`) resolves a shared id to the request received first under it; a later bank's
+  request under the same id is reachable only through `store.get_request(id, issuer=...)` and
+  cannot be investigated or packaged through the bare-id API. Fixtures use distinct ids.
+- `verify_package` binds the subject through `case_ref` only when it is given
+  `expected_subject`, or `store` and the request is held. Without either it still rejects
+  attachments that name more than one subject. Packages signed before the binding landed carry
+  the old `case_ref` and fail a subject-bound verification.
+- Request `case_ref` groups a follow-up with its direct parent, not with the root of a longer
+  chain (`parent_request_id or request_id`), as before.
 - The rules investigation catches double counting only within one run. Two RFCs that each ask
   about a credit backed by the same payout can each get `supported`.
 - Calculation signs (not an issue, a rule): `net_payout` and `net_total` net kinds with
@@ -1613,7 +1646,7 @@ The code's public behaviour wins. These API functions take arguments DESIGN.md d
   accounts.
 - `build_review` takes `removed`, which is passed to `build_body`.
 - `verify_package` takes `expected_subject` and `expected_request_id`, which are passed to the
-  core.
+  core, and `store`, which defaults them from the stored request.
 - `load_fixture` also returns `statuses`, `expected` and `now`. Its clock defaults to the
   fixture clock `2026-11-07T12:00:00Z`, not the wall clock.
 - `Gateway` also takes `request_id`, which `run_investigation` sets.

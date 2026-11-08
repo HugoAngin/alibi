@@ -16,6 +16,13 @@ ALIBI_BANK_URL      base URL of the bank service dispatch posts to. Unset: this 
 ALIBI_BANK_A_TOKEN  bearer token that authenticates recipient bank_a (demo default).
 ALIBI_BANK_B_TOKEN  bearer token that authenticates recipient bank_b (demo default).
 ALIBI_HOLDER_NAME   display name of the account holder (default Maya).
+ALIBI_HOLDER_TOKEN  optional bearer token for the holder's routes. Set: every holder route needs
+                    ``Authorization: Bearer <token>`` or the ``alibi_holder`` session cookie that
+                    ``GET /passport?token=<token>`` sets once. Unset (the demo): the holder is the
+                    demo holder and no credential is asked for.
+ALIBI_API_ORIGIN    the origin this backend is reachable at (default ``http://127.0.0.1:8100``);
+                    reported by ``/health`` and used for every absolute URL the app hands out
+                    (package and export links), so a server-side front end can follow them.
 ALIBI_MASTER_KEY    passport encryption key; read by ``alibi.core.store``, never by this module.
 """
 
@@ -40,6 +47,7 @@ APP_KEYS: dict[str, tuple[KeyPurpose, str]] = {
     "second_platform": (KeyPurpose.RECORD_SIGNING, "second-platform"),
 }
 PACKAGE_KID = "alibi_demo"
+DEFAULT_API_ORIGIN = "http://127.0.0.1:8100"
 
 RECIPIENTS: dict[str, dict[str, str]] = {
     "bank_a": {"name": "Bank A", "analyst": "Analyst, Bank A", "token_env": "ALIBI_BANK_A_TOKEN",
@@ -63,6 +71,8 @@ class Settings:
     bank_url: str | None = None
     holder_name: str = "Maya"
     tokens: dict[str, str] = field(default_factory=dict)   # recipient -> bearer token
+    holder_token: str | None = None                          # None: the demo holder, no credential
+    api_origin: str = DEFAULT_API_ORIGIN
     static_prefix: str = "/static"
 
     @property
@@ -109,6 +119,8 @@ def settings_from_env(env: dict[str, str] | None = None, **overrides) -> Setting
         "bank_url": (env.get("ALIBI_BANK_URL") or "").strip().rstrip("/") or None,
         "holder_name": env.get("ALIBI_HOLDER_NAME", "").strip() or "Maya",
         "tokens": tokens,
+        "holder_token": env.get("ALIBI_HOLDER_TOKEN", "").strip() or None,
+        "api_origin": (env.get("ALIBI_API_ORIGIN") or "").strip().rstrip("/") or DEFAULT_API_ORIGIN,
     }
     values.update(overrides)
     return Settings(**values)

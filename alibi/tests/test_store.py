@@ -983,7 +983,7 @@ ALLOWED_CLEAR_COLUMNS = {
     "claims": {"claim_id", "request_id", "state", "payload"},
     "alerts": {"alert_id", "subject_ref", "state", "payload"},
     "policies": {"policy_id", "version", "subject_ref", "payload"},
-    "requests": {"request_id", "subject_ref", "audience", "payload"},
+    "requests": {"issuer", "request_id", "subject_ref", "audience", "payload"},
     "drafts": {"draft_id", "request_id", "status", "payload"},
     "approvals": {"approval_id", "request_id", "status", "payload"},
     "packages": {"package_id", "approval_id", "request_id", "audience", "payload"},

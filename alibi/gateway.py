@@ -12,13 +12,20 @@ A ``Gateway`` serves one investigation run for one subject. Every public call:
 Connector lookups are injected callables (``SettlementLookup``, ``TxnRefresh``), so a later
 session can plug in the mock services; without one the call raises ``Unavailable``. A
 connector is only asked about this subject's own data: a txn it holds, or a payment reference
-one of its issuer-verified records carries (and the settlement must come from that record's
-issuer). What a connector returns is validated and ingested into the passport
-(``alibi.core.ingest``) before it is returned, so evidence fetched during an investigation is
-kept with its provenance. ``flush_trace`` saves the trace to the store.
+carried by the subject's own evidence: in the ``payment_ref``, ``settlement_ref`` or
+``withdrawal_ref`` field of one of its issuer-verified records (then the settlement must come
+from that record's issuer), or else in the ``text`` of one of those records or on one of the
+subject's own bank transactions (``refs`` or a reference-shaped token of the description), in
+which case the settlement must come from one of the issuers of the subject's issuer-verified
+records. A settlement lookup may return a ``settlement`` record or a ``payout`` record that
+carries a ``status`` (the team's payouts fold the settlement state in); either is settlement
+evidence for that payment reference. What a connector returns is validated and ingested into
+the passport (``alibi.core.ingest``) before it is returned, so evidence fetched during an
+investigation is kept with its provenance. ``flush_trace`` saves the trace to the store.
 """
 
 import math
+import re
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from enum import Enum
@@ -48,6 +55,7 @@ from alibi.core.schemas import (
     format_utc,
     utc_now,
 )
+from alibi.core.reconcile import SETTLEMENT_EVIDENCE_KINDS
 from alibi.core.signing import TrustRegistry
 from alibi.core.store import NotFound, Store, StoreError
 
@@ -67,6 +75,9 @@ ACTOR = "gateway"
 
 _IDENT = TypeAdapter(Ident)
 _REF = TypeAdapter(Ref)
+# A reference-shaped token of a bank description: upper-case letters, digits and hyphens, at
+# least four characters and at least one digit (so TRANSFER or PAYOUT never counts).
+_REF_TOKEN = re.compile(r"[A-Z0-9][A-Z0-9-]{3,}")
 
 
 class GatewayError(Exception):
@@ -239,6 +250,24 @@ def _by_time(records: list[EvidenceRecord]) -> list[EvidenceRecord]:
     return sorted(records, key=lambda r: (r.occurred_at, r.record_id))
 
 
+def _txn_tokens(txn: BankTxn) -> set[str]:
+    """The references a bank transaction carries, upper-cased: its ``refs`` plus the
+    reference-shaped tokens of its description (same rule as
+    ``alibi.core.investigate_rules.reference_tokens``, repeated here to avoid an import cycle)."""
+    words = {token for token in _REF_TOKEN.findall(txn.description.upper())
+             if any(char.isdigit() for char in token)}
+    return {ref.upper() for ref in txn.refs} | words
+
+
+def _text_carries(text: str | None, ref: str) -> bool:
+    """Does free text name ``ref`` as a whole token (case-insensitive)? The text is data: only
+    the exact reference is looked for, nothing in it is interpreted."""
+    if not text:
+        return False
+    return re.search(rf"(?<![A-Za-z0-9-]){re.escape(ref)}(?![A-Za-z0-9-])", text,
+                     re.IGNORECASE) is not None
+
+
 # --------------------------------------------------------------------------- gateway
 
 
@@ -323,13 +352,17 @@ class Gateway:
     def lookup_settlement(self, payment_ref: str) -> EvidenceRecord | None:
         """Ask the merchant connector for the settlement of ``payment_ref``.
 
-        The reference must be carried by one of this subject's active issuer-verified records
-        (else ``ScopeError``, and the connector is not called). The answer must be a
-        ``settlement`` event for exactly this reference and this subject, signed by the issuer
-        of such a record; it is ingested with connector ``merchant_lookup`` and the stored
-        record is returned (a replay is a duplicate). If the passport already holds a later
-        revision of that record, the active revision is returned. ``None`` when the connector
-        knows no settlement for the reference.
+        The reference must be carried by this subject's own evidence (else ``ScopeError``,
+        and the connector is not called): the ``payment_ref``, ``settlement_ref`` or
+        ``withdrawal_ref`` of an active issuer-verified record, the ``text`` of one, or one of
+        the subject's bank transactions (``refs`` or a reference-shaped description token).
+        The answer must be a ``settlement`` event, or a ``payout`` event carrying a ``status``,
+        for exactly this reference and this subject, signed by the issuer of a record carrying
+        the reference (or, for a text or bank-side reference, by one of the issuers of the
+        subject's issuer-verified records); it is ingested with connector ``merchant_lookup``
+        and the stored record is returned (a replay is a duplicate). If the passport already
+        holds a later revision of that record, the active revision is returned. ``None`` when
+        the connector knows no settlement for the reference.
         """
         def run():
             if not isinstance(payment_ref, str):
@@ -353,8 +386,12 @@ class Gateway:
                 return None, {"found": False}, []
             raw = _connector_object(payload)
             event = raw.get("event")
-            if not isinstance(event, dict) or event.get("kind") != RecordKind.SETTLEMENT.value:
+            kinds = {kind.value for kind in SETTLEMENT_EVIDENCE_KINDS}
+            if not isinstance(event, dict) or event.get("kind") not in kinds:
                 raise RejectedResult("the lookup returned something other than a settlement record")
+            if event.get("kind") == RecordKind.PAYOUT.value and not isinstance(event.get("status"), str):
+                raise RejectedResult("the lookup returned a payout record with no settlement status, "
+                                     "which is not a settlement record")
             if event.get("payment_ref") != ref:
                 raise RejectedResult("the lookup returned a settlement for another payment reference")
             issuer = event.get("issuer_id")
@@ -367,7 +404,7 @@ class Gateway:
             except IngestError as exc:
                 raise RejectedResult(f"the lookup result was rejected: {exc.reason}") from None
             record = put.record if put.active else self.store.get_source(put.record.record_id)
-            if record.kind != RecordKind.SETTLEMENT or record.payment_ref != ref \
+            if record.kind not in SETTLEMENT_EVIDENCE_KINDS or record.payment_ref != ref \
                     or record.subject_ref != self.subject_ref or record.issuer_id not in issuers:
                 raise RejectedResult("the passport's settlement record does not match the lookup")
             summary = {"found": True, **_record_summary(record), "put_status": put.status}
@@ -438,10 +475,31 @@ class Gateway:
         return self.now if self.now is not None else utc_now()
 
     def _issuers_of(self, payment_ref: str) -> set[str]:
-        """Issuers of this subject's active issuer-verified records carrying ``payment_ref``:
-        the only parties whose settlement for it a lookup may return."""
-        return {r.issuer_id for r in self.store.list_sources(self.subject_ref)
-                if r.payment_ref == payment_ref and r.source_trust == SourceTrust.ISSUER_VERIFIED}
+        """The issuers whose settlement for ``payment_ref`` a lookup may return, or an empty
+        set when the reference is not this subject's to ask about.
+
+        A reference carried in the ``payment_ref``, ``settlement_ref`` or ``withdrawal_ref``
+        field of an active issuer-verified record binds the lookup to that record's issuer.
+        Otherwise a reference that appears in the ``text`` of such a record, or on one of the
+        subject's own bank transactions (``refs`` or a reference-shaped description token),
+        may be asked about from any issuer of the subject's issuer-verified records. Self-
+        supplied records never open a lookup, and another subject's data is never consulted.
+        """
+        verified = [r for r in self.store.list_sources(self.subject_ref)
+                    if r.source_trust == SourceTrust.ISSUER_VERIFIED]
+        carriers = {r.issuer_id for r in verified
+                    if payment_ref in (r.payment_ref, r.settlement_ref, r.withdrawal_ref)}
+        if carriers:
+            return carriers
+        own = {r.issuer_id for r in verified}
+        if not own:
+            return set()
+        if any(_text_carries(r.text, payment_ref) for r in verified):
+            return own
+        wanted = payment_ref.upper()
+        if any(wanted in _txn_tokens(txn) for txn in self.store.list_bank_txns(self.subject_ref)):
+            return own
+        return set()
 
     def _call(self, tool: str, args: dict[str, Any], run: Callable[[], tuple]) -> Any:
         args = {name: _arg(value) for name, value in args.items() if value is not None}

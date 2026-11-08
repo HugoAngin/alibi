@@ -399,16 +399,18 @@ def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id
                          "verifier_check": ("pass" if valid else "not checked" if valid is None else "fail")}
         evidence_by_question.append({"question_id": qid, "question": questions.get(qid, qid),
                                      "claim": {"status": cl["status"], "rationale": cl["rationale"]},
-                                     "evidence": evidence, "calculation": calc_view, "gap": cl.get("gap"),
+                                     "evidence": evidence, "calculation": calc_view,
+                                     "gap": cl.get("gap_detail") or cl.get("gap"),
                                      "timing": _timing(body, qid, {f"{r['ref_type']}:{r['ref_id']}"
                                                                    for r in cl.get("evidence_refs", [])})})
         if cl["status"] == "contradicted":
             contradictions.append({"claim_id": f"claim-{qid}", "question_id": qid,
-                                   "description": cl.get("gap") or cl["rationale"],
+                                   "description": cl.get("gap_detail") or cl.get("gap") or cl["rationale"],
                                    "sources": [{"record_id": e["record_id"], "revision": e["revision"], "trust": e["trust"]}
                                                for e in evidence]})
         if cl.get("gap"):
-            gaps.append({"question_id": qid, "description": cl["gap"], "reason_code": c.gap_code(cl["gap"])})
+            gaps.append({"question_id": qid, "description": cl.get("gap_detail") or cl["gap"],
+                         "reason_code": c.gap_code(cl["gap"])})
     ctx.update({
         "source_trust": trust_rows, "claim_status": claim_status, "evidence_by_question": evidence_by_question,
         "reconciliation": {**_reconcile(body, spec["name"]), "computed_at": rt.now_text()},

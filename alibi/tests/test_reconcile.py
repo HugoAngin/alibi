@@ -362,6 +362,49 @@ def test_only_settlement_records_can_show_settlement():
     assert timing.ok is False and "not a settlement record" in timing.reason
 
 
+def test_a_payout_carrying_a_status_is_settlement_evidence_for_its_own_reference():
+    # NEEDS.md item 2: the team's payout folds the settlement state in.
+    settled = rec("po_case", "payout", 216000, occurred_at="2026-10-26T09:00:00Z",
+                  payment_ref="PO-5001", status="settled", effective_at="2026-11-03T07:45:00Z",
+                  related_record_ids=[*ORDER_IDS, "rfd_2001", "fee_3001"])
+    assert settlement_effective_time(settled) == parse_utc("2026-11-03T07:45:00Z")
+    timing = check_settlement_timing(settled, bank_txn())
+    assert timing.ok is True
+    calc = reconcile_credit(bank_txn(), components=components(), payout=settled, settlement=settled)
+    assert calc.balanced is True and credit_supported(calc)
+    assert calc.cited_refs.count(settled.ref()) == 1  # the same record is cited once
+    pending = rec("po_case", "payout", 216000, occurred_at="2026-11-03T12:00:00Z",
+                  payment_ref="PO-5001", status="pending")
+    assert settlement_effective_time(pending) is None
+    assert "pending at or after booking" in check_settlement_timing(pending, bank_txn()).reason
+    bare = rec("po_bare", "payout", 216000, occurred_at="2026-11-02T09:00:00Z", payment_ref="PO-5001")
+    assert settlement_effective_time(bare) is None
+    timing = check_settlement_timing(bare, bank_txn())
+    assert timing.ok is False and "no status, not a settlement record" in timing.reason
+
+
+def test_settlement_more_than_five_days_before_the_booking_cannot_support_the_credit():
+    # Pinned rule: settled_at at most 5 days before booked_at and never after it.
+    early = settlement(effective_at="2026-10-20T07:45:00Z", occurred_at="2026-10-20T08:00:00Z")
+    timing = check_settlement_timing(early, bank_txn())
+    assert timing.ok is False and "more than 5 days before" in timing.reason
+    calc = reconcile_credit(bank_txn(), components=components(), payout=payout(), settlement=early)
+    assert calc.balanced is True and not credit_supported(calc)
+    # Exactly five days counts; one second more does not.
+    boundary = settlement(effective_at="2026-10-29T10:00:00Z", occurred_at="2026-10-29T10:00:00Z")
+    assert check_settlement_timing(boundary, bank_txn()).ok is True
+    assert credit_supported(reconcile_credit(bank_txn(), components=components(), payout=payout(),
+                                             settlement=boundary))
+    over = settlement(effective_at="2026-10-29T09:59:59Z", occurred_at="2026-10-29T09:59:59Z")
+    assert check_settlement_timing(over, bank_txn()).ok is False
+    # credit_supported re-derives the window from the explicit times, whatever ok says.
+    forged = Calculation.model_validate({**calc.to_json_dict(), "timing": {**calc.timing.to_json_dict(), "ok": True}})
+    assert not credit_supported(forged)
+    # A wider window is a caller's choice, never the default.
+    from datetime import timedelta
+    assert check_settlement_timing(early, bank_txn(), window=timedelta(days=30)).ok is True
+
+
 def test_timing_needs_a_bank_credit():
     with pytest.raises(ReconcileError):
         check_settlement_timing(settlement(), bank_txn(-216000))

@@ -192,6 +192,7 @@ class AlertKind(StrEnum):
     UNUSUAL_OUTFLOW = "unusual_outflow"
     AMOUNT_DISCREPANCY = "amount_discrepancy"
     SETTLEMENT_DISCREPANCY = "settlement_discrepancy"
+    SETTLED_NOT_RECEIVED = "settled_not_received"
     MERCHANT_UNVERIFIED = "merchant_unverified"
 
 
@@ -266,6 +267,7 @@ class _RecordFields(AlibiModel):
     currency: CurrencyCode | None = None
     payment_ref: Ref | None = None            # payout/transfer or buyer payment reference
     settlement_ref: Ref | None = None
+    withdrawal_ref: Ref | None = None         # the platform's withdrawal id, when it differs
     status: Status | None = None
     items: list[ItemDetail] | None = None
     text: LongText | None = None              # message or receipt text; always data, never instructions
@@ -378,6 +380,7 @@ class BankTxn(AlibiModel):
     currency: CurrencyCode
     booked_at: UtcDatetime
     description: ShortText
+    counterparty: ShortText | None = None   # the bank's counterparty name, when it gives one
     refs: list[Ref] = Field(default_factory=list)
     provenance: Provenance
     source_trust: Literal[SourceTrust.BANK_OBSERVED] = SourceTrust.BANK_OBSERVED
@@ -531,7 +534,18 @@ class Calculation(AlibiModel):
 
 
 class Claim(AlibiModel):
-    """One answer to one RFC question, with its evidence and status."""
+    """One answer to one RFC question, with its evidence and status.
+
+    ``gap`` is a short code naming why the claim is not supported: one of the nine pinned gap
+    codes (``settlement_not_found``, ``balance_release_not_settlement``,
+    ``settlement_after_credit``, ``settlement_pending_at_booking``, ``settlement_failed``,
+    ``ambiguous_candidates``, ``amount_mismatch``, ``missing_cited_record``,
+    ``no_merchant_records``) or an engine code such as ``question_not_mapped``. The human
+    sentence behind it is ``gap_detail``. ``facts`` holds the typed facts the answer asserts
+    (``payout_references`` and ``settled_at`` for a source-of-funds answer, ``breakdown_minor``
+    for a breakdown, ``sales_minor`` / ``refunds_minor`` / ``sale_count`` / ``refund_count``
+    for period totals), JSON values only.
+    """
 
     claim_id: Ident
     request_id: Ident
@@ -542,6 +556,8 @@ class Claim(AlibiModel):
     evidence_refs: list[EvidenceRef] = Field(default_factory=list)
     calculation: Calculation | None = None
     gap: LongText | None = None
+    gap_detail: LongText | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
     run_id: Ident | None = None
     created_at: UtcDatetime
     state: DerivedState = DerivedState.ACTIVE
@@ -560,7 +576,7 @@ class Alert(AlibiModel):
     alert_id: Ident
     subject_ref: Ident
     kind: AlertKind
-    severity: Literal["info", "warning"] = "info"
+    severity: Literal["info", "warning", "high"] = "info"
     title: ShortText
     explanation: LongText
     refs: list[EvidenceRef] = Field(default_factory=list)
@@ -706,12 +722,21 @@ class PackageClaim(AlibiModel):
 
 
 class PackageScope(AlibiModel):
+    """The request's time or transaction scope, copied into the signed body. The subject is
+    not here: ``PackageBody.case_ref`` binds it (see ``alibi.core.package.case_binding``)."""
+
     period: Period | None = None
     txn_ids: list[Ident] | None = None
 
 
 class PackageBody(AlibiModel):
-    """The exact content the holder approves. Approval binds sha256(JCS(body))."""
+    """The exact content the holder approves. Approval binds sha256(JCS(body)).
+
+    ``case_ref`` is ``case_binding(audience, parent_request_id or request_id, subject_ref)``:
+    one id per case and recipient that also binds the subject without naming it, so a
+    recipient verifies the subject from its own request even when every attachment is a
+    redacted extract.
+    """
 
     schema_version: Literal["alibi.package_body.v1"] = SCHEMA_PACKAGE_BODY
     request_id: Ident

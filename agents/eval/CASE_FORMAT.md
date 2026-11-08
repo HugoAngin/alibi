@@ -160,6 +160,17 @@ On `c6ea270`, the standalone bank stored verified packages in plaintext with
 probe receipt covers only that isolated component. The separate bank result
 is `out/s5-bank-persistence-sp47.json`.
 
+For the SP-46 query-credential check, use a disposable public Case 1 router
+with newly generated holder and bank credentials. Keep the capture and its
+logs outside the checkout. Request `/passport` and `/bank/inbox` with the
+credential first as a `token` query parameter and then as a bearer header.
+Check the HTTP statuses, whether a holder cookie was issued, and whether the
+credential bytes appear in the router's access log. Retain only match counts.
+On `9468c20`, the holder query issued a cookie (303) and the native bank
+query was refused (401). Both credential values appeared in the access log.
+Both header requests succeeded. The scoped failure is in
+`out/s5-9468c20-query-credential-sp46.json`.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash

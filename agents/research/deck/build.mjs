@@ -357,7 +357,7 @@ pres.addSection({ title: 'How it works' });
     'How it works',
     `${R.testing} · Data`,
     'Synthetic ledgers, written first, with an answer key',
-    'Each case is a fictional event ledger. Bank rows, merchant records and reworded requests come from it, with independent gold answers.',
+    'Each case is a fictional event ledger. Bank rows, merchant records and reworded requests come from it, with gold answers. Cases 41–50 hide the payout reference so finding it takes interpretation.',
   );
   // Drawn bars rather than a native chart: Keynote and some viewers drop
   // pptxgenjs charts, and this deck is likely to be exported through one.
@@ -370,19 +370,22 @@ pres.addSection({ title: 'How it works' });
     ['Duplicate record', 5],
     ['Missing proof', 7],
     ['Self-supplied import', 2],
+    ['Hidden reference', 10],
+    ['Injection', 10],
+    ['Alert', 10],
   ];
-  s.addText('40 development cases in 8 families', { x: M, y: 1.85, w: 5.3, h: 0.3, fontSize: 13, bold: true, color: PALETTE.ink, margin: 0, isTextBox: true });
+  s.addText('70 development cases in 11 families', { x: M, y: 1.85, w: 5.3, h: 0.3, fontSize: 13, bold: true, color: PALETTE.ink, margin: 0, isTextBox: true });
   families.forEach(([label, n], i) => {
-    const y = 2.25 + i * 0.35;
-    s.addText(label, { x: M, y, w: 1.95, h: 0.28, fontSize: 11, color: PALETTE.soft, align: 'right', valign: 'middle', margin: 0, isTextBox: true });
-    s.addShape(pres.shapes.RECTANGLE, { x: M + 2.05, y: y + 0.04, w: 0.42 * n, h: 0.2, fill: { color: PALETTE.navy }, line: { color: PALETTE.navy }, objectName: `Bar ${label}` });
-    s.addText(String(n), { x: M + 2.1 + 0.42 * n, y, w: 0.3, h: 0.28, fontSize: 11, bold: true, color: PALETTE.ink, valign: 'middle', margin: 0, isTextBox: true });
+    const y = 2.2 + i * 0.27;
+    s.addText(label, { x: M, y, w: 1.95, h: 0.25, fontSize: 11, color: PALETTE.soft, align: 'right', valign: 'middle', margin: 0, isTextBox: true });
+    s.addShape(pres.shapes.RECTANGLE, { x: M + 2.05, y: y + 0.04, w: 0.28 * n, h: 0.17, fill: { color: PALETTE.navy }, line: { color: PALETTE.navy }, objectName: `Bar ${label}` });
+    s.addText(String(n), { x: M + 2.1 + 0.28 * n, y, w: 0.35, h: 0.25, fontSize: 11, bold: true, color: PALETTE.ink, valign: 'middle', margin: 0, isTextBox: true });
   });
-  stat(s, { x: 6.1, y: 1.8, w: 3.4 }, '24 · 6 · 10', 'Gold claim status: supported, contradicted, unresolved');
+  stat(s, { x: 6.1, y: 1.8, w: 3.4 }, '47 · 10 · 13', 'Gold claim status: supported, contradicted, unresolved');
   stat(s, { x: 6.1, y: 2.95, w: 3.4 }, '{{PH-03}}', 'Sealed cases in {{PH-04}} families, plus {{PH-05}} adversarial; committed only after the freeze');
   bullets(
     s,
-    ['Every case hides rent, groceries, pharmacy and a health purchase that must never be shared', '165 checks re-derive all gold independently'],
+    ['Every case hides rent, groceries, pharmacy and a health purchase that must never be shared', '321 checks rebuild the cases and re-derive the gold'],
     { x: 6.1, y: 4.1, w: 3.4, h: 1.0 },
     12,
   );

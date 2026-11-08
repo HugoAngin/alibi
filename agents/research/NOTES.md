@@ -29,7 +29,14 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Astro 6 rather than 7: Astro 7.4 needs Node >= 22.23.4 and this machine's default is 22.14. `@astrojs/cloudflare` 13.7 with passthrough images and an in-memory session driver, so deploy provisions no Images binding or KV.
 - `pnpm verify` passes (14 tests). Not deployed. Not wired to the Python app in `alibi/`. Design to come.
 
+## Lead's 01:03Z assignment (6715391239)
+- Scope: lead wanted Astro as landing page plus demo frame only. Elio decided Astro is the product front end; the backend is alibi/ and the Jinja templates are a fallback. Posted to lead 01:0xZ (6715431514) with `web/docs/backend-integration.md` (JSON contexts and actions, refusals verbatim, RFC-create and merchant-connect endpoints, credentials, route table; local demo vs public backend URL to decide by 08:00).
+- Deck: `out/alibi_deck.pptx`, 17 slides from DECK.md, built by `deck/build.mjs` (`cd agents/research/deck && npm install && npm run build`). Screenshots by `deck/shots.mjs` (Astro dev servers plus s4a previews, light mode). s4a previews show template sample data and are captioned so. Charts drawn as shapes because Keynote drops pptxgenjs charts. QA: skill validator passes; slide images exported through Keynote and reviewed.
+- README draft: `out/README_draft.md`. Data card and controls copied verbatim (11abc05, 06d22b1); refresh before T-1h. METHOD.md (eval) and alibi/RUNBOOK.md not landed: marked {{METHOD}} and {{RUNBOOK}}.
+- Data now has 70 cases in 11 families (47/10/13); DECK.md and slide 4 updated.
+
 ## Next
+- Refresh README_draft verbatim sections and deck screenshots (wired app on case 1) when they land; fill placeholders only from eval-verified records.
 - Work loop: `board.py wait` in the background, act on posts addressed to research.
 
 ## Open needs

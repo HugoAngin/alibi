@@ -1,0 +1,136 @@
+---
+/** Every order and refund on Maya's account in October 2026. */
+import ShopLayout from '@/layouts/ShopLayout.astro';
+import SellerNav from '@/components/SellerNav.astro';
+import { formatGBP } from '@/data/shop';
+import { day, orders, refunds } from '@/data/account';
+---
+
+<ShopLayout title="Orders">
+  <h1>Orders</h1>
+  <SellerNav current="orders" />
+
+  <section aria-labelledby="sold-title">
+    <h2 id="sold-title">Sold ({orders.length})</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Order</th>
+            <th scope="col">Item</th>
+            <th scope="col" class="num">Price</th>
+            <th scope="col" class="num">Seller fee</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o) => (
+            <tr>
+              <td data-label="Date">{day(o.soldAt)}</td>
+              <td data-label="Order"><code>{o.orderRef}</code></td>
+              <td data-label="Item">{o.title}</td>
+              <td data-label="Price" class="num">{formatGBP(o.priceMinor)}</td>
+              <td data-label="Seller fee" class="num">−{formatGBP(o.feeMinor)}</td>
+              <td data-label="Status">✓ {o.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="refund-title">
+    <h2 id="refund-title">Refunds ({refunds.length})</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Refund</th>
+            <th scope="col">Order</th>
+            <th scope="col">Reason</th>
+            <th scope="col" class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {refunds.map((r) => (
+            <tr>
+              <td data-label="Date">{day(r.refundedAt)}</td>
+              <td data-label="Refund"><code>{r.refundRef}</code></td>
+              <td data-label="Order"><code>{r.orderRef}</code></td>
+              <td data-label="Reason">{r.reason}</td>
+              <td data-label="Amount" class="num">−{formatGBP(r.amountMinor)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</ShopLayout>
+
+<style>
+  section {
+    margin-block: var(--space-lg);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: var(--space-xs);
+    border-bottom: 1px solid var(--c-line);
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 599px) {
+    thead {
+      position: absolute;
+      clip: rect(0 0 0 0);
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+
+    table,
+    tbody,
+    tr,
+    td {
+      display: block;
+      width: 100%;
+    }
+
+    tr {
+      padding-block: var(--space-xs);
+      border-bottom: 1px solid var(--c-line);
+    }
+
+    td {
+      border: 0;
+      padding: 0;
+      text-align: left;
+    }
+
+    td::before {
+      content: attr(data-label) ': ';
+      color: var(--c-ink-soft);
+      font-size: var(--t-sm);
+    }
+  }
+</style>

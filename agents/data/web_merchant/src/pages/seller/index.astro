@@ -1,0 +1,128 @@
+---
+/** Seller hub overview: what Maya sold in October and where the money went. */
+import ShopLayout from '@/layouts/ShopLayout.astro';
+import SellerNav from '@/components/SellerNav.astro';
+import { formatGBP, seller } from '@/data/shop';
+import { day, notifications, orders, payouts, totals, when } from '@/data/account';
+
+const payout = payouts[0]!;
+const latest = [...orders].reverse().slice(0, 3);
+---
+
+<ShopLayout title="Seller hub">
+  <h1>Hello, {seller.name}</h1>
+  <SellerNav current="overview" />
+
+  <section aria-labelledby="month-title" class="panel">
+    <h2 id="month-title">October 2026</h2>
+    <dl class="figures">
+      <div><dt>Sales</dt><dd>{formatGBP(totals.salesMinor)}</dd></div>
+      <div><dt>Refunds</dt><dd>−{formatGBP(totals.refundsMinor)}</dd></div>
+      <div><dt>Seller fees (2.5%)</dt><dd>−{formatGBP(totals.feesMinor)}</dd></div>
+      <div class="net"><dt>Your earnings</dt><dd>{formatGBP(totals.netMinor)}</dd></div>
+    </dl>
+  </section>
+
+  <section aria-labelledby="payout-title" class="panel">
+    <h2 id="payout-title">Latest payout</h2>
+    <p>
+      <strong>{formatGBP(payout.amountMinor)}</strong> · <code>{payout.payoutRef}</code> ·
+      <span class="status-paid">✓ {payout.status}</span>
+    </p>
+    <p class="meta">Requested {when(payout.requestedAt)}. Arrived {when(payout.settledAt)} in your {payout.destination.toLowerCase()}.</p>
+    <a href="/seller/payouts/">All payouts</a>
+  </section>
+
+  <section aria-labelledby="orders-title" class="panel">
+    <h2 id="orders-title">Recent orders</h2>
+    <ul class="list">
+      {latest.map((o) => (
+        <li>
+          <span>{o.title}</span>
+          <span class="meta"><code>{o.orderRef}</code> · {day(o.soldAt)}</span>
+          <span class="amount">{formatGBP(o.priceMinor)}</span>
+        </li>
+      ))}
+    </ul>
+    <a href="/seller/orders/">All {orders.length} orders</a>
+  </section>
+
+  <section aria-labelledby="msg-title" class="panel">
+    <h2 id="msg-title">Messages</h2>
+    {notifications.map((n) => (
+      <p><strong>{n.title}</strong> <span class="meta">{when(n.sentAt)}</span><br />{n.body}</p>
+    ))}
+    <a href="/seller/messages/">Open messages</a>
+  </section>
+</ShopLayout>
+
+<style>
+  .panel {
+    margin-block: var(--space-md);
+    padding: var(--space-md);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-sm);
+    margin: 0;
+  }
+
+  .figures dt {
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+
+  .figures dd {
+    margin: 0;
+    font-size: var(--t-lg);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .net dd {
+    font-weight: 800;
+  }
+
+  .meta {
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+
+  .status-paid {
+    color: var(--c-ok);
+    font-weight: 700;
+  }
+
+  .list {
+    list-style: none;
+    margin: 0 0 var(--space-sm);
+    padding: 0;
+  }
+
+  .list li {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 var(--space-sm);
+    padding-block: var(--space-xs);
+    border-bottom: 1px solid var(--c-line);
+  }
+
+  .list .meta {
+    grid-column: 1;
+  }
+
+  .amount {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-variant-numeric: tabular-nums;
+  }
+</style>

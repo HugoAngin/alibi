@@ -85,6 +85,29 @@ def _complete_rows(result, case: dict, mode: str) -> list[dict]:
             failure_rows(case, mode, "invalid_output", "adapter omitted this request")]
 
 
+def _worker_env(work: str, dry_run: bool) -> dict[str, str]:
+    names = ("PATH", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE")
+    if not dry_run:
+        names += ("GEMINI_API_KEY", "GOOGLE_API_KEY", "ALIBI_LLM_CAP", "LOCKBOX_OPEN")
+    env = {name: os.environ[name] for name in names if name in os.environ}
+    return dict(env, ALIBI_DATA_DIR=work, TMPDIR=work, PYTHONDONTWRITEBYTECODE="1")
+
+
+def verify_adapter(blocked: tuple[Path, ...]) -> None:
+    """Check the live entry point in the worker sandbox without supplying a case."""
+    if not blocked:
+        raise ValueError("a live adapter needs explicit denied paths")
+    command = [*_isolation(blocked), sys.executable, "-c", _BOOTSTRAP, str(REPO), "agents", "check"]
+    with TemporaryDirectory(prefix="alibi-adapter-") as work:
+        try:
+            result = subprocess.run(command, cwd=work, env=_worker_env(work, False), stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("adapter import exceeded the worker preflight time limit") from None
+    if result.returncode:
+        raise RuntimeError("cannot import alibi.adapter.run_case(case, mode=...) in the live worker sandbox")
+
+
 def run_case_worker(case: dict, mode: str, *, dry_run: bool, timeout: float,
                     blocked: tuple[Path, ...] = ()) -> list[dict]:
     if mode not in MODES:
@@ -93,14 +116,9 @@ def run_case_worker(case: dict, mode: str, *, dry_run: bool, timeout: float,
         raise ValueError("a live adapter needs explicit denied paths")
     prefix = _isolation(blocked) if not dry_run or blocked else []
     payload = json.dumps(case_payload(case), allow_nan=False)
-    names = ("PATH", "LANG", "LC_ALL", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE")
-    if not dry_run:
-        names += ("GEMINI_API_KEY", "GOOGLE_API_KEY", "ALIBI_LLM_CAP", "LOCKBOX_OPEN")
-    env = {name: os.environ[name] for name in names if name in os.environ}
     with TemporaryDirectory(prefix="alibi-adapter-") as work:
-        env.update(ALIBI_DATA_DIR=work, TMPDIR=work, PYTHONDONTWRITEBYTECODE="1")
         command = [*prefix, sys.executable, "-c", _BOOTSTRAP, str(REPO), mode, "dry" if dry_run else "live"]
-        with subprocess.Popen(command, cwd=work, env=env, text=True, stdin=subprocess.PIPE,
+        with subprocess.Popen(command, cwd=work, env=_worker_env(work, dry_run), text=True, stdin=subprocess.PIPE,
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True) as child:
             try:
                 stdout, _ = child.communicate(payload, timeout=timeout)
@@ -140,6 +158,12 @@ def _dry_predictions(case: dict, mode: str) -> list[dict]:
 
 def main() -> None:
     mode, execution = sys.argv[1:]
+    if execution == "check":
+        from inspect import signature
+        from alibi.adapter import run_case
+
+        signature(run_case).bind({}, mode=mode)
+        return
     case = case_payload(json.load(sys.stdin))
     with redirect_stdout(sys.stderr):
         if execution == "dry":

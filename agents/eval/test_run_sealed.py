@@ -80,7 +80,7 @@ def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(
     private_root.mkdir()
     monkeypatch.setattr(run_sealed, "is_open", lambda: False)
     monkeypatch.setattr(run_sealed.seal, "git_commit", lambda _: ("commit", False))
-    monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
+    monkeypatch.setattr(run_sealed, "verify_adapter", lambda paths: paths or pytest.fail("missing isolation"))
     monkeypatch.setattr(run_sealed.client, "load_api_key", lambda: "synthetic-credential")
     calls = []
 
@@ -101,7 +101,6 @@ def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(
 
 def test_missing_provider_key_does_not_start_a_capture(tmp_path, monkeypatch, candidate_probes):
     output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
-    monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
 
     def missing_key():
         raise run_sealed.client.MissingApiKey("credential unavailable")
@@ -133,7 +132,7 @@ def test_frozen_capture_rejects_unbound_probes_before_lock(tmp_path, candidate_p
 
 def test_frozen_replay_validates_retained_receipt_without_original(tmp_path, monkeypatch, candidate_probes):
     output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
-    monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
+    monkeypatch.setattr(run_sealed, "verify_adapter", lambda _: None)
     monkeypatch.setattr(run_sealed.client, "load_api_key", lambda: "synthetic-credential")
     monkeypatch.setattr(run_sealed, "run_case_worker",
                         lambda case, *args, **kwargs: rules_reference.predictions_for([case]))
@@ -148,6 +147,21 @@ def test_frozen_replay_validates_retained_receipt_without_original(tmp_path, mon
     retained.write_text("{}", encoding="utf-8")
     with pytest.raises(RuntimeError, match="retained capture or its inputs changed"):
         run_sealed._capture_once(output, [canonical_case()], signature, **options)
+
+
+def test_broken_adapter_import_does_not_start_frozen_capture(tmp_path, monkeypatch, candidate_probes):
+    output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
+    monkeypatch.setattr(run_sealed.client, "load_api_key", lambda: "synthetic-credential")
+
+    def broken_adapter(paths):
+        assert paths == (tmp_path,)
+        raise RuntimeError("cannot import adapter")
+
+    monkeypatch.setattr(run_sealed, "verify_adapter", broken_adapter)
+    with pytest.raises(RuntimeError, match="cannot import adapter"):
+        run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
+                                 blocked=(tmp_path,), probes=candidate_probes, lock=lock)
+    assert not lock.exists() and not output.exists()
 
 
 def test_closed_lockbox_stops_before_private_paths_are_read(tmp_path, monkeypatch, capsys):

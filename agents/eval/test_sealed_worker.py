@@ -1,10 +1,12 @@
 """Exercise the process boundary using public fixtures and a synthetic gold file."""
 
+from pathlib import Path
 import shutil
 
 import pytest
 
 from agents.data.api import canonical_case
+from agents.eval import sealed_worker
 from agents.eval.sealed_worker import case_payload, run_case_worker, verify_file_isolation
 from alibi.eval.scorer import build_system
 
@@ -33,6 +35,40 @@ def test_worker_rehearses_public_baselines_with_official_predictions(mode):
 def test_live_worker_requires_an_explicit_isolation_boundary():
     with pytest.raises(ValueError, match="denied paths"):
         run_case_worker(canonical_case(), "agents", dry_run=False, timeout=15)
+
+
+@pytest.mark.skipif(not shutil.which("sandbox-exec"), reason="the verified worker sandbox is macOS-specific")
+def test_adapter_preflight_imports_inside_the_sandbox_without_running_a_case(tmp_path, monkeypatch):
+    checkout = tmp_path / "checkout"
+    worker = checkout / "agents" / "eval" / "sealed_worker.py"
+    worker.parent.mkdir(parents=True)
+    shutil.copyfile(Path(sealed_worker.__file__), worker)
+    adapter = checkout / "alibi" / "adapter.py"
+    adapter.parent.mkdir()
+    private = tmp_path / "private"
+    private.mkdir()
+    marker = private / "marker"
+    marker.touch()
+    adapter.write_text(
+        "from pathlib import Path\n"
+        "import os\n"
+        "assert Path(os.environ['ALIBI_DATA_DIR']).resolve() == Path.cwd()\n"
+        f"try:\n    Path({str(marker)!r}).open().close()\n"
+        "except PermissionError:\n    pass\n"
+        "else:\n    raise AssertionError('sandbox denied path was readable')\n"
+        "def run_case(case, *, mode):\n    raise AssertionError('preflight must not run a case')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sealed_worker, "REPO", checkout)
+    sealed_worker.verify_adapter((private,))
+
+    adapter.write_text("def run_case(case):\n    pass\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="cannot import"):
+        sealed_worker.verify_adapter((private,))
+
+    adapter.write_text("from nonexistent_alibi_adapter_dependency import run_case\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="cannot import"):
+        sealed_worker.verify_adapter((private,))
 
 
 @pytest.mark.skipif(not shutil.which("sandbox-exec"), reason="the verified worker sandbox is macOS-specific")

@@ -26,7 +26,7 @@ Per case the parse is scored against out/policy_rules.jsonl:
     invalid     the output breaks the schema or names a value or recipient not in the material
     error       the parser raised
 
-The last stdout line is one JSON object per parser, for tools/results.py.
+The last stdout line is one flat JSON object of numbers (<parser>_<metric>), for tools/results.py.
 """
 from __future__ import annotations
 
@@ -248,7 +248,13 @@ def main() -> None:
             if r["verdict"] != "correct":
                 print(f"{name} {r['id']:6} {r['verdict']:10} {r.get('why', '')}")
         summary[name] = {"status": "ran", **result["metrics"]}
-    print(json.dumps(summary))
+    for line in summary.items():
+        print(json.dumps({line[0]: line[1]}))
+    flat = {}
+    for name, m in summary.items():
+        flat[f"{name}_available"] = int(m.get("status") == "ran")
+        flat.update({f"{name}_{k}": v for k, v in m.items() if isinstance(v, (int, float)) and not isinstance(v, bool)})
+    print(json.dumps(flat))
 
 
 if __name__ == "__main__":

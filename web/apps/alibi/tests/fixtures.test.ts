@@ -86,6 +86,23 @@ describe('request fixture follows the answer key', () => {
     expect(detail.trace[0].lookups[0].args_summary).toContain(PAYOUT.reference);
   });
 
+  it('answers Bank B from the gold evidence set, with its own approval', () => {
+    const b = requestFixture(requests.bankB.requestId)!;
+    const goldB = case1.gold.answers[requests.bankB.requestId]['q.sales_refunds_in_period'];
+    expect(b.trace[0].sources.map((s) => refOf(s.record_id)).sort()).toEqual(
+      [...goldB.evidence_sets[0]].sort(),
+    );
+    expect(b.review.included.map((i) => refOf(i.record_id)).sort()).toEqual(
+      [...goldB.evidence_sets[0]].sort(),
+    );
+    expect(b.trace[0].calculation?.result.minor).toBe(goldB.facts.sales_minor);
+    expect(b.review.approval.audience).toBe('bank_b');
+    expect(b.review.approval.action).not.toBe(detail.review.approval.action);
+    for (const forbidden of case1.gold.forbidden_refs) {
+      expect(b.review.included.map((i) => refOf(i.record_id))).not.toContain(forbidden);
+    }
+  });
+
   it('has no fixture for unknown requests', () => {
     expect(requestFixture('rfc-nope')).toBeNull();
   });

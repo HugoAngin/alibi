@@ -122,8 +122,9 @@ export function passportFixture(): PassportHome {
   };
 }
 
-/** Request detail for Bank A's request. Other requests have no fixture. */
+/** Request detail for Bank A's or Bank B's request. Other requests have no fixture. */
 export function requestFixture(requestId: string): RequestDetail | null {
+  if (requestId === requests.bankB.requestId) return bankBFixture();
   if (requestId !== requests.bankA.requestId) return null;
   const bank = { record_id: CREDIT.txnId, revision: 1, trust: 'bank_observed' as const, href: '#' };
   const payout = {
@@ -306,6 +307,142 @@ export function requestFixture(requestId: string): RequestDetail | null {
         recipient: 'Bank A',
         audience: 'bank_a',
         action: `/requests/${requests.bankA.requestId}/approve`,
+        digest: '',
+        policy_version: '',
+        valid_from: '',
+        valid_until: '',
+        approved_at: null,
+        invalidated_reason: null,
+      },
+      preview_href: '#',
+    },
+  };
+}
+
+/**
+ * Bank B's different question, answered from the same stored records: no new
+ * import, its own selection, its own approval (SPEC: reuse challenge).
+ */
+function bankBFixture(): RequestDetail {
+  const rq = requests.bankB;
+  const asked = covered.filter((r) => r.kind === 'sale' || r.kind === 'refund');
+  const sales = asked.filter((r) => r.kind === 'sale');
+  const refunds = asked.filter((r) => r.kind === 'refund');
+  const at = '2026-11-04T14:02:00Z';
+  const src = asked.map((r) => ({
+    record_id: r.id,
+    revision: 1,
+    trust: 'issuer_verified' as const,
+    href: '#',
+  }));
+  const gbp = (minor: number) => `£${(minor / 100).toFixed(2)}`;
+
+  return {
+    request: {
+      request_id: rq.requestId,
+      parent_request_id: null,
+      issuer: 'Bank B',
+      audience: 'bank_b',
+      subject_ref: SUBJECT,
+      received_at: rq.issuedAt,
+      expires_at: rq.expiresAt,
+      period: { from: '2026-10-01T00:00:00Z', to: '2026-11-01T00:00:00Z' },
+      txn_ids: [],
+      questions: [...rq.questions],
+      status: 'draft',
+      signature: { verified: true, key_id: '' },
+      href: '#',
+    },
+    investigation: {
+      status: 'complete',
+      can_run: false,
+      run_action: `/requests/${rq.requestId}/investigate`,
+      started_at: null,
+      completed_at: null,
+      budget: { calls_used: 0, calls_cap: 0 },
+      roles: [],
+      failure_reason: null,
+    },
+    trace: [
+      {
+        step_id: 'step-period',
+        question_id: 'q.sales_refunds_in_period',
+        question: rq.questions[0].text,
+        claim: {
+          claim_id: 'claim-period',
+          text: `${sales.length} sales of ${gbp(sum('sale'))} and ${refunds.length} refunds of ${gbp(sum('refund'))} in October 2026.`,
+          status: 'supported',
+        },
+        lookups: [],
+        sources: src,
+        calculation: {
+          expression: `${sales.map((r) => r.minor).join(' + ')} = ${sum('sale')}`,
+          result: GBP(sum('sale')),
+          computed_by: 'code',
+          matches: true,
+        },
+        status: 'supported',
+        status_reason: `Sales and refunds dated 1–31 Oct, from records already in your passport. Refunds: ${refunds.map((r) => r.minor).join(' + ')} = ${sum('refund')}.`,
+        at,
+      },
+    ],
+    review: {
+      claims: [
+        {
+          claim_id: 'claim-period',
+          question_id: 'q.sales_refunds_in_period',
+          question: rq.questions[0].text,
+          status: 'supported',
+          rationale: `${sales.length} sales (${gbp(sum('sale'))}) and ${refunds.length} refunds (${gbp(sum('refund'))}) dated in October.`,
+          href: '#step-period',
+        },
+      ],
+      included: asked.map((r) => ({
+        item_id: `inc-b-${r.id}`,
+        question_id: 'q.sales_refunds_in_period',
+        label: `${LABEL[r.kind]} ${gbp(r.minor)}`,
+        kind: r.kind,
+        record_id: r.id,
+        revision: 1,
+        trust: 'issuer_verified' as const,
+        reason: 'A sale or refund in the period Bank B asked about.',
+        removable: false,
+        remove_action: null,
+      })),
+      excluded: [
+        {
+          item_id: 'exc-b-fees',
+          label: 'Platform fees (8 records)',
+          reason: 'Bank B asked about sales and refunds only.',
+          rule_id: null,
+        },
+        {
+          item_id: 'exc-b-credit',
+          label: 'The £2,160.00 credit and its payout',
+          reason: 'Not part of this question.',
+          rule_id: null,
+        },
+        {
+          item_id: 'exc-b-bank',
+          label: 'Rent and card payments',
+          reason: 'Not needed for this question.',
+          rule_id: null,
+        },
+        {
+          item_id: 'exc-b-purchase',
+          label: 'Your purchase on the marketplace, 14 Oct',
+          reason: 'Your rule: never share what I buy.',
+          rule_id: 'rule-01',
+        },
+      ],
+      generalised: [],
+      gaps: [],
+      counts: { included: asked.length, excluded: 4, generalised: 0, gaps: 0 },
+      approval: {
+        status: 'pending',
+        recipient: 'Bank B',
+        audience: 'bank_b',
+        action: `/requests/${rq.requestId}/approve`,
         digest: '',
         policy_version: '',
         valid_from: '',

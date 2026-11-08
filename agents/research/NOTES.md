@@ -77,6 +77,10 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Clerk: dev instance usable-gannet-5890 (pk_test baked from .env); CLERK_SECRET_KEY is a Worker secret on www. First secret was rejected (secret-key-invalid); Elio re-stored it from .env; Join works in a real browser, no Worker errors.
 - Backend address read at runtime; app shows labelled fallback (Modal answers 503) until S5 services run there.
 
+## Front-end split, 2026-11-08 ~03:45Z (Elio)
+- Asked lead (6716849163) to give execution web/apps/bank/ and data web/apps/merchant/; research keeps web/apps/alibi/, web/packages/, web/docs/, web/ root. Guide: web/docs/contributing.md (2076f6d). Bank and merchant already render per request on Workers with the adapter, so no lockfile changes needed.
+- Research: Alibi app (new design, dispatch refusal + re-approve, Bank B), shared UI, integration, deploys, deck v2. Elio: cosmetic review, Clerk sign-up fields, Modal Secret.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

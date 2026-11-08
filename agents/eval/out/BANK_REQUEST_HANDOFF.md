@@ -14,6 +14,12 @@ git apply agents/eval/out/bank-request-delivery.patch
 
 Verified with 14 Bank Worker action tests and the Bank Astro check in a disposable copy.
 
+## Fresh-start control
+
+The Modal launcher issues Bank B at startup and leaves Bank A for the analyst to send. The public Bank A 404 is therefore consistent with a fresh demo. The signed-in action and subsequent holder readback distinguish that state from a delivery failure.
+
+On a disposable rules-only stack at `2026-11-05T09:00:00Z`, the frozen `58bf0d4` services ran behind the same router source (`4fb85f2`) and the current Bank Worker source (`19f0a56`). Before sign-in, Bank B returned 200, Bank A returned 404 and the Bank A inbox had no sent requests. A signed-in analyst opened case `FC-0147` and submitted the request via the Worker's `/act/`. The Worker returned 303, the bank inbox then listed `rfc-0001-01`, and the holder's authenticated readback through the router returned 200. The hosted analyst session still needs its own send and readback.
+
 ## Recovering an already-recorded request
 
 On a disposable `58bf0d4` stack, an injected first Bank A forwarding refusal returned 201 and left Maya's request page at 404. Running the existing driver on that same signed request returned `reissued: true` and `forwarded.status: accepted` via its direct relay fallback. The holder readback then returned 200 for the same request ID.

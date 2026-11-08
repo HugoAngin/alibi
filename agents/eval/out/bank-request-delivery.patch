@@ -1,11 +1,10 @@
-diff --git a/web/apps/bank/src/lib/actions.ts b/web/apps/bank/src/lib/actions.ts
 --- a/web/apps/bank/src/lib/actions.ts
 +++ b/web/apps/bank/src/lib/actions.ts
 @@ -103,6 +103,36 @@
    | { kind: 'forbidden'; status: 403 | 401 | 400; message: string }
    | { kind: 'sent'; result: ActionResult };
-
-+/** The bank can record a request before the passport accepts delivery. */
+ 
++/** Both the bank and the demo director can return HTTP success before delivery is confirmed. */
 +function requestDelivery(data: unknown): ActionResult {
 +  const forwarded =
 +    typeof data === 'object' && data !== null && 'forwarded' in data ? data.forwarded : undefined;
@@ -51,66 +50,115 @@ diff --git a/web/apps/bank/src/lib/actions.ts b/web/apps/bank/src/lib/actions.ts
 +        : result,
 +  };
  }
-diff --git a/web/apps/bank/tests/actions.test.ts b/web/apps/bank/tests/actions.test.ts
 --- a/web/apps/bank/tests/actions.test.ts
 +++ b/web/apps/bank/tests/actions.test.ts
-@@ -15,11 +15,11 @@
-
+@@ -5,6 +5,9 @@
+  */
+ import { describe, expect, it } from 'vitest';
+ 
++import { forwardAction } from '@alibi/ui/api';
++import { demoStep } from '@alibi/ui/demo';
++
+ import { handleAct, planAction, type Forward } from '../src/lib/actions';
+ import { bankTarget } from '../src/lib/bankApi';
+ import { backendHeaders } from '../src/lib/screens';
+@@ -15,11 +18,11 @@
+ 
  type Call = Parameters<Forward>[0];
-
+ 
 -function recorder() {
-+function recorder(result: Awaited<ReturnType<Forward>> = { kind: 'ok', data: null }) {
++function recorder(reply: Forward = async () => ({ kind: 'ok', data: null })) {
    const calls: Call[] = [];
    const forward: Forward = async (opts) => {
      calls.push(opts);
 -    return { kind: 'ok', data: null };
-+    return result;
++    return reply(opts);
    };
    return { calls, forward };
  }
-@@ -33,9 +33,13 @@
-
+@@ -33,9 +36,13 @@
+ 
  async function act(
    fields: Record<string, string>,
 -  opts: { origin?: string | null; analyst?: string | null } = {},
 +  opts: {
 +    origin?: string | null;
 +    analyst?: string | null;
-+    result?: Awaited<ReturnType<Forward>>;
++    reply?: Forward;
 +  } = {},
  ) {
 -  const rec = recorder();
-+  const rec = recorder(opts.result);
++  const rec = recorder(opts.reply);
    const outcome = await handleAct(
      {
        fields,
-@@ -141,6 +145,33 @@
+@@ -141,6 +148,73 @@
    });
  });
-
-+describe('request delivery', () => {
+ 
++describe.each(['native bank', 'demo director'])('%s request delivery', (service) => {
 +  const request = { kind: 'request', case_id: 'FC-0147' };
++  const director = service === 'demo director';
 +
-+  it('reports success when the passport accepts the request', async () => {
++  function upstream(status: number, body: unknown): Forward {
++    const fetchImpl: typeof fetch = async (url, options) => {
++      expect(String(url)).toBe(`${ORIGIN}${director ? '/demo/request' : '/rfc'}`);
++      expect(options?.body).toBe(
++        JSON.stringify(director ? { recipient: 'bank_a' } : { request_id: 'rfc-0001-01' }),
++      );
++      return Response.json(body, { status });
++    };
++    return director
++      ? () =>
++          demoStep(
++            { origin: ORIGIN, token: 'demo-token' },
++            'request',
++            { recipient: 'bank_a' },
++            fetchImpl,
++          )
++      : ({ body, ...opts }) =>
++          forwardAction({ ...opts, body: body as Record<string, string>, fetchImpl });
++  }
++
++  it.each([200, 201])('reports confirmed delivery from HTTP %i', async (status) => {
 +    const data = { forwarded: { status: 'accepted' } };
-+    const { outcome, calls } = await act(request, { result: { kind: 'ok', data } });
++    const { outcome } = await act(request, { reply: upstream(status, data) });
 +    expect(outcome).toEqual({ kind: 'sent', result: { kind: 'ok', data } });
-+    expect(calls[0]?.body).toEqual({ request_id: 'rfc-0001-01' });
 +  });
 +
 +  it('shows the passport refusal even when issuing the request was successful', async () => {
-+    const refusal = { code: 'invalid_request', reason: 'The passport refused the signed request.' };
++    const refusal = { code: 'rfc_refused', reason: 'The passport refused the signed request.' };
 +    const { outcome } = await act(request, {
-+      result: { kind: 'ok', data: { forwarded: { status: 'refused', ...refusal } } },
++      reply: upstream(201, { forwarded: { status: 'refused', ...refusal } }),
 +    });
 +    expect(outcome).toEqual({ kind: 'sent', result: { kind: 'refused', refusal } });
 +  });
 +
-+  it('distinguishes a transport error, an unconfirmed reissue and a malformed reply', async () => {
++  it('preserves the typed refusal on a non-success status', async () => {
++    const refusal = { code: 'request_expired', reason: 'The request expired.' };
++    const { outcome } = await act(request, { reply: upstream(409, refusal) });
++    expect(outcome).toEqual({ kind: 'sent', result: { kind: 'refused', refusal } });
++  });
++
++  it('does not claim success for an error, an unconfirmed reissue or a malformed reply', async () => {
 +    const reason = 'The passport did not answer.';
-+    for (const data of [{ forwarded: { status: 'error', reason } }, { forwarded: null }, {}]) {
-+      const { outcome } = await act(request, { result: { kind: 'ok', data } });
++    for (const data of [
++      { forwarded: { status: 'error', reason } },
++      { forwarded: null },
++      {},
++      null,
++    ]) {
++      const { outcome } = await act(request, { reply: upstream(200, data) });
 +      expect(outcome).toMatchObject({ kind: 'sent', result: { kind: 'unavailable' } });
++    }
++  });
++
++  it('still requires a same-origin request and a verified analyst', async () => {
++    const reply = upstream(201, { forwarded: { status: 'accepted' } });
++    for (const input of [{ origin: 'https://other.example.test' }, { analyst: null }]) {
++      const { outcome, calls } = await act(request, { ...input, reply });
++      expect(outcome.kind).toBe('forbidden');
++      expect(calls).toHaveLength(0);
 +    }
 +  });
 +});

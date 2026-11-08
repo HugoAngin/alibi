@@ -144,7 +144,7 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Built eval's HOME_REDESIGN.md (118fcc6): four card dialogs/sheets, Pill.astro, nextDue/explain/typed recon lines in home.ts (b08d4fe), deployed www 0a48358e; done -> eval (6721228762). Month totals and merchant "explains n of m" left out. Live data 0 of 4 linked, so linked explain() and recon rows are unchecked live.
 
 ## Live demo fix, 2026-11-08 ~12:20Z (Elio, repo owner, said to override role limits)
-- Landed on main by Elio with --no-verify (cross-owner: lead's alibi/, execution's web/); CI will flag the ownership.
+- Landed on main as dfb55e5 (Elio committed with --no-verify; cross-owner: lead's alibi/, execution's web/; CI flags ownership). Posted done to lead and execution, approved by Elio (6721583715).
 - Fixed: one clock (app follows the bank's clock; no more "issued in the future"); demo director alibi/demo_director.py (:8103, /demo/state|withdraw|request|reset); Withdraw on the marketplace; FC-0147 appears when flagged; bank Request via director; Reset demo (bank header, Maya's /simulate/ bar); /simulate/ can act with ALIBI_SIMULATE_ACTIONS=1; live polling on all three sites.
 - Verified: alibi + agents/research pytest 1384 passed (only the pre-existing macOS smoke-port failure); new test_demo_director passes; pnpm verify passes; full flow walked in the browser.
 - Hosted still needs: ALIBI_DEMO_TOKEN in Modal secret alibi-backend-tokens and on all three Workers, ALIBI_DEMO_ORIGIN=<Modal URL> on all three, ALIBI_SIMULATE_ACTIONS=1 on www, then redeploy Modal and the Workers.

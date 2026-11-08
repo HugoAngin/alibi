@@ -138,3 +138,7 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Secrets: Modal alibi-backend-tokens holds ALIBI_HOLDER_TOKEN and ALIBI_BANK_A_TOKEN. Worker www has ALIBI_HOLDER_TOKEN; Worker bank has BANK_A_TOKEN, ANALYST_PASSCODE and BANK_SESSION_SECRET. The passcode went to Elio in chat only.
 - The prototype banner is removed. Trusted banks shipped (2fea61e): a bank page with a switch and one-tap approve and send; it still takes one tap per disclosure, so SPEC holds. Deployed to www.
 - S5 templates applied (639a170).
+
+## Home redesign, 2026-11-08 ~11:25-12:10Z
+- Applied eval's dashboard-cards.patch (aaf355f), deployed www 2c556669; done -> eval (6720968665).
+- Built eval's HOME_REDESIGN.md (118fcc6): four card dialogs/sheets, Pill.astro, nextDue/explain/typed recon lines in home.ts (b08d4fe), deployed www 0a48358e; done -> eval (6721228762). Month totals and merchant "explains n of m" left out. Live data 0 of 4 linked, so linked explain() and recon rows are unchecked live.

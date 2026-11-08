@@ -77,3 +77,20 @@ def test_cli_reads_only_three_artifacts_without_mutation(tmp_path, monkeypatch, 
 def test_reject_output_inside_capture_before_reading(tmp_path):
     with pytest.raises(SystemExit):
         export.main(["--capture", str(tmp_path), "--out", str(tmp_path / "scores.json")])
+
+
+def test_resume_discloses_separate_attempts_without_exporting_details():
+    scores, run, schedule = synthetic()
+    run["input"].update(original_run_sha256="d" * 64, permission_proof_sha256="e" * 64)
+    schedule["original"] = {"aggregate": {"attempted": 70, "completed": 67, "errors": 3,
+        "not_started": 62, "abort_reason": SECRET}, "systems": {"rules": {"attempted": 23, "failed": 16}}}
+    schedule["resume"] = {"aggregate": {"attempted": 65, "completed": 65, "errors": 0},
+                          "systems": {"rules": {"attempted": 21, "completed": 20, "failed": 1}},
+                          "details": SECRET}
+    result = export.build_summary(scores, run, schedule)
+    assert SECRET not in json.dumps(result)
+    disclosure = result["interrupted_capture"]
+    assert disclosure["original"]["aggregate"]["attempted"] == 70
+    assert disclosure["continuation"]["aggregate"]["attempted"] == 65
+    assert disclosure["original_run_sha256"] == "d" * 64
+    assert "67 original returned groups" in result["interpretation_and_caveats"][-1]

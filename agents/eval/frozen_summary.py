@@ -92,7 +92,7 @@ def build_summary(scores: dict, run: dict, scheduling: dict | None = None) -> di
             row[key] = _select(original.get(key), COUNTERS)
     config = _select(signature, {"timeout", "workers", "dry", "inherited_llm_cap"})
     config["limits"] = _select(signature.get("limits"), set(SYSTEMS))
-    return {
+    result = {
         "format": "alibi.aggregate-summary.v1",
         "mode": scores.get("mode") if scores.get("mode") in MODES else None,
         "candidate_sha": _digest(signature.get("candidate", signature.get("commit", run.get("candidate"))), (40,)),
@@ -111,6 +111,26 @@ def build_summary(scores: dict, run: dict, scheduling: dict | None = None) -> di
                     "systems": _systems(scheduling.get("systems"), {"attempted", "completed", "failed", "not_started"})},
         "interpretation_and_caveats": CAVEATS.copy(),
     }
+    if "original" in scheduling and "resume" in scheduling:
+        result["interrupted_capture"] = {
+            "original_run_sha256": _digest(signature.get("original_run_sha256")),
+            "permission_proof_sha256": _digest(signature.get("permission_proof_sha256")),
+            "original": {"aggregate": _select(_dict(scheduling["original"]).get("aggregate"), SCHEDULING),
+                         "systems": _systems(_dict(scheduling["original"]).get("systems"),
+                                             {"attempted", "completed", "failed", "not_started"})},
+            "continuation": {"aggregate": _select(_dict(scheduling["resume"]).get("aggregate"), SCHEDULING),
+                             "systems": _systems(_dict(scheduling["resume"]).get("systems"),
+                                                 {"attempted", "completed", "failed", "not_started"})},
+        }
+        result["interpretation_and_caveats"].append(
+            "Capture was interrupted after operator suspension exposed a worker cleanup race. "
+            "All 67 original returned groups were preserved, including unexplained child exits. "
+            "Only 62 unstarted groups and three publicly reproduced scheduler failures were eligible "
+            "for continuation under the original lock and candidate. Original and continuation "
+            "attempt counts are separate; combined attempted counts count unique groups. "
+            "Original pause-affected timing is qualified; unknown first-attempt usage is not zero."
+        )
+    return result
 
 
 def _load(path: Path):

@@ -37,6 +37,8 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 - Bank console staged at `agents/execution/web_bank/` (research copies it into web/apps/bank). Eval found an open proxy in /act/ -> fixed (fixed kinds, server-built paths, signed analyst session, same-origin); then a dotted-name session bug and a TS2345 in tests -> fixed (eabc727). Secrets: BANK_A_TOKEN, ANALYST_PASSCODE, BANK_SESSION_SECRET.
 - Deck v2 staged at `agents/execution/deck/` (daa4511) from research's deck; README lists changes. Not built: npm not installed here (human's OK pending); asked research/eval to build. Retake landing after data's hero, bank shots after the console deploys.
 
+- 06:26Z: with the human's OK, Node 22 + pnpm via `npm exec` (system Node untouched); staged console overlaid on a scratch copy of web/: `pnpm verify` green (astro check 0/0 x3, 74 tests, 3 builds). Formatted files copied back.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.

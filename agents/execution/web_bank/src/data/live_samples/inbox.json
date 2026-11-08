@@ -29,21 +29,14 @@
   "recipient": "bank_a",
   "requests_sent": [
     {
-      "answered_by": [
-        "pkg_985a1a74e6072250ac3d0afd"
-      ],
+      "answered_by": ["pkg_985a1a74e6072250ac3d0afd"],
       "expires_at": "2026-11-09T09:00:00Z",
       "issued_at": "2026-11-02T09:00:00Z",
       "parent_request_id": null,
-      "question_ids": [
-        "q.source_of_funds",
-        "q.breakdown"
-      ],
+      "question_ids": ["q.source_of_funds", "q.breakdown"],
       "request_id": "rfc-0001-01",
       "scope": {
-        "txn_ids": [
-          "txn-0001-004"
-        ]
+        "txn_ids": ["txn-0001-004"]
       },
       "source": "case"
     }

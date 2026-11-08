@@ -50,7 +50,9 @@ export function rejectionReasons(pkg: Pick<AnalystPackage, 'authentication'>): s
 
 /** clear and escalate are final for a package (shared/CONTRACTS.md, Disposition). */
 export function isFinal(current: CurrentDisposition | null): boolean {
-  return current !== null && (current.disposition === 'clear' || current.disposition === 'escalate');
+  return (
+    current !== null && (current.disposition === 'clear' || current.disposition === 'escalate')
+  );
 }
 
 export const DECISION_LABEL: Record<Decision, string> = {
@@ -73,8 +75,11 @@ export const CLAIM_LABEL: Record<ClaimStatus, string> = {
 };
 
 /** "Redacted extract, attested by Alibi" beside the trust badge; never an issuer badge alone. */
-export function attestationNote(item: Pick<SourceTrust | Evidence, 'attestation' | 'redacted'>): string | null {
-  if (item.redacted || item.attestation === 'package_signer') return 'Redacted extract, attested by Alibi';
+export function attestationNote(
+  item: Pick<SourceTrust | Evidence, 'attestation' | 'redacted'>,
+): string | null {
+  if (item.redacted || item.attestation === 'package_signer')
+    return 'Redacted extract, attested by Alibi';
   if (item.attestation === 'issuer_signature') return 'Issuer signature verified';
   return null;
 }

@@ -36,7 +36,8 @@ export async function loadPackage(
     fixture: () => null,
     headers,
   });
-  if (raw.source === 'live') return { source: 'live', data: toAnalystPackage(raw.data, who, target) };
+  if (raw.source === 'live')
+    return { source: 'live', data: toAnalystPackage(raw.data, who, target) };
   if (raw.source === 'missing' && raw.reason === NOT_FOUND) return raw;
   const fallback = packageFixture(id);
   const reason = raw.source === 'missing' ? raw.reason : 'The bank service is not connected.';

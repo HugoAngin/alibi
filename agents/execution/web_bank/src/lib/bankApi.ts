@@ -106,13 +106,24 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 export function isBankPackage(v: unknown): v is BankPackage {
-  if (!isObject(v) || (v.status !== 'verified' && v.status !== 'rejected') || !isObject(v.receipt)) return false;
+  if (!isObject(v) || (v.status !== 'verified' && v.status !== 'rejected') || !isObject(v.receipt))
+    return false;
   if (v.status === 'rejected') return true;
-  return isObject(v.authentication) && Array.isArray(v.sources) && Array.isArray(v.claims) && isObject(v.package);
+  return (
+    isObject(v.authentication) &&
+    Array.isArray(v.sources) &&
+    Array.isArray(v.claims) &&
+    isObject(v.package)
+  );
 }
 
 export function isBankInbox(v: unknown): v is BankInbox {
-  return isObject(v) && typeof v.recipient === 'string' && Array.isArray(v.packages) && Array.isArray(v.requests_sent);
+  return (
+    isObject(v) &&
+    typeof v.recipient === 'string' &&
+    Array.isArray(v.packages) &&
+    Array.isArray(v.requests_sent)
+  );
 }
 
 // ------------------------------------------------------------------ routes
@@ -123,14 +134,20 @@ export interface BankTarget {
 }
 
 /** BANK_API_ORIGIN (direct, no prefix) wins; otherwise the public router's /bank prefix. */
-export function bankTarget(bankOrigin: string | undefined, routerOrigin: string | undefined): BankTarget {
-  return bankOrigin ? { origin: bankOrigin, prefix: '' } : { origin: routerOrigin, prefix: '/bank' };
+export function bankTarget(
+  bankOrigin: string | undefined,
+  routerOrigin: string | undefined,
+): BankTarget {
+  return bankOrigin
+    ? { origin: bankOrigin, prefix: '' }
+    : { origin: routerOrigin, prefix: '/bank' };
 }
 
 export const BANK_ROUTES = {
   inbox: (t: BankTarget) => `${t.prefix}/inbox`,
   package: (t: BankTarget, id: string) => `${t.prefix}/packages/${encodeURIComponent(id)}`,
-  disposition: (t: BankTarget, id: string) => `${t.prefix}/packages/${encodeURIComponent(id)}/disposition`,
+  disposition: (t: BankTarget, id: string) =>
+    `${t.prefix}/packages/${encodeURIComponent(id)}/disposition`,
 };
 
 // ------------------------------------------------------------------ conversion
@@ -139,8 +156,10 @@ const TRUSTS = new Set(['issuer_verified', 'bank_observed', 'self_supplied']);
 const CLAIMS = new Set(['supported', 'contradicted', 'unresolved']);
 const DECISIONS = new Set(['clear', 'escalate', 'request_more']);
 
-const trustOf = (t: string | undefined): Trust => (TRUSTS.has(t ?? '') ? (t as Trust) : 'self_supplied');
-const claimOf = (s: string | undefined): ClaimStatus => (CLAIMS.has(s ?? '') ? (s as ClaimStatus) : 'unresolved');
+const trustOf = (t: string | undefined): Trust =>
+  TRUSTS.has(t ?? '') ? (t as Trust) : 'self_supplied';
+const claimOf = (s: string | undefined): ClaimStatus =>
+  CLAIMS.has(s ?? '') ? (s as ClaimStatus) : 'unresolved';
 const refKey = (r: BankRef) => `${r.ref_type}:${r.ref_id}@${r.revision}`;
 
 export interface Who {
@@ -152,7 +171,12 @@ export interface Who {
 function current(d: BankDisposition[] | undefined): CurrentDisposition | null {
   const last = d && d.length > 0 ? d[d.length - 1] : undefined;
   if (!last || !DECISIONS.has(last.decision)) return null;
-  return { disposition: last.decision as Decision, analyst_name: last.analyst, recorded_at: last.decided_at, note: last.reason };
+  return {
+    disposition: last.decision as Decision,
+    analyst_name: last.analyst,
+    recorded_at: last.decided_at,
+    note: last.reason,
+  };
 }
 
 export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget): AnalystPackage {
@@ -179,7 +203,16 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
   if (bank.status === 'rejected') {
     return {
       recipient: who,
-      package: { package_id: id, request_id: '—', recipient: who.name, subject_ref_masked: '—', period: null, txn_ids: [], issued_at: '—', expires_at: '—' },
+      package: {
+        package_id: id,
+        request_id: '—',
+        recipient: who.name,
+        subject_ref_masked: '—',
+        period: null,
+        txn_ids: [],
+        issued_at: '—',
+        expires_at: '—',
+      },
       authentication: {
         status: 'invalid',
         reasons: bank.rejection?.reasons ?? bank.receipt.reasons ?? [],
@@ -191,8 +224,21 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
         note: 'Rejected by the bank’s verifier. The package’s contents were not stored.',
       },
       ...empty,
-      disposition_form: { action: '/preview/disabled', options, analyst_name: who.analyst_name, current: null },
-      followup_form: { action: '/preview/disabled', parent_request_id: '—', subject_ref_masked: '—', period: null, txn_ids: [], question_prefill: '', consent_note: '' },
+      disposition_form: {
+        action: '/preview/disabled',
+        options,
+        analyst_name: who.analyst_name,
+        current: null,
+      },
+      followup_form: {
+        action: '/preview/disabled',
+        parent_request_id: '—',
+        subject_ref_masked: '—',
+        period: null,
+        txn_ids: [],
+        question_prefill: '',
+        consent_note: '',
+      },
     };
   }
 
@@ -202,30 +248,51 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
     attachment_id: s.attachment_id,
     record_id: s.ref.ref_id,
     revision: s.ref.revision,
-    issuer: s.ref.ref_type === 'txn' ? 'Bank feed' : (attachments.get(s.attachment_id)?.issuer_id ?? '—'),
+    issuer:
+      s.ref.ref_type === 'txn' ? 'Bank feed' : (attachments.get(s.attachment_id)?.issuer_id ?? '—'),
     trust: trustOf(s.claimed_trust),
-    attestation: s.attestation === 'issuer_signature' || s.attestation === 'package_signer' ? s.attestation : 'none',
+    attestation:
+      s.attestation === 'issuer_signature' || s.attestation === 'package_signer'
+        ? s.attestation
+        : 'none',
     redacted: s.form === 'redacted_extract',
-    signature_check: s.signature_valid === true ? 'pass' : s.signature_valid === false ? 'fail' : 'none',
+    signature_check:
+      s.signature_valid === true ? 'pass' : s.signature_valid === false ? 'fail' : 'none',
     detail: s.note ?? '',
   }));
   const byRef = new Map((bank.sources ?? []).map((s, i) => [refKey(s.ref), sources[i]!]));
   const verified = new Map((bank.claims ?? []).map((c) => [c.question_id, c]));
   const bodyClaims = new Map((body.claims ?? []).map((c) => [c.question_id, c]));
-  const questions = body.questions ?? (body.claims ?? []).map((c) => ({ question_id: c.question_id, text: c.question_id }));
+  const questions =
+    body.questions ??
+    (body.claims ?? []).map((c) => ({ question_id: c.question_id, text: c.question_id }));
 
   const evidence_by_question: QuestionEvidence[] = questions.map((q) => {
     const claim = bodyClaims.get(q.question_id);
     const evidence: Evidence[] = (claim?.evidence_refs ?? []).flatMap((r) => {
       const s = byRef.get(refKey(r));
       return s
-        ? [{ attachment_id: s.attachment_id, record_id: s.record_id, revision: s.revision, trust: s.trust, attestation: s.attestation, redacted: s.redacted, summary: s.detail, href: '#' }]
+        ? [
+            {
+              attachment_id: s.attachment_id,
+              record_id: s.record_id,
+              revision: s.revision,
+              trust: s.trust,
+              attestation: s.attestation,
+              redacted: s.redacted,
+              summary: s.detail,
+              href: '#',
+            },
+          ]
         : [];
     });
     return {
       question_id: q.question_id,
       question: q.text,
-      claim: { status: claimOf(verified.get(q.question_id)?.status ?? claim?.status), rationale: claim?.rationale ?? claim?.statement ?? '' },
+      claim: {
+        status: claimOf(verified.get(q.question_id)?.status ?? claim?.status),
+        rationale: claim?.rationale ?? claim?.statement ?? '',
+      },
       evidence,
       // The bank reports only whether each calculation checked out; that feeds the reconciliation
       // line below rather than inventing a total here.
@@ -235,7 +302,9 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
     };
   });
 
-  const checked = [...verified.values()].map((c) => c.calculation_valid).filter((v): v is boolean => typeof v === 'boolean');
+  const checked = [...verified.values()]
+    .map((c) => c.calculation_valid)
+    .filter((v): v is boolean => typeof v === 'boolean');
   const scope = body.scope ?? {};
   return {
     recipient: who,
@@ -260,10 +329,17 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
       note: 'Verified by the bank against its pinned trust registry. This says nothing about whether a claim is true.',
     },
     source_trust: sources,
-    claim_status: evidence_by_question.map((q) => ({ question_id: q.question_id, status: q.claim.status, summary: bodyClaims.get(q.question_id)?.statement ?? q.claim.rationale })),
+    claim_status: evidence_by_question.map((q) => ({
+      question_id: q.question_id,
+      status: q.claim.status,
+      summary: bodyClaims.get(q.question_id)?.statement ?? q.claim.rationale,
+    })),
     evidence_by_question,
     reconciliation: {
-      title: checked.length > 0 ? 'Calculations in the claims, recomputed by the bank’s verifier.' : 'No calculation in this package.',
+      title:
+        checked.length > 0
+          ? 'Calculations in the claims, recomputed by the bank’s verifier.'
+          : 'No calculation in this package.',
       lines: [],
       result: null,
       compared_to: null,
@@ -273,9 +349,25 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
     },
     contradictions: evidence_by_question
       .filter((q) => q.claim.status === 'contradicted')
-      .map((q) => ({ claim_id: q.question_id, question_id: q.question_id, description: q.claim.rationale, sources: [] })),
-    gaps: evidence_by_question.filter((q) => q.gap).map((q) => ({ question_id: q.question_id, description: q.gap ?? '', reason_code: 'evidence_unavailable' })),
-    disposition_form: { action, options, analyst_name: who.analyst_name, current: current(bank.dispositions) },
+      .map((q) => ({
+        claim_id: q.question_id,
+        question_id: q.question_id,
+        description: q.claim.rationale,
+        sources: [],
+      })),
+    gaps: evidence_by_question
+      .filter((q) => q.gap)
+      .map((q) => ({
+        question_id: q.question_id,
+        description: q.gap ?? '',
+        reason_code: 'evidence_unavailable',
+      })),
+    disposition_form: {
+      action,
+      options,
+      analyst_name: who.analyst_name,
+      current: current(bank.dispositions),
+    },
     followup_form: {
       action,
       parent_request_id: body.request_id ?? '—',
@@ -283,7 +375,8 @@ export function toAnalystPackage(bank: BankPackage, who: Who, target: BankTarget
       period: scope.period ?? null,
       txn_ids: scope.txn_ids ?? [],
       question_prefill: '',
-      consent_note: 'A follow-up is a new signed request with its own ID; the customer approves any new disclosure separately.',
+      consent_note:
+        'A follow-up is a new signed request with its own ID; the customer approves any new disclosure separately.',
     },
   };
 }

@@ -398,9 +398,7 @@
     "recipient": "Bank A",
     "request_id": "rfc-0001-01",
     "subject_ref_masked": "***001",
-    "txn_ids": [
-      "txn-0001-004"
-    ]
+    "txn_ids": ["txn-0001-004"]
   },
   "recipient": {
     "analyst_name": "J. Okafor",
@@ -450,10 +448,7 @@
         "kind": "refund",
         "label": "Refunds",
         "sign": "-",
-        "source_ids": [
-          "rec-0001-005 r1",
-          "rec-0001-012 r1"
-        ]
+        "source_ids": ["rec-0001-005 r1", "rec-0001-012 r1"]
       },
       {
         "amount": {

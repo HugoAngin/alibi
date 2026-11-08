@@ -22,13 +22,7 @@ export interface Recipient {
 }
 
 export type AuthStatus =
-  | 'valid'
-  | 'invalid'
-  | 'expired'
-  | 'wrong_audience'
-  | 'replayed'
-  | 'preview'
-  | (string & {});
+  'valid' | 'invalid' | 'expired' | 'wrong_audience' | 'replayed' | 'preview' | (string & {});
 
 export type ClaimStatus = 'supported' | 'contradicted' | 'unresolved';
 export type Trust = 'issuer_verified' | 'bank_observed' | 'self_supplied';

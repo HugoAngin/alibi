@@ -12,7 +12,8 @@ import { SESSION_COOKIE, SESSION_TTL_MS, makeSession, safeEqual } from '@/lib/se
 export const prerender = false;
 
 export const POST: APIRoute = async ({ request, cookies, redirect, url }) => {
-  if (request.headers.get('origin') !== url.origin) return new Response('Cross-site request refused.', { status: 403 });
+  if (request.headers.get('origin') !== url.origin)
+    return new Response('Cross-site request refused.', { status: 403 });
   if (url.searchParams.get('out') === '1') {
     cookies.delete(SESSION_COOKIE, { path: '/' });
     return redirect('/sign-in/', 303);

@@ -4,7 +4,12 @@
  * the backend as JSON with the bank's credential, or the built-in case 1 preview. Another bank's
  * package ID gets the backend's 404, shown as "not found" with no hint it exists (SP-18).
  */
-import { ALIBI_API_ORIGIN, BANK_API_ORIGIN, BANK_A_TOKEN, BANK_SESSION_SECRET } from 'astro:env/server';
+import {
+  ALIBI_API_ORIGIN,
+  BANK_API_ORIGIN,
+  BANK_A_TOKEN,
+  BANK_SESSION_SECRET,
+} from 'astro:env/server';
 
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
 import Decision from '@/components/Decision.astro';
@@ -19,7 +24,11 @@ import { showsEvidence } from '@/lib/view';
 
 export const prerender = false;
 
-const analyst = await verifySession(BANK_SESSION_SECRET, Astro.cookies.get(SESSION_COOKIE)?.value, Date.now());
+const analyst = await verifySession(
+  BANK_SESSION_SECRET,
+  Astro.cookies.get(SESSION_COOKIE)?.value,
+  Date.now(),
+);
 const target = bankTarget(BANK_API_ORIGIN, ALIBI_API_ORIGIN);
 if (target.origin && !analyst) return Astro.redirect('/sign-in/', 303);
 
@@ -79,7 +88,8 @@ const returnTo = `/packages/${encodeURIComponent(id)}/`;
             (loaded.data.package.txn_ids ?? []).map((t) => <code>{t}</code>)
           ) : loaded.data.package.period ? (
             <>
-              <code>{loaded.data.package.period.from}</code> to <code>{loaded.data.package.period.to}</code>
+              <code>{loaded.data.package.period.from}</code> to{' '}
+              <code>{loaded.data.package.period.to}</code>
             </>
           ) : (
             '—'

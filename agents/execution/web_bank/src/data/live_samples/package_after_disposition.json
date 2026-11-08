@@ -38,15 +38,11 @@
       "reason": "Need the settlement record",
       "recipient": "bank_a",
       "request_id": "rfc-0001-01",
-      "requested_evidence": [
-        "Settlement record for payout PO-0001-01"
-      ],
+      "requested_evidence": ["Settlement record for payout PO-0001-01"],
       "supersedes": null
     }
   ],
-  "follow_ups": [
-    "rfc-0001-01-f1"
-  ],
+  "follow_ups": ["rfc-0001-01-f1"],
   "package": {
     "body": {
       "attachments": [
@@ -101,9 +97,7 @@
       ],
       "request_id": "rfc-0001-01",
       "scope": {
-        "txn_ids": [
-          "txn-0001-004"
-        ]
+        "txn_ids": ["txn-0001-004"]
       }
     },
     "body_sha256": "032f078034c0d0e09024d8e8e1fea40ba6d603d09af2af44fc44734bb9713af1",

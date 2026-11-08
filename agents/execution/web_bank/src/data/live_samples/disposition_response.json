@@ -10,15 +10,11 @@
     "reason": "Need the settlement record",
     "recipient": "bank_a",
     "request_id": "rfc-0001-01",
-    "requested_evidence": [
-      "Settlement record for payout PO-0001-01"
-    ],
+    "requested_evidence": ["Settlement record for payout PO-0001-01"],
     "supersedes": null
   },
   "follow_up": {
-    "account_refs": [
-      "acct-maya-001"
-    ],
+    "account_refs": ["acct-maya-001"],
     "forwarded": null,
     "request_id": "rfc-0001-01-f1",
     "rfc": {
@@ -37,9 +33,7 @@
         "request_id": "rfc-0001-01-f1",
         "schema_version": "alibi.rfc.v1",
         "subject_ref": "maya-001",
-        "txn_ids": [
-          "txn-0001-004"
-        ]
+        "txn_ids": ["txn-0001-004"]
       },
       "signature": {
         "alg": "Ed25519",

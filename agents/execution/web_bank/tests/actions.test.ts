@@ -24,9 +24,17 @@ function recorder() {
   return { calls, forward };
 }
 
-const decision = { kind: 'decision', package_id: 'pkg-1', disposition: 'request_more', note: 'Need the settlement record' };
+const decision = {
+  kind: 'decision',
+  package_id: 'pkg-1',
+  disposition: 'request_more',
+  note: 'Need the settlement record',
+};
 
-async function act(fields: Record<string, string>, opts: { origin?: string | null; analyst?: string | null } = {}) {
+async function act(
+  fields: Record<string, string>,
+  opts: { origin?: string | null; analyst?: string | null } = {},
+) {
   const rec = recorder();
   const outcome = await handleAct(
     {
@@ -35,7 +43,11 @@ async function act(fields: Record<string, string>, opts: { origin?: string | nul
       siteOrigin: SITE,
       analyst: opts.analyst === undefined ? 'J. Okafor' : opts.analyst,
     },
-    { target: bankTarget(ORIGIN, undefined), headers: backendHeaders('bank-a-token'), forward: rec.forward },
+    {
+      target: bankTarget(ORIGIN, undefined),
+      headers: backendHeaders('bank-a-token'),
+      forward: rec.forward,
+    },
   );
   return { outcome, calls: rec.calls };
 }
@@ -81,17 +93,28 @@ describe('no upstream call for attacks', () => {
 
 describe('the allowed actions', () => {
   it('sends a decision to the server-built Bank A path with only allowlisted fields', async () => {
-    const { outcome, calls } = await act({ ...decision, action: '/merchant/admin/seed', analyst_name: 'Someone Else' });
+    const { outcome, calls } = await act({
+      ...decision,
+      action: '/merchant/admin/seed',
+      analyst_name: 'Someone Else',
+    });
     expect(outcome.kind).toBe('sent');
     expect(calls).toHaveLength(1);
     expect(calls[0]!.origin).toBe(ORIGIN);
     expect(calls[0]!.path).toBe('/packages/pkg-1/disposition');
-    expect(calls[0]!.body).toEqual({ decision: 'request_more', reason: 'Need the settlement record' });
+    expect(calls[0]!.body).toEqual({
+      decision: 'request_more',
+      reason: 'Need the settlement record',
+    });
     expect(calls[0]!.headers).toEqual({ Authorization: 'Bearer bank-a-token' });
   });
 
   it('sends a follow-up as request_more with the question as requested evidence', async () => {
-    const { calls } = await act({ kind: 'followup', package_id: 'pkg-1', question: 'Settlement record please' });
+    const { calls } = await act({
+      kind: 'followup',
+      package_id: 'pkg-1',
+      question: 'Settlement record please',
+    });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.path).toBe('/packages/pkg-1/disposition');
     expect(calls[0]!.body).toEqual({
@@ -102,14 +125,19 @@ describe('the allowed actions', () => {
   });
 
   it('goes through the public router prefix when no direct bank origin is set', () => {
-    expect(planAction(decision, bankTarget(undefined, 'https://router.example.test'))).toMatchObject({
+    expect(
+      planAction(decision, bankTarget(undefined, 'https://router.example.test')),
+    ).toMatchObject({
       ok: true,
       path: '/bank/packages/pkg-1/disposition',
     });
   });
 
   it('plans paths without trusting the form', () => {
-    expect(planAction({ ...decision, action: '/x' })).toMatchObject({ ok: true, path: '/packages/pkg-1/disposition' });
+    expect(planAction({ ...decision, action: '/x' })).toMatchObject({
+      ok: true,
+      path: '/packages/pkg-1/disposition',
+    });
   });
 });
 
@@ -132,7 +160,9 @@ describe('analyst session', () => {
   it('rejects tampering, a wrong secret and a missing secret', async () => {
     const token = await makeSession(secret, 'J. Okafor', now);
     const [name, exp, sig] = token.split('.') as [string, string, string];
-    expect(await verifySession(secret, `${encodeURIComponent('Admin')}.${exp}.${sig}`, now)).toBeNull();
+    expect(
+      await verifySession(secret, `${encodeURIComponent('Admin')}.${exp}.${sig}`, now),
+    ).toBeNull();
     expect(await verifySession(secret, `${name}.${Number(exp) + 1}.${sig}`, now)).toBeNull();
     expect(await verifySession('other-secret', token, now)).toBeNull();
     expect(await verifySession(undefined, token, now)).toBeNull();

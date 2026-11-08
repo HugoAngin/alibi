@@ -29,13 +29,17 @@ describe('analyst preview matches agents/data case 1', () => {
     const minor = Object.fromEntries(pkg.reconciliation.lines.map((l) => [l.kind, l.amount.minor]));
     expect(minor).toEqual({ sale: 240000, refund: 18000, fee: 6000 });
     expect(pkg.reconciliation.result?.minor).toBe(216000);
-    const credit = case1.bank_deliveries.find((d: { row: { txn_id: string } }) => d.row.txn_id === 'txn-0001-004').row;
+    const credit = case1.bank_deliveries.find(
+      (d: { row: { txn_id: string } }) => d.row.txn_id === 'txn-0001-004',
+    ).row;
     expect(credit.amount_minor).toBe(216000);
   });
 
   it('carries the payout timing from the case records', () => {
     const timing = pkg.evidence_by_question.find((q) => q.timing)?.timing;
-    const payout = case1.merchant_lookup.find((x: { event: { kind: string } }) => x.event.kind === 'payout').event;
+    const payout = case1.merchant_lookup.find(
+      (x: { event: { kind: string } }) => x.event.kind === 'payout',
+    ).event;
     expect(timing?.payout_ref).toBe(payout.payout_reference);
     expect(timing?.bank_settled_at).toBe(payout.settled_at);
     expect(timing?.settled_before_booking).toBe(true);

@@ -33,7 +33,10 @@ function text(fields: Record<string, string>, key: string, max: number): string 
  * format: a decision is `{decision, reason}`; a follow-up is `request_more` on the package, with
  * the question as `requested_evidence` (the bank narrows its scope from the parent request).
  */
-export function planAction(fields: Record<string, string>, target: BankTarget = { origin: undefined, prefix: '' }): Plan {
+export function planAction(
+  fields: Record<string, string>,
+  target: BankTarget = { origin: undefined, prefix: '' },
+): Plan {
   const kind = fields.kind;
   if (kind === 'decision') {
     const id = fields.package_id ?? '';
@@ -41,14 +44,20 @@ export function planAction(fields: Record<string, string>, target: BankTarget = 
     const disposition = fields.disposition ?? '';
     if (!DECISIONS.has(disposition)) return { ok: false, reason: 'invalid decision' };
     const reason = text(fields, 'note', MAX_REASON);
-    if (!reason) return { ok: false, reason: `a reason of 3 to ${MAX_REASON} characters is required` };
-    return { ok: true, path: BANK_ROUTES.disposition(target, id), body: { decision: disposition, reason } };
+    if (!reason)
+      return { ok: false, reason: `a reason of 3 to ${MAX_REASON} characters is required` };
+    return {
+      ok: true,
+      path: BANK_ROUTES.disposition(target, id),
+      body: { decision: disposition, reason },
+    };
   }
   if (kind === 'followup') {
     const id = fields.package_id ?? '';
     if (!ID_RE.test(id)) return { ok: false, reason: 'invalid package id' };
     const question = text(fields, 'question', MAX_TEXT);
-    if (!question) return { ok: false, reason: `a question of 3 to ${MAX_TEXT} characters is required` };
+    if (!question)
+      return { ok: false, reason: `a question of 3 to ${MAX_TEXT} characters is required` };
     const reason = `Follow-up requested: ${question}`.slice(0, MAX_REASON);
     return {
       ok: true,
@@ -89,9 +98,15 @@ export type ActOutcome =
 export async function handleAct(input: ActInput, deps: ActDeps): Promise<ActOutcome> {
   if (input.requestOrigin !== input.siteOrigin)
     return { kind: 'forbidden', status: 403, message: 'Cross-site request refused.' };
-  if (!input.analyst) return { kind: 'forbidden', status: 401, message: 'Sign in as an analyst first.' };
+  if (!input.analyst)
+    return { kind: 'forbidden', status: 401, message: 'Sign in as an analyst first.' };
   const plan = planAction(input.fields, deps.target);
   if (!plan.ok) return { kind: 'forbidden', status: 400, message: `Not sent: ${plan.reason}.` };
-  const result = await deps.forward({ origin: deps.target.origin, path: plan.path, body: plan.body, headers: deps.headers });
+  const result = await deps.forward({
+    origin: deps.target.origin,
+    path: plan.path,
+    body: plan.body,
+    headers: deps.headers,
+  });
   return { kind: 'sent', result };
 }

@@ -7,11 +7,19 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { bankTarget, isBankInbox, isBankPackage, toAnalystInbox, toAnalystPackage } from '../src/lib/bankApi';
+import {
+  bankTarget,
+  isBankInbox,
+  isBankPackage,
+  toAnalystInbox,
+  toAnalystPackage,
+} from '../src/lib/bankApi';
 import { authVerdict, followupScope, isFinal, showsEvidence } from '../src/lib/view';
 
 const sample = (name: string) =>
-  JSON.parse(readFileSync(new URL(`../src/data/live_samples/${name}.json`, import.meta.url), 'utf8'));
+  JSON.parse(
+    readFileSync(new URL(`../src/data/live_samples/${name}.json`, import.meta.url), 'utf8'),
+  );
 const who = { id: 'bank_a', name: 'Bank A', analyst_name: 'J. Okafor' };
 const target = bankTarget('http://127.0.0.1:8102', undefined);
 
@@ -37,12 +45,21 @@ describe('a verified package', () => {
 
   it('labels the bank feed extract as package-attested, lower trust', () => {
     const credit = pkg.source_trust.find((s) => s.record_id === 'txn-0001-004');
-    expect(credit).toMatchObject({ trust: 'bank_observed', redacted: true, attestation: 'package_signer' });
+    expect(credit).toMatchObject({
+      trust: 'bank_observed',
+      redacted: true,
+      attestation: 'package_signer',
+    });
   });
 
   it('answers each question with the claim status, rationale and gap from the package', () => {
-    expect(pkg.evidence_by_question.map((q) => q.question_id)).toEqual(['q.source_of_funds', 'q.breakdown']);
-    expect(pkg.claim_status.every((c) => ['supported', 'contradicted', 'unresolved'].includes(c.status))).toBe(true);
+    expect(pkg.evidence_by_question.map((q) => q.question_id)).toEqual([
+      'q.source_of_funds',
+      'q.breakdown',
+    ]);
+    expect(
+      pkg.claim_status.every((c) => ['supported', 'contradicted', 'unresolved'].includes(c.status)),
+    ).toBe(true);
     expect(pkg.gaps.length).toBeGreaterThan(0);
     expect(pkg.evidence_by_question.every((q) => q.calculation === null)).toBe(true);
   });
@@ -71,7 +88,10 @@ describe('a rejected package', () => {
 describe('dispositions', () => {
   it('shows a recorded request_more as current but not final', () => {
     const pkg = toAnalystPackage(sample('package_after_disposition'), who, target);
-    expect(pkg.disposition_form.current).toMatchObject({ disposition: 'request_more', analyst_name: 'analyst_a1' });
+    expect(pkg.disposition_form.current).toMatchObject({
+      disposition: 'request_more',
+      analyst_name: 'analyst_a1',
+    });
     expect(isFinal(pkg.disposition_form.current)).toBe(false);
   });
 
@@ -87,6 +107,10 @@ describe('the inbox', () => {
   it('marks rejected packages and keeps claim counts out of the list', () => {
     expect(inbox.packages.map((p) => p.authentication)).toEqual(['valid', 'invalid']);
     expect(inbox.packages.every((p) => p.claim_counts === undefined)).toBe(true);
-    expect(inbox.requests_sent[0]).toMatchObject({ request_id: 'rfc-0001-01', status: 'answered', question_count: 2 });
+    expect(inbox.requests_sent[0]).toMatchObject({
+      request_id: 'rfc-0001-01',
+      status: 'answered',
+      question_count: 2,
+    });
   });
 });

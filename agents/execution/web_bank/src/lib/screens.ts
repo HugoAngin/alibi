@@ -11,7 +11,6 @@ import type { AnalystInbox, AnalystPackage, Refusal } from './types';
 /** This console is Bank A. Scope comes from the credential on the backend, never from a field. */
 export const RECIPIENT = 'bank_a';
 
-
 /**
  * The bank credential, read server-side from a Worker secret and forwarded as a bearer token. Its
  * absence is fine: screens fall back to the built-in case and actions report "not connected".
@@ -25,7 +24,12 @@ function isObject(v: unknown): v is Record<string, unknown> {
 }
 
 export function isInbox(v: unknown): v is AnalystInbox {
-  return isObject(v) && isObject(v.recipient) && Array.isArray(v.packages) && Array.isArray(v.requests_sent);
+  return (
+    isObject(v) &&
+    isObject(v.recipient) &&
+    Array.isArray(v.packages) &&
+    Array.isArray(v.requests_sent)
+  );
 }
 
 export function isPackage(v: unknown): v is AnalystPackage {
@@ -51,7 +55,12 @@ export type Flash =
 const FLASH_COOKIE = 'bank_flash';
 
 export function setFlash(cookies: AstroCookies, flash: Flash): void {
-  cookies.set(FLASH_COOKIE, JSON.stringify(flash), { path: '/', maxAge: 60, httpOnly: true, sameSite: 'lax' });
+  cookies.set(FLASH_COOKIE, JSON.stringify(flash), {
+    path: '/',
+    maxAge: 60,
+    httpOnly: true,
+    sameSite: 'lax',
+  });
 }
 
 export function takeFlash(cookies: AstroCookies): Flash | null {

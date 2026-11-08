@@ -53,7 +53,8 @@ const recon = pkg.reconciliation;
           </dd>
           <dt>Released to seller balance</dt>
           <dd>
-            <code>{q.timing.released_to_balance_at}</code> <span class="small">(not a bank settlement)</span>
+            <code>{q.timing.released_to_balance_at}</code>{' '}
+            <span class="small">(not a bank settlement)</span>
           </dd>
           <dt>Settled to bank</dt>
           <dd>
@@ -72,8 +73,9 @@ const recon = pkg.reconciliation;
 
       {q.calculation && (
         <p class="small">
-          Calculation <code>{q.calculation.expression}</code> = {formatMoney(q.calculation.result)}, recomputed by{' '}
-          {q.calculation.computed_by}: {q.calculation.matches ? '✓ matches' : '✕ does not match'}
+          Calculation <code>{q.calculation.expression}</code> = {formatMoney(q.calculation.result)},
+          recomputed by {q.calculation.computed_by}:{' '}
+          {q.calculation.matches ? '✓ matches' : '✕ does not match'}
         </p>
       )}
       {q.gap && <p class="small">Gap: {q.gap}</p>}
@@ -129,8 +131,8 @@ const recon = pkg.reconciliation;
   )}
   {recon.matches !== null && (
     <p>
-      <strong>{recon.matches ? '✓ Reconciles' : '✕ Does not reconcile'}</strong>, recomputed by the bank's{' '}
-      {recon.computed_by} from the cited amounts.
+      <strong>{recon.matches ? '✓ Reconciles' : '✕ Does not reconcile'}</strong>, recomputed by the
+      bank's {recon.computed_by} from the cited amounts.
     </p>
   )}
 </section>
@@ -158,7 +160,8 @@ const recon = pkg.reconciliation;
     <ul>
       {pkg.gaps.map((g) => (
         <li>
-          <code>{g.question_id}</code>: {g.description} <span class="small">({g.reason_code.replaceAll('_', ' ')})</span>
+          <code>{g.question_id}</code>: {g.description}{' '}
+          <span class="small">({g.reason_code.replaceAll('_', ' ')})</span>
         </li>
       ))}
     </ul>

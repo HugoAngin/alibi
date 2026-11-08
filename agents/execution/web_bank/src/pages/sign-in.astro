@@ -16,13 +16,19 @@ const failed = Astro.url.searchParams.get('failed') === '1';
     <form method="post" action="/session/" class="panel">
       {failed && <p role="alert">That passcode was not accepted.</p>}
       <label for="passcode">Demo analyst passcode</label>
-      <input id="passcode" name="passcode" type="password" autocomplete="current-password" required />
+      <input
+        id="passcode"
+        name="passcode"
+        type="password"
+        autocomplete="current-password"
+        required
+      />
       <button type="submit">Sign in</button>
     </form>
   ) : (
     <p>
-      Sign-in is not configured on this deployment, so the console shows the built-in preview only and cannot
-      record decisions.
+      Sign-in is not configured on this deployment, so the console shows the built-in preview only
+      and cannot record decisions.
     </p>
   )}
 </ConsoleLayout>

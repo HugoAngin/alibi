@@ -13,6 +13,7 @@ from agents.eval.score_capture import score_capture
 from agents.eval.sealed_worker import MODES, REPO, case_payload, run_case_worker, verify_file_isolation
 from agents.execution.api import probe_ids
 from alibi.eval import common, scorer, seal
+from alibi.llm import client
 from tools.lockbox import is_open
 
 PREDICTION_FILES = {mode: f"{mode}.jsonl" for mode in MODES}
@@ -59,6 +60,8 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         raise ValueError("capture the full probe catalogue before the frozen run")
     if not dry and find_spec("alibi.adapter") is None:
         raise RuntimeError("the candidate does not contain alibi.adapter.run_case")
+    if not dry:
+        client.load_api_key()
     for case in cases:
         case_payload(case)
     if lock is not None:

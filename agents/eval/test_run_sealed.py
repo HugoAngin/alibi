@@ -51,6 +51,7 @@ def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(
     monkeypatch.setattr(run_sealed, "is_open", lambda: False)
     monkeypatch.setattr(run_sealed.seal, "git_commit", lambda _: ("commit", False))
     monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
+    monkeypatch.setattr(run_sealed.client, "load_api_key", lambda: "synthetic-credential")
     calls = []
 
     def worker(case, mode, *, dry_run, timeout, blocked):
@@ -66,6 +67,21 @@ def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(
     assert common.load_json(output / "scores.json")["mode"] == "public_live"
     assert common.load_json(output / "run.json")["input"]["commit"] == "commit"
     assert (output / "deck-table.md").read_text().startswith("# Public live adapter check")
+
+
+def test_missing_provider_key_does_not_start_a_capture(tmp_path, monkeypatch):
+    output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
+    monkeypatch.setattr(run_sealed, "find_spec", lambda _: object())
+    monkeypatch.setattr(run_sealed, "_probe_rows", lambda _: [{"probe_id": "SP-01"}])
+
+    def missing_key():
+        raise run_sealed.client.MissingApiKey("credential unavailable")
+
+    monkeypatch.setattr(run_sealed.client, "load_api_key", missing_key)
+    with pytest.raises(run_sealed.client.MissingApiKey, match="credential unavailable"):
+        run_sealed._capture_once(output, [canonical_case()], {}, dry=False, timeout=15,
+                                 blocked=(tmp_path,), probes=None, lock=lock)
+    assert not lock.exists() and not output.exists()
 
 
 def test_closed_lockbox_stops_before_private_paths_are_read(tmp_path, monkeypatch, capsys):

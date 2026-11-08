@@ -79,7 +79,7 @@ Rehearse the one-command runner on public data before freezing. `--case` selects
 uv run --frozen python -m agents.eval.run_sealed --dry-run --out "$REHEARSAL_OUTPUT"
 ```
 
-When `alibi.adapter.run_case` lands, check it on public cases before freeze. Run from the clean candidate with the lockbox closed and the model credentials in the environment. Choose a new output directory. Start with Cases 1 and 2 to cover the settled and pending examples and both bank recipients. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage.
+When `alibi.adapter.run_case` lands, check it on public cases before freeze. Run from the clean candidate with the lockbox closed and `GEMINI_API_KEY` in the environment or the local `.env`. A new live capture checks the credential before creating its output or lock. Choose a new output directory. Start with Cases 1 and 2 to cover the settled and pending examples and both bank recipients. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage.
 
 ```bash
 uv run --frozen python -m agents.eval.run_sealed --public-live --case 1 --case 2 \

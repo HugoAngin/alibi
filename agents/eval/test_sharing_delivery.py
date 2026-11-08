@@ -488,6 +488,9 @@ def test_v1_wire_body_signed_untransformed_and_verified(bank):
         "rec-0001-004", 2, "issuer_verified", "redacted_extract")
     assert payout.source_signature == "absent" and payout.attested_by == "package_signer"
     assert txn.trust == "bank_observed" and txn.attested_by == "package_signer"
+    assert [(item["attestation"], item["redacted"]) for item in res.to_dict()["attachments"]] == [
+        ("package_signer", True), ("none", False),
+    ]
     assert [c["status"] for c in res.claims] == ["supported", "unresolved"]
     assert bank.deliver("bank_a", raw, now=NOW).created
 
@@ -503,6 +506,7 @@ def test_v1_full_record_issuer_verified_fails_closed_without_valid_proof(registr
     proof = sign_record(signed, MERCHANT, "merchant-demo-1")
     res = verify_package(raw, recipient="bank_a", registry=registry, now=NOW, issuer_records=[proof])
     assert (res.attachments[0].source_signature, res.attachments[0].attested_by) == ("valid", "issuer")
+    assert res.to_dict()["attachments"][0]["attestation"] == "issuer_signature"
 
     wrong_value = sign_record({**signed, "amount_minor": 226000}, MERCHANT, "merchant-demo-1")
     wrong_revision = sign_record({**signed, "revision": 1}, MERCHANT, "merchant-demo-1")

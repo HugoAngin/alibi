@@ -23,6 +23,8 @@ def test_analyst_preview_is_rederived_from_canonical_evidence_without_gold():
     preview = build_analyst_preview(without_gold(canonical_case()))
     assert preview["package"]["request_id"] == "rfc-0001-01"
     assert preview["package"]["txn_ids"] == ["txn-0001-004"]
+    assert preview["package"]["period_display_only"]
+    assert preview["followup_form"]["action"] == preview["disposition_form"]["action"] == "/preview/disabled"
     assert preview["reconciliation"]["expression"] == "240000 - 18000 - 6000 = 216000"
     assert preview["authentication"]["status"] == "preview"
     assert not preview["authentication"]["checks"]
@@ -35,3 +37,6 @@ def test_analyst_preview_is_rederived_from_canonical_evidence_without_gold():
     assert source["timing"]["released_to_balance_at"] < source["timing"]["bank_settled_at"]
     assert source["timing"]["settled_before_booking"]
     assert breakdown["calculation"]["matches"]
+    [bank_row] = [item for item in source["evidence"] if item["trust"] == "bank_observed"]
+    assert bank_row["issuer"] == "Mock bank"
+    assert bank_row["href"] == f"#trust-{bank_row['attachment_id']}"

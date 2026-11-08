@@ -540,6 +540,17 @@ class AttachmentCheck:
     revision: int | None = None  # v1: the attached revision
 
 
+def _with_source_attestation(attachment: dict) -> dict:
+    redacted = attachment.get("presentation") == "redacted_extract"
+    if redacted:
+        attestation = "package_signer"
+    elif attachment.get("source_signature") == "valid":
+        attestation = "issuer_signature"
+    else:
+        attestation = "none"
+    return {**attachment, "attestation": attestation, "redacted": redacted}
+
+
 @dataclass(frozen=True)
 class VerificationResult:
     schema_version: str
@@ -555,7 +566,9 @@ class VerificationResult:
     claims: tuple[dict, ...]  # question_id and status, passed through unchanged
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        result = asdict(self)
+        result["attachments"] = tuple(_with_source_attestation(item) for item in result["attachments"])
+        return result
 
 
 def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict:
@@ -760,7 +773,9 @@ class BankInbox:
             data = json.loads(self._path(recipient, package_id).read_bytes())
         except FileNotFoundError:
             return None
-        return StoredPackage(base64.b64decode(data["raw"]), Receipt(**data["receipt"]), data["verification"])
+        verification = data["verification"]
+        verification["attachments"] = [_with_source_attestation(item) for item in verification["attachments"]]
+        return StoredPackage(base64.b64decode(data["raw"]), Receipt(**data["receipt"]), verification)
 
     def _publish(self, recipient: str, package_id: str, stored: StoredPackage) -> None:
         final = self._path(recipient, package_id)

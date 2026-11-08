@@ -1,5 +1,6 @@
 """Check the consent probes against synthetic HTTP responses and state transitions."""
 
+import json
 from threading import Event
 
 import httpx
@@ -196,6 +197,127 @@ def test_dispatch_idempotency_checks_duplicate_rows_and_conflicting_bytes(run, d
                  fixtures={"dispatch_retry_conflict": {"changed": "bytes"}})
     assert result["outcome"] == outcome
     assert attempted_conflict is not duplicate
+
+
+@pytest.mark.parametrize(("key", "parent", "outcome"), [
+    ("request", "rfc-a", "blocked"), ("rfc", "rfc-a", "blocked"), ("request", "rfc-other", "not_run"),
+])
+def test_follow_up_reuse_reads_the_native_request_summary(run, key, parent, outcome):
+    def respond(request):
+        path = request.url.path
+        if path.endswith("/inbox"):
+            return ok({"packages": []})
+        if path == "/requests/rfc-a":
+            return ok({"review": {"approval": {"digest": DIGEST}}})
+        if path == "/requests/rfc-f":
+            return ok({key: {"request_id": "rfc-f", "parent_request_id": parent},
+                       "review": {"approval": {"digest": EDITED_DIGEST}}})
+        if path == "/requests/rfc-f/dispatch":
+            return refusal("approval_missing")
+        assert not path.endswith("/dispatch"), "only the follow-up is dispatched"
+        return ok()
+
+    assert run("SP-04", respond, fixtures={"rfc_followup": "rfc-f"})["outcome"] == outcome
+
+
+@pytest.mark.parametrize(("dispatched", "leak", "outcome"), [
+    (refusal("approval_missing"), False, "blocked"),
+    (refusal("approval_missing"), True, "not_blocked"),
+    (ok({"package_id": "package-b"}), False, "not_blocked"),
+    (refusal("draft_missing"), False, "not_run"),
+])
+def test_bank_b_request_cannot_ride_on_the_bank_a_approval(run, dispatched, leak, outcome):
+    sent = []
+
+    def respond(request):
+        path = request.url.path
+        if path == "/bank/bank_b/inbox":
+            rows = [{"package_id": "package-b", "request_id": "rfc-b"}] if sent and leak else []
+            return ok({"packages": rows})
+        if path == "/requests/rfc-a":
+            return ok({"review": {"approval": {"digest": DIGEST}}})
+        if path == "/requests/rfc-b":
+            return ok({"request": {"request_id": "rfc-b", "audience": "bank_b"},
+                       "review": {"approval": {"digest": EDITED_DIGEST}}})
+        if path.endswith("/approve"):
+            assert path == "/requests/rfc-a/approve" and b"audience=bank_a" in request.content
+        if path.endswith("/dispatch"):
+            assert path == "/requests/rfc-b/dispatch" and not request.content
+            sent.append(path)
+            return dispatched
+        return ok()
+
+    result = run("SP-03", respond, fixtures={"recipient_bank_b": "bank_b", "rfc_bank_b": "rfc-b"})
+    assert result["outcome"] == outcome and sent
+
+
+def test_ignored_client_audience_is_neither_a_refusal_nor_a_leak(run):
+    def respond(request):
+        path = request.url.path
+        if path.endswith("/inbox"):
+            return ok({"packages": []})
+        if path == "/requests/rfc-a":
+            return ok({"review": {"approval": {"digest": DIGEST}}})
+        if path.endswith("/dispatch"):
+            assert b"audience=bank_b" in request.content
+            return ok({"package_id": "package-a", "receipt": {"status": "accepted"}})
+        return ok()
+
+    result = run("SP-03", respond, fixtures={"recipient_bank_b": "bank_b"})
+    assert result["outcome"] == "not_run"
+    assert "ignored the client audience" in result["reason"]
+
+
+@pytest.mark.parametrize(("bank_answer", "overwrite", "outcome"), [
+    (409, False, "blocked"), (409, True, "not_blocked"), (200, False, "not_blocked"),
+])
+def test_native_retry_conflict_uses_the_stored_signed_package(monkeypatch, bank_answer, overwrite, outcome):
+    body = {"audience": "bank_a", "request_id": "rfc-a", "claims": []}
+    package = {"package_id": "package-a", "body": body, "body_sha256": canon.digest(body)}
+    receipt = {"accepted": True, "receipt_id": "receipt-a", "package_id": "package-a",
+               "package_sha256": canon.digest(package), "recipient": "bank_a"}
+    holder_receipt = {"package_id": "package-a", "receipt": {
+        "receipt_id": "receipt-a", "status": "accepted", "package_digest": canon.digest(package)}}
+    state = {"stored": None, "conflicts": []}
+
+    def respond(request):
+        host, path = request.url.host, request.url.path
+        if host == "127.0.0.1":
+            assert request.headers["Authorization"] == "Bearer test-bank_a"
+            if path == "/inbox":
+                return ok({"packages": [{"package_id": "package-a", "request_id": "rfc-a"}]
+                           if state["stored"] else []})
+            if path == "/packages/package-a":
+                return ok({"status": "verified", "authentication": {"valid": True}, "receipt": receipt})
+            if path == "/packages/package-a/raw":
+                return ok(state["stored"])
+            assert path == "/deliver" and request.headers["Content-Type"] == "application/json"
+            changed = json.loads(request.content)
+            state["conflicts"].append(changed)
+            assert changed["package_id"] == "package-a" and canon.digest(changed) != canon.digest(package)
+            if overwrite:
+                state["stored"] = changed
+            return refusal("package_id_reused") if bank_answer == 409 else ok({"status": "verified"})
+        if path == "/passport":
+            if request.headers.get("Accept") != "application/json":
+                return httpx.Response(200, text="<html>passport</html>")
+            return ok({"sharing_history": [{"package_id": "package-a", "request_id": "rfc-a"}]})
+        if path == "/requests/rfc-a":
+            return ok({"review": {"approval": {"digest": canon.digest(body)}}})
+        if path == "/requests/rfc-a/dispatch":
+            state["stored"] = state["stored"] or package
+            return ok(holder_receipt)
+        return ok()
+
+    client = httpx.Client
+    monkeypatch.setattr(runtime.httpx, "Client", lambda **kw: client(transport=httpx.MockTransport(respond), **kw))
+    fixtures = {"consent_bank_service": "bank", "rfc_bank_a": "rfc-a", "recipient_bank_a": "bank_a",
+                "policy_version": "v3"}
+    result = api.attempt("SP-09", {"app": "https://alibi.invalid", "bank": "http://127.0.0.1",
+                                   "fixtures": fixtures},
+                         {actor: f"test-{actor}" for actor in ("holder", "bank_a", "bank_b")})
+    assert result["outcome"] == outcome
+    assert len(state["conflicts"]) == 1
 
 
 def test_disclosure_probe_detects_forbidden_attachment_filename(run):

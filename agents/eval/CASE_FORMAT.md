@@ -65,6 +65,17 @@ expects `subject_mismatch` and SP-23 expects `txn_out_of_feed`. SP-24 sends a
 valid Bank B control and changes the declared issuer to Bank A on the attack. Supply the
 remaining route and fixture settings in the base config for the full catalogue.
 
+Keep the receipt stack as the shared origin for readback. Give each mutating
+consent probe its own fresh store by setting `probes.<id>.base_urls.app`,
+`probes.<id>.base_urls.bank` and `probes.<id>.tokens` to that probe's local stack.
+Set the shared fixtures `consent_bank_service: "bank"`, `rfc_bank_a` and
+`rfc_bank_b` to the Case 1 RFC IDs, and set both recipient IDs and the policy
+version from holder review. For SP-04 also supply `rfc_followup` for the
+published follow-up. SP-05 needs an approved request held beyond the approval
+window while its RFC remains open, supplied as `expired_request`. SP-09 derives
+the conflicting retry from the stored signed envelope and sends it to the
+disposable bank's `/deliver` route unless overridden by an explicit fixture.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash

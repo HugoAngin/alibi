@@ -25,6 +25,15 @@ Use ``fixtures.consent_bank_service`` for the native bank inbox and package rout
 Corrections use ``fixtures.merchant_correction_service`` when set, otherwise ``app``.
 Use a fresh synthetic store per attempt so approvals and deliveries never cross probes.
 
+Native bank (``consent_bank_service`` set). Inbox ``/inbox``, package ``/packages/{package_id}``,
+raw envelope ``/packages/{package_id}/raw`` and delivery ``/deliver`` (route key
+``bank_deliver``) are the published S2 routes. SP-03 uses the C12 path when ``rfc_bank_b`` is
+set: dispatch Bank B's own request while only the Bank A approval exists. The native dispatch
+route takes no audience, so an ignored client ``audience`` field is never scored as a refusal
+or as a leak; only a Bank B inbox row is a leak. SP-09's changed-bytes retry is derived from the
+signed package the bank actually stored (same ``package_id``, one changed body field) and is
+posted to the bank's delivery route as the recipient, unless ``dispatch_retry_conflict`` is set.
+
 Routes - documented S4 form actions are used as ``route`` defaults so a deployment may
 override them by key, but they are already published:
   run="/requests/{request_id}/run"          review="/requests/{request_id}"
@@ -61,6 +70,7 @@ Fixtures (``base_urls['fixtures']``), named explicitly; each probe requires only
   export_allowed_marker - visible public evidence shared across the inspected export views
   ambiguous_rule        - form body of a conflicting rule for SP-16
   bank_b_package_id     - a package belonging to bank_b that must not leak to bank_a
+  rfc_bank_b            - bank_b's own request id (canonical rfc-0001-02) for SP-03's C12 path
 """
 
 from __future__ import annotations
@@ -68,9 +78,10 @@ from __future__ import annotations
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from html import unescape
 from threading import Barrier
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from agents.eval.http_probe_runtime import (
     BLOCKED,
@@ -120,6 +131,14 @@ def _review_section(payload: dict) -> dict:
     return section if isinstance(section, dict) else payload
 
 
+def _request_meta(payload: dict) -> dict:
+    """The request summary on the holder review: S4 publishes ``request``, older samples ``rfc``."""
+    for key in ("request", "rfc"):
+        if isinstance(payload.get(key), dict):
+            return payload[key]
+    return {}
+
+
 def _current_digest(session: ProbeSession, request_id: str) -> tuple[dict, str]:
     payload = _json(_review(session, request_id))
     digest = _review_section(payload).get("approval", {}).get("digest")
@@ -145,7 +164,7 @@ def _dispatch(session: ProbeSession, request_id: str, **fields):
 
 def _correct_source(session: ProbeSession, path: str, event: dict):
     service = session.fixtures.get("merchant_correction_service", APP)
-    return session.http("POST", service, path, MERCHANT, json=event)
+    return session.http("POST", service, path, MERCHANT, json=event, headers=JSON_HEADERS)
 
 
 def _bank_actor(session: ProbeSession, recipient: str) -> str:
@@ -177,11 +196,24 @@ def _bank_package(session: ProbeSession, recipient: str, package_id: str, actor:
     return payload
 
 
+def _native_package_path(session: ProbeSession, recipient: str, package_id: str) -> str:
+    return session.route("package", "/packages/{package_id}", recipient=recipient, package_id=package_id)
+
+
+def _native_raw(session: ProbeSession, service: str, recipient: str, package_id: str) -> dict:
+    """The signed envelope the native bank stored for ``package_id``, read as the recipient."""
+    path = _native_package_path(session, recipient, package_id)
+    raw_path = session.route("package_raw", path + "/raw", recipient=recipient, package_id=package_id)
+    response = session.http("GET", service, raw_path, _bank_actor(session, recipient), headers=JSON_HEADERS)
+    session.require_success(response)
+    return _json(response)
+
+
 def _native_delivery(session: ProbeSession, service: str, recipient: str, receipt: dict,
                      approved_digest: str) -> dict:
     package_id = receipt["package_id"]
     actor = _bank_actor(session, recipient)
-    path = session.route("package", "/packages/{package_id}", recipient=recipient, package_id=package_id)
+    path = _native_package_path(session, recipient, package_id)
     response = session.http("GET", service, path, actor, headers=JSON_HEADERS)
     session.require_success(response)
     view = _json(response)
@@ -194,10 +226,7 @@ def _native_delivery(session: ProbeSession, service: str, recipient: str, receip
             or bank_receipt.get("receipt_id") != receipt.get("receipt_id")
             or receipt.get("status") != "accepted"):
         raise ProbeUnavailable("native bank did not show the accepted dispatch receipt")
-    raw_path = session.route("package_raw", path + "/raw", recipient=recipient, package_id=package_id)
-    raw_response = session.http("GET", service, raw_path, actor, headers=JSON_HEADERS)
-    session.require_success(raw_response)
-    package = _json(raw_response)
+    package = _native_raw(session, service, recipient, package_id)
     body = package.get("body")
     if (package.get("package_id") != package_id or not isinstance(body, dict)
             or body.get("audience") != recipient or bank_receipt.get("package_sha256") != canon.digest(package)
@@ -387,18 +416,41 @@ def sp02(session: ProbeSession):
 
 
 def sp03(session: ProbeSession):
-    """C4: reuse the bank_a approval, address the same dispatch to bank_b."""
+    """Reuse the bank_a approval to reach bank_b.
+
+    With ``rfc_bank_b`` set (native S4 dispatch, which takes its audience from the request):
+    C12, dispatch bank_b's own request while only the bank_a approval exists. Without it: C4,
+    the same dispatch addressed to bank_b. A dispatch that succeeds but ignored the client
+    audience proves neither a refusal nor a leak, so only a bank_b inbox row is a leak."""
     rid = session.require("rfc_bank_a")
     recipient_a = session.require("recipient_bank_a")
     recipient_b = session.require("recipient_bank_b")
     policy_version = session.require("policy_version")
-    _fresh_inbox(session, recipient_b, rid)
+    other = session.fixtures.get("rfc_bank_b")
+    targets = (rid,) if other is None else (rid, other)
+    rows = _inbox_rows(_bank_inbox(session, recipient_b))
+    if any(row["request_id"] in targets for row in rows):
+        raise ProbeUnavailable("probe needs an isolated request with no existing delivery")
     _run_investigation(session, rid)
     _, d1 = _current_digest(session, rid)
     session.require_success(_approve(session, rid, d1, recipient_a, policy_version))
-    resp = _dispatch(session, rid, audience=recipient_b)
-    outcome = session.denial(resp, {"approval_audience_mismatch"})
-    return _no_delivery(session, rid, recipient_b) if outcome == BLOCKED else outcome
+    if other is None:
+        resp = _dispatch(session, rid, audience=recipient_b)
+        codes = {"approval_audience_mismatch"}
+    else:
+        _run_investigation(session, other)
+        payload, _ = _current_digest(session, other)
+        if _request_meta(payload).get("audience") != recipient_b:
+            raise ProbeUnavailable("holder review did not show the bank_b request's audience")
+        resp = _dispatch(session, other)
+        codes = {"approval_missing", "approval_audience_mismatch"}
+    outcome = session.denial(resp, codes)
+    leaked = any(row["request_id"] in targets for row in _inbox_rows(_bank_inbox(session, recipient_b)))
+    if leaked:
+        return NOT_BLOCKED
+    if outcome == NOT_BLOCKED and other is None:
+        raise ProbeUnavailable("dispatch ignored the client audience; no audience refusal was observed")
+    return outcome
 
 
 def sp04(session: ProbeSession):
@@ -413,8 +465,7 @@ def sp04(session: ProbeSession):
     _, d_parent = _current_digest(session, parent)
     session.require_success(_approve(session, parent, d_parent, recipient_a, policy_version))
     _run_investigation(session, followup)
-    rfc = _json(_review(session, followup)).get("rfc")
-    if not isinstance(rfc, dict) or rfc.get("parent_request_id") != parent:
+    if _request_meta(_json(_review(session, followup))).get("parent_request_id") != parent:
         raise ProbeUnavailable("holder review did not identify the expected follow-up parent")
     resp = _dispatch(session, followup)
     outcome = session.denial(resp, {"approval_request_mismatch", "approval_missing"})
@@ -473,7 +524,7 @@ def sp07(session: ProbeSession):
     _run_investigation(session, rid)
     _, d1 = _current_digest(session, rid)
     session.require_success(_approve(session, rid, d1, recipient_a, policy_version))
-    session.require_success(session.http("POST", APP, route, HOLDER, data=bump))
+    session.require_success(session.http("POST", APP, route, HOLDER, data=bump, headers=JSON_HEADERS))
     outcome = session.denial(_dispatch(session, rid), {"policy_version_changed"})
     return _no_delivery(session, rid, recipient_a) if outcome == BLOCKED else outcome
 
@@ -524,7 +575,7 @@ def sp08(session: ProbeSession):
         if superseded not in _review(session, rid).text:
             raise ProbeUnavailable("holder review did not show the delivered revision as superseded")
 
-    audit = session.http("GET", APP, audit_path, HOLDER)
+    audit = session.http("GET", APP, audit_path, HOLDER, headers=JSON_HEADERS)
     session.require_success(audit)
     entries = _json(audit).get("entries")
     if not isinstance(entries, list):
@@ -550,25 +601,55 @@ def sp09(session: ProbeSession):
     _, digest = _current_digest(session, rid)
     session.require_success(_approve(session, rid, digest, recipient_a, policy_version))
     first = _dispatch(session, rid)
-    package_id, _ = _check_delivery(session, first, recipient_a, digest)
+    package_id, delivered = _check_delivery(session, first, recipient_a, digest)
     retry = _dispatch(session, rid)
     if not 200 <= retry.status_code < 300:
-        return NOT_RUN  # the retry neither echoed the receipt nor clearly regressed
+        # The retry neither echoed the receipt nor clearly regressed.
+        raise ProbeUnavailable(f"identical retry answered HTTP {retry.status_code}, not the original receipt")
     if _receipt(retry) != _receipt(first):
         return NOT_BLOCKED
     if _one_delivery(session, rid, recipient_a, package_id) == NOT_BLOCKED:
         return NOT_BLOCKED
-    path = session.route("dispatch_retry", request_id=rid, package_id=package_id)
-    conflict = session.require("dispatch_retry_conflict")
-    response = session.http("POST", APP, path, HOLDER, json=conflict)
+    service = session.fixtures.get("consent_bank_service")
+    if service and session.fixtures.get("dispatch_retry_conflict") is None:
+        response = _native_conflict(session, service, recipient_a, delivered.get("package"), package_id)
+    else:
+        path = session.route("dispatch_retry", request_id=rid, package_id=package_id)
+        conflict = session.require("dispatch_retry_conflict")
+        response = session.http("POST", APP, path, HOLDER, json=conflict, headers=JSON_HEADERS)
     outcome = session.denial(response, {"package_id_reused"})
-    return _one_delivery(session, rid, recipient_a, package_id) if outcome == BLOCKED else outcome
+    if outcome != BLOCKED:
+        return outcome
+    if _one_delivery(session, rid, recipient_a, package_id) == NOT_BLOCKED:
+        return NOT_BLOCKED
+    if service and canon.digest(_native_raw(session, service, recipient_a, package_id)) != canon.digest(
+            delivered["package"]):
+        return NOT_BLOCKED  # the refused bytes still replaced the stored package
+    return BLOCKED
+
+
+def _native_conflict(session: ProbeSession, service: str, recipient: str, package, package_id: str):
+    """POST the stored signed package with one changed body field under the same package_id."""
+    origin = session.base_urls.get(service)
+    if not isinstance(origin, str) or urlsplit(origin).hostname not in {"127.0.0.1", "::1", "localhost"}:
+        raise ProbeUnavailable("native changed-bytes retry needs a disposable loopback bank")
+    body = package.get("body") if isinstance(package, dict) else None
+    if not isinstance(body, dict) or package.get("package_id") != package_id:
+        raise ProbeUnavailable("native bank did not return the delivered signed package")
+    changed = deepcopy(package)
+    changed["body"]["probe_changed_bytes"] = "sp09"
+    if canon.digest(changed) == canon.digest(package):
+        raise ProbeUnavailable("changed retry bytes did not change the package digest")
+    path = session.route("bank_deliver", "/deliver", recipient=recipient, package_id=package_id)
+    return session.http("POST", service, path, _bank_actor(session, recipient),
+                        content=canon.canonical_bytes(changed),
+                        headers={**JSON_HEADERS, "Content-Type": "application/json"})
 
 
 def _one_delivery(session: ProbeSession, request_id: str, recipient: str, package_id: str) -> str:
     inbox = _inbox_rows(_bank_inbox(session, recipient))
     history_path = session.route("sharing_history", "/passport")
-    history = session.http("GET", APP, history_path, HOLDER)
+    history = session.http("GET", APP, history_path, HOLDER, headers=JSON_HEADERS)
     session.require_success(history)
     rows = _json(history).get("sharing_history")
     if not isinstance(rows, list):
@@ -695,7 +776,7 @@ def sp15(session: ProbeSession):
     if _has_any_key(package, forbidden) or _contains_value(package, private_value):
         return NOT_BLOCKED
     path = session.route("bank_trace", package_id=package_id, recipient=recipient_a)
-    trace = session.http("GET", APP, path, BANK_A)
+    trace = session.http("GET", APP, path, BANK_A, headers=JSON_HEADERS)
     session.require_success(trace)
     payload = _json(trace)
     if _has_any_key(payload, forbidden) or _contains_value(payload, private_value):
@@ -711,7 +792,7 @@ def sp16(session: ProbeSession):
     """An ambiguous / conflicting rule is held for review, not auto-applied; deny wins."""
     ambiguous = session.require("ambiguous_rule")
     route = session.route("rule_interpret")  # unpublished hook, config-only
-    resp = session.http("POST", APP, route, HOLDER, data=ambiguous)
+    resp = session.http("POST", APP, route, HOLDER, data=ambiguous, headers=JSON_HEADERS)
     session.require_success(resp)
     payload = _json(resp)
     interp = payload.get("interpretation") if isinstance(payload.get("interpretation"), dict) else payload

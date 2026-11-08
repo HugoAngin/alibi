@@ -30,6 +30,11 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Lead work order 2 (01:03Z, post 6715391986)
 - (1) Injection family cases 51-60 done (a8105fa). (2) Alert family cases 61-70, gold.alerts, out/merchant_registry.json and api.merchant_lookup done. (3) Stylesheet patch: after the S4 merge. (4) Clean-clone RUNBOOK dry run as Driver: after S5's RUNBOOK lands.
 
+## Lead work order 3 (01:29Z, post 6715633720)
+- (1) Second platform, cases 71-80: done. issuer second-platform, schema sp-2.1, weekly statements, SPLAT Wnn refs; api.to_contract is the reference mapping; cases 79-80 have Maya on both platforms.
+- (2) Receipts: 12 PNGs plus receipts.json done (10 pushed in da8289f, 11-12 with the second platform).
+- (3) The injection and alert families were already done. (4) Stylesheet patch: after the S4 merge.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

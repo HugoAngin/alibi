@@ -1,10 +1,10 @@
 # Data: Alibi development case ledgers
 
-There are 70 synthetic, labelled development cases, numbered 1–70, all below the lockbox at 1000. They are JSON files in `out/cases/`, with a summary in `out/index.json`. They follow `docs/SPEC.md` (Evaluation, Technical contracts, Four-minute demo) and `shared/CONTRACTS.md`.
+There are 80 synthetic, labelled development cases, numbered 1–80, all below the lockbox at 1000. They are JSON files in `out/cases/`, with a summary in `out/index.json`. They follow `docs/SPEC.md` (Evaluation, Technical contracts, Four-minute demo) and `shared/CONTRACTS.md`.
 
 ```bash
 uv run --frozen python -m agents.data.ledgers          # regenerate out/ (deterministic, seed 20261107)
-uv run --frozen python -m pytest agents/data           # 321 checks, including an independent re-derivation of all gold and alerts
+uv run --frozen python -m pytest agents/data           # 388 checks, including an independent re-derivation of all gold and alerts
 ```
 
 ```python
@@ -141,6 +141,56 @@ The monitor sees pushed data only. It does no lookups, and evaluates each rule a
 `test_ledgers.py` re-derives every alert with an independent implementation of these rules. Applied to the other families, the same monitor raises only real alerts. For example, demo cases 1–2 raise `unexplained_credit` on 2026-10-29, before the request on 2 Nov, which is the alert the demo opens on. Bundled credits that name a settlement batch raise nothing.
 
 **Merchant registry.** `out/merchant_registry.json` is the mock registry the app's lookup form reads: 9 synthetic merchants with categories and aliases, plus `unknown_examples`. `api.merchant_lookup(query, checked_at)` returns the `merchant_lookup.result` shape from `UI.md`: `{query, status: verified|unverified, name, registry, checked_at, notes}`. Matching ignores case and punctuation. Unknown names come back `unverified` with `name: null`, and the notes say unknown is not fraudulent. Every everyday payee in every case is registered, so only planted payees raise `merchant_unverified`.
+
+## Second platform (cases 71–80)
+
+A second simulated issuer, `issuer_id: "second-platform"` (display name "Second Platform", a synthetic gig and resale app). It uses its own schema (`schema_version: "sp-2.1"`), field names, wording and settlement vocabulary, all delivered through the same case wrapper (`merchant_deliveries[].event`). It has no payout records: a **weekly statement** covers an ISO week (Monday to Monday, half-open), is issued the following Monday, and is paid on Tuesday. The bank shows the platform's own reference format, `SPLAT Wnn nnnn`.
+
+| Second platform | Contract term (`api.to_contract`) |
+| --- | --- |
+| `order_completed`, `value_pence` | `sale`, `amount_minor` |
+| `order_returned`, `value_pence` | `refund` |
+| `service_charge` (4% per order, rounded half up), `value_pence` | `fee` |
+| `weekly_statement`, `net_payable_pence` | `payout`, `amount_minor`, `destination: bank` |
+| `transfer_ref` (what the bank shows) | `payout_reference` |
+| `transfer_status`: `paid`, `scheduled`, `failed` | `status`: `settled`, `pending`, `failed` |
+| `paid_at` | `settled_at` |
+| `line_record_ids` | `covers_record_ids` |
+| `currency_code` | `currency` |
+| `earnings_update` (text) | `notice` |
+
+The raw events never carry contract field names, which a test enforces, so an adapter has to map them. `api.to_contract(event)` is data's reference mapping; it leaves mock-marketplace events unchanged. Gold applies the same pinned rules after the mapping. `api.lookup` finds a statement by `transfer_ref` or `statement_no` (as `payout_reference`), by a covered record, or by its paid date.
+
+| Case | Variant | Gold |
+| --- | --- | --- |
+| 71 | weekly_paid | linked, supported |
+| 72 | two_weeks | linked, supported; two statements and two credits, and the RFC asks about the second |
+| 73 | statement_by_lookup | linked, supported; only an `earnings_update` is pushed, and the statement needs a lookup |
+| 74 | scheduled_at_booking | unmatched; the claim is contradicted (`scheduled` at booking), source unresolved |
+| 75 | net_mismatch | unmatched, unresolved (`amount_mismatch`) |
+| 76 | omits_charges | linked; breakdown contradicted (the holder leaves out service charges) |
+| 77 | order_corrected | linked, supported; an order value corrected by revision 2 |
+| 78 | statement_redelivered | linked, supported; an identical statement delivered twice |
+| 79 | both_platforms_ask_mock | Maya on both platforms in one month, one credit per platform. Bank A asks about the marketplace credit. Bank B's period question sums orders and returns across **both** platforms, with `facts.by_issuer` splitting them. |
+| 80 | both_platforms_ask_second | The same setup, but Bank A asks about the second platform's credit. |
+
+## Receipt images
+
+`out/receipts/` holds 12 synthetic PNGs for testing self-supplied imports (S3's Gemini vision import), and `out/receipts/receipts.json` holds the true fields of each one: `kind`, `layout`, `distortion`, `issuer`, `document_date`, `reference`, `total_minor`, `currency`, `items`, `extra_fields`, `links {case_number, record_id}` and `notes`. Every image is stamped SYNTHETIC. Rebuild with `uv run --frozen python -m agents.data.receipts`. The true fields are exact; the pixels may differ slightly between machines because of fonts.
+
+| Image | What it is |
+| --- | --- |
+| rcpt-01 … 04 | Mock marketplace order confirmations (web screenshots) for case 1 sales |
+| rcpt-05 | Refund confirmation, case 1 `rec-0001-005` |
+| rcpt-06 | App screenshot: `PO-0001-01` paid to the bank, with the breakdown 2,400 − 180 − 60 |
+| rcpt-07 | App screenshot: case 2's `PO-0002-01` still **Processing** |
+| rcpt-08 | Faded thermal till receipt for the eyewear purchase. **Sensitive**: forbidden in case 1. |
+| rcpt-09 | **Handwritten** cash private-sale receipt on lined paper. It links to no record and must stay unlinked. |
+| rcpt-10 | `PO-0001-01` printed and **photographed at an angle** on a desk (perspective, shadow, soft focus) |
+| rcpt-11 | Second-platform order email, case 71 |
+| rcpt-12 | Second-platform weekly statement, case 71 |
+
+`test_receipts.py` checks every linked image's amount, date and reference against the case record.
 
 ## Hardness check
 

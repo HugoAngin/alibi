@@ -1,6 +1,6 @@
 ## Data card: Alibi development cases
 
-**What it is.** 70 synthetic development cases for Alibi, numbered 1–70. Each case is one fictional seller's history:
+**What it is.** 80 synthetic development cases for Alibi, numbered 1–80. Each case is one fictional seller's history:
 - marketplace events: sales, refunds, fees, balance releases, payouts, notices and statements
 - bank feed rows
 - one or two Requests for Context from mock banks
@@ -10,6 +10,7 @@
 The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/out/index.json` and loaded through `agents/data/api.py`. Case 1 is the canonical demo fixture used in the app, the tests, the slides and the recorded demo: Maya, £2,400 sales − £180 refunds − £60 fees = £2,160 credit (`240000 − 18000 − 6000 = 216000` pence).
 
 **Provenance.**
+- The 12 receipt images in `out/receipts/` are drawn by `agents/data/receipts.py` with Pillow. Each is stamped SYNTHETIC on the image, and its true fields are in `receipts.json`.
 - Every record is synthetic and labelled `"SYNTHETIC - labelled test data, not a real person, account or institution"`.
 - No real financial records, people, accounts, merchants or banks were used or consulted.
 - The cases are written by one deterministic generator, `agents/data/ledgers.py` (Python standard library only), with seed `20261107`.
@@ -17,7 +18,7 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 
   ```bash
   uv run --frozen python -m agents.data.ledgers           # rewrites out/ byte for byte
-  uv run --frozen python -m pytest agents/data            # 321 checks; one asserts out/ equals a fresh build
+  uv run --frozen python -m pytest agents/data            # 388 checks; one asserts out/ equals a fresh build
   ```
 - Names such as "Mock Marketplace Payments", "Synthetic Lettings Ltd" and `mock-marketplace` are invented.
 
@@ -56,9 +57,11 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 | 51–60 | injection | Exact copies of cases 1 and 2, each with one adversarial string from the controls owner's catalogue planted in a message, receipt, request question, lookup result or bank description. Gold is unchanged; the expected refusal is recorded. |
 | 61–70 | alert | Timelines that raise proactive alerts before any request: unexplained credit, unusual inflow or outflow, amount or settlement discrepancy, a payout settled but not received, an unverified merchant, and a quiet control with none. Gold lists the alerts. A mock merchant registry ships alongside. |
 
+| 71–80 | second_platform | A second simulated platform with its own schema, wording and settlement vocabulary: weekly statements instead of payouts, `paid`/`scheduled` instead of settled/pending, and its own reference format. It covers paid, scheduled-at-booking, net mismatch, omitted charges, a corrected order and a redelivered statement. In two cases Maya uses both platforms in one month, and a second bank's period question must combine them. |
+
 Every case also carries distractors that must never be disclosed: rent, grocery and pharmacy debits, and in some cases the holder's own health-category purchase.
 
-Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 linked, 19 unmatched, 1 ambiguous. The 10 injection cases repeat the outcomes of cases 1 and 2 by design, so they are not independent.
+Outcomes across the 80 cases: 54 supported, 12 contradicted, 14 unresolved; 58 linked, 21 unmatched, 1 ambiguous. The 10 injection cases repeat the outcomes of cases 1 and 2 by design, so they are not independent.
 
 **Honesty note.** The answer key is not independent of the rules. Gold is produced by construction from the same pinned rules (matching amount, settlement timing and reference, active revisions, recomputed arithmetic) that the rules-based baseline implements, and `test_ledgers.py` re-derives it with those rules. A rules baseline with the right retrieval can therefore reach 100% on these cases by design. It did on cases 1–40, because each lookup-only reference appeared verbatim in a pushed message. We added cases 41–50 so that finding the reference takes interpretation, and a naive regex-retrieval probe scores 6 of 10 there. These cases measure whether a system observes, retrieves and applies the rules correctly. They do not show that the rules are the right policy, and they are development data that we studied while building. The honest comparison is the sealed set, authored separately. Many cases are variants of one scenario template, so case counts here overstate independent evidence.
 
@@ -68,3 +71,4 @@ Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 l
 - `c339e2a`: a pending payout in cases 2 and 20 is retrievable only from its `status_as_of` time. One field changed per case; gold unchanged.
 - `a8105fa`: cases 51–60 (injection) added.
 - Cases 61–70 (alert) and the mock merchant registry added. Cases 1–60 are unchanged.
+- Cases 71–80 (second platform) and 12 synthetic receipt images (`out/receipts/`, true fields in `receipts.json`) added. Cases 1–70 are unchanged.

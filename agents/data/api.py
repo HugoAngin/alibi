@@ -28,7 +28,8 @@ from tools.lockbox import visible
 OUT = Path(__file__).resolve().parent / "out"
 FAMILIES = ("demo", "clean", "bundled_payment", "balance_vs_settlement", "pending_correction",
             "duplicate_record", "missing_proof", "self_supplied_import", "hidden_reference",
-            "injection", "alert")
+            "injection", "alert",
+            "second_platform")
 CANONICAL_CASE = 1            # Maya, supported control
 CONTRADICTION_CASE = 2        # Maya, payout still pending at booking
 
@@ -85,6 +86,38 @@ def known_at(case: dict, at: str, include_lookup: bool = False) -> dict:
     return view
 
 
+SECOND_PLATFORM = "second-platform"
+_SP_KIND = {"order_completed": "sale", "order_returned": "refund", "service_charge": "fee",
+            "weekly_statement": "payout", "earnings_update": "notice"}
+_SP_STATUS = {"paid": "settled", "scheduled": "pending", "failed": "failed"}
+
+
+def to_contract(event: dict) -> dict:
+    """Reference mapping of a merchant event onto the contract fields the pinned rules use.
+
+    Mock-marketplace events already use them and come back unchanged (as a copy). Second-platform
+    events map: order_completed/order_returned/service_charge -> sale/refund/fee with
+    value_pence -> amount_minor; weekly_statement -> payout with net_payable_pence -> amount_minor,
+    transfer_ref -> payout_reference, transfer_status paid|scheduled|failed -> settled|pending|failed,
+    paid_at -> settled_at, line_record_ids -> covers_record_ids, destination "bank";
+    earnings_update -> notice. The original fields are kept alongside."""
+    ev = copy.deepcopy(event)
+    if ev.get("issuer_id") != SECOND_PLATFORM:
+        return ev
+    kind = _SP_KIND.get(ev["kind"], ev["kind"])
+    ev["source_kind"] = ev["kind"]
+    ev["kind"] = kind
+    if "currency_code" in ev:
+        ev["currency"] = ev["currency_code"]
+    if kind in ("sale", "refund", "fee"):
+        ev["amount_minor"] = ev["value_pence"]
+    if kind == "payout":
+        ev.update(amount_minor=ev["net_payable_pence"], destination="bank",
+                  payout_reference=ev["transfer_ref"], status=_SP_STATUS[ev["transfer_status"]],
+                  settled_at=ev["paid_at"], covers_record_ids=ev["line_record_ids"])
+    return ev
+
+
 def lookup(case: dict, at: str, *, payout_reference: str | None = None,
            record_id: str | None = None, covers_record_id: str | None = None,
            payout_date: str | None = None) -> list[dict]:
@@ -102,9 +135,10 @@ def lookup(case: dict, at: str, *, payout_reference: str | None = None,
     pool = [d["event"] for d in case["merchant_deliveries"] if d["received_at"] <= at]
     pool += [d["event"] for d in case["merchant_lookup"] if d["available_from"] <= at]
 
-    def match(ev: dict) -> bool:
+    def match(raw: dict) -> bool:
+        ev = to_contract(raw)
         if payout_reference:
-            return ev.get("payout_reference") == payout_reference
+            return payout_reference in (ev.get("payout_reference"), ev.get("statement_no"))
         if record_id:
             return ev["record_id"] == record_id
         if ev["kind"] != "payout":

@@ -67,6 +67,15 @@
       ],
       "category": "electronics",
       "status": "verified"
+    },
+    {
+      "name": "Second Platform Payouts",
+      "aliases": [
+        "second platform",
+        "second-platform"
+      ],
+      "category": "online marketplace",
+      "status": "verified"
     }
   ],
   "unknown_examples": [

@@ -222,8 +222,9 @@ class Case:
         po_refs = [f"{'import' if self._is_import(p) else 'merchant'}:{p['record_id']}" for p in payouts]
         cov_refs = [f"merchant:{r}" for r in covered or []]
         src = {"status": source_status, "gap": None if source_status != "unresolved" else gap,
-               "facts": {"payout_references": [p["payout_reference"] for p in payouts],
-                         "settled_at": [p["settled_at"] for p in payouts]} if link == "linked" else {},
+               "facts": {"payout_references": [p.get("payout_reference", p.get("transfer_ref")) for p in payouts],
+                         "settled_at": [p.get("settled_at", p.get("paid_at")) for p in payouts]}
+                        if link == "linked" else {},
                "evidence_sets": [[txn] + po_refs] if link == "linked" else [[]]}
         bd_status = claim_status if source_status == "supported" and breakdown else "unresolved"
         brk = {"status": bd_status, "gap": gap if bd_status == "unresolved" else None,
@@ -814,6 +815,7 @@ REGISTRY = [
     {"name": "Synthetic Coffee Co", "aliases": ["synthetic coffee"], "category": "cafe"},
     {"name": "Synthetic Car Sales Ltd", "aliases": ["synthetic car sales"], "category": "vehicle dealer"},
     {"name": "Synthetic Electronics Direct", "aliases": ["synthetic electronics"], "category": "electronics"},
+    {"name": "Second Platform Payouts", "aliases": ["second platform", "second-platform"], "category": "online marketplace"},
 ]
 REGISTRY_NAME = "Mock Merchant Registry (synthetic)"
 UNKNOWN_EXAMPLES = ["Payflux Holdings", "QuickParcel Fees Ltd"]
@@ -1047,6 +1049,236 @@ def alert_case(number: int, variant: str, rng: random.Random) -> dict:
                     **claim_kw)
 
 
+# --------------------------------------------------------------------------
+# second platform (cases 71-80): a different schema through the same case wrapper
+# --------------------------------------------------------------------------
+
+SP_ISSUER = "second-platform"
+SP_SCHEMA = "sp-2.1"
+SP_NAME = "Second Platform"            # synthetic gig and resale app
+SP_CHARGE_PER_MILLE = 40               # 4% service charge per order, rounded half up
+SP_STATUS = {"paid": "settled", "scheduled": "pending", "failed": "failed"}
+
+
+def sp_charge(value: int) -> int:
+    return (value * SP_CHARGE_PER_MILLE + 500) // 1000
+
+
+def sp_week(c: Case, monday: datetime, rng: random.Random, orders: int, returns: int = 0) -> dict:
+    """One ISO week of orders, service charges and returns on the second platform."""
+    ids = {"order": [], "return": [], "charge": []}
+    tot = {"sales": 0, "refunds": 0, "fees": 0}
+    picks = sorted(rng.sample(range(7 * 24), orders))
+    returned = set(rng.sample(range(orders), returns))
+    for i, h in enumerate(picks):
+        t = monday + timedelta(hours=h)
+        value = rng.randrange(800, 9001, 100)
+        oref = f"SPO-{c.number:04d}{len(c.merchant):03d}"
+        o = c.event("order_completed", None, t, issuer_id=SP_ISSUER, schema_version=SP_SCHEMA,
+                    order_ref=oref, item_title=f"Pre-loved item {i + 1}", value_pence=value,
+                    currency_code=CURRENCY)
+        ch = c.event("service_charge", None, t + timedelta(minutes=2), issuer_id=SP_ISSUER,
+                     schema_version=SP_SCHEMA, order_ref=oref, charge_label="Service charge 4%",
+                     value_pence=sp_charge(value), currency_code=CURRENCY)
+        ids["order"].append(o["record_id"])
+        ids["charge"].append(ch["record_id"])
+        tot["sales"] += value
+        tot["fees"] += sp_charge(value)
+        if i in returned:
+            back = rng.randrange(300, value // 2 + 1, 100)
+            r = c.event("order_returned", None, t + timedelta(hours=26), issuer_id=SP_ISSUER,
+                        schema_version=SP_SCHEMA, order_ref=oref, return_reason="item not as described",
+                        value_pence=back, currency_code=CURRENCY)
+            ids["return"].append(r["record_id"])
+            tot["refunds"] += back
+    tot["net"] = tot["sales"] - tot["refunds"] - tot["fees"]
+    lines = ids["order"] + ids["return"] + ids["charge"]
+    week = monday.isocalendar()
+    return {"ids": ids, "totals": tot, "lines": lines, "monday": monday,
+            "week": f"{week[0]}-W{week[1]:02d}", "wk": week[1]}
+
+
+def sp_statement(c: Case, w: dict, rng: random.Random, *, status: str = "paid",
+                 channel: str = "merchant", net: int | None = None,
+                 status_as_of: datetime | None = None) -> dict:
+    """Weekly statement: issued Monday after the week, paid Tuesday (when status is paid)."""
+    issued = w["monday"] + timedelta(days=7, hours=6)
+    paid = issued + timedelta(days=1, hours=3) if status == "paid" else None
+    t = w["totals"]
+    net = t["net"] if net is None else net
+    fields = {
+        "issuer_id": SP_ISSUER, "schema_version": SP_SCHEMA,
+        "statement_no": f"WS-{w['week']}-{c.number:04d}",
+        "week": w["week"], "period_start": iso(w["monday"]), "period_end": iso(w["monday"] + timedelta(days=7)),
+        "line_record_ids": w["lines"], "gross_sales_pence": t["sales"], "returns_pence": t["refunds"],
+        "charges_pence": t["fees"], "net_payable_pence": net, "currency_code": CURRENCY,
+        "transfer_status": status, "paid_at": iso(paid) if paid else None,
+        "transfer_ref": f"SPLAT W{w['wk']:02d} {rng.randint(1000, 9999)}"}
+    if status_as_of:
+        fields["status_as_of"] = iso(status_as_of)
+    received = (paid or status_as_of or issued) + timedelta(minutes=5)
+    return c.event("weekly_statement", None, issued, channel=channel, received=received, **fields)
+
+
+def sp_credit(c: Case, st: dict, at: datetime, *, amount: int | None = None, ref: bool = True) -> dict:
+    if ref:
+        return c.bank_row(st["net_payable_pence"] if amount is None else amount, at,
+                          "SECOND PLATFORM LTD", "Second Platform Payouts", st["transfer_ref"])
+    return c.bank_row(st["net_payable_pence"] if amount is None else amount, at, "FASTER PAYMENT",
+                      "Synthetic Sender")
+
+
+def sp_case(number: int, variant: str, rng: random.Random) -> dict:
+    titles = {
+        "weekly_paid": "Second platform: one weekly statement paid to the bank",
+        "two_weeks": "Second platform: two weekly statements, two credits",
+        "statement_by_lookup": "Second platform: only an earnings update is pushed; the statement needs a lookup",
+        "scheduled_at_booking": "Second platform: the statement was only scheduled when the credit was booked",
+        "net_mismatch": "Second platform: the credit differs from the statement's net payable",
+        "omits_charges": "Second platform: holder leaves out the service charges",
+        "order_corrected": "Second platform: an order value corrected by a newer revision",
+        "statement_redelivered": "Second platform: the same statement delivered twice",
+        "both_platforms_ask_mock": "Maya on both platforms: Bank A asks about the marketplace credit",
+        "both_platforms_ask_second": "Maya on both platforms: Bank A asks about the second platform credit",
+    }
+    both = variant.startswith("both_platforms")
+    subj = "maya-001" if both else f"seller-{number:04d}"
+    c = Case(number, "second_platform", variant, titles[variant], subj, rng)
+    monday = datetime(2026, rng.choice([8, 9]), 1, tzinfo=timezone.utc)
+    monday += timedelta(days=(7 - monday.weekday()) % 7)          # first Monday of the month
+    c.everyday(monday - timedelta(days=3))
+    path, stated_kw, link = None, {}, "linked"
+    w = sp_week(c, monday, rng, rng.randint(4, 7), returns=rng.randint(0, 1))
+    claim_ref = None
+    extra_answers = None
+    if variant == "two_weeks":
+        w1 = w
+        st1 = sp_statement(c, w1, rng)
+        sp_credit(c, st1, ts_(st1["paid_at"]) + timedelta(hours=14))
+        w = sp_week(c, monday + timedelta(days=7), rng, rng.randint(4, 7), returns=1)
+    if variant == "order_corrected":
+        oid = w["ids"]["order"][0]
+        old = next(d["event"] for d in c.merchant if d["event"]["record_id"] == oid)
+        new_value = old["value_pence"] - rng.randrange(100, old["value_pence"] // 2 + 1, 100)
+        fields = {k: old[k] for k in ("order_ref", "item_title", "currency_code", "issuer_id", "schema_version")}
+        c.event("order_completed", None, w["monday"] + timedelta(days=6, hours=20), record_id=oid,
+                revision=2, value_pence=new_value, correction_reason="price adjusted after buyer message",
+                **fields)
+        w["totals"]["sales"] += new_value - old["value_pence"]   # charge stays on the original value
+        w["totals"]["net"] = w["totals"]["sales"] - w["totals"]["refunds"] - w["totals"]["fees"]
+    if variant == "statement_by_lookup":
+        st = sp_statement(c, w, rng, channel="lookup")
+        c.event("earnings_update", None, ts_(st["occurred_at"]) + timedelta(minutes=30),
+                issuer_id=SP_ISSUER, schema_version=SP_SCHEMA,
+                text=f"Your earnings for week {w['wk']} are on their way to your bank. "
+                     "Your statement is available in the app.")
+        cr = sp_credit(c, st, ts_(st["paid_at"]) + timedelta(hours=14))
+        path = [{"payout_reference": st["transfer_ref"]}]
+    elif variant == "scheduled_at_booking":
+        booked = w["monday"] + timedelta(days=8, hours=10)
+        st = sp_statement(c, w, rng, status="scheduled", status_as_of=booked + timedelta(hours=20))
+        cr = sp_credit(c, st, booked, ref=False)
+        claim_ref, link = st["transfer_ref"], "unmatched"
+    elif variant == "net_mismatch":
+        st = sp_statement(c, w, rng)
+        cr = sp_credit(c, st, ts_(st["paid_at"]) + timedelta(hours=14),
+                       amount=st["net_payable_pence"] - rng.randrange(200, 2001, 100))
+        link = "unmatched"
+    else:
+        st = sp_statement(c, w, rng)
+        if variant == "statement_redelivered":
+            c.deliver("merchant", dict(st), ts_(st["paid_at"]) + timedelta(hours=2), "duplicate_ignored")
+        cr = sp_credit(c, st, ts_(st["paid_at"]) + timedelta(hours=14))
+    if both:
+        # The same month on the mock marketplace, with its own payout and credit.
+        s = c.sales([rng.randrange(5000, 20001, 500) for _ in range(3)], w["monday"] + timedelta(days=1),
+                    refunds={0: 1500})
+        p = c.payout(s["totals"]["net"], s["end"] + timedelta(days=1), s["covers"])
+        mcr = c.credit(s["totals"]["net"], ts_(p["settled_at"]) + timedelta(hours=9), p["payout_reference"])
+        assert mcr["amount_minor"] != cr["amount_minor"]
+        period = (w["monday"].replace(day=1), (w["monday"].replace(day=28) + timedelta(days=4)).replace(day=1))
+        in_period = [d["event"] for d in c.merchant
+                     if d["event"]["kind"] in ("sale", "refund", "order_completed", "order_returned")
+                     and period[0] <= ts_(d["event"]["occurred_at"]) < period[1]]
+        def mine(kind_sale, kind_ref, issuer):
+            evs = [e for e in in_period if e["issuer_id"] == issuer]
+            amt = lambda e: e.get("amount_minor", e.get("value_pence"))
+            return {"sales_minor": sum(amt(e) for e in evs if e["kind"] == kind_sale),
+                    "refunds_minor": sum(amt(e) for e in evs if e["kind"] == kind_ref),
+                    "sale_count": sum(1 for e in evs if e["kind"] == kind_sale),
+                    "refund_count": sum(1 for e in evs if e["kind"] == kind_ref)}
+        by = {ISSUER: mine("sale", "refund", ISSUER), SP_ISSUER: mine("order_completed", "order_returned", SP_ISSUER)}
+        facts = {k: by[ISSUER][k] + by[SP_ISSUER][k] for k in by[ISSUER]}
+        facts["by_issuer"] = by
+        last_booked = max(ts_(cr["booked_at"]), ts_(mcr["booked_at"]))
+        ask_mock = variant == "both_platforms_ask_mock"
+        first = c.rfc(mcr if ask_mock else cr, last_booked + timedelta(days=3))
+        second = c.rfc(None, last_booked + timedelta(days=5), audience="bank_b", period=period, seq=2)
+        extra_answers = {second["request_id"]: {Q_PERIOD: {
+            "status": "supported", "gap": None, "facts": facts,
+            "evidence_sets": [[f"merchant:{e['record_id']}" for e in in_period]]}}}
+        if ask_mock:
+            return c.finish(rfcs=[first, second], credit=mcr, stated=stated(s["totals"]), payout_ref=None,
+                            link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                            claim_status="supported", source_status="supported", gap=None,
+                            extra_answers=extra_answers,
+                            notes="Maya sells on both platforms. Bank A asks about the marketplace credit; "
+                                  "Bank B's period question needs both platforms' orders and returns, "
+                                  "summed in pence (facts.by_issuer splits them).")
+        rfcs = [first, second]
+    else:
+        rfcs = [c.rfc(cr, ts_(cr["booked_at"]) + timedelta(days=4))]
+    tot = w["totals"]
+    st_tot = stated(tot, fees=0) if variant == "omits_charges" else stated(tot)
+    common = dict(rfcs=rfcs, credit=cr, stated=st_tot, payout_ref=claim_ref, extra_answers=extra_answers,
+                  extra_gold={"retrieval_path": path} if path else None)
+    if link == "unmatched":
+        gap = "settlement_pending_at_booking" if variant == "scheduled_at_booking" else "amount_mismatch"
+        return c.finish(link="unmatched", payouts=[], covered=None, breakdown=None,
+                        claim_status="contradicted" if claim_ref else "unresolved",
+                        source_status="unresolved", gap=gap,
+                        notes=f"{titles[variant]}. In contract terms a weekly_statement is a payout and "
+                              "'scheduled' is pending, so the statement cannot explain the credit.", **common)
+    return c.finish(link="linked", payouts=[st], covered=w["lines"], breakdown=tot,
+                    claim_status="contradicted" if variant == "omits_charges" else "supported",
+                    source_status="supported", gap=None,
+                    notes=f"{titles[variant]}. Field mapping to the contract is in agents/data/README.md "
+                          "'Second platform' and api.to_contract().", **common)
+
+
+SP_VARIANTS = ["weekly_paid", "two_weeks", "statement_by_lookup", "scheduled_at_booking", "net_mismatch",
+               "omits_charges", "order_corrected", "statement_redelivered", "both_platforms_ask_mock",
+               "both_platforms_ask_second"]
+
+
+def second_platform_receipt_specs() -> list[dict]:
+    """True fields for receipt images 11-12, taken from case 71 (weekly_paid)."""
+    case = next(c for c in build_cases() if c["case_number"] == 71)
+    evs = [d["event"] for d in case["merchant_deliveries"]]
+    order = next(e for e in evs if e["kind"] == "order_completed")
+    charge = next(e for e in evs if e["kind"] == "service_charge" and e["order_ref"] == order["order_ref"])
+    st = next(e for e in evs if e["kind"] == "weekly_statement")
+    return [
+        {"id": "rcpt-11", "kind": "order_confirmation", "layout": "email", "distortion": "none",
+         "issuer": SP_NAME, "document_date": order["occurred_at"][:10], "reference": order["order_ref"],
+         "currency": "GBP", "total_minor": order["value_pence"],
+         "items": [{"description": order["item_title"], "amount_minor": order["value_pence"]}],
+         "extra_fields": {"service_charge_minor": charge["value_pence"], "status": "Order completed"},
+         "links": {"case_number": 71, "record_id": order["record_id"]},
+         "notes": "Second-platform order email. Its wording and fields differ from the marketplace's."},
+        {"id": "rcpt-12", "kind": "weekly_statement", "layout": "pdf_like", "distortion": "none",
+         "issuer": SP_NAME, "document_date": st["paid_at"][:10], "reference": st["statement_no"],
+         "currency": "GBP", "total_minor": st["net_payable_pence"],
+         "items": [{"description": "Gross sales", "amount_minor": st["gross_sales_pence"]},
+                   {"description": "Returns", "amount_minor": -st["returns_pence"]},
+                   {"description": "Service charges", "amount_minor": -st["charges_pence"]}],
+         "extra_fields": {"week": st["week"], "transfer_status": "Paid",
+                          "transfer_ref": st["transfer_ref"], "paid_at": st["paid_at"]},
+         "links": {"case_number": 71, "record_id": st["record_id"]},
+         "notes": "Weekly statement in place of a payout record. The bank shows transfer_ref."},
+    ]
+
+
 ALERT_VARIANTS = ["unexplained_credit", "unexplained_until_lookup", "unusual_inflow_explained",
                   "unusual_inflow_unexplained", "unusual_outflow", "amount_discrepancy",
                   "settled_not_received", "pending_at_booking", "merchant_unverified", "quiet_control"]
@@ -1130,6 +1362,9 @@ def build_cases(seed: int = 20261107) -> list[dict]:
         n += 1
     for v in ALERT_VARIANTS:
         cases.append(alert_case(n, v, random.Random(rng.random())))
+        n += 1
+    for v in SP_VARIANTS:
+        cases.append(sp_case(n, v, random.Random(rng.random())))
         n += 1
     return cases
 

@@ -1,6 +1,6 @@
 {
   "label": "SYNTHETIC - labelled test images, not real receipts",
-  "count": 10,
+  "count": 12,
   "currency_note": "amounts are integer pence; negative item amounts are deductions",
   "receipts": [
     {
@@ -281,6 +281,70 @@
         "record_id": "rec-0001-021"
       },
       "notes": "The same payout as rcpt-06, printed and photographed on a desk at an angle."
+    },
+    {
+      "file": "rcpt-11_order_confirmation.png",
+      "id": "rcpt-11",
+      "kind": "order_confirmation",
+      "layout": "email",
+      "distortion": "none",
+      "issuer": "Second Platform",
+      "document_date": "2026-09-09",
+      "reference": "SPO-0071000",
+      "currency": "GBP",
+      "total_minor": 4700,
+      "items": [
+        {
+          "description": "Pre-loved item 1",
+          "amount_minor": 4700
+        }
+      ],
+      "extra_fields": {
+        "service_charge_minor": 188,
+        "status": "Order completed"
+      },
+      "links": {
+        "case_number": 71,
+        "record_id": "rec-0071-001"
+      },
+      "notes": "Second-platform order email. Its wording and fields differ from the marketplace's."
+    },
+    {
+      "file": "rcpt-12_weekly_statement.png",
+      "id": "rcpt-12",
+      "kind": "weekly_statement",
+      "layout": "pdf_like",
+      "distortion": "none",
+      "issuer": "Second Platform",
+      "document_date": "2026-09-15",
+      "reference": "WS-2026-W37-0071",
+      "currency": "GBP",
+      "total_minor": 25920,
+      "items": [
+        {
+          "description": "Gross sales",
+          "amount_minor": 27000
+        },
+        {
+          "description": "Returns",
+          "amount_minor": 0
+        },
+        {
+          "description": "Service charges",
+          "amount_minor": -1080
+        }
+      ],
+      "extra_fields": {
+        "week": "2026-W37",
+        "transfer_status": "Paid",
+        "transfer_ref": "SPLAT W37 4588",
+        "paid_at": "2026-09-15T09:00:00Z"
+      },
+      "links": {
+        "case_number": 71,
+        "record_id": "rec-0071-013"
+      },
+      "notes": "Weekly statement in place of a payout record. The bank shows transfer_ref."
     }
   ]
 }

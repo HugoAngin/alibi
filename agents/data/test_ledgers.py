@@ -55,6 +55,8 @@ def replay(view: dict):
         if ev["record_id"] not in active or ev["revision"] > active[ev["record_id"]][0]["revision"]:
             active[ev["record_id"]] = (ev, "merchant")
     outcomes += ingest(view["bank_deliveries"], "row", "txn_id", "bank", None)
+    # Rules run on contract fields; second-platform events are mapped (api.to_contract).
+    active = {r: (api.to_contract(e), conn) for r, (e, conn) in active.items()}
     bank = {}
     for d in view["bank_deliveries"]:
         bank.setdefault(d["row"]["txn_id"], d["row"])
@@ -179,6 +181,9 @@ def test_contract_shapes(case):
         for k in ("schema_version", "event_id", "record_id", "revision", "issuer_id",
                   "subject_ref", "kind", "occurred_at"):
             assert k in ev
+        if ev["issuer_id"] == api.SECOND_PLATFORM:
+            assert "amount_minor" not in ev and ev["schema_version"] != ledgers.SCHEMA_VERSION
+            ev = api.to_contract(ev)
         if ev["kind"] in ("notice", "statement", "receipt"):
             assert "amount_minor" not in ev and ev["text"]
         else:
@@ -237,7 +242,7 @@ def test_committed_json_matches_generator():
 
 
 def test_coverage():
-    assert len(CASES) == 70
+    assert len(CASES) == 80
     assert {c["family"] for c in CASES} == set(api.FAMILIES)
     assert {c["gold"]["claim_status"] for c in CASES} == {"supported", "contradicted", "unresolved"}
     assert {l["state"] for c in CASES for l in c["gold"]["links"]} == {"linked", "unmatched", "ambiguous"}
@@ -478,3 +483,54 @@ def test_merchant_lookup():
     payees = {ledgers.norm_name(d["row"]["counterparty_name"]) for c in CASES
               for d in c["bank_deliveries"] if d["row"]["amount_minor"] < 0}
     assert payees - known == {ledgers.norm_name(n) for n in reg["unknown_examples"][:1]}
+
+
+# --------------------------------------------------------------------------
+# second platform (cases 71-80)
+# --------------------------------------------------------------------------
+
+SECOND = [c for c in CASES if c["family"] == "second_platform"]
+CONTRACT_ONLY = {"amount_minor", "payout_reference", "settled_at", "covers_record_ids", "currency"}
+
+
+@pytest.mark.parametrize("case", SECOND, ids=lambda c: f"case{c['case_number']}")
+def test_second_platform_uses_its_own_schema(case):
+    events = [d["event"] for d in case["merchant_deliveries"]] + [d["event"] for d in case["merchant_lookup"]]
+    sp = [e for e in events if e["issuer_id"] == api.SECOND_PLATFORM]
+    assert sp and {e["kind"] for e in sp} <= {"order_completed", "order_returned", "service_charge",
+                                              "weekly_statement", "earnings_update"}
+    assert all(not (CONTRACT_ONLY & e.keys()) for e in sp), "raw events must not carry contract fields"
+    for st in (e for e in sp if e["kind"] == "weekly_statement"):
+        assert st["gross_sales_pence"] - st["returns_pence"] - st["charges_pence"] == st["net_payable_pence"]
+        assert ts(st["period_end"]) - ts(st["period_start"]) == timedelta(days=7)
+        assert ts(st["period_start"]).weekday() == 0
+    # the bank shows the platform's own reference format, never a PO- reference
+    credit = next(d["row"] for d in case["bank_deliveries"] if d["row"]["txn_id"] == case["holder_claim"]["txn_id"])
+    if credit["counterparty_name"] == "Second Platform Payouts":
+        assert credit["payment_reference"].startswith("SPLAT W")
+
+
+@pytest.mark.parametrize("case", [c for c in SECOND if c["variant"].startswith("both_platforms")],
+                         ids=lambda c: f"case{c['case_number']}")
+def test_two_platform_period_answer(case):
+    rfc = case["rfcs"][1]
+    _, active, _ = replay(api.known_at(case, rfc["issued_at"], include_lookup=True))
+    lo, hi = ts(rfc["period"]["from"]), ts(rfc["period"]["to"])
+    inside = [e for e, _ in active.values() if e["kind"] in ("sale", "refund") and lo <= ts(e["occurred_at"]) < hi]
+    facts = case["gold"]["answers"][rfc["request_id"]][ledgers.Q_PERIOD]["facts"]
+    assert facts["sales_minor"] == sum(e["amount_minor"] for e in inside if e["kind"] == "sale")
+    assert facts["refunds_minor"] == sum(e["amount_minor"] for e in inside if e["kind"] == "refund")
+    assert {e["issuer_id"] for e in inside} == {ledgers.ISSUER, api.SECOND_PLATFORM}
+    by = facts["by_issuer"]
+    assert by[ledgers.ISSUER]["sales_minor"] + by[api.SECOND_PLATFORM]["sales_minor"] == facts["sales_minor"]
+    assert case["subject_ref"] == "maya-001" and [r["audience"] for r in case["rfcs"]] == ["bank_a", "bank_b"]
+
+
+def test_second_platform_lookup_by_transfer_ref():
+    case = next(c for c in SECOND if c["variant"] == "statement_by_lookup")
+    at = case["gold"]["decision_time"]
+    [step] = case["gold"]["retrieval_path"]
+    [st] = api.lookup(case, at, **step)
+    assert st["kind"] == "weekly_statement" and st["record_id"] in case["gold"]["requires_retrieval"]
+    assert api.lookup(case, at, payout_reference=st["statement_no"])[0]["record_id"] == st["record_id"]
+    assert api.lookup(case, at, covers_record_id=st["line_record_ids"][0])[0]["record_id"] == st["record_id"]

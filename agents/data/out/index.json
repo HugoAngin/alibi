@@ -1,6 +1,6 @@
 {
   "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
-  "count": 70,
+  "count": 80,
   "cases": [
     {
       "case_number": 1,
@@ -767,6 +767,116 @@
       "variant": "quiet_control",
       "title": "Control: an ordinary month, no alerts",
       "file": "cases/case_0070.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 71,
+      "family": "second_platform",
+      "variant": "weekly_paid",
+      "title": "Second platform: one weekly statement paid to the bank",
+      "file": "cases/case_0071.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 72,
+      "family": "second_platform",
+      "variant": "two_weeks",
+      "title": "Second platform: two weekly statements, two credits",
+      "file": "cases/case_0072.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 73,
+      "family": "second_platform",
+      "variant": "statement_by_lookup",
+      "title": "Second platform: only an earnings update is pushed; the statement needs a lookup",
+      "file": "cases/case_0073.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 74,
+      "family": "second_platform",
+      "variant": "scheduled_at_booking",
+      "title": "Second platform: the statement was only scheduled when the credit was booked",
+      "file": "cases/case_0074.json",
+      "claim_status": "contradicted",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 75,
+      "family": "second_platform",
+      "variant": "net_mismatch",
+      "title": "Second platform: the credit differs from the statement's net payable",
+      "file": "cases/case_0075.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 76,
+      "family": "second_platform",
+      "variant": "omits_charges",
+      "title": "Second platform: holder leaves out the service charges",
+      "file": "cases/case_0076.json",
+      "claim_status": "contradicted",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 77,
+      "family": "second_platform",
+      "variant": "order_corrected",
+      "title": "Second platform: an order value corrected by a newer revision",
+      "file": "cases/case_0077.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 78,
+      "family": "second_platform",
+      "variant": "statement_redelivered",
+      "title": "Second platform: the same statement delivered twice",
+      "file": "cases/case_0078.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 79,
+      "family": "second_platform",
+      "variant": "both_platforms_ask_mock",
+      "title": "Maya on both platforms: Bank A asks about the marketplace credit",
+      "file": "cases/case_0079.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 80,
+      "family": "second_platform",
+      "variant": "both_platforms_ask_second",
+      "title": "Maya on both platforms: Bank A asks about the second platform credit",
+      "file": "cases/case_0080.json",
       "claim_status": "supported",
       "link_states": [
         "linked"

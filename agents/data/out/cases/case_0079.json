@@ -1,0 +1,752 @@
+{
+  "case_number": 79,
+  "family": "second_platform",
+  "variant": "both_platforms_ask_mock",
+  "title": "Maya on both platforms: Bank A asks about the marketplace credit",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "maya-001",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-08-03T02:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-001",
+        "record_id": "rec-0079-001",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "order_completed",
+        "occurred_at": "2026-08-03T02:00:00Z",
+        "order_ref": "SPO-0079000",
+        "item_title": "Pre-loved item 1",
+        "value_pence": 4400,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-03T02:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-002",
+        "record_id": "rec-0079-002",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "service_charge",
+        "occurred_at": "2026-08-03T02:02:00Z",
+        "order_ref": "SPO-0079000",
+        "charge_label": "Service charge 4%",
+        "value_pence": 176,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-06T09:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-003",
+        "record_id": "rec-0079-003",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "order_completed",
+        "occurred_at": "2026-08-06T09:00:00Z",
+        "order_ref": "SPO-0079002",
+        "item_title": "Pre-loved item 2",
+        "value_pence": 2700,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-06T09:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-004",
+        "record_id": "rec-0079-004",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "service_charge",
+        "occurred_at": "2026-08-06T09:02:00Z",
+        "order_ref": "SPO-0079002",
+        "charge_label": "Service charge 4%",
+        "value_pence": 108,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-07T04:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-005",
+        "record_id": "rec-0079-005",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "order_completed",
+        "occurred_at": "2026-08-07T04:00:00Z",
+        "order_ref": "SPO-0079004",
+        "item_title": "Pre-loved item 3",
+        "value_pence": 2300,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-07T04:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-006",
+        "record_id": "rec-0079-006",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "service_charge",
+        "occurred_at": "2026-08-07T04:02:00Z",
+        "order_ref": "SPO-0079004",
+        "charge_label": "Service charge 4%",
+        "value_pence": 92,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-08T06:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-007",
+        "record_id": "rec-0079-007",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "order_returned",
+        "occurred_at": "2026-08-08T06:00:00Z",
+        "order_ref": "SPO-0079004",
+        "return_reason": "item not as described",
+        "value_pence": 300,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-07T07:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-008",
+        "record_id": "rec-0079-008",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "order_completed",
+        "occurred_at": "2026-08-07T07:00:00Z",
+        "order_ref": "SPO-0079007",
+        "item_title": "Pre-loved item 4",
+        "value_pence": 2000,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-07T07:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-009",
+        "record_id": "rec-0079-009",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "service_charge",
+        "occurred_at": "2026-08-07T07:02:00Z",
+        "order_ref": "SPO-0079007",
+        "charge_label": "Service charge 4%",
+        "value_pence": 80,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-08-11T09:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0079-010",
+        "record_id": "rec-0079-010",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "maya-001",
+        "kind": "weekly_statement",
+        "occurred_at": "2026-08-10T06:00:00Z",
+        "statement_no": "WS-2026-W32-0079",
+        "week": "2026-W32",
+        "period_start": "2026-08-03T00:00:00Z",
+        "period_end": "2026-08-10T00:00:00Z",
+        "line_record_ids": [
+          "rec-0079-001",
+          "rec-0079-003",
+          "rec-0079-005",
+          "rec-0079-008",
+          "rec-0079-007",
+          "rec-0079-002",
+          "rec-0079-004",
+          "rec-0079-006",
+          "rec-0079-009"
+        ],
+        "gross_sales_pence": 11400,
+        "returns_pence": 300,
+        "charges_pence": 456,
+        "net_payable_pence": 10644,
+        "currency_code": "GBP",
+        "transfer_status": "paid",
+        "paid_at": "2026-08-11T09:00:00Z",
+        "transfer_ref": "SPLAT W32 9911"
+      }
+    },
+    {
+      "received_at": "2026-08-04T00:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-011",
+        "record_id": "rec-0079-011",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-08-04T00:00:00Z",
+        "amount_minor": 19000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-08-04T00:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-012",
+        "record_id": "rec-0079-012",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-08-04T00:01:00Z",
+        "amount_minor": 475,
+        "currency": "GBP",
+        "related_record_id": "rec-0079-011",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-08-04T20:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-013",
+        "record_id": "rec-0079-013",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "refund",
+        "occurred_at": "2026-08-04T20:00:00Z",
+        "amount_minor": 1500,
+        "currency": "GBP",
+        "related_record_id": "rec-0079-011",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-08-05T06:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-014",
+        "record_id": "rec-0079-014",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-08-05T06:00:00Z",
+        "amount_minor": 10500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-08-05T06:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-015",
+        "record_id": "rec-0079-015",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-08-05T06:01:00Z",
+        "amount_minor": 263,
+        "currency": "GBP",
+        "related_record_id": "rec-0079-014",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-08-06T12:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-016",
+        "record_id": "rec-0079-016",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "sale",
+        "occurred_at": "2026-08-06T12:00:00Z",
+        "amount_minor": 14500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-08-06T12:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-017",
+        "record_id": "rec-0079-017",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "fee",
+        "occurred_at": "2026-08-06T12:01:00Z",
+        "amount_minor": 363,
+        "currency": "GBP",
+        "related_record_id": "rec-0079-016",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-08-09T14:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0079-018",
+        "record_id": "rec-0079-018",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "maya-001",
+        "kind": "payout",
+        "occurred_at": "2026-08-08T18:00:00Z",
+        "amount_minor": 41399,
+        "currency": "GBP",
+        "destination": "bank",
+        "payout_reference": "PO-0079-01",
+        "status": "settled",
+        "settled_at": "2026-08-09T14:00:00Z",
+        "covers_record_ids": [
+          "rec-0079-011",
+          "rec-0079-014",
+          "rec-0079-016",
+          "rec-0079-013",
+          "rec-0079-012",
+          "rec-0079-015",
+          "rec-0079-017"
+        ]
+      }
+    }
+  ],
+  "merchant_lookup": [],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-08-01T10:00:00Z",
+      "row": {
+        "txn_id": "txn-0079-001",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-08-01T09:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-08-03T14:00:00Z",
+      "row": {
+        "txn_id": "txn-0079-002",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-08-03T13:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-08-05T12:00:00Z",
+      "row": {
+        "txn_id": "txn-0079-003",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-08-05T11:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-08-12T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0079-004",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-08-11T23:00:00Z",
+        "amount_minor": 10644,
+        "currency": "GBP",
+        "description": "SECOND PLATFORM LTD SPLAT W32 9911",
+        "counterparty_name": "Second Platform Payouts",
+        "payment_reference": "SPLAT W32 9911"
+      }
+    },
+    {
+      "received_at": "2026-08-10T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0079-005",
+        "revision": 1,
+        "account_ref": "acct-maya-001",
+        "booked_at": "2026-08-09T23:00:00Z",
+        "amount_minor": 41399,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT PO-0079-01",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": "PO-0079-01"
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0079-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "maya-001",
+      "txn_ids": [
+        "txn-0079-005"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Please explain the source of the credit of £413.99 received on 2026-08-09."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "Please show how this amount was calculated."
+        }
+      ],
+      "issued_at": "2026-08-14T23:00:00Z",
+      "expires_at": "2026-08-21T23:00:00Z"
+    },
+    {
+      "request_id": "rfc-0079-02",
+      "parent_request_id": null,
+      "audience": "bank_b",
+      "subject_ref": "maya-001",
+      "txn_ids": [],
+      "period": {
+        "from": "2026-08-01T00:00:00Z",
+        "to": "2026-09-01T00:00:00Z"
+      },
+      "question_ids": [
+        "q.sales_refunds_in_period"
+      ],
+      "questions": [
+        {
+          "question_id": "q.sales_refunds_in_period",
+          "text": "Please provide documented marketplace sales and refunds between 01 August 2026 and 31 August 2026."
+        }
+      ],
+      "issued_at": "2026-08-16T23:00:00Z",
+      "expires_at": "2026-08-23T23:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0079-005",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 44000,
+      "refunds": 1500,
+      "fees": 1101,
+      "net": 41399
+    }
+  },
+  "gold": {
+    "decision_time": "2026-08-14T23:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0079-005",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0079-018"
+        ]
+      }
+    ],
+    "breakdown_minor": {
+      "sales": 44000,
+      "refunds": 1500,
+      "fees": 1101,
+      "net": 41399
+    },
+    "claim_status": "supported",
+    "answers": {
+      "rfc-0079-01": {
+        "q.source_of_funds": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "payout_references": [
+              "PO-0079-01"
+            ],
+            "settled_at": [
+              "2026-08-09T14:00:00Z"
+            ]
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0079-005",
+              "merchant:rec-0079-018"
+            ]
+          ]
+        },
+        "q.breakdown": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "breakdown_minor": {
+              "sales": 44000,
+              "refunds": 1500,
+              "fees": 1101,
+              "net": 41399
+            }
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0079-005",
+              "merchant:rec-0079-018",
+              "merchant:rec-0079-011",
+              "merchant:rec-0079-014",
+              "merchant:rec-0079-016",
+              "merchant:rec-0079-013",
+              "merchant:rec-0079-012",
+              "merchant:rec-0079-015",
+              "merchant:rec-0079-017"
+            ]
+          ]
+        }
+      },
+      "rfc-0079-02": {
+        "q.sales_refunds_in_period": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "sales_minor": 55400,
+            "refunds_minor": 1800,
+            "sale_count": 7,
+            "refund_count": 2,
+            "by_issuer": {
+              "mock-marketplace": {
+                "sales_minor": 44000,
+                "refunds_minor": 1500,
+                "sale_count": 3,
+                "refund_count": 1
+              },
+              "second-platform": {
+                "sales_minor": 11400,
+                "refunds_minor": 300,
+                "sale_count": 4,
+                "refund_count": 1
+              }
+            }
+          },
+          "evidence_sets": [
+            [
+              "merchant:rec-0079-001",
+              "merchant:rec-0079-003",
+              "merchant:rec-0079-005",
+              "merchant:rec-0079-007",
+              "merchant:rec-0079-008",
+              "merchant:rec-0079-011",
+              "merchant:rec-0079-013",
+              "merchant:rec-0079-014",
+              "merchant:rec-0079-016"
+            ]
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0079-001",
+      "bank:txn-0079-002",
+      "bank:txn-0079-003"
+    ],
+    "source_trust": {
+      "bank:txn-0079-001": "bank_observed",
+      "bank:txn-0079-002": "bank_observed",
+      "bank:txn-0079-003": "bank_observed",
+      "bank:txn-0079-005": "bank_observed",
+      "merchant:rec-0079-001": "issuer_verified",
+      "merchant:rec-0079-003": "issuer_verified",
+      "merchant:rec-0079-005": "issuer_verified",
+      "merchant:rec-0079-007": "issuer_verified",
+      "merchant:rec-0079-008": "issuer_verified",
+      "merchant:rec-0079-011": "issuer_verified",
+      "merchant:rec-0079-012": "issuer_verified",
+      "merchant:rec-0079-013": "issuer_verified",
+      "merchant:rec-0079-014": "issuer_verified",
+      "merchant:rec-0079-015": "issuer_verified",
+      "merchant:rec-0079-016": "issuer_verified",
+      "merchant:rec-0079-017": "issuer_verified",
+      "merchant:rec-0079-018": "issuer_verified"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0079-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0079-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0079-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0079-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0079-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "id": "evt-0079-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "id": "evt-0079-007",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 7,
+        "id": "evt-0079-008",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 8,
+        "id": "evt-0079-009",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 9,
+        "id": "evt-0079-010",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 10,
+        "id": "evt-0079-011",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 11,
+        "id": "evt-0079-012",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 12,
+        "id": "evt-0079-013",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 13,
+        "id": "evt-0079-014",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 14,
+        "id": "evt-0079-015",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 15,
+        "id": "evt-0079-016",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 16,
+        "id": "evt-0079-017",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 17,
+        "id": "evt-0079-018",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0079-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0079-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0079-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0079-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 4,
+        "id": "txn-0079-005",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "Maya sells on both platforms. Bank A asks about the marketplace credit; Bank B's period question needs both platforms' orders and returns, summed in pence (facts.by_issuer splits them)."
+  }
+}

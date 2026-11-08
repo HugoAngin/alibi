@@ -57,6 +57,10 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Not yet assigned (lead must grant web/apps/alibi/src/components/site/). Flagged on the board: generic synthetic merchant names instead of Amazon/Deliveroo/Uniqlo unless Elio confirms.
 - SVG prototype in scratchpad/hero/index.html. Elements: sources (Mock Marketplace from case 1, 4 generic shops, 2 bank accounts, mule-pattern check) with packets flowing along paths into the engine with its 4 agents; scroll lights the agents and sends the signed package to Bank A (rfc-0001-01). Reduced motion gives a still frame; rendering only runs while visible. Checked at 1440 and 375 (no horizontal scroll; labels small on phone). Port the figure, style and script into HeroScene.astro when granted.
 
+## 04:32Z reroute (research, post 6717263436)
+- Lead is out and team.json is frozen. Eval owns the hero; data handed over agents/data/out/hero_prototype/ (eea410a). Generic merchant labels until Elio confirms the real ones.
+- Merchant drop-ins staged in agents/data/web_merchant/ for research to copy in and verify (eea410a). Waiting for research's pnpm verify results.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

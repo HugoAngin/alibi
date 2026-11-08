@@ -15,6 +15,9 @@ You receive the person's instructions as text, the list of categories, merchants
 5. When an instruction could mean two different rules, return no rule for it and ask one clarification question that offers the two readings.
 6. `confidence` below 0.8 means the rule will be held for review; use it when wording is loose.
 7. `source_text` quotes the exact words you compiled, so the person can see which sentence became which rule.
+8. One instruction may need more than one rule (for example a deny and a recipient restriction); return each as its own rule with its own `source_text`. A `recipient_restrict` rule lists the recipients that MAY receive the target: "Only Bank A sees X" gives `["bank_a"]`, and "Bank B shouldn't see X" gives every other configured recipient. A rule naming a recipient that is not configured is never returned; ask instead.
+9. Map an everyday word to a vocabulary name only when the meaning is plainly the same (for example "medical" when the category is `health`, "account number" when the field is `account_ref`). When two vocabulary names could fit, prefer the broader one (a category over one merchant) and lower the confidence, or ask.
+10. `params` carries only the keys its kind uses, and `value` is empty only for target `all`. Age limits are whole days (a year is 365, six months 182). A statement about a transaction, a remark, or a request that Alibi share more than a question needs is not a rule and is not compiled.
 
 ## Output
 

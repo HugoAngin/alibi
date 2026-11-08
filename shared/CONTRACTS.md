@@ -48,3 +48,5 @@ Report every system (rules baseline, one-pass Gemini, full Alibi) with the same 
 ## Split and lockbox
 
 `shared/splits.json` sets `lockbox_from` to a case number. Development and demo cases are numbered below it. The sealed evaluation and adversarial cases are numbered from it upward, are authored by `eval` from separate scenario families, and are not committed until the candidate is frozen. `eval` scores them once with `results.py add --split lockbox`. The demo fixture and its variants are never in the sealed set.
+
+Sealed runs are local only. `eval` runs them on its own machine, from a clean checkout of the frozen commit, in-process through `alibi.adapter.run_case` inside `agents.eval.sealed_worker`. No sealed case, gold or package goes to any shared or public deployment (Modal, Cloudflare, a tunnel), the board, or a commit before freeze. The only outbound calls are the Gemini API calls the system under test makes itself, with the run's own key. The only things that leave the machine are the scores and the `results.py` record. Shared deployments run public cases 1 to 80 only.

@@ -81,9 +81,14 @@ def main():
         with args.out.open("x") as handle:
             handle.write(encoded + "\n")
     print(encoded)
-    print(json.dumps({f"{kind}_{mode}": count for kind in (
+    metrics = {f"{kind}_{mode}": count for kind in (
         "failed_groups", "failed_groups_without_stderr", "unclassified_groups")
-                     for mode, count in report[kind].items()}, sort_keys=True))
+               for mode, count in report[kind].items()}
+    for group in report["groups"]:
+        label = "core_schema" if group["file"] == "alibi/core/ingest.py" else "import_kind"
+        metrics[label + "_distinct_cases"] = group["distinct_cases"]
+        metrics.update({label + "_" + mode: count for mode, count in group["system_groups"].items()})
+    print(json.dumps(metrics, sort_keys=True))
 
 
 if __name__ == "__main__":

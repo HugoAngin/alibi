@@ -1,0 +1,23 @@
+{
+  "post_hoc_public_diagnostic": true,
+  "public_source_case": 39,
+  "candidate": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+  "worker": "30758fc8145b1f415aac319032872e648e699fbc",
+  "workers": 4,
+  "rules_timeout_seconds": 30,
+  "jobs": 4,
+  "scheduler_errors": 0,
+  "child_failure_groups": 4,
+  "mutations": [
+    "Set imported record kind to a fresh unsupported public string; remove amount_minor.",
+    "Set imported record kind to the same unsupported public string; retain amount_minor."
+  ],
+  "innermost_frames": [
+    "alibi/core/ingest.py:402",
+    "alibi/connectors/self_supplied.py:126"
+  ],
+  "recipe_sha256": "463a51f23daa791223ea72cc4f72c84a35ad713a464640349e474bd1393a69b4",
+  "model_calls": 0,
+  "hidden_inputs_or_gold_reads": 0,
+  "conclusion": "Candidate import-schema rejection reproduced. This does not establish an evaluator mapping fault or authorise a retry."
+}

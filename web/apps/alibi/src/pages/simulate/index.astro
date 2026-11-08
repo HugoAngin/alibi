@@ -30,7 +30,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
       holder={loaded.data.holder.name}
       fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
     >
-      <PassportHome data={loaded.data} />
+      <PassportHome data={loaded.data} simulation />
     </AppFrame>
   )}
 </BaseLayout>

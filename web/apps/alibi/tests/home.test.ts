@@ -12,8 +12,10 @@ import {
   byMonth,
   contextTimeline,
   describe,
+  explain,
   headline,
   initials,
+  nextDue,
   plainName,
   requestState,
   type TxnDetail,
@@ -70,13 +72,14 @@ const request = (
   recipient: string,
   status: PassportHome['requests'][number]['status'],
   at: string,
+  due = '2026-11-09T09:00:00Z',
 ) => ({
   request_id: id,
   audience,
   recipient,
   question_count: 2,
   received_at: at,
-  expires_at: '2026-11-09T09:00:00Z',
+  expires_at: due,
   status,
   href: '#',
 });
@@ -121,6 +124,35 @@ group('activity and headline', () => {
       href: '/app/requests/rfc-0001-02/',
     });
     expect(items[2]).toMatchObject({ title: 'Unexplained credit of £2,160.00', href: null });
+  });
+
+  it('lists the soonest reply-by date first among waiting requests', () => {
+    const case1 = home({
+      requests: [
+        request('rfc-b', 'bank_b', 'Bank B', 'new', '2026-11-04T14:00:00Z', '2026-11-11T09:00:00Z'),
+        request('rfc-a', 'bank_a', 'Bank A', 'new', '2026-11-02T09:00:00Z', '2026-11-09T09:00:00Z'),
+        request(
+          'rfc-s',
+          'bank_a',
+          'Bank A',
+          'sent',
+          '2026-11-05T09:00:00Z',
+          '2026-11-01T09:00:00Z',
+        ),
+      ],
+    });
+    const items = activity(case1);
+    expect(items.map((i) => i.id)).toEqual(['rfc-a', 'rfc-b', 'rfc-s']);
+    expect(items[0]!.due).toBe('2026-11-09T09:00:00Z');
+    expect(nextDue(case1)).toEqual({ recipient: 'Bank A', expires_at: '2026-11-09T09:00:00Z' });
+  });
+
+  it('has no next due date when nothing waits on her', () => {
+    expect(nextDue(home())).toBeNull();
+    const done = home({
+      requests: [request('r1', 'bank_a', 'Bank A', 'sent', '2026-11-02T09:00:00Z')],
+    });
+    expect(nextDue(done)).toBeNull();
   });
 
   it('writes minor units in alert titles as money', () => {
@@ -261,7 +293,36 @@ group('contextTimeline', () => {
     reconciliation: {
       expression: '240000 - 18000 - 6000 = 216000',
       matches: true,
-      lines: [1, 2, 3],
+      lines: [
+        {
+          label: 'Sales',
+          kind: 'order',
+          sign: '+',
+          amount: gbp(240000),
+          source_ids: ['rec-0001-001 r1', 'rec-0001-002 r1'],
+        },
+        {
+          label: 'Refunds',
+          kind: 'refund',
+          sign: '-',
+          amount: gbp(18000),
+          source_ids: ['rec-0001-010 r1'],
+        },
+        {
+          label: 'Fees',
+          kind: 'fee',
+          sign: '-',
+          amount: gbp(6000),
+          source_ids: ['rec-0001-011 r1'],
+        },
+        {
+          label: 'Payout',
+          kind: 'payout',
+          sign: '-',
+          amount: gbp(216000),
+          source_ids: ['rec-0001-021 r1'],
+        },
+      ],
     },
     claims: [
       {
@@ -282,9 +343,59 @@ group('contextTimeline', () => {
   it('explains a credit with the payout of the same amount, not the first record listed', () => {
     expect(entries[0]!.context).toBe('Payout PO-0001-01 settled to Bank A');
     expect(entries[0]!.observedBy).toBe('Bank A');
-    expect(entries[0]!.calculation).toEqual({
+    expect(entries[0]!.calculation).toMatchObject({
       expression: '240000 - 18000 - 6000 = 216000 (pence)',
       matches: true,
+    });
+  });
+
+  it('types each reconciliation line and drops malformed ones', () => {
+    const lines = entries[0]!.calculation!.lines;
+    expect(lines.map((l) => [l.label, l.sign, l.amount.minor, l.source_ids.length])).toEqual([
+      ['Sales', '+', 240000, 2],
+      ['Refunds', '-', 18000, 1],
+      ['Fees', '-', 6000, 1],
+      ['Payout', '-', 216000, 1],
+    ]);
+    const broken = contextTimeline(
+      data,
+      new Map([
+        [
+          'txn-0001-004',
+          { ...detail, reconciliation: { ...detail.reconciliation, lines: [1, 2] as never } },
+        ],
+      ]),
+    );
+    expect(broken[0]!.calculation).toBeNull();
+  });
+
+  group('explain', () => {
+    it('cites the matching payout and how many records it covers', () => {
+      expect(explain(entries[0]!)).toBe(
+        "Matches Mock Marketplace's payout PO-0001-01, which settled on 27 Oct. The 4 records it covers add up to this amount.",
+      );
+    });
+
+    it('says only that the amount matches when there is no reconciliation', () => {
+      const plain = { ...entries[0]!, calculation: null };
+      expect(explain(plain)).toBe(
+        "Matches Mock Marketplace's payout of the same amount on 27 Oct.",
+      );
+    });
+
+    it('says when linked details are missing', () => {
+      expect(explain({ ...entries[0]!, explainedBy: null })).toBe(
+        'Linked evidence details are unavailable here.',
+      );
+    });
+
+    it('explains ambiguous and unmatched transactions without picking a record', () => {
+      expect(explain({ ...entries[0]!, linkState: 'ambiguous' })).toBe(
+        'More than one record could explain this. Alibi has not picked one.',
+      );
+      expect(explain(entries[1]!)).toBe(
+        'Only your bank has a record of this. No connected merchant has sent anything that explains it yet.',
+      );
     });
   });
 

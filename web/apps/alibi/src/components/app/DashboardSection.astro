@@ -1,81 +1,130 @@
 ---
+/**
+ * One Home card and its dialog (agents/eval/HOME_REDESIGN.md). The whole card is one button that
+ * opens a native `<dialog>` holding the full list, rendered on the server: a centred modal on
+ * desktop, a bottom sheet on a phone. Opening it shows markup already on the page; it fetches and
+ * posts nothing. The preview rows are plain text so no link sits inside the button.
+ */
 interface Props {
   id: string;
   title: string;
   count?: number;
-  action: string;
+  /** "View all" or "Full timeline", on the right of the header. */
+  hint: string;
+  /** One line under the header, e.g. "2 need your review". */
+  summary?: string;
+  /** One sentence under the dialog's title. */
+  lead: string;
+  /** A footer note in the dialog. */
+  note?: string;
+  /** A wider dialog, for the financial timeline. */
+  wide?: boolean;
   class?: string;
 }
 
-const { id, title, count, action, class: placement } = Astro.props;
+const { id, title, count, hint, summary, lead, note, wide = false, class: placement } = Astro.props;
 const titleId = `${id}-title`;
-const dialogId = `${id}-dialog`;
-const actionId = `${id}-action`;
+const dialogId = `dlg-${id}`;
 const dialogTitleId = `${dialogId}-title`;
+const dialogLeadId = `${dialogId}-lead`;
 ---
 
-<section {id} class:list={['dashboard-card', placement]} aria-labelledby={titleId}>
+<section {id} class:list={['card', placement]} aria-labelledby={titleId}>
   <h2 class="card-title" id={titleId}>
     <button
       type="button"
-      class="open"
+      class="card-open"
+      data-dialog={dialogId}
       aria-haspopup="dialog"
       aria-controls={dialogId}
-      aria-describedby={actionId}
     >
-      <span>
+      <span class="name">
         {title}
         {count !== undefined && <span class="count">{count}</span>}
       </span>
-      <span class="action" id={actionId} aria-hidden="true">
-        {action}
+      <span class="hint">
+        {hint}
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"></path>
+        </svg>
       </span>
     </button>
   </h2>
+  {summary && <p class="summary">{summary}</p>}
   <div class="preview">
     <slot name="preview" />
   </div>
-  <dialog id={dialogId} aria-labelledby={dialogTitleId}>
-    <div class="dialog-head">
-      <h2 id={dialogTitleId}>{title}</h2>
+  {Astro.slots.has('footer') && (
+    <p class="footer">
+      <slot name="footer" />
+    </p>
+  )}
+
+  <dialog
+    id={dialogId}
+    class:list={['sheet', wide && 'sheet--wide']}
+    aria-labelledby={dialogTitleId}
+    aria-describedby={dialogLeadId}
+  >
+    <div class="handle" aria-hidden="true"></div>
+    <header class="sheet-head">
+      <div>
+        <h2 id={dialogTitleId}>{title}</h2>
+        <p id={dialogLeadId} class="lead">
+          {lead}
+        </p>
+      </div>
       <form method="dialog">
         <button class="close" type="submit" autofocus>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
           Close
         </button>
       </form>
-    </div>
-    <div class="dialog-body">
+    </header>
+    <div class="sheet-body">
       <slot />
     </div>
+    {note && <p class="sheet-note">{note}</p>}
   </dialog>
 </section>
 
 <script>
-  for (const trigger of document.querySelectorAll<HTMLButtonElement>('.dashboard-card .open')) {
-    const dialog = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+  // Home's only script: open each card's dialog. Esc, the Close form and a backdrop click close it,
+  // and the browser returns focus to the card's button.
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-dialog]')) {
+    const dialog = document.getElementById(button.dataset.dialog ?? '');
     if (!(dialog instanceof HTMLDialogElement)) continue;
-    trigger.addEventListener('click', () => dialog.showModal());
-    dialog.addEventListener('close', () => trigger.focus());
+    button.addEventListener('click', () => dialog.showModal());
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener('close', () => button.focus());
   }
 </script>
 
 <style>
-  .dashboard-card {
+  .card {
     position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    padding: clamp(15px, 2vw, 24px);
-    border: 1px solid var(--a-line);
-    border-radius: 16px;
-    background: color-mix(in srgb, var(--s-paper) 68%, white);
+    padding: 24px;
+    border: 1px solid var(--s-line);
+    border-radius: 20px;
+    background: var(--s-card);
+    transition:
+      transform 0.2s var(--s-ease),
+      box-shadow 0.2s var(--s-ease);
   }
 
-  .dashboard-card:has(.open:hover) {
-    border-color: var(--a-faint);
+  .card:has(.card-open:hover) {
+    transform: translateY(-1px);
+    box-shadow: var(--s-shadow);
   }
 
-  .dashboard-card:has(.open:focus-visible) {
+  .card:has(.card-open:focus-visible) {
     outline: 2px solid var(--a-accent);
     outline-offset: 3px;
   }
@@ -85,7 +134,7 @@ const dialogTitleId = `${dialogId}-title`;
     font: 600 1.15rem/1.2 var(--a-display);
   }
 
-  .open {
+  .card-open {
     display: flex;
     width: 100%;
     min-height: 28px;
@@ -101,9 +150,14 @@ const dialogTitleId = `${dialogId}-title`;
     cursor: pointer;
   }
 
-  .open::after {
+  .card-open:focus-visible {
+    outline: none;
+  }
+
+  .card-open::after {
     position: absolute;
     inset: 0;
+    border-radius: inherit;
     content: '';
   }
 
@@ -113,58 +167,107 @@ const dialogTitleId = `${dialogId}-title`;
     font: 500 var(--t-xs)/1 var(--a-body);
   }
 
-  .action {
+  .hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
     flex: 0 0 auto;
     color: var(--a-accent);
     font: 500 var(--t-xs)/1.25 var(--a-body);
+  }
+
+  .hint svg,
+  .close svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .summary {
+    margin: 6px 0 0;
+    color: var(--a-soft);
+    font-size: var(--t-sm);
   }
 
   .preview {
     margin-top: 12px;
   }
 
-  dialog {
-    inset: 0;
-    width: min(42rem, calc(100% - 32px));
+  .footer {
+    margin: auto 0 0;
+    padding-top: 12px;
+    color: var(--a-faint);
+    font-size: var(--t-xs);
+  }
+
+  /* ------------------------------------------------------------ dialog -- */
+
+  .sheet {
+    width: min(720px, 100% - 48px);
     max-width: none;
-    max-height: min(48rem, calc(100dvh - 40px));
+    max-height: calc(100dvh - 96px);
     margin: auto;
     padding: 0;
-    overflow: auto;
-    border: 1px solid var(--a-line);
-    border-radius: 20px;
+    border: 1px solid var(--s-line);
+    border-radius: 24px;
     background: var(--s-paper);
     color: var(--a-ink);
-    overscroll-behavior: contain;
+    box-shadow: var(--s-shadow);
   }
 
-  dialog::backdrop {
-    background: rgb(31 27 22 / 0.42);
+  .sheet--wide {
+    width: min(920px, 100% - 48px);
   }
 
-  .dialog-head {
-    position: sticky;
-    z-index: 2;
-    top: 0;
+  .sheet[open] {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px clamp(16px, 4vw, 28px);
-    border-bottom: 1px solid var(--a-line);
-    background: var(--s-paper);
+    flex-direction: column;
+    animation: sheet-in 0.3s var(--s-ease);
   }
 
-  .dialog-head h2 {
+  .sheet::backdrop {
+    background: rgb(31 27 22 / 0.42);
+    animation: scrim-in 0.3s var(--s-ease);
+  }
+
+  .handle {
+    display: none;
+  }
+
+  .sheet-head {
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid var(--s-line);
+  }
+
+  .sheet-head h2 {
     margin: 0;
     font: 600 1.35rem/1.2 var(--a-display);
   }
 
+  .lead {
+    margin: 4px 0 0;
+    color: var(--a-soft);
+    font-size: var(--t-sm);
+    max-width: 52ch;
+  }
+
   .close {
-    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
     padding-inline: 12px;
     border: 0;
-    border-radius: 8px;
+    border-radius: 999px;
     background: var(--a-tint);
     color: var(--a-ink);
     font: 500 var(--t-sm)/1 var(--a-body);
@@ -176,21 +279,104 @@ const dialogTitleId = `${dialogId}-title`;
     outline-offset: 2px;
   }
 
-  .dialog-body {
-    padding: 16px clamp(16px, 4vw, 28px) 28px;
+  .sheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px 24px 24px;
   }
 
-  @media (max-width: 599px) {
-    dialog {
-      inset: auto 0 0;
-      width: 100%;
-      max-height: 85dvh;
-      margin: 0;
-      border-radius: 20px 20px 0 0;
+  .sheet-note {
+    flex: none;
+    margin: 0;
+    padding: 12px 24px 16px;
+    border-top: 1px solid var(--s-line);
+    color: var(--a-faint);
+    font-size: var(--t-xs);
+  }
+
+  :global(html:has(dialog[open])) {
+    overflow: hidden;
+  }
+
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* Phone: the same dialog as a bottom sheet over the dock. */
+  @media (max-width: 767px) {
+    .card {
+      padding: 16px;
     }
 
-    .dialog-body {
-      padding-bottom: max(24px, env(safe-area-inset-bottom));
+    .sheet,
+    .sheet--wide {
+      width: 100%;
+      max-height: 90dvh;
+      margin: auto 0 0;
+      border-width: 1px 0 0;
+      border-radius: 24px 24px 0 0;
+    }
+
+    .sheet[open] {
+      animation-name: sheet-up;
+    }
+
+    .handle {
+      display: block;
+      flex: none;
+      width: 40px;
+      height: 4px;
+      margin: 8px auto 0;
+      border-radius: 999px;
+      background: var(--s-line);
+      background: color-mix(in srgb, var(--a-faint) 35%, transparent);
+    }
+
+    .sheet-head {
+      padding: 12px 16px 12px;
+    }
+
+    .close {
+      min-height: 44px;
+    }
+
+    .sheet-body {
+      padding: 8px 16px 16px;
+    }
+
+    .sheet-note,
+    .sheet-body:last-child {
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+
+    .sheet-note {
+      padding-inline: 16px;
+    }
+  }
+
+  @keyframes sheet-up {
+    from {
+      transform: translateY(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card,
+    .sheet[open],
+    .sheet::backdrop {
+      transition: none;
+      animation: none;
     }
   }
 </style>

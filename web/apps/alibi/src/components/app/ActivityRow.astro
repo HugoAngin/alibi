@@ -1,26 +1,43 @@
 ---
 /**
  * One line of Home's activity: a bank's request or an Alibi alert, who it is
- * from, when, and its state as a word (never colour alone). A request opens
- * its page: the trace, the private review and approval.
+ * from, when, and its state in words in a pill (never colour alone). A full
+ * row for a request links to its page: the trace, the private review and
+ * approval. A compact row sits inside a Home card's button, so it is never a
+ * link.
  */
 import { day } from '@/lib/format';
 
-import { initials, type ActivityItem } from './home';
+import Pill from './Pill.astro';
+import { initials, toneOf, type ActivityItem } from './home';
 
 interface Props {
   item: ActivityItem;
   /** The request comes from a bank the holder trusts: approve and send in one tap. */
   trusted?: boolean;
+  /** Inside a card preview: a plain row with no link and no chevron. */
+  compact?: boolean;
+  /** `/simulate/`: say whose review it awaits and that the link only views the request. */
+  holder?: string;
 }
 
-const { item, trusted = false } = Astro.props;
+const { item, trusted = false, compact = false, holder } = Astro.props;
 const oneTap = trusted && item.kind === 'request' && item.state === 'awaiting';
-const Tag = item.href ? 'a' : 'div';
+const href = compact ? null : item.href;
+const Tag = href ? 'a' : 'div';
+const label = oneTap
+  ? 'Trusted · approve in one tap'
+  : holder && item.state === 'awaiting'
+    ? `Awaiting ${holder}’s review`
+    : item.label;
 ---
 
 <li>
-  <Tag class:list={['act', `act--${item.state}`]} href={item.href ?? undefined}>
+  <Tag
+    class:list={['act', compact && 'act--compact']}
+    href={href ?? undefined}
+    aria-label={href && holder ? `View request from ${item.from}: ${item.title}` : undefined}
+  >
     <span class:list={['mono', item.kind === 'alert' && 'mono--alert']} aria-hidden="true">
       {item.kind === 'alert' ? '!' : initials(item.from)}
     </span>
@@ -30,11 +47,11 @@ const Tag = item.href ? 'a' : 'div';
       </span>
       <span class="title">{item.title}</span>
       <span class="state">
-        <span class="dot" aria-hidden="true"></span>
-        {oneTap ? 'Trusted · approve in one tap' : item.label}
+        <Pill tone={toneOf(item.state)}>{label}</Pill>
+        {href && holder && <span class="view">View request</span>}
       </span>
     </span>
-    {item.href && (
+    {href && (
       <svg class="go" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M9 6l6 6-6 6" />
       </svg>
@@ -53,8 +70,19 @@ const Tag = item.href ? 'a' : 'div';
     text-decoration: none;
   }
 
+  .act--compact {
+    grid-template-columns: 36px 1fr;
+    padding-block: 9px;
+  }
+
   a.act:active {
     opacity: 0.6;
+  }
+
+  a.act:focus-visible {
+    outline: 2px solid var(--a-accent);
+    outline-offset: 2px;
+    border-radius: 10px;
   }
 
   .mono {
@@ -66,6 +94,12 @@ const Tag = item.href ? 'a' : 'div';
     background: var(--a-ink);
     color: var(--s-paper);
     font: 600 0.85rem/1 var(--a-display);
+  }
+
+  .act--compact .mono {
+    width: 36px;
+    height: 36px;
+    font-size: 0.8rem;
   }
 
   .mono--alert {
@@ -94,15 +128,17 @@ const Tag = item.href ? 'a' : 'div';
   }
 
   .state {
-    display: inline-flex;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
-    justify-self: start;
-    margin-top: 3px;
+    gap: 6px 10px;
+    margin-top: 5px;
+  }
+
+  .view {
     font-size: var(--t-xs);
-    font-weight: 600;
-    line-height: 1.2;
-    color: var(--a-soft);
+    font-weight: 500;
+    color: var(--a-accent);
   }
 
   .go {
@@ -113,42 +149,5 @@ const Tag = item.href ? 'a' : 'div';
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-
-  .dot {
-    flex: none;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    border: 1.5px solid currentColor;
-  }
-
-  .act--awaiting .state,
-  .act--open .state {
-    color: var(--a-accent);
-  }
-
-  .act--awaiting .dot,
-  .act--open .dot {
-    background: currentColor;
-  }
-
-  .act--approved .state,
-  .act--sent .state {
-    color: var(--a-ok);
-  }
-
-  .act--approved .dot,
-  .act--sent .dot {
-    background: currentColor;
-  }
-
-  .act--declined .state {
-    color: var(--a-bad);
-  }
-
-  .act--expired .state,
-  .act--resolved .state {
-    color: var(--a-faint);
   }
 </style>

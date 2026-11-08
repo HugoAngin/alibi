@@ -1,0 +1,52 @@
+---
+/**
+ * A status as a short word or phrase in a pill (agents/eval/HOME_REDESIGN.md). The colour only
+ * repeats what the words say, so no state is told by colour alone.
+ */
+import type { Tone } from './home';
+
+interface Props {
+  tone: Tone;
+}
+
+const { tone } = Astro.props;
+---
+
+<span class:list={['pill', `pill--${tone}`]}>
+  <slot />
+</span>
+
+<style>
+  .pill {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font: 600 0.75rem/1.25 var(--a-body);
+    white-space: nowrap;
+  }
+
+  .pill--review {
+    color: var(--a-accent);
+    background: var(--a-accent-soft);
+  }
+
+  .pill--ok {
+    color: var(--a-ok);
+    background: var(--a-ok-soft);
+  }
+
+  .pill--warn {
+    color: var(--a-warn);
+    background: var(--a-warn-soft);
+  }
+
+  .pill--bad {
+    color: var(--a-bad);
+    background: var(--a-bad-soft);
+  }
+
+  .pill--quiet {
+    color: var(--a-faint);
+    background: var(--a-tint);
+  }
+</style>

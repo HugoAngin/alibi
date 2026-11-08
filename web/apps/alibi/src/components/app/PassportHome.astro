@@ -1,46 +1,54 @@
 ---
 /**
- * Home: what is waiting on Maya, then the banks and merchants her passport
- * knows, then Financial Context, one timeline of her transactions joined to
- * the records that explain them. Everything comes from the backend's JSON:
- * the passport context, plus `GET /txn/<id>` for each transaction's linked
- * sources and claims. With no backend, the transactions show on their own.
+ * Home: four cards (agents/eval/HOME_REDESIGN.md). Recent activity, Banks, Merchants and Financial
+ * context each preview their list; a card opens the full list in a dialog (a bottom sheet on a
+ * phone). Everything comes from the backend's JSON: the passport context, plus `GET /txn/<id>` for
+ * each transaction's linked sources, reconciliation and claims. Nothing on Home approves or sends;
+ * that happens on each request's page. `/app/` and `/simulate/` both render this component.
  */
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
-import type { PassportHome } from '@/lib/api/types';
-import { day, money } from '@/lib/format';
+import type { Money, PassportHome } from '@/lib/api/types';
+import { day, money, when } from '@/lib/format';
 import { ROUTES, backendHeaders } from '@/lib/screens';
 import { TRUST_COOKIE, parseTrusted } from '@/lib/trust';
 import { loadContext } from '@alibi/ui/api';
 
 import ActivityRow from './ActivityRow.astro';
 import DashboardSection from './DashboardSection.astro';
+import Pill from './Pill.astro';
 import {
   CLAIM_MARK,
-  LINK_MARK,
+  CONNECTION_LABEL,
+  LINK_LABEL,
   TRUST_MARK,
   activity,
   banks as banksOf,
   byMonth,
   contextTimeline,
   describe,
+  explain,
   headline,
   initials,
   isTxnDetail,
   merchants as merchantsOf,
+  nextDue,
   plainName,
-  type ContextEntry,
+  requestHref,
+  requestState,
+  toneOf,
   type TxnDetail,
 } from './home';
 
 interface Props {
   data: PassportHome;
+  /** `/simulate/`: read-only wording, and no links that ask a visitor to sign in. */
+  simulation?: boolean;
 }
 
-const { data } = Astro.props;
-const ACTIVITY_ON_HOME = 3;
-const CONNECTIONS_ON_HOME = 2;
+const { data, simulation = false } = Astro.props;
+const ACTIVITY_ON_HOME = 4;
+const MERCHANTS_ON_HOME = 3;
 
 const details = new Map<string, TxnDetail>();
 await Promise.all(
@@ -56,211 +64,314 @@ await Promise.all(
   }),
 );
 
+const holder = data.holder.name;
 const trusted = parseTrusted(Astro.cookies.get(TRUST_COOKIE)?.value);
 const items = activity(data);
-const recent = items.slice(0, ACTIVITY_ON_HOME);
+const waiting = items.filter((i) => i.state === 'awaiting' || i.state === 'open');
+const earlier = items.filter((i) => !(i.state === 'awaiting' || i.state === 'open'));
+const toReview = items.filter((i) => i.state === 'awaiting').length;
+const due = nextDue(data);
 const bankList = banksOf(data);
 const merchantList = merchantsOf(data);
 const context = contextTimeline(data, details);
 const latest = context[0];
 const timeline = byMonth(context);
-const contextText = (entry: ContextEntry) =>
-  entry.linkedCount > 0 && entry.sources.length === 0
-    ? 'Linked evidence details are unavailable here.'
-    : entry.context;
-const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'debit') =>
+const evidence = data.evidence_status;
+
+const readOnly = `Read-only. Nothing here can approve or send for ${holder}.`;
+const noChange = 'Opening this list changes nothing. Approval happens on each request’s page.';
+const possessive = (name: string) => `${name}’s`;
+const signed = (m: Money, direction: 'credit' | 'debit') =>
   `${direction === 'credit' ? '+' : '−'}${money({ ...m, minor: Math.abs(m.minor) })}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const requestsOf = (audience: string) =>
+  data.requests.filter((r) => (r.audience || r.recipient) === audience);
 ---
 
 <div class="dash">
   <section class="hello">
-    <p class="hi">Hi {data.holder.name}</p>
+    <p class="hi">Hi {holder}</p>
     <h1 class="statement">{headline(data)}</h1>
+    {due && (
+      <p class="due">
+        {possessive(due.recipient)} reply is due first, by {day(due.expires_at)}.
+      </p>
+    )}
   </section>
 
   <DashboardSection
-    id="requests"
+    id="activity"
     title="Recent activity"
-    action="View all activity"
     count={items.length}
-    class="activity-card"
+    hint="View all"
+    summary={
+      toReview > 0
+        ? `${toReview} ${toReview === 1 ? 'needs' : 'need'} ${simulation ? `${possessive(holder)}` : 'your'} review`
+        : 'Nothing needs your review'
+    }
+    lead="Bank requests and Alibi alerts, those waiting first, soonest reply first."
+    note={simulation ? readOnly : noChange}
+    class="card-activity"
   >
     <Fragment slot="preview">
-      {recent.length === 0 ? (
+      {items.length === 0 ? (
         <p class="quiet">No requests or alerts yet.</p>
       ) : (
-        <ul class="preview-list">
-          {recent.map((item) => (
-            <li>
-              <span class="preview-name">{item.from}</span>
-              <span class="preview-meta">
-                {item.title} · {day(item.at)}
-              </span>
-              <span
-                class:list={[
-                  'preview-state',
-                  (item.state === 'awaiting' || item.state === 'open') && 'preview-state--waiting',
-                ]}
-              >
-                {item.label}
-              </span>
-            </li>
+        <ul class="rows rows--lined">
+          {items.slice(0, ACTIVITY_ON_HOME).map((i) => (
+            <ActivityRow
+              item={i}
+              compact
+              trusted={i.audience ? trusted.has(i.audience) : false}
+              holder={simulation ? holder : undefined}
+            />
           ))}
         </ul>
       )}
     </Fragment>
+    {items.length > ACTIVITY_ON_HOME && (
+      <Fragment slot="footer">{items.length - ACTIVITY_ON_HOME} more in the full list</Fragment>
+    )}
+
     {items.length === 0 && <p class="quiet">No requests or alerts yet.</p>}
-    <ul class="rows">
-      {items.map((i) => (
-        <ActivityRow item={i} trusted={i.audience ? trusted.has(i.audience) : false} />
-      ))}
-    </ul>
+    {waiting.length > 0 && (
+      <>
+        <h3 class="group">Needs {simulation ? possessive(holder) : 'your'} review</h3>
+        <ul class="rows rows--lined">
+          {waiting.map((i) => (
+            <ActivityRow
+              item={i}
+              trusted={i.audience ? trusted.has(i.audience) : false}
+              holder={simulation ? holder : undefined}
+            />
+          ))}
+        </ul>
+      </>
+    )}
+    {earlier.length > 0 && (
+      <>
+        <h3 class="group">Earlier</h3>
+        <ul class="rows rows--lined">
+          {earlier.map((i) => (
+            <ActivityRow item={i} holder={simulation ? holder : undefined} />
+          ))}
+        </ul>
+      </>
+    )}
   </DashboardSection>
 
   <DashboardSection
     id="banks"
     title="Banks"
-    action="View all banks"
     count={bankList.length}
-    class="banks-card"
+    hint="View all"
+    summary={(() => {
+      const n = bankList.filter((b) => b.awaiting > 0).length;
+      return n > 0
+        ? `${plural(n, 'bank')} waiting on ${simulation ? possessive(holder) : 'your'} review`
+        : 'No bank is waiting on you';
+    })()}
+    lead="Banks that asked about your transactions, and the account feeds you connected."
+    note={simulation ? readOnly : noChange}
+    class="card-banks"
   >
     <Fragment slot="preview">
       {bankList.length === 0 ? (
         <p class="quiet">No bank has contacted your passport yet.</p>
       ) : (
-        <ul class="preview-list">
-          {bankList.slice(0, CONNECTIONS_ON_HOME).map((bank) => (
-            <li>
-              <span class="preview-name">
-                {bank.name}
-                {trusted.has(bank.audience) && <span class="trusted">Trusted</span>}
+        <ul class="rows rows--lined">
+          {bankList.map((b) => (
+            <li class="row">
+              <span class="mono mono--ink" aria-hidden="true">
+                {initials(b.name)}
               </span>
-              <span class="preview-meta">
-                {bank.feed ? 'Account feed connected' : 'Sends you requests'}
-              </span>
-              {bank.awaiting > 0 && (
-                <span class="preview-state preview-state--waiting">
-                  {bank.awaiting} awaiting review
+              <span class="row-body">
+                <span class="row-title">
+                  {b.name}
+                  {trusted.has(b.audience) && <span class="trusted">Trusted</span>}
                 </span>
-              )}
+                <span class="small">{b.feed ? 'Account feed connected' : 'Requests only'}</span>
+              </span>
+              {b.awaiting > 0 && <Pill tone="review">{b.awaiting} awaiting</Pill>}
             </li>
           ))}
         </ul>
       )}
     </Fragment>
+
     {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
-    <ul class="banks">
-      {bankList.map((b) => (
-        <li>
-          <a class="bank" href={`/app/banks/${encodeURIComponent(b.audience)}/`}>
-            <span class="mono mono--lg mono--ink" aria-hidden="true">
-              {initials(b.name)}
-            </span>
-            <span class="bank-name">
-              {b.name}
-              {trusted.has(b.audience) && <span class="trusted">Trusted</span>}
-            </span>
-            <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
-            <span class="small">
-              {b.awaiting > 0
-                ? `${b.awaiting} awaiting your review`
-                : b.packagesSent > 0
-                  ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
-                  : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
-            </span>
-          </a>
-        </li>
-      ))}
+    <ul class="detail-list">
+      {bankList.map((b) => {
+        const awaitingRequests = requestsOf(b.audience).filter(
+          (r) => requestState(r.status) === 'awaiting',
+        );
+        return (
+          <li class="detail">
+            <div class="detail-head">
+              <span class="mono mono--ink" aria-hidden="true">
+                {initials(b.name)}
+              </span>
+              <span class="row-body">
+                <span class="row-title">
+                  {b.name}
+                  {trusted.has(b.audience) && <span class="trusted">Trusted</span>}
+                </span>
+                <span class="small">{b.feed ? 'Account feed connected' : 'Requests only'}</span>
+              </span>
+              {b.awaiting > 0 && <Pill tone="review">{b.awaiting} awaiting</Pill>}
+            </div>
+            <dl class="facts">
+              {b.feed && (
+                <div>
+                  <dt>Account feed</dt>
+                  <dd>
+                    {plainName(b.feed.name)} · {plural(b.feed.record_count, 'record')} · synced{' '}
+                    {when(b.feed.last_synced_at)}
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>Requests</dt>
+                <dd>{b.requests}</dd>
+              </div>
+              <div>
+                <dt>Packages sent</dt>
+                <dd>{b.packagesSent}</dd>
+              </div>
+            </dl>
+            {(awaitingRequests.length > 0 || !simulation) && (
+              <p class="links">
+                {awaitingRequests.map((r) => (
+                  <a href={requestHref(r.request_id)}>
+                    {simulation ? 'View request' : 'Review request'} ·{' '}
+                    {plural(r.question_count, 'question')}, reply by {day(r.expires_at)}
+                  </a>
+                ))}
+                {!simulation && (
+                  <a href={`/app/banks/${encodeURIComponent(b.audience)}/`}>
+                    {possessive(b.name)} page
+                  </a>
+                )}
+              </p>
+            )}
+          </li>
+        );
+      })}
     </ul>
   </DashboardSection>
 
   <DashboardSection
     id="merchants"
     title="Merchants"
-    action="View all merchants"
     count={merchantList.length}
-    class="merchants-card"
+    hint="View all"
+    summary={
+      merchantList.length === 0
+        ? 'No merchant connected yet'
+        : `${plural(
+            merchantList.filter((m) => m.status === 'connected').length,
+            'connection',
+          )} working`
+    }
+    lead="Merchants that send Alibi signed records of your sales, refunds and payouts."
+    class="card-merchants"
   >
     <Fragment slot="preview">
       {merchantList.length === 0 ? (
         <p class="quiet">No merchant is connected yet.</p>
       ) : (
-        <ul class="preview-list">
-          {merchantList.slice(0, CONNECTIONS_ON_HOME).map((merchant) => (
-            <li>
-              <span class="preview-name">{plainName(merchant.name)}</span>
-              <span class="preview-meta">
-                {merchant.record_count} records · synced {day(merchant.last_synced_at)}
+        <ul class="rows rows--lined">
+          {merchantList.slice(0, MERCHANTS_ON_HOME).map((m) => (
+            <li class="row">
+              <span class="mono" aria-hidden="true">
+                {initials(m.name)}
               </span>
-              <span class="preview-state">{TRUST_MARK[merchant.trust].label}</span>
+              <span class="row-body">
+                <span class="row-title">{plainName(m.name)}</span>
+                <span class="small">Synced {day(m.last_synced_at)}</span>
+              </span>
+              <Pill tone={toneOf(m.status)}>{CONNECTION_LABEL[m.status]}</Pill>
             </li>
           ))}
         </ul>
       )}
     </Fragment>
+    {merchantList.length > MERCHANTS_ON_HOME && (
+      <Fragment slot="footer">
+        {merchantList.length - MERCHANTS_ON_HOME} more in the full list
+      </Fragment>
+    )}
+
     {merchantList.length === 0 && <p class="quiet">No merchant is connected yet.</p>}
-    <ul class="rows">
+    <ul class="detail-list">
       {merchantList.map((m) => (
-        <li class="row">
-          <span class="mono" aria-hidden="true">
-            {initials(m.name)}
-          </span>
-          <span class="row-body">
-            <span class="row-title">{plainName(m.name)}</span>
-            <span class="small">
-              {m.record_count} records · synced {day(m.last_synced_at)}
+        <li class="detail">
+          <div class="detail-head">
+            <span class="mono" aria-hidden="true">
+              {initials(m.name)}
             </span>
-          </span>
-          <span class="trust" title={TRUST_MARK[m.trust].label}>
-            {TRUST_MARK[m.trust].label}
-          </span>
+            <span class="row-body">
+              <span class="row-title">{plainName(m.name)}</span>
+              <span class="small">{TRUST_MARK[m.trust].label}</span>
+            </span>
+            <Pill tone={toneOf(m.status)}>{CONNECTION_LABEL[m.status]}</Pill>
+          </div>
+          <dl class="facts">
+            <div>
+              <dt>Records</dt>
+              <dd>{m.record_count}</dd>
+            </div>
+            <div>
+              <dt>Last synced</dt>
+              <dd>{when(m.last_synced_at)}</dd>
+            </div>
+          </dl>
         </li>
       ))}
     </ul>
-    {merchantList.length > 0 && (
-      <a class="row-link" href="/app/merchants/">
-        View all merchants and their details
-      </a>
+    {merchantList.length > 0 && !simulation && (
+      <p class="links">
+        <a href="/app/merchants/">Merchant details and connections</a>
+      </p>
     )}
   </DashboardSection>
 
   <DashboardSection
-    id="financial-context"
+    id="context"
     title="Financial context"
-    action="View transaction history"
-    class="context-card"
+    count={context.length}
+    hint="Full timeline"
+    summary={`${evidence.linked} of ${evidence.total} transactions explained · checked ${day(evidence.last_checked_at)}`}
+    lead="Your transactions, joined to the records that explain them and what Alibi could establish."
+    wide
+    class="card-context"
   >
     <Fragment slot="preview">
       {latest ? (
         <div class="latest">
           <div class="latest-line">
-            <span class="preview-name">{describe(latest.title).title}</span>
+            <span class="row-title">{describe(latest.title).title}</span>
             <span class:list={['amount', `amount--${latest.direction}`]}>
               {signed(latest.amount, latest.direction)}
             </span>
           </div>
-          <p class="preview-meta">
-            {day(latest.at)} · {LINK_MARK[latest.linkState].label}
-          </p>
-          <p class="latest-context">{contextText(latest)}</p>
+          <p class="small">{day(latest.at)} · newest transaction</p>
+          <p class="explain">{explain(latest)}</p>
+          <Pill tone={toneOf(latest.linkState)}>{LINK_LABEL[latest.linkState]}</Pill>
         </div>
       ) : (
         <p class="quiet">No transactions yet.</p>
       )}
     </Fragment>
-    <p class="quiet">
-      Your transactions, joined to the records that explain them and what Alibi could establish.
-      {data.evidence_status.linked} of {data.evidence_status.total} linked · checked{' '}
-      {day(data.evidence_status.last_checked_at)}.
-    </p>
+
     {timeline.length === 0 && <p class="quiet">No transactions yet.</p>}
-    {timeline.map((g) => (
+    {timeline.map((g, gi) => (
       <div class="month">
         <h3 class="month-title">{g.month}</h3>
         <ol class="timeline">
-          {g.entries.map((e) => (
-            <li class:list={['entry', `entry--${e.linkState}`]}>
-              <details>
+          {g.entries.map((e, ei) => (
+            <li class="entry">
+              <details open={gi === 0 && ei === 0}>
                 <summary>
                   <span class="entry-date">
                     <span class="d">{day(e.at).split(' ')[0]}</span>
@@ -276,76 +387,90 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
                     {describe(e.title).line && (
                       <span class="entry-line2">{describe(e.title).line}</span>
                     )}
-                    {e.context && <span class="entry-context">{contextText(e)}</span>}
+                    <span class="explain">{explain(e)}</span>
                     <span class="entry-tags">
-                      <span class:list={['tag', `tag--${e.linkState}`]}>
-                        {e.linkState === 'linked' && e.linkedCount > 0
-                          ? `Linked to ${e.linkedCount}`
-                          : LINK_MARK[e.linkState].label}
-                      </span>
+                      <Pill tone={toneOf(e.linkState)}>{LINK_LABEL[e.linkState]}</Pill>
                       {e.claims.map((c) => (
-                        <span class:list={['tag', `tag--${c.status}`]}>
+                        <Pill tone={toneOf(c.status)}>
                           {CLAIM_MARK[c.status].label}
                           {c.bank && ` for ${c.bank}`}
-                        </span>
+                        </Pill>
                       ))}
-                      {(e.sources.length > 0 || e.linkedCount === 0) && (
-                        <span class="src-count">
-                          {e.sources.length === 0
-                            ? 'Bank record only'
-                            : `${e.sources.length} related ${e.sources.length === 1 ? 'record' : 'records'}`}
-                        </span>
-                      )}
+                      <span class="small">
+                        {e.sources.length === 0
+                          ? 'Bank record only'
+                          : `${plural(e.sources.length, 'related record')}`}
+                      </span>
                     </span>
                   </span>
                 </summary>
-                <ul class="sources">
-                  <li>
-                    <span class="trust">
-                      <span aria-hidden="true">{TRUST_MARK.bank_observed.mark}</span>{' '}
-                      {TRUST_MARK.bank_observed.label}
-                    </span>
-                    <span class="src-who">{e.observedBy}</span>
-                    <code>{e.id}</code>
-                    {e.references.length > 0 && (
-                      <span class="small">Reference {e.references.join(', ')}</span>
-                    )}
-                  </li>
-                  {e.sources.map((s) => (
+                <div class="entry-detail">
+                  <h4 class="sub">Sources</h4>
+                  <ul class="sources">
                     <li>
-                      <span class="trust">
-                        {TRUST_MARK[s.trust].label}
-                        {s.via_lookup && ' · by lookup'}
-                      </span>
-                      <span class="src-who">
-                        {plainName(s.issuer)} · {s.kind.replaceAll('_', ' ')}
-                      </span>
-                      <code>
-                        {s.record_id} r{s.revision}
-                      </code>
+                      <span class="src-who">{e.observedBy} · bank transaction</span>
                       <span class="small">
-                        {day(s.occurred_at)} · {money(s.amount)} · {s.status.replaceAll('_', ' ')}
+                        {TRUST_MARK.bank_observed.label} · <code>{e.id}</code>
+                        {e.references.length > 0 && ` · Reference ${e.references.join(', ')}`}
                       </span>
                     </li>
-                  ))}
-                  {e.claims.map((c) => (
-                    <li>
-                      <span class="trust">
-                        {CLAIM_MARK[c.status].label}
-                        {c.bank && ` · asked by ${c.bank}`}
-                      </span>
-                      <span class="src-who">{c.question}</span>
-                    </li>
-                  ))}
+                    {e.sources.map((s) => (
+                      <li>
+                        <span class="src-who">
+                          {plainName(s.issuer)} · {s.kind.replaceAll('_', ' ')}
+                        </span>
+                        <span class="small">
+                          {TRUST_MARK[s.trust].label}
+                          {s.via_lookup && ' · by lookup'} · {day(s.occurred_at)} ·{' '}
+                          {money(s.amount)} · {s.status.replaceAll('_', ' ')} ·{' '}
+                          <code>
+                            {s.record_id} r{s.revision}
+                          </code>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                   {e.calculation && (
-                    <li>
-                      <span class="trust">
-                        {e.calculation.matches ? 'Reconciles' : 'Does not reconcile'}
-                      </span>
-                      <code>{e.calculation.expression}</code>
-                    </li>
+                    <>
+                      <h4 class="sub">
+                        Reconciliation · {e.calculation.matches ? 'adds up' : 'does not add up'}
+                      </h4>
+                      <table class="recon">
+                        <tbody>
+                          {e.calculation.lines.map((l) => (
+                            <tr>
+                              <th scope="row">{l.label}</th>
+                              <td class="small">{plural(l.source_ids.length, 'record')}</td>
+                              <td class="num">
+                                {l.sign === '+' ? '+' : '−'}
+                                {money(l.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p class="pence">
+                        <code>{e.calculation.expression}</code>
+                      </p>
+                    </>
                   )}
-                </ul>
+                  {e.claims.length > 0 && (
+                    <>
+                      <h4 class="sub">Answers to banks</h4>
+                      <ul class="sources">
+                        {e.claims.map((c) => (
+                          <li>
+                            <span class="src-who">{c.question}</span>
+                            <span class="claim">
+                              <Pill tone={toneOf(c.status)}>{CLAIM_MARK[c.status].label}</Pill>
+                              {c.bank && <span class="small">asked by {c.bank}</span>}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
               </details>
             </li>
           ))}
@@ -356,43 +481,28 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
 </div>
 
 <style>
-  a.bank {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .trusted {
-    margin-left: 6px;
-    padding: 1px 7px;
-    border-radius: 999px;
-    background: var(--a-accent-soft);
-    color: var(--a-accent);
-    font: 500 0.6875rem/1.5 var(--a-body);
-    vertical-align: middle;
-  }
-
   .dash {
     display: grid;
-    gap: 14px;
+    gap: 16px;
   }
 
-  @media (min-width: 760px) {
+  @media (min-width: 960px) {
     .dash {
       grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 18px;
+      gap: 24px;
     }
     .hello {
       grid-column: 1 / -1;
     }
-    .dash :global(.activity-card),
-    .dash :global(.context-card) {
+    .dash :global(.card-activity),
+    .dash :global(.card-context) {
       grid-column: span 7;
     }
-    .dash :global(.banks-card),
-    .dash :global(.merchants-card) {
+    .dash :global(.card-banks),
+    .dash :global(.card-merchants) {
       grid-column: span 5;
     }
-    .dash .statement {
+    .statement {
       max-width: 24ch;
       font-size: 2.5rem;
     }
@@ -415,74 +525,20 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     max-width: 16ch;
   }
 
-  .preview-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .preview-list li {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 2px 12px;
-    padding-block: 10px;
-    border-top: 1px solid var(--a-line);
-  }
-
-  .preview-name {
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .preview-list .preview-meta {
-    grid-row: 2;
-  }
-
-  .preview-meta,
-  .preview-state {
-    margin: 0;
-    color: var(--a-faint);
-    font-size: var(--t-xs);
-  }
-
-  .preview-state {
-    align-self: start;
-    justify-self: end;
-    max-width: 12ch;
-    text-align: right;
-    font-weight: 500;
-  }
-
-  .preview-state--waiting {
-    color: var(--a-accent);
-  }
-
-  .latest {
-    padding-left: 12px;
-    border-left: 2px solid var(--a-accent);
-  }
-
-  .latest-line {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 3px;
-  }
-
-  .latest-context {
-    margin: 8px 0 0;
+  .due {
+    margin: 10px 0 0;
     color: var(--a-soft);
     font-size: var(--t-sm);
-    line-height: 1.45;
   }
 
-  .row-link {
+  .trusted {
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--a-accent-soft);
     color: var(--a-accent);
-    font-size: var(--t-sm);
-    font-weight: 500;
-    display: inline-block;
-    margin-top: 6px;
+    font: 500 0.6875rem/1.5 var(--a-body);
+    vertical-align: middle;
   }
 
   .quiet,
@@ -501,12 +557,17 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     padding: 0;
   }
 
-  .row {
+  .rows--lined > :global(li + li) {
+    border-top: 1px solid var(--s-line);
+  }
+
+  .row,
+  .detail-head {
     display: grid;
-    grid-template-columns: 40px 1fr auto;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
     align-items: center;
     gap: 12px;
-    padding-block: 10px;
+    padding-block: 9px;
   }
 
   .row-body {
@@ -515,28 +576,19 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
   }
 
   .row-title {
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-weight: 600;
+    overflow-wrap: anywhere;
   }
 
   .mono {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     display: grid;
     place-items: center;
     border-radius: 50%;
     background: var(--a-tint);
-    font: 600 0.85rem/1 var(--a-display);
+    font: 600 0.8rem/1 var(--a-display);
     color: var(--a-soft);
-  }
-
-  .mono--lg {
-    width: 48px;
-    height: 48px;
-    border-radius: 16px;
-    font-size: 1.1rem;
   }
 
   .mono--ink {
@@ -544,44 +596,95 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     color: var(--s-paper);
   }
 
-  .banks {
+  .group {
+    margin: 16px 0 2px;
+    font: 600 var(--t-xs)/1.2 var(--a-body);
+    color: var(--a-faint);
+  }
+
+  .detail-list {
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+
+  .detail {
+    padding-block: 12px;
+  }
+
+  .detail + .detail {
+    border-top: 1px solid var(--s-line);
+  }
+
+  .facts {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px 16px;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 8px 16px;
+    margin: 6px 0 0 48px;
   }
 
-  .bank {
-    display: grid;
-    gap: 2px;
-    justify-items: start;
-  }
-
-  .bank .mono {
-    margin-bottom: 8px;
-  }
-
-  .bank-name {
-    font-weight: 600;
-  }
-
-  .trust {
+  .facts dt {
     font-size: var(--t-xs);
+    color: var(--a-faint);
+  }
+
+  .facts dd {
+    margin: 0;
+    font-size: var(--t-sm);
+  }
+
+  .links {
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+    margin: 10px 0 0 48px;
+  }
+
+  .links a {
+    color: var(--a-accent);
+    font-size: var(--t-sm);
+    font-weight: 500;
+  }
+
+  .latest {
+    display: grid;
+    justify-items: start;
+    gap: 4px;
+    padding-left: 12px;
+    border-left: 2px solid var(--a-accent);
+  }
+
+  .latest-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .latest .small {
+    margin: 0;
+  }
+
+  .explain {
+    margin: 4px 0;
     color: var(--a-soft);
-    white-space: nowrap;
+    font-size: var(--t-sm);
+    line-height: 1.45;
   }
 
   .month {
-    margin-top: 18px;
+    margin-top: 8px;
   }
 
   .month-title {
-    margin: 0 0 6px;
-    font: 500 0.75rem/1 var(--a-body);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    position: sticky;
+    z-index: 1;
+    top: -8px;
+    margin: 0;
+    padding: 10px 0 6px;
+    background: var(--s-paper);
+    font: 600 var(--t-xs)/1 var(--a-body);
     color: var(--a-faint);
   }
 
@@ -599,7 +702,7 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     top: 14px;
     bottom: 14px;
     width: 1px;
-    background: var(--a-line);
+    background: var(--s-line);
   }
 
   .entry summary {
@@ -610,16 +713,21 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     padding-block: 12px;
     cursor: pointer;
     list-style: none;
+    border-radius: 12px;
   }
 
-  .entry summary::-webkit-details-marker,
-  :global(.fixture-note summary::-webkit-details-marker) {
+  .entry summary:focus-visible {
+    outline: 2px solid var(--a-accent);
+    outline-offset: 2px;
+  }
+
+  .entry summary::-webkit-details-marker {
     display: none;
   }
 
   .entry-date {
     position: relative;
-    z-index: 1;
+    z-index: 0;
     align-self: start;
     justify-self: center;
     display: grid;
@@ -641,15 +749,9 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     letter-spacing: 0.06em;
   }
 
-  .entry-line2 {
-    margin-top: -2px;
-    font: 400 0.75rem/1.3 var(--a-mono);
-    color: var(--a-faint);
-  }
-
   .entry-main {
     display: grid;
-    gap: 4px;
+    gap: 2px;
     min-width: 0;
   }
 
@@ -661,66 +763,47 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
   }
 
   .entry-title {
-    font-weight: 500;
+    font-weight: 600;
     min-width: 0;
     overflow-wrap: anywhere;
   }
 
-  .entry-context {
-    font-size: var(--t-sm);
-    color: var(--a-soft);
-    line-height: 1.45;
+  .entry-line2 {
+    font: 400 0.75rem/1.3 var(--a-mono);
+    color: var(--a-faint);
   }
 
   .entry-tags {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 10px;
-    margin-top: 2px;
+    gap: 6px 8px;
   }
 
-  .tag {
-    display: inline-flex;
-    gap: 4px;
-    font-size: var(--t-xs);
-    font-weight: 600;
-    color: var(--a-soft);
+  .entry-detail {
+    margin: 0 0 12px 54px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: var(--s-card);
+    border: 1px solid var(--s-line);
   }
 
-  .tag--linked,
-  .tag--supported {
-    color: var(--a-ok);
-  }
-
-  .tag--ambiguous,
-  .tag--unresolved {
-    color: var(--a-warn);
-  }
-
-  .tag--contradicted {
-    color: var(--a-bad);
-  }
-
-  .tag--unmatched {
+  .sub {
+    margin: 12px 0 6px;
+    font: 600 var(--t-xs)/1.2 var(--a-body);
     color: var(--a-faint);
   }
 
-  .src-count {
-    font-size: var(--t-xs);
-    color: var(--a-faint);
-  }
-
-  .entry details[open] .src-count {
-    color: var(--a-accent);
+  .sub:first-child {
+    margin-top: 0;
   }
 
   .sources {
     list-style: none;
-    margin: 0 0 8px 54px;
+    margin: 0;
     padding: 0;
     display: grid;
-    gap: 12px;
+    gap: 10px;
   }
 
   .sources li {
@@ -732,10 +815,45 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     font-size: var(--t-sm);
   }
 
-  .sources code {
+  .claim {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 3px;
+  }
+
+  code {
     font: 400 0.75rem/1.4 var(--a-mono);
     color: var(--a-faint);
     overflow-wrap: anywhere;
+  }
+
+  .recon {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--t-sm);
+  }
+
+  .recon th {
+    text-align: left;
+    font-weight: 500;
+  }
+
+  .recon th,
+  .recon td {
+    padding: 5px 0;
+    border-top: 1px solid var(--s-line);
+  }
+
+  .recon .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .pence {
+    margin: 6px 0 0;
   }
 
   .amount {
@@ -746,5 +864,16 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
 
   .amount--credit {
     color: var(--a-ok);
+  }
+
+  @media (max-width: 767px) {
+    .facts,
+    .links {
+      margin-left: 0;
+    }
+
+    .entry-detail {
+      margin-left: 0;
+    }
   }
 </style>

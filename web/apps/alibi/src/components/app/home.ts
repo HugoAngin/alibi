@@ -7,7 +7,7 @@
 
 import type { ClaimStatus, LinkState, Money, PassportHome, Trust } from '@/lib/api/types';
 // Relative, not `@/`, so the unit tests (tests/home.test.ts) can import this file directly.
-import { money } from '../../lib/format';
+import { day as dayOf, money } from '../../lib/format';
 
 type Request = PassportHome['requests'][number];
 
@@ -76,9 +76,14 @@ export interface ActivityItem {
   state: RequestState | 'open' | 'resolved';
   label: string;
   href: string | null;
+  /** The reply-by date, for requests. */
+  due?: string;
 }
 
-/** Bank requests and alerts, those waiting on her first, then newest first. */
+/**
+ * Bank requests and alerts, those waiting on her first. Among those, the soonest reply-by date
+ * comes first; everything else is newest first.
+ */
 export function activity(data: PassportHome): ActivityItem[] {
   const requests: ActivityItem[] = data.requests.map((r) => {
     const state = requestState(r.status);
@@ -93,6 +98,7 @@ export function activity(data: PassportHome): ActivityItem[] {
       state,
       label: REQUEST_LABEL[state],
       href: requestHref(r.request_id),
+      due: r.expires_at,
     };
   });
   const alerts: ActivityItem[] = data.alerts.map((a) => ({
@@ -105,8 +111,24 @@ export function activity(data: PassportHome): ActivityItem[] {
     label: a.status === 'open' ? 'Open' : 'Resolved',
     href: null,
   }));
-  const first = (i: ActivityItem) => (i.state === 'awaiting' || i.state === 'open' ? 0 : 1);
-  return [...requests, ...alerts].sort((a, b) => first(a) - first(b) || b.at.localeCompare(a.at));
+  const waiting = (i: ActivityItem) => i.state === 'awaiting' || i.state === 'open';
+  const byDue = (a: ActivityItem, b: ActivityItem) => {
+    if (!waiting(a)) return 0;
+    if (a.due && b.due) return a.due.localeCompare(b.due);
+    return a.due ? -1 : b.due ? 1 : 0;
+  };
+  return [...requests, ...alerts].sort(
+    (a, b) => Number(!waiting(a)) - Number(!waiting(b)) || byDue(a, b) || b.at.localeCompare(a.at),
+  );
+}
+
+/** The awaiting request whose reply is due first, or null when nothing waits on her. */
+export function nextDue(data: PassportHome): { recipient: string; expires_at: string } | null {
+  const waiting = data.requests
+    .filter((r) => requestState(r.status) === 'awaiting' && r.expires_at)
+    .sort((a, b) => a.expires_at.localeCompare(b.expires_at));
+  const first = waiting[0];
+  return first ? { recipient: first.recipient, expires_at: first.expires_at } : null;
 }
 
 /**
@@ -267,7 +289,7 @@ export interface TxnDetail {
     via_lookup: boolean;
     superseded: boolean;
   }[];
-  reconciliation: { expression: string; matches: boolean; lines: unknown[] };
+  reconciliation: Reconciliation;
   claims: {
     claim_id: string;
     question: string;
@@ -276,6 +298,39 @@ export interface TxnDetail {
     state?: string;
     request_id?: string;
   }[];
+}
+
+/** One grouped term of a reconciliation, as `calc_terms()` in alibi/app/common.py serves it. */
+export interface ReconLine {
+  label: string;
+  kind: string;
+  sign: '+' | '-';
+  amount: Money;
+  source_ids: string[];
+}
+
+/** `GET /txn/<id>`'s reconciliation (`_reconciliation()` in alibi/app/views.py). */
+export interface Reconciliation {
+  expression: string;
+  matches: boolean;
+  lines: ReconLine[];
+  result?: Money;
+  difference?: Money | null;
+  compared_to?: { label: string; amount: Money };
+}
+
+export function isReconLine(value: unknown): value is ReconLine {
+  const v = value as ReconLine;
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof v.label === 'string' &&
+    typeof v.kind === 'string' &&
+    (v.sign === '+' || v.sign === '-') &&
+    typeof v.amount?.minor === 'number' &&
+    typeof v.amount?.currency === 'string' &&
+    Array.isArray(v.source_ids)
+  );
 }
 
 export function isTxnDetail(value: unknown): value is TxnDetail {
@@ -307,7 +362,9 @@ export interface ContextEntry {
   /** Current claims about this transaction, with the bank each answered. */
   claims: (TxnDetail['claims'][number] & { bank: string })[];
   /** The reconciliation, when the backend computed one against linked records. */
-  calculation: { expression: string; matches: boolean } | null;
+  calculation: { expression: string; matches: boolean; lines: ReconLine[] } | null;
+  /** The linked record that explains the movement, when one does. */
+  explainedBy: TxnDetail['sources'][number] | null;
 }
 
 /**
@@ -348,6 +405,7 @@ export function contextTimeline(
         sources.find((s) => s.kind === 'payout' && s.amount.minor === amount) ??
         sources.find((s) => s.amount.minor === amount) ??
         (sources.length === 1 ? sources[0] : undefined);
+      const lines = (d?.reconciliation.lines ?? []).filter(isReconLine);
       const claims = (d?.claims ?? [])
         .filter((c) => (c.state ?? 'active') === 'active')
         .map((c) => ({
@@ -372,14 +430,45 @@ export function contextTimeline(
         sources,
         claims,
         calculation:
-          d && d.reconciliation.lines.length > 0
+          d && lines.length > 0
             ? {
                 expression: `${d.reconciliation.expression} (pence)`,
                 matches: d.reconciliation.matches,
+                lines,
               }
             : null,
+        explainedBy: explaining ?? null,
       };
     });
+}
+
+/** The component records a reconciliation adds up: sales, refunds and fees, not the payout itself. */
+const COMPONENT_KINDS = new Set(['order', 'refund', 'fee', 'receipt']);
+
+/**
+ * One plain sentence about a transaction, built only from structured fields the backend sent
+ * (link state, the explaining record and the reconciliation), never from free text.
+ */
+export function explain(entry: ContextEntry): string {
+  if (entry.linkState === 'ambiguous')
+    return 'More than one record could explain this. Alibi has not picked one.';
+  if (entry.linkState === 'unmatched')
+    return 'Only your bank has a record of this. No connected merchant has sent anything that explains it yet.';
+  const src = entry.explainedBy;
+  if (!src) return 'Linked evidence details are unavailable here.';
+  const kind = src.kind.replaceAll('_', ' ');
+  const issuer = plainName(src.issuer);
+  const calc = entry.calculation;
+  if (calc?.matches) {
+    const n = calc.lines
+      .filter((l) => COMPONENT_KINDS.has(l.kind))
+      .reduce((sum, l) => sum + l.source_ids.length, 0);
+    if (n > 0) {
+      const reference = entry.references[0] ?? src.record_id;
+      return `Matches ${issuer}'s ${kind} ${reference}, which settled on ${dayOf(src.occurred_at)}. The ${n} ${n === 1 ? 'record' : 'records'} it covers add up to this amount.`;
+    }
+  }
+  return `Matches ${issuer}'s ${kind} of the same amount on ${dayOf(src.occurred_at)}.`;
 }
 
 /** Entries under a month heading, keeping their order. */
@@ -425,4 +514,52 @@ export const LINK_MARK: Record<LinkState, { mark: string; label: string }> = {
   linked: { mark: '=', label: 'Linked' },
   ambiguous: { mark: '~', label: 'Ambiguous' },
   unmatched: { mark: '–', label: 'Unmatched' },
+};
+
+// ------------------------------------------------------------ status pills --
+
+/** A pill's colour; every pill also carries its words (never colour alone). */
+export type Tone = 'review' | 'ok' | 'warn' | 'bad' | 'quiet';
+
+export const STATUS_TONE: Record<string, Tone> = {
+  // requests
+  awaiting: 'review',
+  approved: 'ok',
+  sent: 'ok',
+  declined: 'bad',
+  expired: 'quiet',
+  // alerts
+  open: 'warn',
+  resolved: 'quiet',
+  // transactions
+  linked: 'ok',
+  ambiguous: 'warn',
+  unmatched: 'quiet',
+  // claims
+  supported: 'ok',
+  contradicted: 'bad',
+  unresolved: 'warn',
+  // merchant connections
+  connected: 'ok',
+  syncing: 'quiet',
+  error: 'bad',
+  disconnected: 'quiet',
+};
+
+export function toneOf(state: string): Tone {
+  return STATUS_TONE[state] ?? 'quiet';
+}
+
+/** What a transaction's link state means to Maya. */
+export const LINK_LABEL: Record<LinkState, string> = {
+  linked: 'Explained',
+  ambiguous: 'More than one possible match',
+  unmatched: 'Not explained yet',
+};
+
+export const CONNECTION_LABEL: Record<PassportHome['connections'][number]['status'], string> = {
+  connected: 'Connected',
+  syncing: 'Syncing',
+  error: 'Sync failed',
+  disconnected: 'Disconnected',
 };

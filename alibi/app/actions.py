@@ -253,13 +253,16 @@ def deliver_in_process(rt: Runtime):
     return deliver
 
 
-def deliver_over_http(base_url: str, timeout: float = 10.0):
-    """A ``deliver`` callable that POSTs the signed package to ``{base_url}/bank/{audience}/receive``."""
+def deliver_over_http(base_url: str, timeout: float = 10.0, post=None):
+    """A ``deliver`` callable that POSTs the signed package to ``{base_url}/bank/{audience}/receive``.
+    ``post`` defaults to ``httpx.post``; tests pass a TestClient's ``post`` to route in-process."""
+    send = post or httpx.post
+
     def deliver(audience: str, payload: dict) -> tuple[int, dict]:
         try:
-            response = httpx.post(f"{base_url}/bank/{audience}/receive",
-                                  content=canon.canonical_bytes(payload),
-                                  headers={"content-type": "application/json"}, timeout=timeout)
+            response = send(f"{base_url}/bank/{audience}/receive",
+                            content=canon.canonical_bytes(payload),
+                            headers={"content-type": "application/json"}, timeout=timeout)
         except httpx.HTTPError as exc:
             return 503, {"code": "bank_unreachable", "reason": f"the bank service at {base_url} could not be "
                                                                f"reached ({type(exc).__name__})"}

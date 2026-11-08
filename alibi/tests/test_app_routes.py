@@ -28,9 +28,9 @@ TOKEN_B = {"authorization": "Bearer demo-token-bank-b"}
 
 
 def make_client(tmp_path, case_number: int, **overrides) -> TestClient:
-    settings = settings_from_env({}, case_number=case_number, data_dir=tmp_path / "app",
-                                 key_dir=tmp_path / "keys", fixed_now=NOW, **overrides)
-    return TestClient(create_app(settings))
+    values = {"case_number": case_number, "data_dir": tmp_path / "app", "key_dir": tmp_path / "keys",
+              "fixed_now": NOW, **overrides}
+    return TestClient(create_app(settings_from_env({}, **values)))
 
 
 @pytest.fixture(params=[1, 2], ids=["case1", "case2"])
@@ -563,3 +563,34 @@ def test_refusal_bodies_are_code_and_reason(client):
     assert set(r.json()) >= {"code", "reason"} and r.status_code == 409
     assert client.get("/requests/nope", headers=JSON).status_code == 404
     assert client.get("/txn/nope").status_code == 404
+
+
+def test_dispatch_over_http_to_the_configured_bank_url(tmp_path):
+    """With ALIBI_BANK_URL set, dispatch POSTs the signed bytes to {url}/bank/{audience}/receive.
+    The TestClient's post stands in for httpx.post so the request still reaches a bank service."""
+    from alibi.app import actions
+
+    # One pinned demo trust registry for both parties, as in the demo (data/alibi/keys).
+    holder = make_client(tmp_path / "holder", 1, bank_url="http://bank.test", key_dir=tmp_path / "keys")
+    bank = make_client(tmp_path / "bank", 1, key_dir=tmp_path / "keys")
+    try:
+        rt = holder.app.state.runtime
+        run_approve(holder, "rfc-0001-01")
+        calls = []
+
+        def post(url, **kwargs):
+            calls.append(url)
+            return bank.post(url, content=kwargs["content"], headers=kwargs["headers"])
+
+        deliver = actions.deliver_over_http("http://bank.test", post=post)
+        result = actions.dispatch(rt, "rfc-0001-01", deliver)
+        assert result["outcome"] == "success" and calls == ["http://bank.test/bank/bank_a/receive"]
+        inbox = bank.get("/bank/bank_a/inbox", headers={**JSON, **TOKEN_A}).json()
+        assert [p["package_id"] for p in inbox["packages"]] == [result["package_id"]]
+        assert holder.get("/health").json()["bank_url"] == "http://bank.test"
+        down = actions.deliver_over_http("http://127.0.0.1:9", timeout=0.5)
+        status, body = down("bank_a", {"x": 1})
+        assert status == 503 and body["code"] == "bank_unreachable"
+    finally:
+        holder.app.state.runtime.close()
+        bank.app.state.runtime.close()

@@ -1175,7 +1175,7 @@ index 6a1ff25..5424e3b 100644
                  <dt><code>{{ f.name }}</code></dt>
                  <dd>{{ f.value }}</dd>
 diff --git a/alibi/app/templates/requests/detail.html b/alibi/app/templates/requests/detail.html
-index 11661a6..c7038fc 100644
+index 11661a6..aed2731 100644
 --- a/alibi/app/templates/requests/detail.html
 +++ b/alibi/app/templates/requests/detail.html
 @@ -2,14 +2,15 @@
@@ -1422,6 +1422,19 @@ index 11661a6..c7038fc 100644
        {% endif %}
        {% if approval.invalidated_reason %}
        <dt>Invalidated</dt>
+@@ -326,6 +371,12 @@
+       <input type="hidden" name="policy_version" value="{{ approval.policy_version }}">
+       <button type="submit" class="btn btn--primary">Approve for {{ approval.recipient }}</button>
+     </form>
++    {% if approval.status == "approved" %}
++    <form method="post" action="{{ approval.dispatch_action|default('/requests/' ~ request.request_id ~ '/dispatch') }}" class="btn-row" id="send">
++      <button type="submit" class="btn btn--primary">Send to {{ approval.recipient }}</button>
++    </form>
++    <p class="muted small">Sending revalidates this approval against the current body, signs the exact approved bytes and delivers them to {{ approval.recipient }}. A changed body is refused.</p>
++    {% endif %}
+     <p class="muted small">An edit, a different recipient, expiry of the window, or a change to a cited source invalidates a pending approval. The backend checks the digest again at dispatch and refuses if the body differs.</p>
+   </div>
+ </section>
 diff --git a/alibi/app/templates/requests/dispatch.html b/alibi/app/templates/requests/dispatch.html
 index 9fa7b08..b49a5af 100644
 --- a/alibi/app/templates/requests/dispatch.html

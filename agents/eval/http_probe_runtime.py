@@ -76,7 +76,7 @@ class ProbeSession:
         return text[:CAPTURE_LIMIT]
 
     def http(self, method: str, service: str, path: str, actor: str | None = None, *,
-             json=None, data=None, content=None, headers=None) -> httpx.Response:
+             json=None, data=None, content=None, headers=None, capture_response: bool = True) -> httpx.Response:
         base = self.base_urls.get(service)
         if not isinstance(base, str):
             raise ProbeUnavailable(f"missing service URL: {service}")
@@ -117,9 +117,11 @@ class ProbeSession:
         except httpx.HTTPError as exc:
             exchange["error"] = type(exc).__name__
             raise ProbeUnavailable(f"{service} transport failed: {type(exc).__name__}") from None
-        exchange.update(status=response.status_code, response_body=self._redact(response.text))
-        if "content-disposition" in response.headers:
-            exchange["content_disposition"] = self._redact(response.headers["content-disposition"])
+        exchange["status"] = response.status_code
+        if capture_response:
+            exchange["response_body"] = self._redact(response.text)
+            if "content-disposition" in response.headers:
+                exchange["content_disposition"] = self._redact(response.headers["content-disposition"])
         return response
 
     @staticmethod

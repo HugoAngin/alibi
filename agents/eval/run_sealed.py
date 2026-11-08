@@ -371,7 +371,12 @@ def _pinned_candidate(ref: str) -> tuple[str, str]:
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=REPO, text=True).strip()
 
-    if git("status", "--porcelain", "--untracked-files=all"):
+    status = git("status", "--porcelain", "--untracked-files=all").splitlines()
+    # tools/results.py links data into its detached verifier checkout. Git's
+    # directory-only /data/ ignore rule does not cover that untracked symlink.
+    if (REPO / "data").is_symlink():
+        status = [line for line in status if line != "?? data"]
+    if status:
         raise ValueError("the evaluator checkout must be clean")
     candidate = git("rev-parse", "--verify", f"{ref}^{{commit}}")
     approved_tag = ref if ref in ("sealed-candidate-2", "sealed-candidate-3") else "sealed-candidate"

@@ -1,0 +1,146 @@
+{
+  "public_only": true,
+  "candidate_commit": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+  "public_cases": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "system": "rules",
+  "workers": 4,
+  "worker_limits": {
+    "agents": 180,
+    "one_pass": 90,
+    "rules": 30
+  },
+  "pause_seconds": 31.005568000022322,
+  "actual_private_root_denied": true,
+  "private_contents_read": false,
+  "model_calls": 0,
+  "permission_error_reproduced": true,
+  "fix_verified": true,
+  "old": {
+    "counts": {
+      "total": 4,
+      "attempted": 4,
+      "completed": 0,
+      "errors": 4,
+      "not_started": 0,
+      "initial_workers": 4,
+      "final_workers": 4,
+      "rate_limit_reduced": false,
+      "deadline_reached": false,
+      "aborted": true,
+      "abort_reason": "PermissionError",
+      "deadline": null
+    },
+    "observations": [
+      {
+        "status": "error",
+        "error": "PermissionError",
+        "metadata_retained": false,
+        "raw_retained": false,
+        "log_retained": false,
+        "stderr_retained": true,
+        "timeout": false
+      },
+      {
+        "status": "error",
+        "error": "PermissionError",
+        "metadata_retained": false,
+        "raw_retained": false,
+        "log_retained": false,
+        "stderr_retained": true,
+        "timeout": false
+      },
+      {
+        "status": "error",
+        "error": "PermissionError",
+        "metadata_retained": false,
+        "raw_retained": false,
+        "log_retained": false,
+        "stderr_retained": true,
+        "timeout": false
+      },
+      {
+        "status": "error",
+        "error": "PermissionError",
+        "metadata_retained": false,
+        "raw_retained": false,
+        "log_retained": false,
+        "stderr_retained": true,
+        "timeout": false
+      }
+    ],
+    "limits": {
+      "agents": 180,
+      "one_pass": 90,
+      "rules": 30
+    },
+    "scratch_empty": true
+  },
+  "fixed": {
+    "counts": {
+      "total": 4,
+      "attempted": 4,
+      "completed": 4,
+      "errors": 0,
+      "not_started": 0,
+      "initial_workers": 4,
+      "final_workers": 4,
+      "rate_limit_reduced": false,
+      "deadline_reached": false,
+      "aborted": false,
+      "abort_reason": null,
+      "deadline": null
+    },
+    "observations": [
+      {
+        "status": "completed",
+        "error": null,
+        "metadata_retained": true,
+        "raw_retained": true,
+        "log_retained": true,
+        "stderr_retained": true,
+        "timeout": true
+      },
+      {
+        "status": "completed",
+        "error": null,
+        "metadata_retained": true,
+        "raw_retained": true,
+        "log_retained": true,
+        "stderr_retained": true,
+        "timeout": true
+      },
+      {
+        "status": "completed",
+        "error": null,
+        "metadata_retained": true,
+        "raw_retained": true,
+        "log_retained": true,
+        "stderr_retained": true,
+        "timeout": true
+      },
+      {
+        "status": "completed",
+        "error": null,
+        "metadata_retained": true,
+        "raw_retained": true,
+        "log_retained": true,
+        "stderr_retained": true,
+        "timeout": true
+      }
+    ],
+    "limits": {
+      "agents": 180,
+      "one_pass": 90,
+      "rules": 30
+    },
+    "scratch_empty": true
+  },
+  "recipe_sha256": "3eb160821823f8ac43e266030d2df1eb966f7e41047ca4290edda0c3b21fe253",
+  "instrumentation": "Old helper stderr retention only; launch barrier synchronizes four workers. Candidate archive unchanged.",
+  "scope": "Independent public diagnostic only. Frozen capture untouched; no evidence of retrying any earlier child exit."
+}

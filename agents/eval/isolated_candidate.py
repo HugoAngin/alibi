@@ -76,6 +76,22 @@ def normalize_cost(rows, mode):
     return rows
 
 
+def _terminate_group(child):
+    """Kill surviving descendants, tolerating macOS's exited-child EPERM race.
+
+    Reap the direct child first, but still signal its group: descendants can
+    outlive it. A denial for a live direct child remains an infrastructure error.
+    """
+    child.poll()
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    except PermissionError:
+        if child.poll() is None:
+            raise
+
+
 def run_isolated(case, mode, *, candidate, private_root, credential, output, source_repo=REPO,
                  scratch_parent=None, denied_scratch=(), capture_root=None, deadline=None):
     """Run one case; retain raw predictions and logs before destroying the source copy."""
@@ -127,24 +143,21 @@ for p in sys.argv[1:]:
             timeout = min(timeout, max(0, (deadline - datetime.now(timezone.utc)).total_seconds()))
         if timeout <= 0:
             raise TimeoutError("capture deadline reached during worker setup")
-        with subprocess.Popen(command, cwd=work, env=env, text=True, stdin=subprocess.PIPE,
-                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True) as child:
+        # Preserve diagnostics privately; never print child stderr into board/report output.
+        stderr_path = output / "worker.stderr.log"
+        stderr_fd = os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(stderr_fd, "w") as stderr, subprocess.Popen(
+                command, cwd=work, env=env, text=True, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=stderr, start_new_session=True) as child:
             failure = None
             try:
                 stdout, _ = child.communicate(json.dumps(payload), timeout=timeout)
             except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                _terminate_group(child)
                 child.communicate()
                 failure = "timeout"
             except BaseException:
-                if child.poll() is None:
-                    try:
-                        os.killpg(child.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
+                _terminate_group(child)
                 child.communicate()
                 raise
             if failure is None and child.returncode:

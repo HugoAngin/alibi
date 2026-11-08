@@ -162,3 +162,19 @@ def test_expired_deadline_never_launches_candidate(harness, monkeypatch):
     assert candidate_launches == []
     assert list(paths["lane"].iterdir()) == []
     assert not (paths["capture"] / "case/raw.json").exists()
+
+
+def test_candidate_stderr_is_retained_privately_on_failure(harness):
+    run, _ = harness
+    rows, metadata, output = run('''
+print("synthetic diagnostic", file=sys.stderr)
+raise RuntimeError("synthetic adapter failure")
+''', mode="rules")
+    assert rows[0]["failure"]["type"] == "error"
+    assert metadata["failures"] == ["error"]
+    stderr = output / "worker.stderr.log"
+    assert stderr.stat().st_mode & 0o777 == 0o600
+    assert "synthetic diagnostic" in stderr.read_text()
+    assert "RuntimeError: synthetic adapter failure" in stderr.read_text()
+    assert (output / "raw.json").is_file()
+    assert (output / "usage.json").is_file()

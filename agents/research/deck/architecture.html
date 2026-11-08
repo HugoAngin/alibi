@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Alibi Architecture</title>
+<!--
+  One 16:9 slide (1920x1080) giving an overview of Alibi's architecture, in the landing page's
+  visual language (warm paper, cerulean accent, dark engine panel, dashed merchant line,
+  double-rail bank line). Render to PNG for Canva:
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" --headless \
+      --window-size=1920,1080 --force-device-scale-factor=2 --hide-scrollbars \
+      --virtual-time-budget=6000 --screenshot=architecture.png "file://$PWD/architecture.html?raw"
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter+Tight:wght@500;600&family=Inter:wght@400;500;600&display=block" rel="stylesheet" />
+<style>
+  :root {
+    --paper: #f7f4ee;
+    --paper-2: #efe9df;
+    --card: #fdfbf7;
+    --ink: #1f1b16;
+    --ink-soft: #5e554a;
+    --ink-faint: #8a8174;
+    --line: rgb(31 27 22 / 0.09);
+    --accent: #437c90;
+    --ok: #1f7a4a;
+    --bad: #b4322d;
+    --night: #17140f;
+    --night-ink: #efe9de;
+    --night-soft: #aaa398;
+    --night-faint: #8a847a;
+    --display: 'Inter Tight', 'Inter', system-ui, sans-serif;
+    --body: 'Inter', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    --shadow: 0 1px 2px rgb(31 27 22 / 0.05), 0 8px 24px rgb(31 27 22 / 0.07);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #e6e0d5; }
+  body { font-family: var(--body); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  html.raw, html.raw body { background: var(--paper); overflow: hidden; }
+  .stage-wrap { width: 100vw; min-height: 100vh; display: grid; place-items: center; }
+  html.raw .stage-wrap { display: block; }
+
+  #slide { position: relative; width: 1920px; height: 1080px; background: var(--paper); overflow: hidden; transform-origin: top left; }
+  p, h1, h3, h4, ul { margin: 0; padding: 0; }
+  ul { list-style: none; }
+
+  /* ------------------------------------------------------------- header */
+  .head { position: absolute; left: 64px; top: 64px; right: 64px; display: flex; justify-content: space-between; align-items: flex-end; }
+  .eyebrow { font: 500 20px/1 var(--body); color: var(--accent); margin-bottom: 16px; }
+  h1 { font: 500 64px/1 var(--display); letter-spacing: -0.03em; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .legend { display: grid; gap: 10px; padding-bottom: 6px; }
+  .legend li { display: flex; align-items: center; gap: 12px; font-size: 16px; color: var(--ink-soft); }
+
+  /* ------------------------------------------------------------ columns */
+  .col { position: absolute; top: 270px; bottom: 112px; display: flex; flex-direction: column; gap: 16px; }
+  .c1 { left: 64px; width: 262px; }
+  .c2 { left: 386px; width: 206px; }
+  .c3 { left: 652px; width: 628px; }
+  .c4 { left: 1340px; width: 250px; }
+  .c5 { left: 1650px; width: 206px; }
+
+  .step { font: 500 17px/1 var(--body); color: var(--ink-soft); display: flex; gap: 8px; align-items: baseline; height: 20px; }
+  .step b { font: 500 14px/1 var(--mono); color: var(--accent); }
+
+  .card { position: relative; background: #fff; border-radius: 18px; box-shadow: var(--shadow); padding: 20px; display: flex; flex-direction: column; }
+  .card h3 { font: 600 21px/1.15 var(--display); letter-spacing: -0.01em; }
+  .card .sub { font-size: 16px; line-height: 1.35; color: var(--ink-soft); margin-top: 8px; }
+  .tag { align-self: flex-start; font: 500 13px/1 var(--mono); padding: 6px 9px; border-radius: 999px; background: var(--paper-2); color: var(--ink-soft); }
+  .grow { flex: 1; }
+
+  .logos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+  .logo { height: 66px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); display: grid; place-items: center; }
+  .logo img { max-height: 30px; max-width: 92px; }
+  .logo img.sq { max-height: 42px; }
+  .logos.stack { grid-template-columns: 1fr; }
+  .logos.stack .logo { height: 74px; }
+  .logos.stack img { max-height: 30px; max-width: 150px; }
+  .gem { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--ink-soft); }
+  .gem img { height: 19px; width: auto; display: block; }
+  .brand { height: 22px; width: auto; align-self: flex-start; display: block; margin-bottom: 12px; }
+
+  /* ------------------------------------------------------------ passport */
+  .passport {
+    flex: 1; border-radius: 20px; background: var(--accent); color: #000; padding: 24px 20px;
+    display: flex; flex-direction: column;
+    box-shadow: var(--shadow), inset 0 0 0 1px rgb(0 0 0 / 0.06);
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.28), 0 -1px 0 rgb(0 0 0 / 0.25);
+  }
+  .passport .kicker { font: 500 13px/1 var(--mono); opacity: 0.75; }
+  .passport h3 { font: 600 30px/1.02 var(--display); letter-spacing: -0.02em; margin-top: 14px; }
+  .passport .big { font: 600 60px/1 var(--display); letter-spacing: -0.03em; margin-top: 44px; }
+  .passport .big + p { font-size: 16px; margin-top: 6px; opacity: 0.85; }
+  .passport .note { font-size: 16px; margin-top: 28px; opacity: 0.85; line-height: 1.4; }
+  .trust { margin-top: auto; display: grid; gap: 7px; text-shadow: none; }
+  .trust span { font: 500 13px/1 var(--mono); padding: 9px 10px; border-radius: 8px; background: rgb(255 255 255 / 0.82); color: var(--ink); }
+
+  /* -------------------------------------------------------------- engine */
+  .engine {
+    flex: 1; background: var(--night); color: var(--night-ink); border-radius: 22px; padding: 24px;
+    display: flex; flex-direction: column; gap: 16px;
+    box-shadow: 0 2px 4px rgb(0 0 0 / 0.1), 0 18px 40px rgb(31 27 22 / 0.18);
+  }
+  .e-head { display: flex; justify-content: space-between; align-items: center; }
+  .wordmark { font: 600 32px/1 var(--display); letter-spacing: -0.03em; }
+  .wordmark span { font-weight: 400; color: var(--night-soft); margin-left: 4px; }
+  .pill { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; background: rgb(239 233 222 / 0.06); border: 1px solid rgb(239 233 222 / 0.12); font-size: 15px; color: var(--night-soft); }
+  .pill img { height: 22px; display: block; }
+  .gateway { padding: 12px 16px; border-radius: 12px; border: 1px dashed rgb(239 233 222 / 0.24); font-size: 15px; color: var(--night-soft); }
+  .gateway b { color: var(--night-ink); font-weight: 600; margin-right: 10px; }
+
+  .agents { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; }
+  .agent { padding: 18px; border-radius: 14px; background: rgb(239 233 222 / 0.05); border: 1px solid rgb(239 233 222 / 0.09); display: flex; flex-direction: column; gap: 8px; }
+  .agent .top { display: flex; justify-content: space-between; align-items: center; }
+  .agent h4 { font: 600 22px/1 var(--display); letter-spacing: -0.01em; }
+  .model { font: 500 12.5px/1 var(--mono); padding: 6px 9px; border-radius: 999px; background: #16213f; color: #c9d3ff; }
+  .model.frontier { background: linear-gradient(90deg, #4893fc, #969dff 70%, #bd99fe); color: #0b1020; }
+  .agent p { font-size: 16px; line-height: 1.3; color: var(--night-soft); }
+  .agent .ex { font: 400 14px/1.3 var(--mono); color: var(--night-ink); margin-top: auto; }
+  .ex .w { color: #f0b37a; }
+  .ex .g { color: #6fd39b; }
+  .second { font-size: 14px; color: var(--night-faint); }
+  .second b { color: var(--night-soft); font-weight: 500; }
+
+  .code { border-radius: 14px; background: rgb(67 124 144 / 0.18); border: 1px solid rgb(143 184 198 / 0.35); padding: 16px 18px; display: grid; grid-template-columns: auto 1fr; gap: 12px 18px; align-items: center; }
+  .code h4 { font: 600 22px/1 var(--display); letter-spacing: -0.01em; color: #fff; }
+  .code .checks { font-size: 15px; color: #cfe0e6; }
+  .code .sum { grid-column: 1 / -1; font: 500 15px/1 var(--mono); color: var(--night-ink); display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid rgb(143 184 198 / 0.22); }
+  .code .sum .g { color: #6fd39b; }
+
+  /* ---------------------------------------------------------------- maya */
+  .list-h { font: 500 13px/1 var(--mono); color: var(--ink-faint); margin: 22px 0 12px; }
+  .rows { display: grid; gap: 12px; font-size: 18px; }
+  .rows.share li::before { content: '✓  '; color: var(--ok); font-weight: 600; white-space: pre; }
+  .private { font-size: 17px; line-height: 1.45; color: var(--ink-faint); text-decoration: line-through; text-decoration-color: rgb(31 27 22 / 0.3); }
+  .btn { margin-top: auto; height: 46px; border-radius: 999px; background: var(--accent); color: #000; font: 600 16px/46px var(--body); text-align: center; text-shadow: 0 1px 0 rgb(255 255 255 / 0.3); }
+  .rules { margin-top: auto; padding-top: 18px; border-top: 1px solid var(--line); }
+  .rules p { font-size: 16px; line-height: 1.35; color: var(--ink); margin-top: 10px; }
+  .btn { margin-top: 20px !important; }
+
+  /* --------------------------------------------------------------- banks */
+  .packet { background: var(--ink); color: var(--paper); border-radius: 16px; padding: 16px; display: flex; gap: 12px; align-items: center; }
+  .packet svg { flex: none; }
+  .packet h3 { font: 600 17px/1.15 var(--display); }
+  .packet p { font: 400 13px/1.3 var(--mono); color: #b9b1a4; margin-top: 4px; }
+  .checks-l { margin-top: 14px; font-size: 16px; color: var(--ink-soft); }
+  .checks-l::before { content: '✓ '; color: var(--ok); font-weight: 600; }
+  .decide { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .decide span { height: 40px; border-radius: 999px; border: 1px solid rgb(31 27 22 / 0.16); font: 600 14.5px/38px var(--body); text-align: center; }
+  .decide .yes { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .again { background: var(--card); box-shadow: none; border: 1px solid var(--line); }
+
+  /* -------------------------------------------------------------- footer */
+  .foot { position: absolute; left: 64px; right: 64px; bottom: 40px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .foot .lbl { font: 500 16px/1 var(--body); margin-right: 6px; }
+  .foot .chip { font-size: 15px; color: var(--ink-soft); padding: 8px 14px; border-radius: 999px; background: #fff; box-shadow: 0 1px 2px rgb(31 27 22 / 0.06); }
+  .foot .chip::before { content: '⊘ '; color: var(--bad); }
+  .foot .right { margin-left: auto; font-size: 16px; color: var(--ink-soft); }
+  .foot .right b { color: var(--ink); font-weight: 600; }
+
+  /* ------------------------------------------------------- connector layer */
+  #wires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .rfc-label { position: absolute; top: 218px; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 10px; padding: 9px 16px 9px 10px; border-radius: 999px; background: #fff; box-shadow: var(--shadow); font-size: 16px; white-space: nowrap; }
+  .rfc-label b { font: 500 12.5px/1 var(--mono); padding: 6px 9px; border-radius: 999px; background: var(--ink); color: var(--paper); }
+  .rfc-label q { color: var(--ink-soft); }
+  .wire-tag { position: absolute; transform: translate(-50%, -50%); font: 500 13px/1 var(--mono); color: var(--ink-soft); background: var(--paper); padding: 3px 5px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="stage-wrap">
+<div id="slide">
+
+  <header class="head">
+    <div>
+      <h1>Gemini investigates. <em>Code decides.</em> Maya approves.</h1>
+    </div>
+    <ul class="legend" aria-label="Line styles">
+      <li><svg width="56" height="10"><line x1="2" y1="5" x2="54" y2="5" stroke="#5e554a" stroke-width="2" stroke-dasharray="7 6" /></svg>Signed merchant records</li>
+      <li><svg width="56" height="10"><line x1="2" y1="5" x2="54" y2="5" stroke="#1f1b16" stroke-width="7" /><line x1="2" y1="5" x2="54" y2="5" stroke="#f7f4ee" stroke-width="2.5" /></svg>Encrypted bank line</li>
+      <li><svg width="56" height="10"><line x1="2" y1="5" x2="54" y2="5" stroke="#437c90" stroke-width="3.5" /></svg>Approved, signed package</li>
+    </ul>
+  </header>
+
+  <!-- 01 sources -->
+  <section class="col c1">
+    <p class="step"><b>01</b>Connect</p>
+    <div class="card grow" id="merchants">
+      <h3>Merchants</h3>
+      <div class="logos">
+        <div class="logo"><img src="../../../web/apps/alibi/public/logos/amazon.png" alt="Amazon" /></div>
+        <div class="logo"><img src="../../../web/apps/alibi/public/logos/deliveroo.png" alt="Deliveroo" /></div>
+        <div class="logo"><img class="sq" src="../../../web/apps/alibi/public/logos/uniqlo.png" alt="UNIQLO" /></div>
+        <div class="logo"><img src="../../../web/apps/alibi/public/logos/ucl.png" alt="UCL" /></div>
+      </div>
+      <span class="tag" style="margin-top:auto">signed records</span>
+    </div>
+    <div class="card grow" id="bankfeed">
+      <h3>Her banks</h3>
+      <div class="logos stack">
+        <div class="logo"><img src="../../../web/apps/alibi/public/logos/santander.png" alt="Santander" /></div>
+        <div class="logo"><img src="../../../web/apps/alibi/public/logos/natwest.png" alt="NatWest" /></div>
+      </div>
+      <span class="tag" style="margin-top:auto">read-only feed</span>
+    </div>
+  </section>
+
+  <!-- 02 passport -->
+  <section class="col c2">
+    <p class="step"><b>02</b>Remember</p>
+    <div class="passport" id="passport">
+      <p class="kicker">ALIBI · PASSPORT</p>
+      <h3>Living financial passport</h3>
+      <p class="big">18</p>
+      <p>signed records behind one £2,160 credit</p>
+      <p class="note">Versioned and encrypted. Nothing is overwritten.</p>
+      <div class="trust">
+        <span>issuer_verified</span>
+        <span>bank_observed</span>
+        <span>self_supplied</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 engine -->
+  <section class="col c3">
+    <p class="step"><b>03</b>Investigate</p>
+    <div class="engine" id="engine">
+      <div class="e-head">
+        <p class="wordmark">alibi<span>engine</span></p>
+        <p class="pill">Reasoning with <img src="../../../web/apps/alibi/public/logos/gemini-white.svg" alt="Gemini" /></p>
+      </div>
+
+      <p class="gateway" id="gateway"><b>Tool gateway</b>scoped, budgeted reads · text is data, never an instruction</p>
+
+      <div class="agents">
+        <div class="agent">
+          <div class="top"><h4>Matcher</h4><span class="model">3.8 Flash</span></div>
+          <p>Links payouts to credits</p>
+          <p class="ex">+£2,160.00 → PO-0001-01</p>
+        </div>
+        <div class="agent">
+          <div class="top"><h4>Detective</h4><span class="model">3.8 Flash</span></div>
+          <p>Spots what’s missing</p>
+          <p class="ex"><span class="w">£2,160 unexplained</span></p>
+        </div>
+        <div class="agent">
+          <div class="top"><h4>Challenger</h4><span class="model frontier">4 Argon</span></div>
+          <p>Fetches the deciding record</p>
+          <p class="ex"><span class="g">Release ≠ transfer ✓</span></p>
+        </div>
+        <div class="agent">
+          <div class="top"><h4>Curator</h4><span class="model">3.8 Flash</span></div>
+          <p>Picks the smallest evidence</p>
+          <p class="ex">3 shared · 3 private</p>
+        </div>
+      </div>
+
+      <p class="second"><b>Gemma</b> cross-checks Matcher and Detective</p>
+
+      <div class="code" id="code">
+        <h4>Code decides</h4>
+        <p class="checks">Checks every ref and penny. Traces every claim.</p>
+        <p class="sum"><span>240000 − 18000 − 6000 = 216000</span><span class="g">✓ supported</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 approve -->
+  <section class="col c4">
+    <p class="step"><b>04</b>Approve</p>
+    <div class="card grow" id="approve">
+      <h3>What Bank A gets</h3>
+      <p class="list-h">SHARED</p>
+      <ul class="rows share">
+        <li>£2,160 credit</li>
+        <li>Payout PO-0001-01</li>
+        <li>18 signed records</li>
+      </ul>
+      <p class="list-h">KEPT PRIVATE</p>
+      <p class="private">Rent<br />Two card payments<br />An eyewear purchase</p>
+      <div class="rules">
+        <span class="gem"><img src="../../../web/apps/alibi/public/logos/gemini.svg" alt="Gemini" /> privacy rules</span>
+        <p>“Never share my rent” becomes an enforced rule.</p>
+      </div>
+      <div class="btn" id="approve-btn">Approve exactly this</div>
+    </div>
+  </section>
+
+  <!-- 05 verify -->
+  <section class="col c5">
+    <p class="step"><b>05</b>Verify</p>
+    <div class="packet" id="packet">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="15" fill="#437c90" /><path d="M10.5 17.5l4.2 4.2 8.8-9" fill="none" stroke="#000" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      <div><h3>Signed package</h3><p>Ed25519</p></div>
+    </div>
+    <div class="card" id="natwest" style="margin-top:40px">
+      <h3>Bank A analyst</h3>
+      <p class="checks-l">Every signature checked</p>
+      <div class="decide"><span class="yes">Clear</span><span>Escalate</span></div>
+    </div>
+    <div class="card again" id="santander" style="margin-top:auto">
+      <h3>Bank B</h3>
+      <p class="sub">Asks next. Same passport, fresh consent, no access to Bank A’s package</p>
+    </div>
+  </section>
+
+  <svg id="wires" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true">
+    <defs>
+      <marker id="ah-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1f1b16" /></marker>
+      <marker id="ah-soft" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5e554a" /></marker>
+      <marker id="ah-rail" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="18" markerHeight="18" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1f1b16" /></marker>
+      <marker id="ah-accent" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#437c90" /></marker>
+    </defs>
+  </svg>
+
+  <p class="rfc-label" id="rfc-label"><b>RFC</b>Bank A asks <q>Explain the £2,160.00 credit</q></p>
+
+  <footer class="foot">
+    <span class="lbl">Refused live</span>
+    <span class="chip">Prompt injection</span>
+    <span class="chip">Cross-bank access</span>
+    <span class="chip">Edited drafts</span>
+    <span class="chip">Over-budget calls</span>
+    <span class="right">Tested on <b>sealed, unseen cases</b> vs a rules baseline and one-pass Gemini</span>
+  </footer>
+</div>
+</div>
+
+<script>
+  const raw = location.search.includes('raw');
+  if (raw) document.documentElement.classList.add('raw');
+  const slide = document.getElementById('slide');
+  const svg = document.getElementById('wires');
+  const NS = 'http://www.w3.org/2000/svg';
+
+  function box(el) {
+    let x = 0, y = 0, n = el;
+    while (n && n !== slide) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+    return { x, y, w: el.offsetWidth, h: el.offsetHeight, r: x + el.offsetWidth, b: y + el.offsetHeight, cx: x + el.offsetWidth / 2, cy: y + el.offsetHeight / 2 };
+  }
+  function path(d, attrs) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('fill', 'none');
+    for (const k in attrs) p.setAttribute(k, attrs[k]);
+    svg.appendChild(p);
+  }
+  function ortho(pts, r = 14) {
+    let d = `M${pts[0][0]} ${pts[0][1]}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [px, py] = pts[i - 1], [x, y] = pts[i], [nx, ny] = pts[i + 1];
+      const d1 = Math.hypot(x - px, y - py), d2 = Math.hypot(nx - x, ny - y);
+      const rr = Math.min(r, d1 / 2, d2 / 2);
+      d += ` L${x - ((x - px) / d1) * rr} ${y - ((y - py) / d1) * rr} Q${x} ${y} ${x + ((nx - x) / d2) * rr} ${y + ((ny - y) / d2) * rr}`;
+    }
+    const last = pts[pts.length - 1];
+    return d + ` L${last[0]} ${last[1]}`;
+  }
+  const dashed = (d) => path(d, { stroke: '#5e554a', 'stroke-width': 2, 'stroke-dasharray': '7 6', 'marker-end': 'url(#ah-soft)' });
+  function rail(d) {
+    path(d, { stroke: '#1f1b16', 'stroke-width': 7, 'marker-end': 'url(#ah-rail)' });
+    path(d, { stroke: '#f7f4ee', 'stroke-width': 2.5 });
+  }
+  const accent = (d) => path(d, { stroke: '#437c90', 'stroke-width': 3.5, 'marker-end': 'url(#ah-accent)' });
+  const solid = (d) => path(d, { stroke: '#1f1b16', 'stroke-width': 2, 'marker-end': 'url(#ah-ink)' });
+  function tag(text, x, y) {
+    const t = document.createElement('span');
+    t.className = 'wire-tag'; t.textContent = text;
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+    slide.appendChild(t);
+  }
+
+  function draw() {
+    const $ = (id) => box(document.getElementById(id));
+    const m = $('merchants'), bf = $('bankfeed'), pp = $('passport');
+    const en = $('engine'), gw = $('gateway'), code = $('code'), ap = $('approve'), btn = $('approve-btn');
+    const pk = $('packet'), nw = $('natwest');
+
+    // 01 -> 02
+    dashed(`M${m.r} ${m.cy} L${pp.x - 3} ${m.cy}`);
+    rail(`M${bf.r} ${bf.cy} L${pp.x - 3} ${bf.cy}`);
+
+    // 02 <-> 03 through the tool gateway
+    path(`M${pp.r + 3} ${gw.cy} L${en.x - 3} ${gw.cy}`, { stroke: '#1f1b16', 'stroke-width': 2, 'marker-start': 'url(#ah-ink)', 'marker-end': 'url(#ah-ink)' });
+    tag('reads', (pp.r + en.x) / 2, gw.cy - 16);
+
+    // RFC: NatWest -> engine, along the top
+    const top = 218, sx = nw.r + 26, ex = en.x + en.w * 0.62;
+    rail(ortho([[nw.r + 2, nw.y + 40], [sx, nw.y + 40], [sx, top], [ex, top], [ex, en.y - 6]], 18));
+    document.getElementById('rfc-label').style.left = ((pk.cx + ex) / 2 - 30) + 'px';
+
+    // 03 -> 04: the filtered draft
+    const mx = (en.r + ap.x) / 2;
+    solid(ortho([[en.r + 2, code.cy], [mx, code.cy], [mx, ap.cy + 30], [ap.x - 3, ap.cy + 30]]));
+    tag('draft', mx, code.cy + 18);
+
+    // 04 -> 05: the approved, signed package
+    const kx = (ap.r + pk.x) / 2;
+    accent(ortho([[ap.r + 2, btn.cy], [kx, btn.cy], [kx, pk.cy], [pk.x - 4, pk.cy]]));
+    accent(`M${pk.cx} ${pk.b + 2} L${pk.cx} ${nw.y - 4}`);
+  }
+
+  function fit() {
+    if (raw) return;
+    const s = Math.min((innerWidth - 32) / 1920, (innerHeight - 32) / 1080, 1);
+    slide.style.transform = `scale(${s})`;
+    slide.parentElement.style.height = 1080 * s + 32 + 'px';
+    slide.style.marginRight = -1920 * (1 - s) + 'px';
+    slide.style.marginBottom = -1080 * (1 - s) + 'px';
+  }
+
+  document.fonts.ready.then(() => { draw(); fit(); });
+  addEventListener('resize', fit);
+</script>
+</body>
+</html>

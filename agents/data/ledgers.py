@@ -798,6 +798,260 @@ PLAN = [
 ]
 
 
+# --------------------------------------------------------------------------
+# alert family (cases 61-70): proactive monitoring before any RFC
+# --------------------------------------------------------------------------
+
+# Mock merchant registry the app's lookup form reads (out/merchant_registry.json).
+# Synthetic names only. Absent names come back "unverified": unknown, not fraudulent.
+REGISTRY = [
+    {"name": "Mock Marketplace Payments", "aliases": ["mock marketplace", "mock-marketplace"], "category": "online marketplace"},
+    {"name": "Synthetic Lettings Ltd", "aliases": ["synthetic lettings"], "category": "letting agent"},
+    {"name": "Synthetic Grocer", "aliases": [], "category": "groceries"},
+    {"name": "Synthetic Pharmacy", "aliases": [], "category": "pharmacy"},
+    {"name": "Synthetic Media", "aliases": [], "category": "streaming"},
+    {"name": "Synthetic Rail", "aliases": [], "category": "transport"},
+    {"name": "Synthetic Coffee Co", "aliases": ["synthetic coffee"], "category": "cafe"},
+    {"name": "Synthetic Car Sales Ltd", "aliases": ["synthetic car sales"], "category": "vehicle dealer"},
+    {"name": "Synthetic Electronics Direct", "aliases": ["synthetic electronics"], "category": "electronics"},
+]
+REGISTRY_NAME = "Mock Merchant Registry (synthetic)"
+UNKNOWN_EXAMPLES = ["Payflux Holdings", "QuickParcel Fees Ltd"]
+
+ALERT_MIN_CREDIT = 10000           # £100: smaller credits are not chased
+UNEXPLAINED_AFTER = timedelta(hours=24)
+NOT_RECEIVED_AFTER = timedelta(days=3)
+UNUSUAL_FACTOR, UNUSUAL_WINDOW, UNUSUAL_MIN_PRIOR = 3, timedelta(days=60), 3
+SEVERITY = {"unexplained_credit": "warning", "amount_discrepancy": "warning",
+            "settlement_discrepancy": "high", "settled_not_received": "warning",
+            "unusual_inflow": "info", "unusual_outflow": "warning", "merchant_unverified": "info"}
+
+
+def norm_name(s: str) -> str:
+    return " ".join("".join(ch.lower() if ch.isalnum() else " " for ch in s).split())
+
+
+def in_registry(name: str) -> dict | None:
+    q = norm_name(name)
+    return next((m for m in REGISTRY if q in [norm_name(m["name"])] + [norm_name(a) for a in m["aliases"]]), None)
+
+
+def alert_case(number: int, variant: str, rng: random.Random) -> dict:
+    titles = {
+        "unexplained_credit": "A £100+ credit with no marketplace record behind it",
+        "unexplained_until_lookup": "A referenced credit whose payout is only available by lookup",
+        "unusual_inflow_explained": "A payout several times larger than usual, with records",
+        "unusual_inflow_unexplained": "A large credit, several times usual, from an unknown sender",
+        "unusual_outflow": "A transfer out several times larger than any recent debit",
+        "amount_discrepancy": "The credit names a payout but the amounts differ",
+        "settled_not_received": "A payout marked settled never reached the bank",
+        "pending_at_booking": "The credit names a payout that was still pending",
+        "merchant_unverified": "A card payment to a merchant the registry does not know",
+        "quiet_control": "Control: an ordinary month, no alerts",
+    }
+    c, start = seller(number, "alert", variant, titles[variant], rng)
+    alerts: list[dict] = []
+
+    def alert(kind: str, at: datetime, subject: str, title: str, explanation: str,
+              facts: list[tuple[str, str, str]], checks: list[str]) -> None:
+        alerts.append({"kind": kind, "severity": SEVERITY[kind], "raised_at": iso(at),
+                       "subject_ref": subject, "status": "open", "title": title,
+                       "explanation": explanation,
+                       "facts": [{"label": l, "value": v, "source_ref": r} for l, v, r in facts],
+                       "suggested_checks": checks})
+
+    def routine(t: datetime, amounts: list[int]) -> tuple[dict, dict, dict]:
+        s = c.sales(amounts, t)
+        p = c.payout(s["totals"]["net"], s["end"] + timedelta(days=1), s["covers"])
+        cr = c.credit(s["totals"]["net"], ts_(p["settled_at"]) + timedelta(hours=rng.randint(4, 20)),
+                      p["payout_reference"])
+        return s, p, cr
+
+    def small() -> list[int]:
+        return [rng.randrange(1500, 6001, 500) for _ in range(rng.randint(2, 3))]
+
+    def medium() -> list[int]:
+        return [rng.randrange(10000, 15001, 500) for _ in range(3)]
+
+    t = start + timedelta(days=6)
+    subject = None          # the credit the RFC asks about
+    claim_kw: dict = {}
+    if variant in ("unusual_inflow_explained", "unusual_inflow_unexplained", "quiet_control"):
+        priors = []
+        for _ in range(4 if variant == "quiet_control" else 3):
+            s, p, cr = routine(t, medium() if variant == "quiet_control" else small())
+            priors.append(cr)
+            t = ts_(cr["booked_at"]) + timedelta(days=rng.randint(6, 10))
+        prior_max = max(cr["amount_minor"] for cr in priors[-3:])
+        if variant == "quiet_control":
+            assert max(cr["amount_minor"] for cr in priors) < UNUSUAL_FACTOR * min(cr["amount_minor"] for cr in priors)
+            subject = priors[-1]          # s and p are the last routine batch's
+            claim_kw = dict(link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                            claim_status="supported", source_status="supported", gap=None,
+                            stated=stated(s["totals"]))
+        elif variant == "unusual_inflow_explained":
+            s, p, subject = routine(t, [rng.randrange(30000, 50001, 500) for _ in range(4)])
+            assert subject["amount_minor"] >= UNUSUAL_FACTOR * prior_max
+            alert("unusual_inflow", ts_(c.bank[-1]["received_at"]), f"bank:{subject['txn_id']}",
+                  f"Unusually large credit: {pounds(subject['amount_minor'])}",
+                  "This credit is several times larger than any credit in the last 60 days. It matches "
+                  f"marketplace payout {p['payout_reference']}, so its source is on record.",
+                  [("Credit", pounds(subject["amount_minor"]), f"bank:{subject['txn_id']}"),
+                   ("Largest credit in the prior 60 days", pounds(prior_max), f"bank:{priors[-1]['txn_id']}")],
+                  ["Check the linked payout and its sales.", "Keep the records ready in case a bank asks."])
+            claim_kw = dict(link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                            claim_status="supported", source_status="supported", gap=None,
+                            stated=stated(s["totals"]))
+        else:
+            amount = rng.randrange(3 * prior_max + 10000, 3 * prior_max + 60000, 100)
+            subject = c.credit(amount, t, None)
+            recv = ts_(c.bank[-1]["received_at"])
+            alert("unusual_inflow", recv, f"bank:{subject['txn_id']}",
+                  f"Unusually large credit: {pounds(amount)}",
+                  "This credit is several times larger than any credit in the last 60 days.",
+                  [("Credit", pounds(amount), f"bank:{subject['txn_id']}"),
+                   ("Largest credit in the prior 60 days", pounds(prior_max), f"bank:{priors[-1]['txn_id']}")],
+                  ["Find the record that explains this credit before anyone asks."])
+            alert("unexplained_credit", recv + UNEXPLAINED_AFTER, f"bank:{subject['txn_id']}",
+                  f"Credit of {pounds(amount)} has no matching record",
+                  "No marketplace payout or other record on file matches this credit's amount and timing.",
+                  [("Credit", pounds(amount), f"bank:{subject['txn_id']}"),
+                   ("Sender", subject["counterparty_name"], f"bank:{subject['txn_id']}")],
+                  ["Add a receipt or statement that explains it, or check with the sender."])
+            claim_kw = dict(link="unmatched", payouts=[], covered=None, breakdown=None,
+                            claim_status="unresolved", source_status="unresolved",
+                            gap="settlement_not_found", stated=stated({"sales": amount, "refunds": 0, "fees": 0}))
+    elif variant in ("unexplained_credit", "unexplained_until_lookup"):
+        s0, p0, _ = routine(t, small())
+        t = ts_(p0["settled_at"]) + timedelta(days=4)
+        if variant == "unexplained_credit":
+            amount = rng.randrange(40000, 120001, 500)
+            subject = c.credit(amount, t, None)
+            gap, stated_ = "settlement_not_found", stated({"sales": amount, "refunds": 0, "fees": 0})
+            checks = ["Add a receipt or statement that explains it, or check with the sender."]
+            claim_kw = dict(link="unmatched", payouts=[], covered=None, breakdown=None,
+                            claim_status="unresolved", source_status="unresolved", gap=gap, stated=stated_)
+            facts = [("Credit", pounds(amount), f"bank:{subject['txn_id']}"),
+                     ("Sender", subject["counterparty_name"], f"bank:{subject['txn_id']}")]
+        else:
+            s = c.sales(amounts_for(rng, 3, 5), t)
+            ref = f"PO-{number:04d}-02"
+            c.balance_release(s["totals"]["net"], s["end"] + timedelta(days=1), s["covers"], mentions=ref)
+            p = c.payout(s["totals"]["net"], s["end"] + timedelta(days=1, hours=2), s["covers"],
+                         channel="lookup", reference=ref)
+            subject = c.credit(s["totals"]["net"], ts_(p["settled_at"]) + timedelta(hours=10), ref)
+            checks = [f"Retrieve the settlement record for withdrawal {ref} from the marketplace."]
+            claim_kw = dict(link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                            claim_status="supported", source_status="supported", gap=None,
+                            stated=stated(s["totals"]))
+            facts = [("Credit", pounds(subject["amount_minor"]), f"bank:{subject['txn_id']}"),
+                     ("Payment reference", ref, f"bank:{subject['txn_id']}")]
+        recv = ts_(c.bank[-1]["received_at"])
+        alert("unexplained_credit", recv + UNEXPLAINED_AFTER, f"bank:{subject['txn_id']}",
+              f"Credit of {pounds(subject['amount_minor'])} has no matching record",
+              "No settlement record on file matches this credit yet. A release to the seller balance "
+              "is not proof that money reached the bank." if variant == "unexplained_until_lookup" else
+              "No marketplace payout or other record on file matches this credit's amount and timing.",
+              facts, checks)
+    elif variant == "unusual_outflow":
+        s, p, subject = routine(t, medium())
+        claim_kw = dict(link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                        claim_status="supported", source_status="supported", gap=None, stated=stated(s["totals"]))
+        tt = ts_(subject["booked_at"]) + timedelta(days=2)
+        c.bank_row(-1450, tt, "CARD", "Synthetic Coffee Co")
+        c.bank_row(-3900, tt + timedelta(days=2), "CARD", "Synthetic Rail")
+        prior_max = 65000
+        big = c.bank_row(-rng.randrange(3 * prior_max + 5000, 3 * prior_max + 60000, 100),
+                         tt + timedelta(days=5), "TRANSFER", "Synthetic Car Sales Ltd")
+        alert("unusual_outflow", ts_(c.bank[-1]["received_at"]), f"bank:{big['txn_id']}",
+              f"Unusually large payment out: {pounds(-big['amount_minor'])}",
+              "This payment is several times larger than any payment in the last 60 days. The payee "
+              "is a registered merchant.",
+              [("Payment", pounds(-big["amount_minor"]), f"bank:{big['txn_id']}"),
+               ("Largest payment in the prior 60 days", pounds(prior_max), f"bank:{c.bank[0]['row']['txn_id']}"),
+               ("Payee", big["counterparty_name"], f"bank:{big['txn_id']}")],
+              ["Confirm you made this payment."])
+    elif variant == "amount_discrepancy":
+        s = c.sales(amounts_for(rng, 3, 5), t)
+        p = c.payout(s["totals"]["net"], s["end"] + timedelta(days=1), s["covers"])
+        short = rng.randrange(1000, 6001, 100)
+        subject = c.credit(s["totals"]["net"] - short, ts_(p["settled_at"]) + timedelta(hours=8),
+                           p["payout_reference"])
+        alert("amount_discrepancy", ts_(c.bank[-1]["received_at"]), f"bank:{subject['txn_id']}",
+              f"Credit is {pounds(short)} less than payout {p['payout_reference']}",
+              "The credit names a marketplace payout, but the amounts differ.",
+              [("Credit", pounds(subject["amount_minor"]), f"bank:{subject['txn_id']}"),
+               ("Payout", pounds(p["amount_minor"]), f"merchant:{p['record_id']}"),
+               ("Difference", pounds(short), f"bank:{subject['txn_id']}")],
+              [f"Ask the marketplace why payout {p['payout_reference']} arrived short."])
+        claim_kw = dict(link="unmatched", payouts=[], covered=None, breakdown=None,
+                        claim_status="unresolved", source_status="unresolved", gap="amount_mismatch",
+                        stated=stated(s["totals"]))
+    elif variant == "settled_not_received":
+        s, p, subject = routine(t, medium())
+        claim_kw = dict(link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                        claim_status="supported", source_status="supported", gap=None, stated=stated(s["totals"]))
+        s2 = c.sales(medium(), ts_(subject["booked_at"]) + timedelta(days=2))
+        p2 = c.payout(s2["totals"]["net"], s2["end"] + timedelta(days=1), s2["covers"])
+        alert("settled_not_received", ts_(p2["settled_at"]) + NOT_RECEIVED_AFTER, f"merchant:{p2['record_id']}",
+              f"Payout {p2['payout_reference']} marked settled but not received",
+              "The marketplace says this payout settled to the bank, but no matching credit has arrived "
+              "within 3 days.",
+              [("Payout", pounds(p2["amount_minor"]), f"merchant:{p2['record_id']}"),
+               ("Settled at", p2["settled_at"], f"merchant:{p2['record_id']}")],
+              [f"Ask the marketplace for the bank transfer details of {p2['payout_reference']}."])
+        t = ts_(p2["settled_at"]) + NOT_RECEIVED_AFTER + timedelta(days=1)
+    elif variant == "pending_at_booking":
+        s = c.sales(amounts_for(rng, 3, 5), t)
+        init = s["end"] + timedelta(days=1)
+        booked = init + timedelta(days=1)
+        p = c.payout(s["totals"]["net"], init, s["covers"], status="pending",
+                     status_as_of=iso(booked + timedelta(hours=12)))
+        subject = c.credit(s["totals"]["net"], booked, p["payout_reference"])
+        alert("settlement_discrepancy",
+              max(ts_(c.bank[-1]["received_at"]), ts_(c.merchant[-1]["received_at"])),
+              f"bank:{subject['txn_id']}",
+              f"Credit names payout {p['payout_reference']}, which was still pending",
+              "The marketplace says this payout had not settled when the credit was booked, so the "
+              "payout cannot explain the credit even though the amounts match.",
+              [("Credit booked", subject["booked_at"], f"bank:{subject['txn_id']}"),
+               ("Payout status", f"pending as of {p['status_as_of']}", f"merchant:{p['record_id']}")],
+              ["Find out where this credit came from.", f"Ask the marketplace about {p['payout_reference']}."])
+        claim_kw = dict(link="unmatched", payouts=[], covered=None, breakdown=None,
+                        claim_status="contradicted", source_status="unresolved",
+                        gap="settlement_pending_at_booking", stated=stated(s["totals"]))
+        claim_kw["payout_ref"] = p["payout_reference"]
+    elif variant == "merchant_unverified":
+        s, p, subject = routine(t, medium())
+        claim_kw = dict(link="linked", payouts=[p], covered=s["covers"], breakdown=s["totals"],
+                        claim_status="supported", source_status="supported", gap=None, stated=stated(s["totals"]))
+        payee = UNKNOWN_EXAMPLES[0]
+        d = c.bank_row(-rng.randrange(1500, 9001, 100), ts_(subject["booked_at"]) + timedelta(days=3),
+                       "CARD", payee)
+        alert("merchant_unverified", ts_(c.bank[-1]["received_at"]), f"bank:{d['txn_id']}",
+              f"{payee} is not in the merchant registry",
+              "This merchant is unknown to the mock registry. Unknown does not mean fraudulent; it "
+              "means there is nothing on record to check it against.",
+              [("Payment", pounds(-d["amount_minor"]), f"bank:{d['txn_id']}"),
+               ("Payee", payee, f"bank:{d['txn_id']}")],
+              ["Look the merchant up before paying it again.", "Keep the receipt."])
+    rfc_at = max([ts_(a["raised_at"]) for a in alerts] + [ts_(c.bank[-1]["received_at"]), t]) + timedelta(days=2)
+    alerts.sort(key=lambda a: a["raised_at"])
+    for k, a in enumerate(alerts, 1):
+        a["alert_id"] = f"alrt-{number:04d}-{k:02d}"
+    payout_ref = claim_kw.pop("payout_ref", None)
+    return c.finish(rfcs=[c.rfc(subject, rfc_at)], credit=subject, payout_ref=payout_ref,
+                    notes=f"{titles[variant]}. gold.alerts lists every alert the monitor rules raise "
+                          "before the first request, in order; see agents/data/README.md 'Alert rules'.",
+                    extra_gold={"alerts": [{"alert_id": a.pop("alert_id"), **a} for a in alerts]},
+                    **claim_kw)
+
+
+ALERT_VARIANTS = ["unexplained_credit", "unexplained_until_lookup", "unusual_inflow_explained",
+                  "unusual_inflow_unexplained", "unusual_outflow", "amount_discrepancy",
+                  "settled_not_received", "pending_at_booking", "merchant_unverified", "quiet_control"]
+
+
 # Cases 51-60: execution's injection strings (agents/execution/out/injections.jsonl, read through
 # agents.execution.api) planted into exact copies of case 1 or 2. Record IDs stay those of the
 # base case so the strings' references (txn-0001-001, PO-0001-01, ...) point at real records.
@@ -874,6 +1128,9 @@ def build_cases(seed: int = 20261107) -> list[dict]:
         inj = catalogue[inj_id]
         cases.append(injected(n, cases[inj["base_case"] - 1], inj))
         n += 1
+    for v in ALERT_VARIANTS:
+        cases.append(alert_case(n, v, random.Random(rng.random())))
+        n += 1
     return cases
 
 
@@ -895,6 +1152,13 @@ def write(cases: list[dict], out: Path = OUT) -> None:
                       "claim_status": case["gold"]["claim_status"],
                       "link_states": [l["state"] for l in case["gold"]["links"]]})
     (out / "index.json").write_text(dumps({"label": LABEL, "count": len(index), "cases": index}))
+    (out / "merchant_registry.json").write_text(dumps({
+        "label": LABEL, "registry": REGISTRY_NAME,
+        "note": "Mock registry for the app's merchant lookup form. A name not listed here is "
+                "'unverified': unknown to the registry, not fraudulent. Matching is case-insensitive "
+                "on letters and digits, against the name or an alias.",
+        "merchants": [dict(m, status="verified") for m in REGISTRY],
+        "unknown_examples": UNKNOWN_EXAMPLES}))
 
 
 def main() -> None:

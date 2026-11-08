@@ -1,6 +1,6 @@
 ## Data card: Alibi development cases
 
-**What it is.** 50 synthetic development cases for Alibi, numbered 1–50. Each case is one fictional seller's history:
+**What it is.** 70 synthetic development cases for Alibi, numbered 1–70. Each case is one fictional seller's history:
 - marketplace events: sales, refunds, fees, balance releases, payouts, notices and statements
 - bank feed rows
 - one or two Requests for Context from mock banks
@@ -17,7 +17,7 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 
   ```bash
   uv run --frozen python -m agents.data.ledgers           # rewrites out/ byte for byte
-  uv run --frozen python -m pytest agents/data            # 218 checks; one asserts out/ equals a fresh build
+  uv run --frozen python -m pytest agents/data            # 321 checks; one asserts out/ equals a fresh build
   ```
 - Names such as "Mock Marketplace Payments", "Synthetic Lettings Ltd" and `mock-marketplace` are invented.
 
@@ -53,9 +53,12 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 | 39–40 | self_supplied_import | The only payout proof is the holder's own export, kept at lower trust whatever it claims. |
 | 41–50 | hidden_reference | The deciding payout's reference is not a regex away. It may appear only in an order confirmation, be absent (orders and weekday, or date only), use a withdrawal-ID alias mapped by a statement or an import, sit in an unfamiliar layout (email, semicolon CSV), or be one of two references told apart by amount or timing. |
 
+| 51–60 | injection | Exact copies of cases 1 and 2, each with one adversarial string from the controls owner's catalogue planted in a message, receipt, request question, lookup result or bank description. Gold is unchanged; the expected refusal is recorded. |
+| 61–70 | alert | Timelines that raise proactive alerts before any request: unexplained credit, unusual inflow or outflow, amount or settlement discrepancy, a payout settled but not received, an unverified merchant, and a quiet control with none. Gold lists the alerts. A mock merchant registry ships alongside. |
+
 Every case also carries distractors that must never be disclosed: rent, grocery and pharmacy debits, and in some cases the holder's own health-category purchase.
 
-Outcomes across the 50 cases: 34 supported, 6 contradicted, 10 unresolved; 37 linked, 12 unmatched, 1 ambiguous.
+Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 linked, 19 unmatched, 1 ambiguous. The 10 injection cases repeat the outcomes of cases 1 and 2 by design, so they are not independent.
 
 **Honesty note.** The answer key is not independent of the rules. Gold is produced by construction from the same pinned rules (matching amount, settlement timing and reference, active revisions, recomputed arithmetic) that the rules-based baseline implements, and `test_ledgers.py` re-derives it with those rules. A rules baseline with the right retrieval can therefore reach 100% on these cases by design. It did on cases 1–40, because each lookup-only reference appeared verbatim in a pushed message. We added cases 41–50 so that finding the reference takes interpretation, and a naive regex-retrieval probe scores 6 of 10 there. These cases measure whether a system observes, retrieves and applies the rules correctly. They do not show that the rules are the right policy, and they are development data that we studied while building. The honest comparison is the sealed set, authored separately. Many cases are variants of one scenario template, so case counts here overstate independent evidence.
 
@@ -63,3 +66,5 @@ Outcomes across the 50 cases: 34 supported, 6 contradicted, 10 unresolved; 37 li
 - `c9472fe`: 40 cases aligned to the spec.
 - `fb7cae7`: cases 41–50 added; cases 1–40 byte-identical.
 - `c339e2a`: a pending payout in cases 2 and 20 is retrievable only from its `status_as_of` time. One field changed per case; gold unchanged.
+- `a8105fa`: cases 51–60 (injection) added.
+- Cases 61–70 (alert) and the mock merchant registry added. Cases 1–60 are unchanged.

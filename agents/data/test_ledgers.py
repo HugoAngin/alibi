@@ -237,7 +237,7 @@ def test_committed_json_matches_generator():
 
 
 def test_coverage():
-    assert len(CASES) == 60
+    assert len(CASES) == 70
     assert {c["family"] for c in CASES} == set(api.FAMILIES)
     assert {c["gold"]["claim_status"] for c in CASES} == {"supported", "contradicted", "unresolved"}
     assert {l["state"] for c in CASES for l in c["gold"]["links"]} == {"linked", "unmatched", "ambiguous"}
@@ -370,3 +370,111 @@ def test_injection_catalogue_in_sync():
         inj = case["gold"]["injection"]
         assert catalogue[inj["id"]]["string"] == inj["string"]
         assert catalogue[inj["id"]]["expect"] == inj["expect"]
+
+
+# --------------------------------------------------------------------------
+# alert family (cases 61-70): an independent reference monitor
+# --------------------------------------------------------------------------
+
+ALERTS = [c for c in CASES if c["family"] == "alert"]
+
+
+def received_of(case: dict, record_id: str, revision: int) -> datetime:
+    pushed = [(d["received_at"], d["event"]) for d in case["merchant_deliveries"]]
+    pushed += [(d["received_at"], d["record"]) for d in case["imports"]]
+    return min(ts(t) for t, e in pushed if e["record_id"] == record_id and e["revision"] == revision)
+
+
+def monitor(case: dict) -> list[tuple]:
+    """Re-derive proactive alerts from pushed data only (no lookups), per README 'Alert rules'."""
+    reg = api.merchant_registry()
+    known = {ledgers.norm_name(n) for m in reg["merchants"] for n in [m["name"]] + m["aliases"]}
+    out = []
+    rows = [(ts(d["received_at"]), d["row"]) for d in case["bank_deliveries"]]
+    seen = set()
+    rows = [(t, r) for t, r in rows if not (r["txn_id"] in seen or seen.add(r["txn_id"]))]
+    for t0, r in rows:
+        amt, booked = r["amount_minor"], ts(r["booked_at"])
+        # unusual inflow / outflow
+        prior = [abs(p["amount_minor"]) for _, p in rows
+                 if (p["amount_minor"] > 0) == (amt > 0)
+                 and booked - ledgers.UNUSUAL_WINDOW <= ts(p["booked_at"]) < booked]
+        if len(prior) >= ledgers.UNUSUAL_MIN_PRIOR and abs(amt) >= ledgers.UNUSUAL_FACTOR * max(prior):
+            out.append(("unusual_inflow" if amt > 0 else "unusual_outflow", f"bank:{r['txn_id']}", t0))
+        if amt < 0 and ledgers.norm_name(r["counterparty_name"]) not in known:
+            out.append(("merchant_unverified", f"bank:{r['txn_id']}", t0))
+        if amt < ledgers.ALERT_MIN_CREDIT:
+            continue
+        deadline = t0 + ledgers.UNEXPLAINED_AFTER
+        _, active, _ = replay(api.known_at(case, iso(deadline)))
+        ref = r["payment_reference"]
+        # A reference names one payout, or every payout of a settlement batch.
+        named = [e for e, _ in active.values() if e["kind"] == "payout" and ref and ref in
+                 (e["payout_reference"], e.get("settlement_batch_id"), e.get("withdrawal_id"))]
+        if named:
+            at = max([t0] + [received_of(case, p["record_id"], p["revision"]) for p in named])
+            if sum(p["amount_minor"] for p in named) != amt:
+                out.append(("amount_discrepancy", f"bank:{r['txn_id']}", at))
+            elif any(p["status"] != "settled" or ts(p["settled_at"]) > booked for p in named):
+                out.append(("settlement_discrepancy", f"bank:{r['txn_id']}", at))
+        elif len(candidates(r, active)) != 1:
+            out.append(("unexplained_credit", f"bank:{r['txn_id']}", deadline))
+    # settled payouts with no credit within 3 days
+    _, active, _ = replay(api.known_at(case, case["gold"]["decision_time"]))
+    for e, _ in active.values():
+        if e["kind"] != "payout" or e["status"] != "settled":
+            continue
+        deadline = ts(e["settled_at"]) + ledgers.NOT_RECEIVED_AFTER
+        batch = e.get("settlement_batch_id")
+        total = sum(p["amount_minor"] for p, _ in active.values() if p["kind"] == "payout"
+                    and batch and p.get("settlement_batch_id") == batch) or e["amount_minor"]
+        names = {e["payout_reference"], batch, e.get("withdrawal_id")} - {None}
+        got = any(t <= deadline and (r["payment_reference"] in names or
+                  (r["amount_minor"] == total and ts(r["booked_at"]) >= ts(e["settled_at"])))
+                  for t, r in rows)
+        if not got:
+            out.append(("settled_not_received", f"merchant:{e['record_id']}", deadline))
+    decision = ts(case["gold"]["decision_time"])
+    return sorted((k, s_, iso(t)) for k, s_, t in out if t < decision)
+
+
+def iso(t: datetime) -> str:
+    return ledgers.iso(t)
+
+
+@pytest.mark.parametrize("case", ALERTS, ids=lambda c: f"case{c['case_number']}")
+def test_alerts_rederived(case):
+    gold = sorted((a["kind"], a["subject_ref"], a["raised_at"]) for a in case["gold"]["alerts"])
+    assert monitor(case) == gold
+    for a in case["gold"]["alerts"]:
+        assert a["severity"] == ledgers.SEVERITY[a["kind"]] and a["status"] == "open"
+        assert a["raised_at"] < case["rfcs"][0]["issued_at"], "alerts come before any request"
+        # every fact cites a record observable when the alert was raised
+        view = api.known_at(case, a["raised_at"])
+        refs = {f"bank:{d['row']['txn_id']}" for d in view["bank_deliveries"]}
+        refs |= {f"merchant:{d['event']['record_id']}" for d in view["merchant_deliveries"]}
+        assert a["facts"] and all(f["source_ref"] in refs for f in a["facts"])
+        assert a["title"] and a["explanation"] and a["suggested_checks"]
+
+
+def test_alert_family_coverage():
+    kinds = {a["kind"] for c in ALERTS for a in c["gold"]["alerts"]}
+    assert kinds == set(ledgers.SEVERITY)
+    quiet = [c for c in ALERTS if c["variant"] == "quiet_control"]
+    assert quiet and quiet[0]["gold"]["alerts"] == [] and monitor(quiet[0]) == []
+
+
+def test_merchant_lookup():
+    reg = api.merchant_registry()
+    assert reg["merchants"] and all(m["status"] == "verified" for m in reg["merchants"])
+    hit = api.merchant_lookup("  synthetic-PHARMACY ", "2026-11-08T00:00:00Z")
+    assert hit["status"] == "verified" and hit["name"] == "Synthetic Pharmacy"
+    assert api.merchant_lookup("mock marketplace", "2026-11-08T00:00:00Z")["name"] == "Mock Marketplace Payments"
+    for name in reg["unknown_examples"] + [""]:
+        miss = api.merchant_lookup(name, "2026-11-08T00:00:00Z")
+        assert miss["status"] == "unverified" and miss["name"] is None and "not fraudulent" in miss["notes"]
+    # every everyday payee in every case is registered, so only planted ones raise alerts
+    known = {ledgers.norm_name(n) for m in reg["merchants"] for n in [m["name"]] + m["aliases"]}
+    payees = {ledgers.norm_name(d["row"]["counterparty_name"]) for c in CASES
+              for d in c["bank_deliveries"] if d["row"]["amount_minor"] < 0}
+    assert payees - known == {ledgers.norm_name(n) for n in reg["unknown_examples"][:1]}

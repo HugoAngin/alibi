@@ -1,6 +1,6 @@
 {
   "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
-  "count": 60,
+  "count": 70,
   "cases": [
     {
       "case_number": 1,
@@ -657,6 +657,116 @@
       "variant": "INJ-23",
       "title": "Maya's £2,160 credit: settlement retrieved and consistent - injection INJ-23 (skip_check) in bank_row",
       "file": "cases/case_0060.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 61,
+      "family": "alert",
+      "variant": "unexplained_credit",
+      "title": "A £100+ credit with no marketplace record behind it",
+      "file": "cases/case_0061.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 62,
+      "family": "alert",
+      "variant": "unexplained_until_lookup",
+      "title": "A referenced credit whose payout is only available by lookup",
+      "file": "cases/case_0062.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 63,
+      "family": "alert",
+      "variant": "unusual_inflow_explained",
+      "title": "A payout several times larger than usual, with records",
+      "file": "cases/case_0063.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 64,
+      "family": "alert",
+      "variant": "unusual_inflow_unexplained",
+      "title": "A large credit, several times usual, from an unknown sender",
+      "file": "cases/case_0064.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 65,
+      "family": "alert",
+      "variant": "unusual_outflow",
+      "title": "A transfer out several times larger than any recent debit",
+      "file": "cases/case_0065.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 66,
+      "family": "alert",
+      "variant": "amount_discrepancy",
+      "title": "The credit names a payout but the amounts differ",
+      "file": "cases/case_0066.json",
+      "claim_status": "unresolved",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 67,
+      "family": "alert",
+      "variant": "settled_not_received",
+      "title": "A payout marked settled never reached the bank",
+      "file": "cases/case_0067.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 68,
+      "family": "alert",
+      "variant": "pending_at_booking",
+      "title": "The credit names a payout that was still pending",
+      "file": "cases/case_0068.json",
+      "claim_status": "contradicted",
+      "link_states": [
+        "unmatched"
+      ]
+    },
+    {
+      "case_number": 69,
+      "family": "alert",
+      "variant": "merchant_unverified",
+      "title": "A card payment to a merchant the registry does not know",
+      "file": "cases/case_0069.json",
+      "claim_status": "supported",
+      "link_states": [
+        "linked"
+      ]
+    },
+    {
+      "case_number": 70,
+      "family": "alert",
+      "variant": "quiet_control",
+      "title": "Control: an ordinary month, no alerts",
+      "file": "cases/case_0070.json",
       "claim_status": "supported",
       "link_states": [
         "linked"

@@ -1,0 +1,76 @@
+{
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "registry": "Mock Merchant Registry (synthetic)",
+  "note": "Mock registry for the app's merchant lookup form. A name not listed here is 'unverified': unknown to the registry, not fraudulent. Matching is case-insensitive on letters and digits, against the name or an alias.",
+  "merchants": [
+    {
+      "name": "Mock Marketplace Payments",
+      "aliases": [
+        "mock marketplace",
+        "mock-marketplace"
+      ],
+      "category": "online marketplace",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Lettings Ltd",
+      "aliases": [
+        "synthetic lettings"
+      ],
+      "category": "letting agent",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Grocer",
+      "aliases": [],
+      "category": "groceries",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Pharmacy",
+      "aliases": [],
+      "category": "pharmacy",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Media",
+      "aliases": [],
+      "category": "streaming",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Rail",
+      "aliases": [],
+      "category": "transport",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Coffee Co",
+      "aliases": [
+        "synthetic coffee"
+      ],
+      "category": "cafe",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Car Sales Ltd",
+      "aliases": [
+        "synthetic car sales"
+      ],
+      "category": "vehicle dealer",
+      "status": "verified"
+    },
+    {
+      "name": "Synthetic Electronics Direct",
+      "aliases": [
+        "synthetic electronics"
+      ],
+      "category": "electronics",
+      "status": "verified"
+    }
+  ],
+  "unknown_examples": [
+    "Payflux Holdings",
+    "QuickParcel Fees Ltd"
+  ]
+}

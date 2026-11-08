@@ -28,7 +28,7 @@ from tools.lockbox import visible
 OUT = Path(__file__).resolve().parent / "out"
 FAMILIES = ("demo", "clean", "bundled_payment", "balance_vs_settlement", "pending_correction",
             "duplicate_record", "missing_proof", "self_supplied_import", "hidden_reference",
-            "injection")
+            "injection", "alert")
 CANONICAL_CASE = 1            # Maya, supported control
 CONTRADICTION_CASE = 2        # Maya, payout still pending at booking
 
@@ -121,3 +121,27 @@ def lookup(case: dict, at: str, *, payout_reference: str | None = None,
             hits.append(copy.deepcopy(ev))
             seen.add(ev["event_id"])
     return hits
+
+
+def merchant_registry() -> dict:
+    """The mock merchant registry (out/merchant_registry.json) that the lookup form reads."""
+    return json.loads((OUT / "merchant_registry.json").read_text())
+
+
+def merchant_lookup(query: str, checked_at: str) -> dict:
+    """Mock registry check, in the shape alibi/app/UI.md gives `merchant_lookup.result`.
+    Unknown names return status "unverified" with name None: unknown, not fraudulent."""
+    reg = merchant_registry()
+
+    def norm(s: str) -> str:
+        return " ".join("".join(ch.lower() if ch.isalnum() else " " for ch in s).split())
+
+    q = norm(query)
+    hit = next((m for m in reg["merchants"]
+                if q and q in [norm(m["name"])] + [norm(a) for a in m["aliases"]]), None)
+    return {"query": query, "status": "verified" if hit else "unverified",
+            "name": hit["name"] if hit else None, "registry": reg["registry"],
+            "checked_at": checked_at,
+            "notes": (f"Registered merchant, category: {hit['category']}." if hit else
+                      "Not in the mock registry. Unverified means unknown to the registry, "
+                      "not fraudulent.")}

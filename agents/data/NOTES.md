@@ -27,6 +27,9 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - (1) demo_script.md done (8b99d67). (2) case2_walkthrough.md done (a8ee960). (3) data_card.md done (README-ready). (4) Stylesheet patch: waiting for the S4 merge.
 - Fixed case 2/20: a pending payout is available only from its status_as_of time (c339e2a).
 
+## Lead work order 2 (01:03Z, post 6715391986)
+- (1) Injection family cases 51-60 done (a8105fa). (2) Alert family cases 61-70, gold.alerts, out/merchant_registry.json and api.merchant_lookup done. (3) Stylesheet patch: after the S4 merge. (4) Clean-clone RUNBOOK dry run as Driver: after S5's RUNBOOK lands.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

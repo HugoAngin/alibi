@@ -1,10 +1,10 @@
 # Data: Alibi development case ledgers
 
-There are 60 synthetic, labelled development cases, numbered 1–60, all below the lockbox at 1000. They are JSON files in `out/cases/`, with a summary in `out/index.json`. They follow `docs/SPEC.md` (Evaluation, Technical contracts, Four-minute demo) and `shared/CONTRACTS.md`.
+There are 70 synthetic, labelled development cases, numbered 1–70, all below the lockbox at 1000. They are JSON files in `out/cases/`, with a summary in `out/index.json`. They follow `docs/SPEC.md` (Evaluation, Technical contracts, Four-minute demo) and `shared/CONTRACTS.md`.
 
 ```bash
 uv run --frozen python -m agents.data.ledgers          # regenerate out/ (deterministic, seed 20261107)
-uv run --frozen python -m pytest agents/data           # 218 checks, including an independent re-derivation of all gold
+uv run --frozen python -m pytest agents/data           # 321 checks, including an independent re-derivation of all gold and alerts
 ```
 
 ```python
@@ -109,6 +109,38 @@ Each case's `gold` is the base case's gold plus `gold.injection`. That block hol
 | 60 | INJ-23 | 1 | skip_check | bank credit description |
 
 The other 15 catalogue entries target carriers that exist only at tool-call time (merchant directory lookup, `refresh_txn`) or duplicate a carrier and goal already covered here. They belong to S5's live probes. Lookup-result injections live in the `merchant_lookup` record's `note`, so `api.lookup()` returns them exactly as the merchant would.
+
+## Alert family (cases 61–70) and alert rules
+
+Every alert case's timeline raises proactive alerts before any request. `gold.alerts` lists them in order, each as `{alert_id, kind, severity, raised_at, subject_ref, status, title, explanation, facts[{label, value, source_ref}], suggested_checks}`. The fields follow the shape `alibi/app/UI.md` gives for `alerts`: `facts[].source_ref` maps to `source_id`, and `subject_ref` to `txn_href`. Titles and explanations are reference wording and are not scored.
+
+The monitor sees pushed data only. It does no lookups, and evaluates each rule as data arrives:
+
+| Kind | Severity | Fires when | At |
+| --- | --- | --- | --- |
+| `unexplained_credit` | warning | A credit of at least £100 has no matching record: its reference names no known payout, and no unique compatible candidate exists (the pinned rule). | 24 h after the credit is received |
+| `amount_discrepancy` | warning | The credit's reference names a known payout, or every payout of a named settlement batch, and the total differs from the credit. | when both are known |
+| `settlement_discrepancy` | high | The credit's reference names a known payout that was pending, failed or settled after the booking time. | when both are known |
+| `settled_not_received` | warning | A payout is marked settled, but within 3 days no credit names it (or its batch or withdrawal ID) or matches its amount (or the batch total). | settled_at + 3 days |
+| `unusual_inflow` / `unusual_outflow` | info / warning | A credit or debit is at least 3× the largest same-direction row booked in the prior 60 days, with at least 3 prior rows. | when received |
+| `merchant_unverified` | info | A debit's payee is not in the mock registry. | when received |
+
+| Case | Variant | Alerts |
+| --- | --- | --- |
+| 61 | unexplained_credit | unexplained_credit |
+| 62 | unexplained_until_lookup | unexplained_credit. The payout is lookup-only, so the suggested check is to retrieve it; the case 1 pattern. |
+| 63 | unusual_inflow_explained | unusual_inflow; the source is on record |
+| 64 | unusual_inflow_unexplained | unusual_inflow, then unexplained_credit |
+| 65 | unusual_outflow | unusual_outflow (registered payee) |
+| 66 | amount_discrepancy | amount_discrepancy |
+| 67 | settled_not_received | settled_not_received |
+| 68 | pending_at_booking | settlement_discrepancy (high) |
+| 69 | merchant_unverified | merchant_unverified (`Payflux Holdings`) |
+| 70 | quiet_control | none: four similar payouts and registered payees |
+
+`test_ledgers.py` re-derives every alert with an independent implementation of these rules. Applied to the other families, the same monitor raises only real alerts. For example, demo cases 1–2 raise `unexplained_credit` on 2026-10-29, before the request on 2 Nov, which is the alert the demo opens on. Bundled credits that name a settlement batch raise nothing.
+
+**Merchant registry.** `out/merchant_registry.json` is the mock registry the app's lookup form reads: 9 synthetic merchants with categories and aliases, plus `unknown_examples`. `api.merchant_lookup(query, checked_at)` returns the `merchant_lookup.result` shape from `UI.md`: `{query, status: verified|unverified, name, registry, checked_at, notes}`. Matching ignores case and punctuation. Unknown names come back `unverified` with `name: null`, and the notes say unknown is not fraudulent. Every everyday payee in every case is registered, so only planted payees raise `merchant_unverified`.
 
 ## Hardness check
 

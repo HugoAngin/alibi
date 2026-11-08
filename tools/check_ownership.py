@@ -44,7 +44,10 @@ def is_lead(team: dict, login: str) -> bool:
 
 def violations(team: dict, login: str, paths: list[str]) -> list[str]:
     problems = []
+    on_roster = roster.member_for_login(team, login) is not None
     for path in paths:
+        if on_roster and roster.is_open(team, path):
+            continue
         owner = roster.owner_of(team, path)
         if not roster.same_login(owner["github"], login):
             name = owner["github"] or "nobody yet"

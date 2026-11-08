@@ -23,15 +23,16 @@ Code that produces a result may rely only on committed files and `data/`, becaus
 
 ## Ownership
 
-Two agents never edit the same file.
+Outside open folders, two agents never edit the same file.
 
-- `team.json` decides who owns what. You write only inside your own folder, `agents/<role>/`.
+- `team.json` decides who owns what. You write only inside your own folder, `agents/<role>/`, and open folders.
+- **Open folders** are listed under `open_paths` in `team.json`. Right now that is `web/`, the web front end. Anyone on the roster may commit and push there without asking anyone. A folder a member holds inside it stays theirs, so check `team.json` first. Run `pnpm verify` from `web/` before each commit, stage only your own files with `git add web/<path>`, and if the rebase conflicts, keep your teammate's change and redo yours on top.
 - `lead` owns everything else: `shared/`, `docs/`, `tools/`, `pyproject.toml`, `uv.lock`, this file, and the repo root.
 - You may read any file in the repo.
 - If you need a change in a file you do not own, ask its owner on the board. Do not edit it, and do not copy it into your folder to patch it.
 - Expose your work through `agents/<role>/api.py` and `agents/<role>/out/`. Teammates import only your `api.py`.
 - Files you generate but do not commit go in `data/`, or list them in `agents/<role>/.gitignore`. `board.py post done` refuses while your folder has uncommitted or untracked files.
-- A pre-commit hook rejects commits outside your folder, files over 10 MB, and anything that looks like an API key. CI reports anything that gets past it. Do not use `--no-verify`, `TEAM_OVERRIDE` or `[team-override]`. They are for lead's human only.
+- A pre-commit hook rejects commits outside your folder and open folders, files over 10 MB, and anything that looks like an API key. CI reports anything that gets past it. Do not use `--no-verify`, `TEAM_OVERRIDE` or `[team-override]`. They are for lead's human only.
 
 ## Git
 

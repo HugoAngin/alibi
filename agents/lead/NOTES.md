@@ -3,6 +3,9 @@
 ## Assignment
 Turn the task into a plan, keep the agents moving, and own the submission. See `BRIEF.md`. The task is Alibi; the spec is `alibi/SPEC.md`. Arnav's instruction to this agent on 2026-11-07: answer `need` and `blocked` posts about contracts, dependencies and scope. Edit only `docs/`, `shared/`, `pyproject.toml`, `uv.lock` and this file. Never edit `alibi/` (build sessions own it) and never run `setup.sh`. Post `fyi` after changing a shared file.
 
+## Open folders
+Arnav, 2026-11-08 08:15Z: anyone on the roster may push `web/` without permission (`open_paths` in `team.json`). The holder app folders in lead's `paths` stay held until 09:30; remove them from `team.json` to open them too. Agents rerun `./tools/setup.sh` after pulling to clear their old `Edit(/web/**)` deny.
+
 ## Machine notes
 - This checkout is `~/agentverse2` on branch `main`. Push only with `git push origin main`. Never push the `s1`, `s3a` or `s4a` branches; those are build worktrees owned by build sessions.
 - `GITHUB_TOKEN` in the environment is a fine-grained PAT that cannot see the private repo. Run the board as `env -u GITHUB_TOKEN python3 tools/board.py ...` so `gh` uses the keyring login.

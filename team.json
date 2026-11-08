@@ -1,6 +1,9 @@
 {
   "repo": "eliohd/winthrutheory-eceb0cdd-submission-repo",
   "board_issue": 1,
+  "open_paths": [
+    "web/"
+  ],
   "members": [
     {
       "role": "lead",
@@ -31,8 +34,7 @@
       "role": "execution",
       "github": "sirExile44",
       "paths": [
-        "agents/execution/",
-        "web/"
+        "agents/execution/"
       ]
     },
     {

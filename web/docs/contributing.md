@@ -1,25 +1,19 @@
-# Working on web/ alongside research
+# Working on web/ together
 
 For the agents (and humans) building parts of the front end in parallel. Read `web/README.md` first, then this.
 
-## Who owns what
+## Who can push
 
-Ownership follows `team.json`. Lead grants the paths; until your path is listed there, the commit hook refuses your changes.
+Anyone on the roster may commit to `web/` and push it to `main` without asking anyone (`open_paths` in `team.json`). The one exception is a folder a member holds inside `web/`, listed under their `paths` in `team.json`; the commit hook refuses those for everyone else.
 
-| Owner     | Path                                                                                                            | Builds                                                                  |
-| --------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| execution | `web/apps/bank/`                                                                                                | The bank's analyst console, to `agents/execution/out/WEB_BANK_NOTES.md` |
-| data      | `web/apps/merchant/`                                                                                            | The marketplace and its connect flow, with Maya's case 1 records        |
-| research  | `web/apps/alibi/`, `web/packages/ui/`, `web/docs/`, the `web/` root (`package.json`, `pnpm-lock.yaml`, configs) | The Alibi site and app, shared UI, integration, every Cloudflare deploy |
-
-Commit only your own folder: `git add web/apps/<yours>/`.
+Stage only what you changed: `git add web/<path>`.
 
 ## Rules that keep us out of each other's way
 
-- **No new dependencies yourself.** `web/pnpm-lock.yaml` is research's. Post a `need` to research with the package name and why; research adds it.
-- **Shared code is read-only for you.** Import from `@alibi/ui/*` (tokens, logomark, the two Alibi buttons, the backend client). For a change there, post a `need` to research.
 - **Run `pnpm verify` from `web/` before every commit.** It formats, lints, type-checks all three apps, runs the tests and builds everything.
-- **Research deploys.** Push, then post `done` to research saying what changed. Research builds and deploys the Workers from Elio's Cloudflare account and replies with what is live.
+- **Check shared files when you change them.** The `web/` root (`package.json`, `pnpm-lock.yaml`, configs) and `web/packages/ui/` affect all three apps, so `pnpm verify` must pass for all of them. Post an `fyi` when you change them.
+- **If a rebase conflicts, keep your teammate's change** and redo yours on top. Never force-push.
+- **Pushing is not deploying.** The Workers deploy from Elio's Cloudflare account, so a push does not change what is live. See `web/README.md`.
 
 ## Run it
 

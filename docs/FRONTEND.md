@@ -41,7 +41,7 @@ Later, once integration (S5) lands, `uv run --frozen python -m alibi.demo --time
 
 ## The public web front end
 
-`web/` is a pnpm workspace owned by execution while research is out of usage (e1be433; research and eval send changes to execution as patches), deployed to Cloudflare, and independent of the Python app and its templates. Set up with `cd web && pnpm install`, preview with `pnpm dev` (Alibi site on port 4321 with the phone view at `/phone/`, merchant on 4322, bank on 4323), and check with `pnpm verify`. For the local demo, `pnpm demo` (662dbee) starts all three apps against the Python backend on 8100/8101/8102, checks each backend, and reads Bank A's token from `BANK_A_TOKEN` or `data/alibi/bank_tokens.json`; `ALIBI_REPLAY=1` puts a 'Recorded replay' banner on every page. Deploy commands and the Cloudflare login are in `web/README.md`. As of 63fa61b `web/apps/bank` is the Bank A analyst console wired to the bank service (Worker secrets `BANK_A_TOKEN`, `BANK_API_ORIGIN`, `ANALYST_PASSCODE`, `BANK_SESSION_SECRET`). Deploy runs from Elio's Cloudflare account: `pnpm install --frozen-lockfile`, then `pnpm --filter @alibi/<app> run deploy` for `alibi`, `merchant` and `bank`. It must tell the same story as the Python screens: data's case 1, the same IDs and amounts, the same three-panel distinction on the analyst side.
+`web/` is a pnpm workspace that anyone on the roster may commit to and push without asking (`open_paths` in `team.json`), deployed to Cloudflare, and independent of the Python app and its templates. Set up with `cd web && pnpm install`, preview with `pnpm dev` (Alibi site on port 4321 with the phone view at `/phone/`, merchant on 4322, bank on 4323), and check with `pnpm verify`. For the local demo, `pnpm demo` (662dbee) starts all three apps against the Python backend on 8100/8101/8102, checks each backend, and reads Bank A's token from `BANK_A_TOKEN` or `data/alibi/bank_tokens.json`; `ALIBI_REPLAY=1` puts a 'Recorded replay' banner on every page. Deploy commands and the Cloudflare login are in `web/README.md`. As of 63fa61b `web/apps/bank` is the Bank A analyst console wired to the bank service (Worker secrets `BANK_A_TOKEN`, `BANK_API_ORIGIN`, `ANALYST_PASSCODE`, `BANK_SESSION_SECRET`). Deploy runs from Elio's Cloudflare account: `pnpm install --frozen-lockfile`, then `pnpm --filter @alibi/<app> run deploy` for `alibi`, `merchant` and `bank`. It must tell the same story as the Python screens: data's case 1, the same IDs and amounts, the same three-panel distinction on the analyst side.
 
 ## Who owns what
 
@@ -49,15 +49,15 @@ Later, once integration (S5) lands, `uv run --frozen python -m alibi.demo --time
 | --- | --- | --- |
 | research (Elio) | `alibi/app/templates/` | All templates and partials |
 | lead (Elio driving), until 09:30 (27cb13a) | `web/apps/alibi/src/components/app/`, `web/apps/alibi/src/pages/app/` | Holder app mobile redesign; requests outside these folders go to `agents/lead/out/MOBILE_NEEDS.md`. |
-| execution (Mouaad), from research (e1be433) | `web/` | The public Astro front end: landing page that becomes the phone app on mobile, plus the simulated merchant and bank sites. Separate from the Python app above; see `web/README.md` |
+| Everyone on the roster, no permission needed | `web/`, except the lead row above | The public Astro front end: landing page that becomes the phone app on mobile, plus the simulated merchant and bank sites. Separate from the Python app above; see `web/README.md` |
 | data (Hugo) | `alibi/app/static/` | The stylesheet and any static assets |
 | execution (Mouaad) | `agents/execution/out/` | Review of the analyst screens against `ANALYST_FLOW.md`; send changes to Elio |
 | lead (Arnav) | `alibi/app/*.py` and everything else in `alibi/` | Routes, wiring, logic |
 
-Pull `main` and rerun `./tools/setup.sh` first, otherwise the commit hook and your Claude settings still refuse the new paths. Commit from your own paths only:
+Pull `main` and rerun `./tools/setup.sh` first, otherwise the commit hook and your Claude settings still refuse the new paths. Commit from your own paths or `web/` only:
 
 ```bash
-git add alibi/app/templates    # or alibi/app/static
+git add alibi/app/templates    # or alibi/app/static, or web/<path>
 git commit -m "research: <what changed>"
 git pull --rebase origin main && git push origin main
 ```

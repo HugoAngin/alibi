@@ -18,6 +18,12 @@ evidence, not a new unseen comparison.
   all workers had ended, made no model calls, and is explicitly another post-hoc look.
 - Evaluator fixes: bounded worker cleanup, retained private stderr, fixed-code failure
   diagnostics, native import preflight, and corrected wrapper-field default reporting.
+- Native merchant contract diagnostic `35cb3feab7` PASS finds all 450 merchant events in
+  the reused pack map successfully but mismatch the connector's selected issuer key pin.
+  All 44 cases therefore lack usable merchant evidence through this connector. The check
+  reads no gold, exports no record values and never changes issuer identities or trust.
+  A native explicit trusted-fixture configuration patch is in preparation; arbitrary
+  event-declared issuers must not become trusted automatically.
 - Remaining app work: unresolved-answer evidence minimisation, one-pass question handling,
   same-clock draft ordering and a demo smoke port-release assertion. Cross-bank scoping
   landed at `354f9e0`; all 36 API tests pass. The separate ordering issue remains.

@@ -133,7 +133,7 @@ def run_isolated(case, mode, *, candidate, private_root, credential, output, sou
             bundle.extractall(source, filter="data")
         archive.unlink()
         denied = (private_root, credential, capture_root or output.parent, source / "agents/data/out/cases",
-                  source / ".env", source_repo / "data", source_repo / "agents/data/out/cases",
+                  source / ".env", source_repo / ".env", source_repo / "data", source_repo / "agents/data/out/cases",
                   *denied_scratch)
         prefix = sandbox(denied, (source_repo, credential.parent))
         # Denial proof opens directories/descriptors only; it never reads protected contents.
@@ -147,7 +147,7 @@ for p in sys.argv[1:]:
         os.close(fd);sys.exit(1)
 """
         subprocess.run([*prefix, sys.executable, "-c", probe, str(private_root), str(credential),
-                        str(output), *map(str, denied_scratch)],
+                        str(output), str(capture_root or output.parent), *map(str, denied_scratch)],
                        cwd=work, env=_worker_env(str(data), True), check=True, capture_output=True, timeout=10)
         command = [*prefix, sys.executable, "-c", BOOTSTRAP, str(source), mode]
         env = _worker_env(str(data), False)

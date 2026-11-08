@@ -1,0 +1,14 @@
+{
+  "scope": "Post-hoc reused-input native contract diagnosis; no gold access or model calls",
+  "record": "35cb3feab7",
+  "metrics": {
+    "cases": 44,
+    "cases_without_usable_merchant_event": 44,
+    "issuer_pin_mismatch": 450,
+    "mapped": 450,
+    "mapping_refused": 0,
+    "matching_issuer_pin": 0,
+    "merchant_events": 450,
+    "unknown_kind": 0
+  }
+}

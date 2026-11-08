@@ -19,6 +19,7 @@ def harness(tmp_path):
     repo = tmp_path / "synthetic-repo"
     (repo / "alibi").mkdir(parents=True)
     (repo / "alibi/__init__.py").write_text("")
+    (repo / '.env').write_text('synthetic unrelated credential; must also be denied')
     private = tmp_path / "synthetic-private"
     private.mkdir()
     (private / "sentinel").write_text("synthetic only")
@@ -26,8 +27,11 @@ def harness(tmp_path):
     credentials.mkdir()
     credential = credentials / "key"
     credential.write_text("synthetic credential; never sent")
-    capture = tmp_path / "capture"
-    capture.mkdir()
+    capture = tmp_path / "captures" / "new"
+    capture.mkdir(parents=True)
+    old_capture = capture.parent / 'old'
+    old_capture.mkdir()
+    (old_capture / 'sentinel').write_text('synthetic prior predictions')
     lane = tmp_path / "lane-one"
     lane.mkdir()
     sibling = tmp_path / "lane-two"
@@ -53,7 +57,7 @@ def harness(tmp_path):
         rows, metadata = isolated.run_isolated(
             case, mode, candidate=candidate, private_root=private, credential=credential,
             output=capture / "case", source_repo=repo, scratch_parent=lane,
-            denied_scratch=(sibling,), capture_root=capture, deadline=deadline)
+            denied_scratch=(sibling,), capture_root=capture.parent, deadline=deadline)
         return rows, metadata, capture / "case"
 
     return run, dict(repo=repo, private=private, credential=credential, capture=capture,
@@ -64,7 +68,8 @@ def test_real_worker_denies_sibling_and_retains_only_its_own_source(harness, mon
     run, paths = harness
     for key in ("ALIBI_LLM_CAP", "GEMINI_API_KEY", "ALIBI_REPLAY", "PYTHONPATH"):
         monkeypatch.setenv(key, "synthetic-inherited-value")
-    forbidden_reads = [paths["sibling"] / "sentinel", paths["private"] / "sentinel", paths["credential"]]
+    forbidden_reads = [paths["sibling"] / "sentinel", paths["private"] / "sentinel", paths["credential"],
+                       paths['repo'] / '.env', paths['capture'].parent / 'old' / 'sentinel']
     forbidden_writes = [paths["sibling"] / "new", paths["capture"] / "new", paths["repo"] / "new"]
     rows, metadata, output = run(f'''
 for name in {list(map(str, forbidden_reads))!r}:

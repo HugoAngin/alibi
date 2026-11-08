@@ -323,8 +323,13 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
         report += "\n" + line + "\n"
     if (output / "scheduling.json").exists():
         retained["scheduling"] = common.load_json(output / "scheduling.json")
-        if retained["scheduling"]["aggregate"].get("aborted"):
-            warning = "Capture stopped on an infrastructure error; this is an incomplete capture, not a completed candidate comparison."
+        aggregate = retained["scheduling"]["aggregate"]
+        incomplete = bool(aggregate.get("aborted") or aggregate.get("not_started"))
+        retained["run_status"] = ("aborted" if aggregate.get("aborted") else
+                                  "deadline_incomplete" if aggregate.get("not_started") else "complete")
+        if incomplete:
+            warning = ("Capture is INCOMPLETE: an infrastructure error or deadline prevented all jobs "
+                       "from completing the scheduled attempt. Unstarted jobs remain in the denominators.")
             table += "\n\n" + warning
             report += "\n" + warning + "\n"
     if probes:
@@ -348,6 +353,11 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
         "independent_adversarial": independent_scores(adversarial) if adversarial else {},
     })
     headline = scorer.results_line(official[0])
+    if "scheduling" in retained:
+        aggregate = retained["scheduling"]["aggregate"]
+        headline.update(capture_incomplete=int(bool(aggregate.get("aborted") or aggregate.get("not_started"))),
+                        capture_not_started=aggregate.get("not_started", 0),
+                        capture_deadline_reached=int(bool(aggregate.get("deadline_reached"))))
     for baseline in official[1:]:
         headline.update({f"{baseline.system.name}_{key}": value for key, value in scorer.results_line(baseline).items()})
     for system in systems:
@@ -415,6 +425,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--post-fix-second-look", action="store_true",
                         help="run the one authorized candidate-4 comparison on the reused pack")
     parser.add_argument("--original-manifest", type=Path, help="first capture's manifest for candidate 4")
+    parser.add_argument("--public-rehearsal", type=Path, help="exact candidate-4 public Cases 1/2 capture")
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
     parser.add_argument("--checkpoint-at", type=_aware_deadline,
@@ -424,7 +435,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.post_fix_second_look:
         if (args.candidate_ref != SECOND_LOOK_TAG or args.dry_run or args.public_live
-                or args.original_manifest is None or args.workers != 4
+                or args.original_manifest is None or args.public_rehearsal is None or args.workers != 4
                 or args.deadline != SECOND_LOOK_DEADLINE or args.checkpoint_at is not None):
             parser.error("the candidate-4 second look requires its tag, original manifest, four workers and 13:00 UTC deadline")
     elif args.original_manifest is not None or (args.candidate_ref == SECOND_LOOK_TAG and not args.public_live):
@@ -500,11 +511,16 @@ def main(argv: list[str] | None = None) -> None:
         lock = gold_path.parent / f"capture-{manifest['set_sha256']}.json"
         if args.post_fix_second_look:
             try:
+                original_capture = Path(common.load_json(lock)["run"])
+                from agents.eval.audit_resume_integrity import audit
+                original_integrity = audit(original_capture)
                 lock, original_digest = _second_look_lock(lock, _private_path(args.original_manifest), manifest)
             except (common.EvalError, OSError, ValueError, KeyError, TypeError) as exc:
                 parser.error(f"candidate-4 original capture verification failed ({type(exc).__name__})")
             kind = "post_fix_second_look"
             signature.update(kind=kind, original_run_sha256=original_digest)
+            from agents.eval.second_look import public_gate
+            signature["public_rehearsal_files"] = public_gate(args.public_rehearsal, candidate)
             # Reused-input development captures and the original frozen predictions
             # are siblings; the new worker must not be able to read any of them.
             isolation["capture_root"] = output.parent
@@ -520,6 +536,8 @@ def main(argv: list[str] | None = None) -> None:
             signature["checkpoint_at"] = args.checkpoint_at.isoformat()
     _capture_once(output, cases, signature, dry=args.dry_run, timeout=args.timeout, blocked=blocked,
                   probes=args.probes, lock=lock, isolation=isolation)
+    if args.post_fix_second_look and audit(original_capture) != original_integrity:
+        raise ValueError("original frozen capture integrity changed during second look")
     if kind in ("frozen", "post_fix_second_look"):
         problems, _ = seal.verify_manifest(args.manifest, input_path, gold_path, args.model_config)
         if problems or _digest(args.manifest) != signature["manifest"]:

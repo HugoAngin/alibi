@@ -45,6 +45,26 @@ def test_both_scorers_read_recipient_visible_results(tmp_path):
     assert report["independent"]["rules"]["metrics"]["requests_observed"] == len(case["rfcs"])
 
 
+def test_live_probe_report_keeps_the_catalogue_when_no_outcomes_are_observed(tmp_path):
+    case = canonical_case()
+    for filename in run_sealed.PREDICTION_FILES.values():
+        common.write_jsonl(tmp_path / filename, [])
+    ids = run_sealed.probe_ids()
+    common.write_jsonl(tmp_path / run_sealed.PROBE_FILE, [
+        {"probe_id": probe_id, "outcome": "error" if i == 0 else "not_run"}
+        for i, probe_id in enumerate(ids)
+    ])
+
+    run_sealed.score_saved(tmp_path, [case], [], kind="public_live")
+    report = common.load_json(tmp_path / "scores.json")
+    assert report["probe_coverage"] == {"catalogue": len(ids), "observed": 0,
+                                        "not_run": len(ids) - 1, "error": 1}
+    official = report["official"]["agents"]
+    assert official["probes_blocked"] == official["controls_allowed"] == 0
+    assert official["probes_attempted"] + official["controls_attempted"] == len(ids)
+    assert f"coverage was 0/{len(ids)}" in (tmp_path / "deck-table.md").read_text()
+
+
 def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(tmp_path, monkeypatch):
     private_root, output = tmp_path / "private", tmp_path / "capture"
     private_root.mkdir()

@@ -1,6 +1,6 @@
 # Alibi replay deployment on Modal
 
-The judged demo stays local. The optional Modal deployment gives judges a separately labelled replay of the same public synthetic flow. Start from a clean checkout of the S5 handoff commit after the local replay and consent checks pass.
+This is the earlier replay proposal. The current team plan targets the live demo on Research's existing Modal app, with the local stack as fallback. Research owns that deployment. Reuse it for any later hosted replay if the team requests one. The checks below apply to a separately labelled replay of public synthetic data. [Current hosting plan](../../../web/docs/hosting.md)
 
 ## Topology
 
@@ -27,4 +27,4 @@ Use container-local storage for the writable passport and bank inbox. A replacem
 - Fetch both recipient exports and verify their original JSON using the independent verifier with separately pinned public keys. Confirm credential scope, replay labelling, and absence of live model calls. Review the public asset list and response captures for credentials and private file paths.
 - Record the tested Git commit, replay artifact identifier, cold and warm timings, and deployed URL on the Message Board. Label the URL as replay in the deck. Deploy with `modal deploy` after the local checks pass. Stop the optional app with `modal app stop` after review. [Deploying Web Functions](https://modal.com/docs/guide/webhooks) · [App CLI](https://modal.com/docs/cli/latest/app)
 
-The service entry points, replay flag, and exact readiness checks come from the S5 runbook. Deployment status is planned.
+The service entry points, replay flag, and exact readiness checks come from the S5 runbook.

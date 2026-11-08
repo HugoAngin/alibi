@@ -1,6 +1,7 @@
 """Run the frozen Alibi comparison once and replay scoring from retained predictions."""
 
 import argparse
+from collections import Counter
 from hashlib import sha256
 from importlib.util import find_spec
 import json
@@ -152,8 +153,10 @@ def _measured_costs(score: scorer.SystemScore) -> None:
 
 def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kind: str) -> dict:
     systems = [scorer.load_predictions(output / filename, mode) for mode, filename in PREDICTION_FILES.items()]
-    outcomes = scorer.load_probe_results(output / PROBE_FILE)
-    probes = scorer.probe_metrics(outcomes) if outcomes and kind != "public_rehearsal" else {}
+    probe_file = output / PROBE_FILE
+    probe_rows = common.read_jsonl(probe_file)
+    outcomes = scorer.load_probe_results(probe_file)
+    probes = scorer.probe_metrics(outcomes) if probe_rows and kind != "public_rehearsal" else {}
     official = scorer.run(cases, systems, probes)
     attack_scores = scorer.run(adversarial, systems, probes) if adversarial else []
     for score in [*official, *attack_scores]:
@@ -168,10 +171,19 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
     table += "\n| Independent safe-complete | " + " | ".join(
         f"{independent[system.name]['metrics']['safe_complete']}/{len(cases)}" for system in systems
     ) + " |"
+    coverage = None
+    if probes:
+        counts = Counter(row["outcome"] for row in probe_rows)
+        coverage = {"catalogue": len(probe_rows), "observed": len(outcomes),
+                    "not_run": counts["not_run"], "error": counts["error"]}
+        table += (f"\n\nShared backend probe coverage was {coverage['observed']}/{coverage['catalogue']}. "
+                  f"{coverage['not_run']} were not run and {coverage['error']} errored. "
+                  "The official probe scores use the full catalogue denominators.")
     (output / "deck-table.md").write_text(f"# {REPORT_HEADINGS[kind]}\n\n{table}\n", encoding="utf-8")
     (output / "report.md").write_text(scorer.markdown_report(official), encoding="utf-8")
     common.write_json(output / "scores.json", {
         "mode": kind,
+        "probe_coverage": coverage,
         "official": {score.system.name: score.metrics for score in official}, "independent": independent,
         "adversarial": {score.system.name: score.metrics for score in attack_scores},
         "independent_adversarial": independent_scores(adversarial) if adversarial else {},

@@ -25,4 +25,8 @@ The public rehearsal exercised the runners and scorers with drafts and a stubbed
 
 ## Clean checkout rehearsal
 
-A fresh depth-one clone from GitHub at `306559d` on the evaluator Mac had no local `.env` and used the frozen Python dependencies. Clone took 1.72 seconds. The combined Python suite took 24.65 seconds wall time, with 1,455 passes, two skips, 26 expected failures, and two `google-genai` syntax warnings. The public runner took 12.19 seconds wall time for 80 cases and 94 requests. The clone stayed clean. This run used the Mac's installed `uv` and package cache. The second-laptop and live-stack rehearsals remain open.
+A fresh depth-one clone from GitHub at `306559d` on the evaluator Mac had no local `.env` and used the frozen Python dependencies. Clone took 1.72 seconds. The combined Python suite took 24.65 seconds wall time, with 1,455 passes, two skips, 26 expected failures, and two `google-genai` syntax warnings. The public runner took 12.19 seconds wall time for 80 cases and 94 requests. The clone stayed clean. This run used the Mac's installed `uv` and package cache.
+
+Hugo independently repeated the same test and 80-case public runner on the presenter laptop from a fresh clone at `9d0933f`. The suite recorded 1,455 passes, two skips and 26 expected failures in 30.3 seconds. The dry run took 17.6 seconds. His run found seven missing links in the second-platform cases. Both baselines now use the published connector mapping for deliveries and lookups at `e0f566d`. The live-stack rehearsal remains open. [Presenter laptop record](../../data/out/rehearsal_2026-11-08.md)
+
+The live comparison reports the shared backend probe coverage alongside the official fixed denominators. The deck records how many probes returned a definite outcome, how many could not run, and how many errored. Keep the raw catalogue JSONL for per-probe evidence.

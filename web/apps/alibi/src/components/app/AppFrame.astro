@@ -1,23 +1,22 @@
 ---
 /**
- * The phone app's frame: header, a notice when the screen is not showing live
- * backend data, the screen itself, and a bottom tab bar. On a desktop it stays
+ * The phone app's frame: a light header, a one-line notice when the screen is
+ * not showing live backend data, the screen, and a floating liquid-glass dock
+ * with the app's two tabs, Home and Account. On a desktop it stays
  * phone-width and centred; `/phone/` shows it inside a simulated phone.
  */
+import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
 
 interface Props {
   holder?: string;
   /** Why the screen is showing built-in data instead of the backend's. */
   fixtureReason?: string;
-  active: 'passport' | 'requests' | 'settings';
+  /** `passport` and `requests` are Home; `settings` is Account (older callers). */
+  active: 'home' | 'account' | 'passport' | 'requests' | 'settings';
 }
 
 const { holder = 'Maya', fixtureReason, active } = Astro.props;
-const tabs = [
-  { key: 'passport', label: 'Passport', href: '/app/' },
-  { key: 'requests', label: 'Requests', href: '/app/#requests' },
-  { key: 'settings', label: 'Settings', href: '/app/settings/' },
-] as const;
+const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
 ---
 
 <div class="app">
@@ -25,99 +24,219 @@ const tabs = [
     <a href="/app/" class="mark">
       alibi
     </a>
-    <span class="who">{holder}</span>
+    <a
+      href="/app/account/"
+      class="avatar"
+      aria-label={`${holder}’s account`}
+      aria-current={tab === 'account' ? 'page' : undefined}
+    >
+      {holder.slice(0, 1).toUpperCase()}
+    </a>
   </header>
 
   {fixtureReason && (
-    <p class="fixture-note" role="note">
-      <strong>Built-in case 1 data, not a live run.</strong> {fixtureReason}
-    </p>
+    <details class="fixture-note">
+      <summary>Built-in case 1 data, not a live run</summary>
+      <p>{fixtureReason}</p>
+    </details>
   )}
 
   <main id="main" class="screen">
     <slot />
   </main>
 
-  <nav class="tabs" aria-label="App">
-    {tabs.map((t) => (
-      <a href={t.href} aria-current={t.key === active ? 'page' : undefined}>
-        {t.label}
-      </a>
-    ))}
+  <nav class="dock-wrap" aria-label="App">
+    <div class="dock">
+      <LiquidGlassSurface
+        id="app-dock-glass"
+        class="dock-glass"
+        radius="capsule"
+        bezel={1}
+        fillRefraction
+        interiorLens="fisheye"
+        deformationX={3}
+        deformationY={3}
+        frosted={6}
+        frostedTint="white"
+      />
+      <div class="dock-items">
+        <a href="/app/" aria-current={tab === 'home' ? 'page' : undefined}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" />
+          </svg>
+          <span>Home</span>
+        </a>
+        <a href="/app/account/" aria-current={tab === 'account' ? 'page' : undefined}>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="8.5" r="3.75"></circle>
+            <path d="M4.75 20c.9-3.6 3.75-5.5 7.25-5.5s6.35 1.9 7.25 5.5"></path>
+          </svg>
+          <span>Account</span>
+        </a>
+      </div>
+    </div>
   </nav>
 </div>
 
 <style>
   .app {
+    --a-ink: var(--s-ink);
+    --a-soft: var(--s-ink-soft);
+    /* Darker than the site's faint ink: small labels here carry information (AA, 4.5:1+). */
+    --a-faint: #665e53;
+    --a-line: var(--s-line);
+    --a-accent: var(--s-accent);
+    --a-accent-soft: var(--s-accent-soft);
+    --a-ok: var(--s-ok);
+    --a-bad: var(--s-bad);
+    --a-warn: var(--c-warn);
+    --a-tint: var(--s-paper-2);
+    --a-display: var(--s-font-display);
+    --a-body: var(--s-font-body);
+    --a-mono: var(--s-font-mono);
+
     max-width: var(--app-max);
     min-height: 100dvh;
     margin-inline: auto;
     display: flex;
     flex-direction: column;
-    background: var(--c-bg);
+    background: var(--s-paper);
+    color: var(--a-ink);
+    font-family: var(--a-body);
   }
 
   .app-header {
-    position: sticky;
-    top: 0;
-    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-xs) var(--gutter);
-    background: rgb(246 245 241 / 0.82);
-    backdrop-filter: blur(14px) saturate(1.4);
-    -webkit-backdrop-filter: blur(14px) saturate(1.4);
-    border-bottom: 1px solid var(--c-line);
-    color: var(--c-ink);
+    padding: 14px var(--gutter) 4px;
   }
 
   .mark {
-    font: 800 1.45rem/1 var(--s-font-display);
-    letter-spacing: -0.04em;
+    font: 600 1.45rem/1 var(--a-display);
+    letter-spacing: -0.02em;
     color: inherit;
     text-decoration: none;
   }
 
-  .who {
-    font-size: var(--t-sm);
+  .avatar {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--a-ink);
+    color: var(--s-paper);
+    font: 600 0.9rem/1 var(--a-display);
+    text-decoration: none;
   }
 
   .fixture-note {
-    margin: 0;
-    padding: var(--space-2xs) var(--gutter);
+    margin: 6px var(--gutter) 0;
     font-size: var(--t-xs);
-    background: var(--c-surface);
-    border-bottom: 1px dashed var(--c-warn);
-    color: var(--c-ink-soft);
+    color: var(--a-faint);
+  }
+
+  .fixture-note summary {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .fixture-note summary::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--a-warn);
+    vertical-align: middle;
+  }
+
+  .fixture-note p {
+    margin: 4px 0 0;
   }
 
   .screen {
     flex: 1;
-    padding: var(--space-sm) var(--gutter) var(--space-xl);
+    padding: var(--space-sm) var(--gutter) calc(120px + env(safe-area-inset-bottom));
   }
 
-  .tabs {
-    position: sticky;
-    bottom: 0;
+  .dock-wrap {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    z-index: 20;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .dock {
+    position: relative;
+    width: 216px;
+    height: 64px;
+    border-radius: 999px;
+    pointer-events: auto;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.7) inset,
+      0 10px 30px rgb(31 27 22 / 0.14),
+      0 2px 6px rgb(31 27 22 / 0.06);
+  }
+
+  .dock-glass {
+    position: absolute;
+    inset: 0;
+  }
+
+  .dock-items {
+    position: relative;
+    z-index: 1;
+    height: 100%;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    border-top: 1px solid var(--c-line);
-    background: var(--c-surface);
-    padding-bottom: env(safe-area-inset-bottom);
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 6px;
   }
 
-  .tabs a {
-    min-height: 48px;
+  .dock-items a {
     display: grid;
     place-items: center;
-    font-size: var(--t-xs);
+    align-content: center;
+    gap: 2px;
+    border-radius: 999px;
+    color: var(--a-soft);
     text-decoration: none;
-    color: var(--c-ink-soft);
+    font: 500 0.7rem/1 var(--a-body);
+    transition:
+      background 0.25s var(--s-ease),
+      color 0.25s var(--s-ease);
   }
 
-  .tabs a[aria-current='page'] {
-    color: var(--c-alibi);
-    font-weight: 700;
+  .dock-items svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  .dock-items a[aria-current='page'] {
+    background: rgb(255 255 255 / 0.72);
+    color: var(--a-ink);
+    box-shadow: 0 1px 3px rgb(31 27 22 / 0.08);
+  }
+
+  .dock-items a[aria-current='page'] svg {
+    fill: var(--a-ink);
+    stroke-width: 1.4;
+  }
+
+  .dock-items a[aria-current='page'] svg path:last-child,
+  .dock-items a[aria-current='page'] svg circle {
+    fill: var(--a-ink);
   }
 </style>

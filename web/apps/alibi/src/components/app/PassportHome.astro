@@ -1,233 +1,592 @@
 ---
 /**
- * Maya's passport home. Order follows docs/FRONTEND.md: alerts and open
- * requests first, then her history, then rules and connections.
+ * Home: what is waiting on Maya, then the banks and merchants her passport
+ * knows, then Financial Context, one timeline of her transactions joined to
+ * the records that explain them. Everything comes from the backend's JSON:
+ * the passport context, plus `GET /txn/<id>` for each transaction's linked
+ * sources and claims. With no backend, the transactions show on their own.
  */
-import type { PassportHome } from '@/lib/api/types';
-import { day, money, when } from '@/lib/format';
+import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
-import Badge from './Badge.astro';
+import type { PassportHome } from '@/lib/api/types';
+import { day, money } from '@/lib/format';
+import { backendHeaders } from '@/lib/screens';
+import { loadContext } from '@alibi/ui/api';
+
+import ActivityRow from './ActivityRow.astro';
+import {
+  CLAIM_MARK,
+  LINK_MARK,
+  TRUST_MARK,
+  activity,
+  banks as banksOf,
+  byMonth,
+  contextTimeline,
+  describe,
+  headline,
+  initials,
+  isTxnDetail,
+  merchants as merchantsOf,
+  plainName,
+  type TxnDetail,
+} from './home';
 
 interface Props {
   data: PassportHome;
 }
 
 const { data } = Astro.props;
-const openAlerts = data.alerts.filter((a) => a.status === 'open');
-const pastAlerts = data.alerts.filter((a) => a.status !== 'open');
-const openRequests = data.requests.filter(
-  (r) => !['sent', 'refused', 'expired'].includes(r.status),
+const MERCHANTS_ON_HOME = 3;
+const ACTIVITY_ON_HOME = 4;
+
+const details = new Map<string, TxnDetail>();
+await Promise.all(
+  data.transactions.map(async (t) => {
+    const loaded = await loadContext({
+      origin: ALIBI_API_ORIGIN,
+      path: `/txn/${encodeURIComponent(t.txn_id)}`,
+      isShape: isTxnDetail,
+      fixture: () => null,
+      headers: backendHeaders(),
+    });
+    if (loaded.source === 'live') details.set(t.txn_id, loaded.data);
+  }),
 );
-const es = data.evidence_status;
+
+const items = activity(data);
+const recent = items.slice(0, ACTIVITY_ON_HOME);
+const earlier = items.slice(ACTIVITY_ON_HOME);
+const bankList = banksOf(data);
+const merchantList = merchantsOf(data);
+const timeline = byMonth(contextTimeline(data, details));
+const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'debit') =>
+  `${direction === 'credit' ? '+' : '−'}${money({ ...m, minor: Math.abs(m.minor) })}`;
 ---
 
-<h1 class="title">Your passport</h1>
-
-<section aria-labelledby="alerts-title" class="block">
-  <h2 id="alerts-title">Alerts</h2>
-  {openAlerts.length === 0 && <p class="empty">Nothing needs your attention.</p>}
-  <ul class="list">
-    {[...openAlerts, ...pastAlerts].map((a) => (
-      <li
-        class:list={[
-          'card',
-          'alert',
-          `alert--${a.severity}`,
-          a.status === 'resolved' && 'alert--resolved',
-        ]}
-      >
-        <p class="meta">
-          {when(a.created_at)} · <Badge kind="status" value={a.status} />
-        </p>
-        <p class="headline">{a.title}</p>
-      </li>
-    ))}
-  </ul>
+<section class="hello">
+  <p class="hi">Hi {data.holder.name}</p>
+  <h1 class="statement">{headline(data)}</h1>
 </section>
 
-<section id="requests" aria-labelledby="requests-title" class="block">
-  <h2 id="requests-title">Requests from banks</h2>
-  {openRequests.length === 0 && <p class="empty">No bank has asked you anything.</p>}
-  <ul class="list">
-    {openRequests.map((r) => (
-      <li class="card request">
-        <a href={r.href} class="request-link">
-          <span class="headline">
-            {r.recipient} asks{' '}
-            {r.question_count === 1 ? '1 question' : `${r.question_count} questions`}
-          </span>
-          <span class="meta">
-            Received {when(r.received_at)} · reply by {day(r.expires_at)}
-          </span>
-          <Badge kind="status" value={r.status} />
-        </a>
-      </li>
+<section class="sec" aria-labelledby="activity-title" id="requests">
+  <h2 id="activity-title" class="sec-title">
+    Recent activity
+  </h2>
+  {items.length === 0 && <p class="quiet">No requests or alerts yet.</p>}
+  <ul class="rows">
+    {recent.map((i) => (
+      <ActivityRow item={i} />
     ))}
   </ul>
-</section>
-
-<section aria-labelledby="history-title" class="block">
-  <h2 id="history-title">Payments</h2>
-  <ul class="list">
-    {data.transactions.map((t) => (
-      <li class="card txn">
-        <div class="txn-main">
-          <span class="headline">{t.description}</span>
-          <span class="meta">{when(t.booked_at)}</span>
-        </div>
-        <div class="txn-side">
-          <span class:list={['amount', `amount--${t.direction}`]}>{money(t.amount)}</span>
-          {t.direction === 'credit' && (
-            <Badge
-              kind="link"
-              value={t.link_state}
-              label={t.link_state === 'linked' ? 'Explained' : undefined}
-            />
-          )}
-        </div>
-      </li>
-    ))}
-  </ul>
-  <p class="meta">
-    {es.linked} of {es.total} payments linked to records · checked {when(es.last_checked_at)}
-    {es.superseded_sources > 0 && ` · ${es.superseded_sources} older record versions kept`}
-  </p>
-</section>
-
-<section aria-labelledby="sharing-title" class="block">
-  <h2 id="sharing-title">What you have shared</h2>
-  {data.sharing_history.length === 0 && (
-    <p class="empty">Nothing yet. Each package you approve is listed here.</p>
+  {earlier.length > 0 && (
+    <details class="more">
+      <summary>Show {earlier.length} more</summary>
+      <ul class="rows">
+        {earlier.map((i) => (
+          <ActivityRow item={i} />
+        ))}
+      </ul>
+    </details>
   )}
-  <ul class="list">
-    {data.sharing_history.map((s) => (
-      <li class="card">
-        <p class="headline">
-          {s.item_count} items to {s.recipient}
-        </p>
-        <p class="meta">
-          Sent {when(s.sent_at)} · expires {day(s.expires_at)} ·{' '}
-          <Badge kind="status" value={s.status} />
-        </p>
+</section>
+
+<section class="sec" aria-labelledby="banks-title">
+  <h2 id="banks-title" class="sec-title">
+    Banks <span class="count">{bankList.length}</span>
+  </h2>
+  {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
+  <ul class="banks">
+    {bankList.map((b) => (
+      <li class="bank">
+        <span class="mono mono--lg mono--ink" aria-hidden="true">
+          {initials(b.name)}
+        </span>
+        <span class="bank-name">{b.name}</span>
+        <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
+        <span class="small">
+          {b.awaiting > 0
+            ? `${b.awaiting} awaiting your review`
+            : b.packagesSent > 0
+              ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
+              : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
+        </span>
       </li>
     ))}
   </ul>
 </section>
 
-<section aria-labelledby="rules-title" class="block">
-  <h2 id="rules-title">Your privacy rules</h2>
-  <ul class="list">
-    {data.rules.map((r) => (
-      <li class="card">
-        <p class="headline">“{r.text}”</p>
-        <p class="meta">
-          {r.summary} <Badge kind="status" value={r.status} />
-        </p>
+<section class="sec" aria-labelledby="merchants-title">
+  <div class="sec-head">
+    <h2 id="merchants-title" class="sec-title">
+      Merchants <span class="count">{merchantList.length}</span>
+    </h2>
+    {merchantList.length > MERCHANTS_ON_HOME && (
+      <a class="see-all" href="/app/merchants/">
+        See all
+      </a>
+    )}
+  </div>
+  {merchantList.length === 0 && <p class="quiet">No merchant is connected yet.</p>}
+  <ul class="rows">
+    {merchantList.slice(0, MERCHANTS_ON_HOME).map((m) => (
+      <li class="row">
+        <span class="mono" aria-hidden="true">
+          {initials(m.name)}
+        </span>
+        <span class="row-body">
+          <span class="row-title">{plainName(m.name)}</span>
+          <span class="small">
+            {m.record_count} records · synced {day(m.last_synced_at)}
+          </span>
+        </span>
+        <span class="trust" title={TRUST_MARK[m.trust].label}>
+          <span aria-hidden="true">{TRUST_MARK[m.trust].mark}</span> {TRUST_MARK[m.trust].label}
+        </span>
       </li>
     ))}
   </ul>
+  {merchantList.length > 0 && (
+    <a class="row-link" href="/app/merchants/">
+      View all merchants and their details
+    </a>
+  )}
 </section>
 
-<section aria-labelledby="connections-title" class="block">
-  <h2 id="connections-title">Connections</h2>
-  <ul class="list">
-    {data.connections.map((c) => (
-      <li class="card">
-        <p class="headline">
-          {c.name} <Badge kind="trust" value={c.trust} />
-        </p>
-        <p class="meta">
-          {c.record_count} records · synced {when(c.last_synced_at)}
-        </p>
-      </li>
-    ))}
-  </ul>
+<section class="sec" aria-labelledby="context-title">
+  <h2 id="context-title" class="sec-title">
+    Financial context
+  </h2>
+  <p class="quiet">
+    Your transactions, joined to the records that explain them and what Alibi could establish.
+    {data.evidence_status.linked} of {data.evidence_status.total} linked · checked{' '}
+    {day(data.evidence_status.last_checked_at)}.
+  </p>
+  {timeline.length === 0 && <p class="quiet">No transactions yet.</p>}
+  {timeline.map((g) => (
+    <div class="month">
+      <h3 class="month-title">{g.month}</h3>
+      <ol class="timeline">
+        {g.entries.map((e) => (
+          <li class:list={['entry', `entry--${e.linkState}`]}>
+            <details>
+              <summary>
+                <span class="entry-date">
+                  <span class="d">{day(e.at).split(' ')[0]}</span>
+                  <span class="m">{day(e.at).split(' ')[1]}</span>
+                </span>
+                <span class="entry-main">
+                  <span class="entry-line">
+                    <span class="entry-title">{describe(e.title).title}</span>
+                    <span class:list={['amount', `amount--${e.direction}`]}>
+                      {signed(e.amount, e.direction)}
+                    </span>
+                  </span>
+                  {describe(e.title).line && (
+                    <span class="entry-line2">{describe(e.title).line}</span>
+                  )}
+                  {e.context && <span class="entry-context">{e.context}</span>}
+                  <span class="entry-tags">
+                    <span class:list={['tag', `tag--${e.linkState}`]}>
+                      <span aria-hidden="true">{LINK_MARK[e.linkState].mark}</span>
+                      {e.linkState === 'linked' && e.linkedCount > 0
+                        ? `Linked to ${e.linkedCount}`
+                        : LINK_MARK[e.linkState].label}
+                    </span>
+                    {e.claims.map((c) => (
+                      <span class:list={['tag', `tag--${c.status}`]}>
+                        <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>
+                        {CLAIM_MARK[c.status].label}
+                        {c.bank && ` for ${c.bank}`}
+                      </span>
+                    ))}
+                    <span class="src-count">
+                      {e.sources.length === 0
+                        ? 'Bank record only'
+                        : `${e.sources.length} related ${e.sources.length === 1 ? 'record' : 'records'}`}
+                    </span>
+                  </span>
+                </span>
+              </summary>
+              <ul class="sources">
+                <li>
+                  <span class="trust">
+                    <span aria-hidden="true">{TRUST_MARK.bank_observed.mark}</span>{' '}
+                    {TRUST_MARK.bank_observed.label}
+                  </span>
+                  <span class="src-who">{e.observedBy}</span>
+                  <code>{e.id}</code>
+                  {e.references.length > 0 && (
+                    <span class="small">Reference {e.references.join(', ')}</span>
+                  )}
+                </li>
+                {e.sources.map((s) => (
+                  <li>
+                    <span class="trust">
+                      <span aria-hidden="true">{TRUST_MARK[s.trust].mark}</span>{' '}
+                      {TRUST_MARK[s.trust].label}
+                      {s.via_lookup && ' · by lookup'}
+                    </span>
+                    <span class="src-who">
+                      {plainName(s.issuer)} · {s.kind.replaceAll('_', ' ')}
+                    </span>
+                    <code>
+                      {s.record_id} r{s.revision}
+                    </code>
+                    <span class="small">
+                      {day(s.occurred_at)} · {money(s.amount)} · {s.status.replaceAll('_', ' ')}
+                    </span>
+                  </li>
+                ))}
+                {e.claims.map((c) => (
+                  <li>
+                    <span class="trust">
+                      <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>{' '}
+                      {CLAIM_MARK[c.status].label}
+                      {c.bank && ` · asked by ${c.bank}`}
+                    </span>
+                    <span class="src-who">{c.question}</span>
+                  </li>
+                ))}
+                {e.calculation && (
+                  <li>
+                    <span class="trust">
+                      {e.calculation.matches ? 'Reconciles' : 'Does not reconcile'}
+                    </span>
+                    <code>{e.calculation.expression}</code>
+                  </li>
+                )}
+              </ul>
+            </details>
+          </li>
+        ))}
+      </ol>
+    </div>
+  ))}
 </section>
 
 <style>
-  .title {
-    font-size: var(--t-lg);
+  .hello {
+    padding-block: 18px 6px;
   }
 
-  .block {
-    margin-block: var(--space-md);
+  .hi {
+    margin: 0 0 6px;
+    font-size: var(--t-sm);
+    color: var(--a-faint);
   }
 
-  h2 {
-    font-size: var(--t-md);
-  }
-
-  .list {
-    list-style: none;
+  .statement {
     margin: 0;
-    padding: 0;
-    display: grid;
-    gap: var(--space-2xs);
+    font: 500 1.85rem/1.12 var(--a-display);
+    letter-spacing: -0.025em;
+    max-width: 16ch;
   }
 
-  .card {
-    padding: var(--space-xs) var(--space-sm);
-    background: var(--c-surface);
-    border: 1px solid var(--c-line);
-    border-radius: var(--radius-md);
+  .sec {
+    margin-top: 40px;
   }
 
-  .card p {
-    margin: 0;
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
   }
 
-  .headline {
-    font-weight: 600;
+  .sec-title {
+    margin: 0 0 12px;
+    font: 600 1.05rem/1.2 var(--a-display);
+    letter-spacing: -0.01em;
   }
 
-  .meta,
-  .empty {
-    font-size: var(--t-xs);
-    color: var(--c-ink-faint);
+  .count {
+    margin-left: 4px;
+    font: 500 0.85rem/1 var(--a-body);
+    color: var(--a-faint);
   }
 
-  .alert {
-    border-left-width: 4px;
-  }
-  .alert--warning,
-  .alert--high {
-    border-left-color: var(--c-warn);
-  }
-  .alert--resolved {
-    opacity: 0.75;
-  }
-
-  .request-link {
-    display: grid;
-    gap: var(--space-3xs);
-    justify-items: start;
+  .see-all,
+  .row-link {
+    font-size: var(--t-sm);
+    font-weight: 500;
+    color: var(--a-accent);
     text-decoration: none;
   }
 
-  .txn {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-sm);
+  .row-link {
+    display: inline-block;
+    margin-top: 6px;
   }
 
-  .txn-main {
+  .quiet,
+  .small {
+    font-size: var(--t-xs);
+    color: var(--a-faint);
+  }
+
+  .quiet {
+    margin: -4px 0 12px;
+  }
+
+  .rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding-block: 10px;
+  }
+
+  .row-body {
     display: grid;
     min-width: 0;
   }
 
-  .txn-side {
+  .row-title {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mono {
+    width: 40px;
+    height: 40px;
     display: grid;
-    justify-items: end;
-    gap: var(--space-3xs);
+    place-items: center;
+    border-radius: 50%;
+    background: var(--a-tint);
+    font: 600 0.85rem/1 var(--a-display);
+    color: var(--a-soft);
+  }
+
+  .mono--lg {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+    font-size: 1.1rem;
+  }
+
+  .mono--ink {
+    background: var(--a-ink);
+    color: var(--s-paper);
+  }
+
+  .more summary {
+    padding-block: 8px;
+    font-size: var(--t-sm);
+    font-weight: 500;
+    color: var(--a-accent);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .banks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 16px;
+  }
+
+  .bank {
+    display: grid;
+    gap: 2px;
+    justify-items: start;
+  }
+
+  .bank .mono {
+    margin-bottom: 8px;
+  }
+
+  .bank-name {
+    font-weight: 600;
+  }
+
+  .trust {
+    font-size: var(--t-xs);
+    color: var(--a-soft);
+    white-space: nowrap;
+  }
+
+  .month {
+    margin-top: 18px;
+  }
+
+  .month-title {
+    margin: 0 0 6px;
+    font: 500 0.75rem/1 var(--a-body);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--a-faint);
+  }
+
+  .timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 21px;
+    top: 14px;
+    bottom: 14px;
+    width: 1px;
+    background: var(--a-line);
+  }
+
+  .entry summary {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 10px;
+    padding-block: 12px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .entry summary::-webkit-details-marker,
+  .more summary::-webkit-details-marker,
+  :global(.fixture-note summary::-webkit-details-marker) {
+    display: none;
+  }
+
+  .entry-date {
+    position: relative;
+    z-index: 1;
+    align-self: start;
+    justify-self: center;
+    display: grid;
+    width: 40px;
+    padding: 2px 0 4px;
+    background: var(--s-paper);
+    text-align: center;
+    color: var(--a-faint);
+  }
+
+  .entry-date .d {
+    font: 600 1.05rem/1.1 var(--a-display);
+    color: var(--a-ink);
+  }
+
+  .entry-date .m {
+    font: 500 0.68rem/1.2 var(--a-body);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .entry-line2 {
+    margin-top: -2px;
+    font: 400 0.75rem/1.3 var(--a-mono);
+    color: var(--a-faint);
+  }
+
+  .entry-main {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .entry-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .entry-title {
+    font-weight: 500;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .entry-context {
+    font-size: var(--t-sm);
+    color: var(--a-soft);
+    line-height: 1.45;
+  }
+
+  .entry-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 2px;
+  }
+
+  .tag {
+    display: inline-flex;
+    gap: 4px;
+    font-size: var(--t-xs);
+    font-weight: 600;
+    color: var(--a-soft);
+  }
+
+  .tag--linked,
+  .tag--supported {
+    color: var(--a-ok);
+  }
+
+  .tag--ambiguous,
+  .tag--unresolved {
+    color: var(--a-warn);
+  }
+
+  .tag--contradicted {
+    color: var(--a-bad);
+  }
+
+  .tag--unmatched {
+    color: var(--a-faint);
+  }
+
+  .src-count {
+    font-size: var(--t-xs);
+    color: var(--a-faint);
+  }
+
+  .entry details[open] .src-count {
+    color: var(--a-accent);
+  }
+
+  .sources {
+    list-style: none;
+    margin: 0 0 8px 54px;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+  }
+
+  .sources li {
+    display: grid;
+    gap: 1px;
+  }
+
+  .src-who {
+    font-size: var(--t-sm);
+  }
+
+  .sources code {
+    font: 400 0.75rem/1.4 var(--a-mono);
+    color: var(--a-faint);
+    overflow-wrap: anywhere;
   }
 
   .amount {
-    font-weight: 700;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
   .amount--credit {
-    color: var(--c-ok);
+    color: var(--a-ok);
   }
 </style>

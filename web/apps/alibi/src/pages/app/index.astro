@@ -17,12 +17,12 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 
 <BaseLayout title="Passport" view="app">
   {loaded.source === 'missing' ? (
-    <AppFrame active="passport">
+    <AppFrame active="home">
       <p>{loaded.reason}</p>
     </AppFrame>
   ) : (
     <AppFrame
-      active="passport"
+      active="home"
       holder={loaded.data.holder.name}
       fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
     >

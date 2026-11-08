@@ -1,0 +1,151 @@
+---
+/**
+ * `/app/merchants/`: every merchant and issuer Maya's passport is connected
+ * to, from the backend's passport context, with what each has sent.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import { TRUST_MARK, initials, merchants, plainName } from '@/components/app/home';
+import { when } from '@/lib/format';
+import { loadPassport } from '@/lib/passport';
+
+export const prerender = false;
+
+const loaded = await loadPassport();
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const list = loaded.source === 'missing' ? [] : merchants(loaded.data);
+const STATUS: Record<string, string> = {
+  connected: 'Connected',
+  syncing: 'Syncing',
+  error: 'Sync failed',
+  disconnected: 'Disconnected',
+};
+---
+
+<BaseLayout title="Merchants" view="app">
+  <AppFrame
+    active="home"
+    holder={loaded.source === 'missing' ? undefined : loaded.data.holder.name}
+    fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+  >
+    <a class="back" href="/app/">
+      ← Home
+    </a>
+    <h1 class="title">Merchants</h1>
+    <p class="lede">
+      Where your records come from. Connected merchants send records they sign; anything you import
+      yourself is marked self-supplied. Alibi links them to your bank transactions.
+    </p>
+    {loaded.source === 'missing' && <p class="lede">{loaded.reason}</p>}
+    {loaded.source !== 'missing' && list.length === 0 && (
+      <p class="lede">No merchant is connected yet.</p>
+    )}
+    <ul class="list">
+      {list.map((m) => (
+        <li class="item">
+          <span class="mono" aria-hidden="true">
+            {initials(m.name)}
+          </span>
+          <div class="body">
+            <p class="name">{plainName(m.name)}</p>
+            <p class="line">
+              <span aria-hidden="true">{TRUST_MARK[m.trust].mark}</span> {TRUST_MARK[m.trust].label}{' '}
+              · {STATUS[m.status] ?? m.status}
+            </p>
+            <dl class="facts">
+              <div>
+                <dt>Records</dt>
+                <dd>{m.record_count}</dd>
+              </div>
+              <div>
+                <dt>Last synced</dt>
+                <dd>{when(m.last_synced_at)}</dd>
+              </div>
+              <div>
+                <dt>Kind</dt>
+                <dd>{m.kind === 'import' ? 'Your imports' : 'Merchant'}</dd>
+              </div>
+            </dl>
+          </div>
+        </li>
+      ))}
+    </ul>
+  </AppFrame>
+</BaseLayout>
+
+<style>
+  .back {
+    font-size: var(--t-sm);
+    color: var(--a-accent);
+    text-decoration: none;
+  }
+
+  .title {
+    margin: 14px 0 6px;
+    font: 500 1.85rem/1.1 var(--a-display);
+    letter-spacing: -0.025em;
+  }
+
+  .lede {
+    font-size: var(--t-sm);
+    color: var(--a-soft);
+  }
+
+  .list {
+    list-style: none;
+    margin: 24px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 28px;
+  }
+
+  .item {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 14px;
+  }
+
+  .mono {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: var(--a-ink);
+    color: var(--s-paper);
+    font: 600 0.9rem/1 var(--a-display);
+  }
+
+  .body p {
+    margin: 0;
+  }
+
+  .name {
+    font-weight: 600;
+  }
+
+  .line {
+    font-size: var(--t-xs);
+    color: var(--a-soft);
+  }
+
+  .facts {
+    margin: 10px 0 0;
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    justify-content: start;
+    gap: 18px;
+  }
+
+  dt {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--a-faint);
+  }
+
+  dd {
+    margin: 2px 0 0;
+    font-size: var(--t-sm);
+  }
+</style>

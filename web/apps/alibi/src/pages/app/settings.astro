@@ -1,17 +1,5 @@
 ---
-/** `/app/settings/`: placeholder until privacy rules and connections are managed here. */
-import BaseLayout from '@/layouts/BaseLayout.astro';
-import AppFrame from '@/components/app/AppFrame.astro';
+/** `/app/settings/`: moved to the Account tab. */
+export const prerender = false;
+return Astro.redirect('/app/account/', 301);
 ---
-
-<BaseLayout title="Settings" view="app">
-  <AppFrame active="settings">
-    <h1>Settings</h1>
-    <p>Privacy rules and connected services will be managed here.</p>
-    <p>
-      <a href="/?view=site" target="_top">
-        View the Alibi website instead
-      </a>
-    </p>
-  </AppFrame>
-</BaseLayout>

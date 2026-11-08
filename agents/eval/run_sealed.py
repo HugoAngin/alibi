@@ -505,6 +505,9 @@ def main(argv: list[str] | None = None) -> None:
                 parser.error(f"candidate-4 original capture verification failed ({type(exc).__name__})")
             kind = "post_fix_second_look"
             signature.update(kind=kind, original_run_sha256=original_digest)
+            # Reused-input development captures and the original frozen predictions
+            # are siblings; the new worker must not be able to read any of them.
+            isolation["capture_root"] = output.parent
         if isolation is not None and args.checkpoint_at is not None:
             isolation.update(checkpoint_at=args.checkpoint_at, gold_path=gold_path, adversarial_ids=attack_ids)
 

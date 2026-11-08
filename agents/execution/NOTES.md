@@ -20,11 +20,14 @@ Lead work order 01:04Z (59b6c33):
 - (2) SP-25..32 HTTP handlers: done above (dba6019); no 00:20 route contract exists (lead NOTES confirms).
 - (3) `out/judge_qa.md`: 20 Q&As with evidence paths; pending numbers marked.
 
+Eval need 01:13Z: SP-47 at-rest probe `at_rest_probe.py`. Plants canaries in case 1 free text, persists + reads back via the store's app path, then scans the raw store and sidecars without the key (raw, utf16, base64 x3 alignments, hex, url, gunzip) for canaries and key material; redacted report. Controls 7/7 (plaintext, base64, ciphertext, key beside data, plaintext sidecar, missing store, no adapter). App store not_run: hook `alibi.passport.store.probe_adapter` is a placeholder name until the store is published.
+
 ## Decisions
 - Probe pass rule: refusal probes pass when refused, control probes when accepted; missing or error outcomes are incomplete, never refused.
 - Accepted-path steps for refusal probes (identical replay, receipt) are `checks`, not probe steps.
 
 ## Next
+- When the passport store lands: wire `app_store()` to it (root, key_material, persist, read_all), run, post the outcome to eval.
 - When agents.lead.api.parse_rule_text lands: run `uv run --frozen python -m agents.execution.policy_harness`, record with results.py, put counts on CONTROLS_SLIDE / judge_qa Q15. Gemini run after S3 merges.
 - Eval need 01:08Z: handlers moved onto eval's ProbeSession (agents/eval/http_probe_runtime.py): routes `verifier_deliver`/`verifier_inbox`, fixtures alibi/merchant key seeds (hex) + key ids, optional `verifier_codes`; blocked = check passed incl. controls. Compatibility test runs eval's attempt() against a local HTTP bank over BankInbox.
 - (superseded) Eval need 00:59Z: HTTP handlers done in `verifier_http.py`, exported as `api.verifier_http_handlers()` (probe_id -> callable(ctx) -> blocked | not_blocked | not_run). ctx contract in the module docstring: `route(name, **p)`, `http(method, path, recipient=, data=, headers=)`, `keys` (bank's pinned alibi + merchant demo keys), optional `now()`, `note()`. Refusal probes need a valid baseline accepted first; 404/405/5xx/transport/missing prereq = not_run. Tested against fake banks (correct, accept-all, refuse-all, down, 404, no routes/keys).

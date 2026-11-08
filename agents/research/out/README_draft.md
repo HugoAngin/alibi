@@ -2,7 +2,7 @@
 README draft for judges. Owner: research. Lead replaces the root README with this at T-1h
 (docs/SUBMISSION.md: move the old README to docs/TEAM.md first).
 
-Sources copied verbatim: the data card from agents/data/out/data_card.md at 11abc05, and the
+Sources copied verbatim: the data card from agents/data/out/data_card.md at d711686, and the
 controls table and limits from agents/execution/out/CONTROLS_SLIDE.md at 06d22b1. Research
 refreshes them before T-1h. {{PH-nn}} placeholders match the registry in
 agents/research/out/DECK.md and are filled only from records eval marks as passing.
@@ -43,11 +43,11 @@ The Finance Track asks teams to help a specific person make a better financial d
 | Rules | 44 | 10 | 34 | 0 of 32 | 0 of 12 |
 
 - **Why it failed, as far as we know.** Retained error output shows 18 distinct cases failing at ingest, before any reasoning. Observed per system, that is 17 of the agents' 34 failures (13 core payload schema, 4 self-supplied import kind) and 18 each of the one-pass and rules baselines' 34 (13 and 5). In those cases the sealed pack used event kinds and fields our ingest schema rejected, an input-contract gap we had flagged at 01:45 and not closed. The other failures have no saved error output, so their cause is unknown. This run mostly measures that contract mismatch at ingest, not reasoning quality.
-- **No mapping and no rerun.** Adding a mapping after seeing the result would have been a second look at the sealed set, so the frozen result stands.
+- **No mapping and no rerun.** Adding a mapping after seeing the result would have been a second look at the sealed set, so the frozen result stands. After the freeze, `a3be52a` made an unreadable holder import a refused, skipped record instead of a fatal error for the case. It is a robustness fix only: the sealed set was not rescored with it, and the result above is from the frozen candidate.
 - **The capture was interrupted and resumed.** A harness fault interrupted the capture, and it was resumed under continuation rules that lead authorised after the interruption and before the resume. Every original returned result was kept byte-for-byte.
 - **Variants:** 3 frozen variants were tried before this freeze.
 - **Cost:** full cost is unknown. Partial logged cost is about $0.70 over 62 model calls for the agents and about $0.06 over 14 calls for the one-pass baseline; the rules baseline makes no model calls.
-- **Calibration:** the rules baseline was calibrated on public cases while the sealed pack was being authored. We disclose this.
+- **Calibration:** the sealed pack received rules-based calibration while eval authored it privately, so it was not untouched by every evaluated system. We disclose this.
 - **Security probes:** of 17 exercised refusal probes, 15 held and SP-23 and SP-24 failed (see Limits); both acceptance controls passed, and 28 probes were not exercised. The protections held where we tested them: separate approval per bank, signed packages the bank verifies independently, and cross-bank reads refused.
 
 Records: `1b235c16e9` (interrupted capture), `e16afeeac5` (continuation) and `f8dc5763b6` (aggregate export), rerun by `eval` with `python3 tools/results.py verify`. Source: `agents/eval/out/UNSEEN_RESULTS.md`; per-system error counts in `agents/eval/out/UNSEEN_ERROR_CLASSES.json`.
@@ -56,17 +56,15 @@ Records: `1b235c16e9` (interrupted capture), `e16afeeac5` (continuation) and `f8
 
 ## Method
 
-{{METHOD}}: replace this section with `METHOD.md` from eval once it lands. Until then, the plan from `alibi/SPEC.md` (Evaluation):
+The full frozen evaluation method is in [`agents/eval/out/UNSEEN_METHOD.md`](agents/eval/out/UNSEEN_METHOD.md). In short:
 
-- **Primary endpoint:** safe, correct case resolution. A case passes when every answerable fact has correct source support, unresolved or contradicted questions are labelled correctly, and the package holds no forbidden or unnecessary item.
-- **Baselines:** a rules system (reference, amount and date matching, reconciliation, fixed evidence selection) and one Gemini call that drafts the whole package. Neither is weakened, and explicit status checks and reference parsing belong to the rules baseline.
-- **Seal:** sealed cases come from different scenario families, stay outside builders’ reach until the freeze, and are scored once.
-- **Uncertainty:** 95% intervals by case-family resampling, or paired win/tie/loss counts when there are too few families.
+- **Primary endpoint:** safe, correct case resolution. A case passes when every answerable fact has correct source support, unresolved or contradicted questions are labelled correctly, and the package holds no forbidden or unnecessary item. The official scorer and a stricter second scorer are reported separately.
+- **Baselines:** a rules system (reference, amount and date matching, reconciliation, fixed evidence selection) and one Gemini call that drafts the whole package. Their configured retrieval differs, and that is disclosed.
+- **Seal:** one evaluator capture opened the sealed pack, on a candidate frozen before it was opened. Main and adversarial cases are kept separate, and every missing, timed-out, invalid or refused outcome counts against the system.
 
 ## Data
 
-
-**What it is.** 70 synthetic development cases for Alibi, numbered 1–70. Each case is one fictional seller's history:
+**What it is.** 80 synthetic development cases for Alibi, numbered 1–80. Each case is one fictional seller's history:
 - marketplace events: sales, refunds, fees, balance releases, payouts, notices and statements
 - bank feed rows
 - one or two Requests for Context from mock banks
@@ -76,6 +74,7 @@ Records: `1b235c16e9` (interrupted capture), `e16afeeac5` (continuation) and `f8
 The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/out/index.json` and loaded through `agents/data/api.py`. Case 1 is the canonical demo fixture used in the app, the tests, the slides and the recorded demo: Maya, £2,400 sales − £180 refunds − £60 fees = £2,160 credit (`240000 − 18000 − 6000 = 216000` pence).
 
 **Provenance.**
+- The 12 receipt images in `out/receipts/` are drawn by `agents/data/receipts.py` with Pillow. Each is stamped SYNTHETIC on the image, and its true fields are in `receipts.json`. `agents/data/vision_check.py` scores a Gemini vision read against those fields: on three hard layouts (app screenshot, handwritten on lined paper, letter photographed at an angle) it got 20 of 21 fields, with one issuer name wrong (eval record `73e742c7d7`).
 - Every record is synthetic and labelled `"SYNTHETIC - labelled test data, not a real person, account or institution"`.
 - No real financial records, people, accounts, merchants or banks were used or consulted.
 - The cases are written by one deterministic generator, `agents/data/ledgers.py` (Python standard library only), with seed `20261107`.
@@ -83,9 +82,13 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 
   ```bash
   uv run --frozen python -m agents.data.ledgers           # rewrites out/ byte for byte
-  uv run --frozen python -m pytest agents/data            # 321 checks; one asserts out/ equals a fresh build
+  uv run --frozen python -m pytest agents/data            # 394 checks; one asserts out/ equals a fresh build
   ```
 - Names such as "Mock Marketplace Payments", "Synthetic Lettings Ltd" and `mock-marketplace` are invented.
+
+**Marketplace view.** `agents/data/out/merchant_view/case_0001.json` is case 1 as the mock marketplace's own site shows it (8 orders with refs and titles, 2 refunds, fees, payout `PO-0001-01`, the release notification). A test checks that it agrees with case 1.
+
+**Throughput set.** 200 more generated cases (numbers 101–300, seed 20261208) in `agents/data/out/throughput/` measure adapter speed and cost only. They are excluded from every count and score here.
 
 **Separation from the evaluation set.**
 - The development cases are numbered below `lockbox_from = 1000` (`shared/splits.json`). Every loader filters through `tools.lockbox.visible`.
@@ -118,13 +121,13 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 | 32–38 | missing_proof | No merchant records, no payout, amount mismatch, a cited fee record missing, a payout arriving after the request. |
 | 39–40 | self_supplied_import | The only payout proof is the holder's own export, kept at lower trust whatever it claims. |
 | 41–50 | hidden_reference | The deciding payout's reference is not a regex away. It may appear only in an order confirmation, be absent (orders and weekday, or date only), use a withdrawal-ID alias mapped by a statement or an import, sit in an unfamiliar layout (email, semicolon CSV), or be one of two references told apart by amount or timing. |
-
 | 51–60 | injection | Exact copies of cases 1 and 2, each with one adversarial string from the controls owner's catalogue planted in a message, receipt, request question, lookup result or bank description. Gold is unchanged; the expected refusal is recorded. |
 | 61–70 | alert | Timelines that raise proactive alerts before any request: unexplained credit, unusual inflow or outflow, amount or settlement discrepancy, a payout settled but not received, an unverified merchant, and a quiet control with none. Gold lists the alerts. A mock merchant registry ships alongside. |
+| 71–80 | second_platform | A second simulated platform with its own schema, wording and settlement vocabulary: weekly statements instead of payouts, `paid`/`scheduled` instead of settled/pending, and its own reference format. It covers paid, scheduled-at-booking, net mismatch, omitted charges, a corrected order and a redelivered statement. In two cases Maya uses both platforms in one month, and a second bank's period question must combine them. |
 
 Every case also carries distractors that must never be disclosed: rent, grocery and pharmacy debits, and in some cases the holder's own health-category purchase.
 
-Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 linked, 19 unmatched, 1 ambiguous. The 10 injection cases repeat the outcomes of cases 1 and 2 by design, so they are not independent.
+Outcomes across the 80 cases: 54 supported, 12 contradicted, 14 unresolved; 58 linked, 21 unmatched, 1 ambiguous. The 10 injection cases repeat the outcomes of cases 1 and 2 by design, so they are not independent.
 
 **Honesty note.** The answer key is not independent of the rules. Gold is produced by construction from the same pinned rules (matching amount, settlement timing and reference, active revisions, recomputed arithmetic) that the rules-based baseline implements, and `test_ledgers.py` re-derives it with those rules. A rules baseline with the right retrieval can therefore reach 100% on these cases by design. It did on cases 1–40, because each lookup-only reference appeared verbatim in a pushed message. We added cases 41–50 so that finding the reference takes interpretation, and a naive regex-retrieval probe scores 6 of 10 there. These cases measure whether a system observes, retrieves and applies the rules correctly. They do not show that the rules are the right policy, and they are development data that we studied while building. The honest comparison is the sealed set, authored separately. Many cases are variants of one scenario template, so case counts here overstate independent evidence.
 
@@ -133,7 +136,9 @@ Outcomes across the 70 cases: 47 supported, 10 contradicted, 13 unresolved; 50 l
 - `fb7cae7`: cases 41–50 added; cases 1–40 byte-identical.
 - `c339e2a`: a pending payout in cases 2 and 20 is retrievable only from its `status_as_of` time. One field changed per case; gold unchanged.
 - `a8105fa`: cases 51–60 (injection) added.
-- Cases 61–70 (alert) and the mock merchant registry added. Cases 1–60 are unchanged.
+- `11abc05`: cases 61–70 (alert) and the mock merchant registry added. Cases 1–60 are unchanged.
+- `da8289f`, `3d2ff7d`: 12 synthetic receipt images (`out/receipts/`, true fields in `receipts.json`) and cases 71–80 (second platform) added. Cases 1–70 are unchanged.
+- `eb773d8`: the 200-case throughput set added (not scored).
 
 ## Controls
 
@@ -195,7 +200,7 @@ uv run --frozen python -m pytest agents/data
 | --- | --- | --- |
 | Front end | Astro on Cloudflare: landing page, Maya’s app (phone view), the bank’s analyst console and the merchant, with the shared “Connect to my Alibi” and “Request customer’s Alibi” buttons | `web/` |
 | Backend | Connectors, persisted passport, the four Gemini roles, arithmetic, policy, consent, signing, verification and delivery | `alibi/` |
-| Data | 70 synthetic development cases with answer keys | `agents/data/` |
+| Data | 80 synthetic development cases with answer keys | `agents/data/` |
 | Controls | Security probe catalogue, consent matrix, policy rules, analyst flow | `agents/execution/` |
 | Evaluation | Sealed cases, baselines, scorer, package verifier | `agents/eval/` |
 

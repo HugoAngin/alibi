@@ -619,7 +619,7 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
                                      + "; ".join(reasons) + ". Run it again before approving."}]
     mode = last_run.get("mode") or rt.settings.mode
     if mode == "agents":
-        actors = [ev.actor for ev in events]
+        actors = [ev.actor for ev in (meta.get("events") or [])]
         stats = last_run.get("stats") or {}
         replay_note = last_run.get("replay") or ""
         roles = [{"name": role, "status": ("complete" if role in actors else "not_called") if ran else "not_started",

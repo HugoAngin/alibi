@@ -110,7 +110,7 @@ def _drain_terminated_worker(child, timeout=2):
 
 def run_isolated(case, mode, *, candidate, private_root, credential, output, source_repo=REPO,
                  scratch_parent=None, denied_scratch=(), capture_root=None, deadline=None,
-                 trusted_issuers_file=None, trusted_issuers_sha256=None):
+                 trusted_issuers_file=None, trusted_issuers_sha256=None, development_patches=()):
     """Run one case; retain raw predictions and logs before destroying the source copy."""
     if mode not in LIMITS:
         raise ValueError("unknown mode")
@@ -139,6 +139,13 @@ def run_isolated(case, mode, *, candidate, private_root, credential, output, sou
         with tarfile.open(archive) as bundle:
             bundle.extractall(source, filter="data")
         archive.unlink()
+        patch_metadata = []
+        for entry, raw in development_patches:
+            if sha256(raw).hexdigest() != entry['sha256']:
+                raise ValueError('committed development patch commitment changed')
+            subprocess.run(['git', 'apply', '-'], cwd=source, input=raw, check=True,
+                           capture_output=True)
+            patch_metadata.append(entry)
         denied = (private_root, credential, capture_root or output.parent, source / "agents/data/out/cases",
                   source / ".env", source_repo / ".env", source_repo / "data", source_repo / "agents/data/out/cases",
                   *denied_scratch)
@@ -266,6 +273,9 @@ for p in sys.argv[1:]:
             metadata['trusted_setup_sha256'] = trusted_issuers_sha256
             metadata['trusted_public_key_fingerprints'] = trusted['public_key_fingerprints']
             metadata['trusted_setup_verified'] = failure is None
+        if patch_metadata:
+            metadata['development_patches'] = patch_metadata
+            metadata['candidate_scope'] = 'Base archive plus committed native development patches; not a frozen candidate'
         (output / "metadata.json").write_text(json.dumps(metadata, indent=2))
     return rows, metadata
 
@@ -280,11 +290,18 @@ def main():
     parser.add_argument("--mode", choices=list(LIMITS), action="append")
     parser.add_argument("--restriction", action="store_true", help="public variant denying amount_pence")
     parser.add_argument('--trusted-issuers-file', type=Path)
+    parser.add_argument('--development-patch', action='append', default=[])
     args = parser.parse_args()
     if is_open() or any(not 1 <= n <= 80 for n in args.case):
         parser.error("public cases 1–80 only, with lockbox closed")
     os.umask(0o077)
     candidate = subprocess.check_output(["git", "rev-parse", args.candidate + "^{commit}"], text=True).strip()
+    patches = []
+    if args.development_patch:
+        from agents.eval.public_patch_rehearsal import committed_patches
+        evaluator = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        entries, payloads = committed_patches(args.development_patch, evaluator)
+        patches = list(zip(entries, payloads))
     args.out = args.out.resolve()
     args.out.mkdir(mode=0o700, parents=True, exist_ok=False)
     cases = [load_case(n) for n in dict.fromkeys(args.case)]
@@ -303,14 +320,16 @@ def main():
                 rows, meta = run_isolated(case, mode, candidate=candidate, private_root=args.private_root,
                                          credential=args.credential, output=args.out / f"{mode}-{case['case_number']}",
                                          trusted_issuers_file=args.trusted_issuers_file,
-                                         trusted_issuers_sha256=trust_digest)
+                                         trusted_issuers_sha256=trust_digest,
+                                         development_patches=patches)
                 for row in rows:
                     handle.write(json.dumps(row) + "\n")
                 handle.flush()
                 records.append(meta)
                 print(json.dumps(meta), flush=True)
     (args.out / "run.json").write_text(json.dumps({"kind": "public-live", "candidate": candidate,
-        "restriction_variant": args.restriction, "limits": LIMITS, "workers": records}, indent=2))
+        "restriction_variant": args.restriction, "limits": LIMITS, "workers": records,
+        "development_patches": [entry for entry, _ in patches]}, indent=2))
     (args.out / "probes.jsonl").write_text("")
     if set(modes) == set(LIMITS) and not args.restriction:
         print(json.dumps(score_saved(args.out, cases, [], kind="public_live")), flush=True)

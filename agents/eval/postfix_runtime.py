@@ -50,7 +50,7 @@ def prepare_credentials(mode, credential_file):
 
 
 def capture(cases, *, output, candidate, private_root, deadline, trusted_issuers_file=None,
-            trusted_issuers_sha256=None, mode='rules', credential_file=None):
+            trusted_issuers_sha256=None, mode='rules', credential_file=None, development_patches=()):
     """Private worker artifacts; only counts and fixed failure codes exported."""
     counts = dict(cases=len(cases), completed=0, failed=0, unstarted=0, scheduler_errors=0,
                   model_calls=0 if mode == 'rules' else None)
@@ -85,7 +85,8 @@ def capture(cases, *, output, candidate, private_root, deadline, trusted_issuers
                     scratch_parent=lane, denied_scratch=tuple(p for p in roots if p != lane),
                     capture_root=output.parent, deadline=deadline,
                     trusted_issuers_file=trusted_issuers_file,
-                    trusted_issuers_sha256=trusted_issuers_sha256)
+                    trusted_issuers_sha256=trusted_issuers_sha256,
+                    development_patches=development_patches)
             finally:
                 lanes.put(lane)
 
@@ -111,6 +112,7 @@ def capture(cases, *, output, candidate, private_root, deadline, trusted_issuers
         result = schedule(jobs, run, workers=4, deadline=deadline, stop_on_error=True,
                           progress=progress)
     return dict(disclosure=DISCLOSURE, candidate=candidate, mode=mode, metrics=counts,
+                development_patches=[entry for entry, _ in development_patches],
                 by_system=by_system,
                 failure_codes=codes, scheduling=result['metadata'])
 
@@ -125,6 +127,7 @@ def main(argv=None):
     parser.add_argument('--trusted-issuers-file', type=Path)
     parser.add_argument('--mode', choices=('rules', 'one_pass', 'agents', 'all'), default='rules')
     parser.add_argument('--credential-file', type=Path)
+    parser.add_argument('--development-patch', action='append', default=[])
     args = parser.parse_args(argv)
     os.umask(0o077)
     output = args.out.resolve()
@@ -149,6 +152,12 @@ def main(argv=None):
         raise ValueError('future timezone-aware deadline required')
     candidate = subprocess.check_output(['git', 'rev-parse', args.candidate + '^{commit}'],
                                        cwd=REPO, text=True).strip()
+    patches = []
+    if args.development_patch:
+        from agents.eval.public_patch_rehearsal import committed_patches
+        evaluator = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip()
+        entries, payloads = committed_patches(args.development_patch, evaluator)
+        patches = list(zip(entries, payloads))
     prepare_credentials(args.mode, args.credential_file)
     manifest = common.load_json(args.manifest)
     trust_digest = None
@@ -172,11 +181,12 @@ def main(argv=None):
         'original_run_sha256': initial_run_hash, 'manifest_sha256': digest(args.manifest),
         'candidate': candidate, 'evaluator': subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(), 'gold_read': False,
-        'trusted_setup_sha256': trust_digest, 'mode': args.mode})
+        'trusted_setup_sha256': trust_digest, 'mode': args.mode,
+        'development_patches': [entry for entry, _ in patches]})
     summary = capture(cases, output=output, candidate=candidate, private_root=private,
                       deadline=deadline, trusted_issuers_file=args.trusted_issuers_file,
                       trusted_issuers_sha256=trust_digest, mode=args.mode,
-                      credential_file=args.credential_file)
+                      credential_file=args.credential_file, development_patches=patches)
     if (seal.case_entries(inputs) != (input_files, entries)
             or digest(original / 'run.json') != initial_run_hash):
         raise ValueError('original input commitments changed during diagnostic')

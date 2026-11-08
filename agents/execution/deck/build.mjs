@@ -547,16 +547,16 @@ pres.addSection({ title: 'Impact and controls' });
     'Impact and controls',
     R.relevance,
     'One passport, a different question, a new approval',
-    'Bank B asks something else. The same stored history answers it with no new import, its own package and its own approval; neither bank sees the other’s.',
+    'Bank B asks something else. Expected for case 1: the same stored history answers it with no new import, its own package and its own approval, and neither bank sees the other’s.',
   );
-  card(s, { x: M, y: 1.95, w: 4.4, h: 1.35 }, 'Bank A · rfc-0001-01', 'Source and breakdown of the £2,160 credit.\nCites the credit, the payout and 18 covered records.', { size: 13 });
-  card(s, { x: 5.1, y: 1.95, w: 4.4, h: 1.35 }, 'Bank B · rfc-0001-02', 'Sales and refunds in October 2026.\n8 sales £2,400 and 2 refunds £180, from 10 reused source IDs.', { size: 13 });
+  card(s, { x: M, y: 1.95, w: 4.4, h: 1.35 }, 'Bank A · rfc-0001-01 (case 1 fixture expectation)', 'Source and breakdown of the £2,160 credit.\nExpected to cite the credit, the payout and 18 covered records.', { size: 12 });
+  card(s, { x: 5.1, y: 1.95, w: 4.4, h: 1.35 }, 'Bank B · rfc-0001-02 (case 1 fixture expectation)', 'Sales and refunds in October 2026.\nExpected: 8 sales £2,400 and 2 refunds £180, from 10 reused source IDs.', { size: 12 });
   s.addText(
-    runs('Integrated case 1 demo: portability checks {{PH-14}}: same store, reused IDs, distinct packages, isolated inboxes. Reusing Bank A’s approval for Bank B is refused (SP-03).', { fontSize: 13, color: PALETTE.ink }),
+    runs('Integrated case 1 HTTP check pending {{PH-14}}: same store, reused IDs, distinct packages, isolated inboxes; verify refusal of Bank A’s approval at Bank B (SP-03).', { fontSize: 13, color: PALETTE.ink }),
     { x: M, y: 3.5, w: W - 2 * M, h: 0.7, margin: 0, isTextBox: true },
   );
   s.addText(
-    runs('Core control, verified: Bank B reuses existing source IDs, needs its own fresh approval, and cannot verify, list or fetch Bank A’s package; a restart keeps Bank A’s history; a retry returns identical bytes with one delivery.', { fontSize: 11, color: PALETTE.soft, italic: true }),
+    runs('Native S1 rules-mode control (verified): Bank B reuses existing source IDs, needs its own fresh approval, and cannot verify, list or fetch Bank A’s package; a restart keeps Bank A’s history; a retry returns identical bytes with one delivery.', { fontSize: 11, color: PALETTE.soft, italic: true }),
     { x: M, y: 4.3, w: W - 2 * M, h: 0.8, margin: 0, isTextBox: true },
   );
   s.addNotes('Bank B gold from data case 1. PH-14 stays pending for the integrated case 1 HTTP demo (eval). The italic line is a separate native-core control: eval record 13a526143c, clean replay PASS, four checks (fixture rfc_a_001 / rfc_b_001, not the HTTP stack). SP-03 and SP-17 from execution.');

@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from agents.eval.case_io import request_context
 from agents.eval.demo_fixture import build_analyst_preview, build_mock_bank, build_mock_merchant
+from agents.eval.http_probe_runtime import attempt
 from agents.eval.probe_capture import score_probe_steps
 from agents.eval.score_capture import compare_captures, score_capture
 from agents.eval.settlement import fixed_candidate_pool, match_credit, period_totals, reconcile_credit
@@ -20,6 +21,7 @@ from agents.eval.sharing_privacy import ApprovalError, ApprovalStore, TrustedSta
 
 __all__ = [
     "BankInbox", "PURPOSE_ISSUER_RECORD", "PURPOSE_PACKAGE", "TrustRegistry",
+    "attempt",
     "build_analyst_preview", "build_mock_bank", "build_mock_merchant",
     "compare_captures", "dispatch_approved", "fixed_candidate_pool", "match_credit",
     "period_totals", "reconcile_credit", "request_context", "score_capture", "score_probe_steps",

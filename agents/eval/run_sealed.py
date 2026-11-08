@@ -26,6 +26,10 @@ REPORT_HEADINGS = {
     "public_live": "Public live adapter check",
     "frozen": "Frozen comparison",
 }
+SP47_SCOPE = (
+    "SP-47 covers the passport store only. In the S4/S2 rehearsal, the app's "
+    "`case_N.state.json` and the mock bank's `state.json` held delivered packages in plaintext."
+)
 
 
 def _digest(path: Path) -> str:
@@ -191,6 +195,7 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
         f"{independent[system.name]['metrics']['safe_complete']}/{len(cases)}" for system in systems
     ) + " |"
     coverage = None
+    report = scorer.markdown_report(official)
     if probes:
         counts = Counter(row["outcome"] for row in probe_rows)
         coverage = {"catalogue": len(probe_rows), "observed": len(outcomes),
@@ -198,8 +203,10 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
         table += (f"\n\nShared backend probe coverage was {coverage['observed']}/{coverage['catalogue']}. "
                   f"{coverage['not_run']} were not run and {coverage['error']} errored. "
                   "The official probe scores use the full catalogue denominators.")
+        table += f"\n\n{SP47_SCOPE}"
+        report = f"{report.rstrip()}\n\n{SP47_SCOPE}\n"
     (output / "deck-table.md").write_text(f"# {REPORT_HEADINGS[kind]}\n\n{table}\n", encoding="utf-8")
-    (output / "report.md").write_text(scorer.markdown_report(official), encoding="utf-8")
+    (output / "report.md").write_text(report, encoding="utf-8")
     common.write_json(output / "scores.json", {
         "mode": kind,
         "headline": headline_evidence(official, attack_scores, independent, outcomes if probes else {}, kind),

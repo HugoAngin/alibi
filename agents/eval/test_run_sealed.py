@@ -76,6 +76,10 @@ def test_live_probe_report_keeps_the_catalogue_when_no_outcomes_are_observed(tmp
     assert official["probes_blocked"] == official["controls_allowed"] == 0
     assert official["probes_attempted"] + official["controls_attempted"] == len(ids)
     assert f"coverage was 0/{len(ids)}" in (tmp_path / "deck-table.md").read_text()
+    for filename in ("deck-table.md", "report.md"):
+        text = (tmp_path / filename).read_text()
+        assert "SP-47 covers the passport store only." in text
+        assert "`case_N.state.json`" in text and "`state.json`" in text and "plaintext" in text
 
 
 def test_public_live_uses_real_worker_mode_and_denies_private_and_capture_paths(tmp_path, monkeypatch):

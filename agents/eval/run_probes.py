@@ -35,7 +35,7 @@ def _storage_probe(layout: str | None) -> ProbeResult:
     if metrics["sp47_controls_passed"] != metrics["sp47_controls"] or metrics["sp47_controls"] < 1:
         return ProbeResult("SP-47", "error", "local storage controls did not pass")
     outcome = {-1: "not_run", 0: "not_blocked", 1: "blocked"}[metrics[f"sp47_{layout}_blocked"]]
-    return ProbeResult("SP-47", outcome, f"isolated local core storage probe, {layout} layout")
+    return ProbeResult("SP-47", outcome, f"isolated passport store, {layout} layout")
 
 
 def _registered_attempt(config: dict, probe_id: str, kind: str, chosen: set[str]):

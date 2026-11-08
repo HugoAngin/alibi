@@ -27,7 +27,7 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
   --results data/alibi/probes.jsonl
 ```
 
-Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. For SP-47, set `storage_layout` to `configured` or `default` only after confirming the matching layout for the target. That result covers the isolated passport core store. Check the actual app and bank state files separately before claiming evidence is encrypted throughout the demo.
+Pass that JSONL to `alibi.eval.scorer --probe-results`. The file records HTTP statuses and outcomes without storing payloads or credentials. SP-47 covers the passport store, as specified in `shared/CONTRACTS.md`. Set `storage_layout` to `configured` or `default` only after confirming the target passport's layout. The report and deck table name the plaintext S4/S2 delivery state files separately.
 
 For the app and bank check, use public Case 1 with a disposable master key and
 signing keys outside the data directories. Run, approve and dispatch Bank A's

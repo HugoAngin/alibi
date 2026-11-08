@@ -3,8 +3,8 @@
 Two tests per refusal row:
   test_cN_refused        the dispatch is refused at all (a security property; must pass now)
   test_cN_code_reason    the refusal carries the matrix code and verbatim reason (S5 work)
-Controls (C9, C14, C16) must succeed. A test marked xfail(strict=True) documents a known gap in
-the S1 core: when S5 fixes it the test XPASSes and the run fails until the marker is removed.
+Controls (C9, C14, C16) must succeed. The C1, C7, C8 and C10 code/reason tests were expected
+failures against the S1 core; S5 fixed them (alibi/REPORTS/S5.md 1c), so every test here must pass.
 
 The refusal is read from the raised exception as `exc.code` / `exc.reason`, or `exc.refusal`
 {"code", "reason"}; S5 may choose either. Expected reasons come from
@@ -148,7 +148,6 @@ class Refusals(Base):
 
 
 class CodesAndReasons(Base):
-    @unittest.expectedFailure
     def test_c1_code_reason(self):
         self.code_reason(self.c1(), "approval_missing")
 
@@ -158,11 +157,9 @@ class CodesAndReasons(Base):
     def test_c6_code_reason(self):
         self.code_reason(self.c6(), "approval_digest_not_current")
 
-    @unittest.expectedFailure
     def test_c7_code_reason(self):
         self.code_reason(self.c7(), "policy_version_changed")
 
-    @unittest.expectedFailure
     def test_c10_code_reason(self):
         self.code_reason(self.c10(), "approval_expired")
 
@@ -182,7 +179,6 @@ class CorrectionRows(Base):
         self.correct_cited_record()
         self.refuse(self.f.sign)
 
-    @unittest.expectedFailure
     def test_c8_code_reason(self):
         self.correct_cited_record()
         self.code_reason(self.refuse(self.f.sign), "source_revision_changed")

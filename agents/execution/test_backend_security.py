@@ -1,7 +1,8 @@
 """Security review of the S2 bank service, the mock merchant and the public router (lead, 01:57Z item 3).
 
-Findings are strict expected failures: each documents a hole today and XPASSes (failing the run)
-once fixed, so the marker must then be removed. Controls that hold are ordinary passing tests.
+Findings F1-F3 were strict expected failures until S5 fixed them (alibi/REPORTS/S5.md 1g: one
+admin bearer on every /admin/* route, loopback clients only); they are ordinary tests now and guard
+against regressions. Controls that hold are ordinary passing tests.
 Full list with severity and fixes: agents/execution/out/BACKEND_SECURITY_REVIEW.md.
 """
 import sys
@@ -19,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "agents" / "eval" / "deploy"))
 from router import is_blocked  # noqa: E402
 
-TOKENS = {"bank_a": "tok-a-security", "bank_b": "tok-b-security", "feed": "tok-feed-security"}
+TOKENS = {"bank_a": "tok-a-security", "bank_b": "tok-b-security", "feed": "tok-feed-security",
+          "admin": "tok-admin-security"}
 AS_OF = "2026-11-04T14:00:00Z"
 RFC_A = "rfc-0001-01"
 
@@ -44,8 +46,9 @@ class Base(unittest.TestCase):
     def bank(self, seed=True) -> TestClient:
         client = TestClient(create_bank_app(keystore=self.keystore, registry=self.registry, tokens=TOKENS))
         if seed:
-            # Today the seed needs no token; once F1 is fixed this call must carry the admin credential.
-            client.post("/admin/seed", params={"case": 1, "as_of": AS_OF})
+            # Since S5 (F1 fixed) the seed carries the shared admin credential.
+            r = client.post("/admin/seed", params={"case": 1, "as_of": AS_OF}, headers=auth("admin"))
+            assert r.status_code < 300, f"seed refused: {r.status_code}"
         return client
 
     def merchant(self) -> TestClient:
@@ -53,19 +56,16 @@ class Base(unittest.TestCase):
 
 
 class Findings(Base):
-    """F1-F3: internal admin routes are open, and the public router lets them through."""
+    """F1-F3: internal admin routes need the admin credential, and the public router blocks them."""
 
-    @unittest.expectedFailure
     def test_f1_bank_seed_requires_a_credential(self):
         r = self.bank(seed=False).post("/admin/seed", params={"case": 1, "as_of": AS_OF})
         self.assertIn(r.status_code, (401, 403, 404), "anyone can reset both banks' inboxes")
 
-    @unittest.expectedFailure
     def test_f1_bank_clock_advance_requires_a_credential(self):
         r = self.bank().post("/admin/advance", params={"as_of": "2026-12-31T00:00:00Z"})
         self.assertIn(r.status_code, (401, 403, 404), "anyone can expire every package and request")
 
-    @unittest.expectedFailure
     def test_f2_merchant_correction_requires_a_credential(self):
         m = self.merchant()
         m.post("/admin/seed", params={"case": 1})
@@ -73,7 +73,6 @@ class Findings(Base):
                                             "correction_reason": "SYNTHETIC unauthenticated test"})
         self.assertIn(r.status_code, (401, 403, 404), "anyone can make the merchant sign a correction")
 
-    @unittest.expectedFailure
     def test_f2_merchant_state_dump_requires_a_credential(self):
         m = self.merchant()
         m.post("/admin/seed", params={"case": 1})

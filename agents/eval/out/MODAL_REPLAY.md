@@ -2,6 +2,22 @@
 
 This is the earlier replay proposal. The current team plan targets the live demo on Research's existing Modal app, with the local stack as fallback. Research owns that deployment. Reuse it for any later hosted replay if the team requests one. The checks below apply to a separately labelled replay of public synthetic data. [Current hosting plan](../../../web/docs/hosting.md)
 
+## Live deployment handoff
+
+Research asked Eval to take over the existing `alibi-backend` app. The hosted deployment needs the S5 runbook, the path assignment and access to the existing Modal workspace. The router currently answers `/healthz` with all three service flags false. Its top-level `ok` indicates only that the router responded.
+
+Prepare the deploy from a tracked-only snapshot of the approved commit. The deployment module imported successfully from this layout with Modal 1.6.3. The existing ignore patterns alone allow arbitrary untracked JSON files under a mounted directory. This snapshot excludes untracked exports, credentials and scratch data from the deployment input.
+
+```bash
+candidate=$(git rev-parse HEAD)
+stage=$(mktemp -d /tmp/alibi-modal-stage.XXXXXX)
+git archive "$candidate" | tar -xf - -C "$stage"
+```
+
+Once the runbook lands, verify the three process commands and their readiness routes from that snapshot. Attach the existing `alibi-backend` Secret in the authorized workspace. Modal can require `GEMINI_API_KEY` and `ALIBI_MASTER_KEY` by name without exposing their values. [Modal Secret reference](https://modal.com/docs/sdk/py/latest/Secret#from_name)
+
+Before starting the hosted upstreams, confirm that merchant seed, reset and debug routes stay internal even through a service prefix. Start with a disposable local stack for mutating probes. Then verify all three hosted health flags, both recipients' allowed reads, the live consent refusal and the refusal's JSON body. Record the commit and observed results for Research's web smoke test.
+
 ## Topology
 
 | Service | Bind address | Purpose |

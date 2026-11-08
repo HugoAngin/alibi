@@ -1,7 +1,7 @@
-"""Every Alibi template must render with the sample contexts from preview_render.
+"""Every Alibi template must render with contexts built by the real app over cases 1 and 2.
 
-These tests never call Gemini or any network. They render in memory; the
-on-disk preview is exercised once into a temporary directory.
+These tests never call Gemini or any network. They render in memory from a temporary passport;
+the on-disk preview is exercised once into a temporary directory.
 """
 
 from __future__ import annotations
@@ -21,11 +21,13 @@ EXPECTED_PAGES = {
     "rules",
     "rules_interpretation",
     "request_detail",
+    "request_detail_contradicted",
     "export",
     "dispatch_success",
     "dispatch_refused",
     "analyst_inbox",
     "analyst_package",
+    "analyst_package_contradicted",
     "audit",
     "audit_replay",
 }
@@ -72,20 +74,30 @@ def test_reconciliation_and_badges_appear():
     assert "240000 - 18000 - 6000 = 216000" in txn
     assert "£2,160.00" in txn
     assert "216000 GBP" in txn
-    assert "badge--trust-self_supplied" in txn
+    assert "badge--trust-issuer_verified" in txn and "badge--trust-bank_observed" in txn
+    assert "badge--link-linked" in txn
     pkg = rendered["analyst_package"]
-    for cls in ("badge--trust-issuer_verified", "badge--trust-self_supplied",
-                "badge--claim-supported", "badge--claim-contradicted", "badge--claim-unresolved"):
+    for cls in ("badge--trust-issuer_verified", "badge--trust-bank_observed",
+                "badge--claim-supported", "badge--claim-unresolved", "panel--auth", "panel--trust", "panel--claims"):
         assert cls in pkg, cls
+    assert "badge--claim-contradicted" in rendered["analyst_package_contradicted"]
+    assert "Redacted extract, attested by Alibi" in pkg
     home = rendered["passport_home"]
-    for cls in ("badge--link-linked", "badge--link-ambiguous", "badge--link-unmatched"):
+    for cls in ("badge--link-linked", "badge--link-unmatched"):
         assert cls in home, cls
+    detail = rendered["request_detail"]
+    for cls in ("trace__step--lookups", "review-group--included", "via lookup"):
+        assert cls in detail, cls
 
 
 def test_refusal_reason_is_verbatim():
     ctx = pr.ctx_dispatch("refused")
     html = pr.make_env().get_template("requests/dispatch.html").render(**ctx)
+    assert ctx["dispatch"]["outcome"] == "refused"
+    assert ctx["dispatch"]["refusal"]["code"] == "approval_digest_mismatch"
     assert ctx["dispatch"]["refusal"]["reason"] in html.replace("&#39;", "'").replace("&quot;", '"')
+    success = pr.ctx_dispatch("success")
+    assert success["dispatch"]["outcome"] == "success" and success["dispatch"]["receipt"]
 
 
 def test_replay_banner_only_in_replay_mode():

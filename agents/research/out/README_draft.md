@@ -147,11 +147,11 @@ Outcomes across the 80 cases: 54 supported, 12 contradicted, 14 unresolved; 58 l
 | Threat | Control (enforced in code, not prompts) | Tested by | Evidence |
 | --- | --- | --- | --- |
 | **Fabricated source, arithmetic or conclusion** | Every cited record ID and revision is checked against what was retrieved. Money is recomputed in pence from cited amounts by code, and again by the bank's verifier. A later payout cannot explain an earlier credit. Contradicting evidence is kept. | SP-41, SP-42, SP-43, INJ-02, INJ-07, INJ-21 | ⏳ trace view on the request page (S4); ⏳ verifier recompute (S2 `alibi/bank/`); ✅ timing and matching rules in `shared/CONTRACTS.md` |
-| **Malicious text in a receipt, request or tool result** | All text is data. Agents can only propose schema-validated output. Tools are allowlisted and scoped to Maya's subject. Out-of-scope requests are refused and logged. | SP-38, SP-39, SP-40, SP-45, all 25 in `injections.jsonl` | ✅ [`injections.jsonl`](injections.jsonl); ⏳ gateway refusal in the audit log (`tool.refused`); ⏳ eval injection run |
-| **Over-disclosure through fields, summaries or traces** | Plain-English rules compile to typed deny, generalise, age and recipient rules, and Maya confirms them. Ambiguous rules are held and deny wins. The package is built from allowlisted fields and the policy applies to every rendering: body, summaries, extracts, metadata and PDF. Gaps never name what was withheld. The exclusion list stays on Maya's side. | SP-10 to SP-16, PR-01 to PR-40 | ✅ [`policy_rules.jsonl`](policy_rules.jsonl); ⏳ private review screen (S4); ⏳ eval `forbidden_items` / `unnecessary_items` |
-| **Forged sender, tampering, replay or stale approval** | Approval is bound to the SHA-256 body digest, recipient, request, policy version and cited source revisions, and expires after 15 minutes. Dispatch rechecks all of them and refuses on any change. Ed25519 signatures with separate merchant and Alibi keys. Event and package IDs are deduplicated. | SP-01 to SP-09, SP-25 to SP-28, SP-31, SP-33 to SP-35, C1 to C16 | ✅ [`consent_matrix.md`](consent_matrix.md); ⏳ live refusal on stage (demo 1:50); ⏳ `dispatch.refused` audit entry |
-| **Unauthorised vault access or data leakage** | Holder and analyst roles are separate. Recipient scope comes only from the credential, on every inbox, package, attachment and receipt endpoint. Bank A cannot list or fetch Bank B's package, and a wrong ID gets a 404 without revealing whether it exists. Evidence is encrypted at rest with an app key stored apart from the data. Gemini receives only the fields its task needs. | SP-17 to SP-24, SP-46, SP-47 | ⏳ isolation test (S2 / eval); ⏳ demo 2:45 (Bank B inbox) |
-| **Tool failure, missing evidence or misuse of alerts** | Retries are bounded. Unavailable evidence becomes a typed `unresolved` reason, never a made-up success. Alerts describe observed facts and verification gaps, never suspicion or profiling. Agents cannot sign, approve, send or act on an account. | SP-44, SP-45 | ⏳ unresolved gaps in eval results; ✅ alert and disposition wording in [`ANALYST_FLOW.md`](ANALYST_FLOW.md) |
+| **Malicious text in a receipt, request or tool result** | All text is data. Agents can only propose schema-validated output. Tools are allowlisted and scoped to Maya's subject. Out-of-scope requests are refused and logged. | SP-38, SP-39, SP-40, SP-45, all 25 in `injections.jsonl` | ✅ [`injections.jsonl`](agents/execution/out/injections.jsonl); ⏳ gateway refusal in the audit log (`tool.refused`); ⏳ eval injection run |
+| **Over-disclosure through fields, summaries or traces** | Plain-English rules compile to typed deny, generalise, age and recipient rules, and Maya confirms them. Ambiguous rules are held and deny wins. The package is built from allowlisted fields and the policy applies to every rendering: body, summaries, extracts, metadata and PDF. Gaps never name what was withheld. The exclusion list stays on Maya's side. | SP-10 to SP-16, PR-01 to PR-40 | ✅ [`policy_rules.jsonl`](agents/execution/out/policy_rules.jsonl); ⏳ private review screen (S4); ⏳ eval `forbidden_items` / `unnecessary_items` |
+| **Forged sender, tampering, replay or stale approval** | Approval is bound to the SHA-256 body digest, recipient, request, policy version and cited source revisions, and expires after 15 minutes. Dispatch rechecks all of them and refuses on any change. Ed25519 signatures with separate merchant and Alibi keys. Event and package IDs are deduplicated. | SP-01 to SP-09, SP-25 to SP-28, SP-31, SP-33 to SP-35, C1 to C16 | ✅ [`consent_matrix.md`](agents/execution/out/consent_matrix.md); ⏳ live refusal on stage (demo 1:50); ⏳ `dispatch.refused` audit entry |
+| **Unauthorised vault access or data leakage** | Holder and analyst roles are separate. Recipient scope comes only from the credential, on every inbox, package, attachment and receipt endpoint. Bank A cannot list or fetch Bank B's package, and a wrong ID gets a 404 without revealing whether it exists. Evidence in the passport store is encrypted at rest with an app key stored apart from the data; the mock bank's delivered demo state is not (SP-47). Gemini receives only the fields its task needs. | SP-17 to SP-24, SP-46, SP-47 | ⏳ isolation test (S2 / eval); ⏳ demo 2:45 (Bank B inbox) |
+| **Tool failure, missing evidence or misuse of alerts** | Retries are bounded. Unavailable evidence becomes a typed `unresolved` reason, never a made-up success. Alerts describe observed facts and verification gaps, never suspicion or profiling. Agents cannot sign, approve, send or act on an account. | SP-44, SP-45 | ⏳ unresolved gaps in eval results; ✅ alert and disposition wording in [`ANALYST_FLOW.md`](agents/execution/out/ANALYST_FLOW.md) |
 
 **Human oversight, two decisions:**
 - **Maya** approves the exact package for one named bank. Any change after that needs a new approval.
@@ -170,19 +170,26 @@ Outcomes across the 80 cases: 54 supported, 12 contradicted, 14 unresolved; 58 l
 - Real bank acceptance, and any reduction in account restrictions, are unmeasured.
 - Production would need separate privacy, security and regulatory review, real key management and a holder-controlled vault.
 - The sealed evaluation mostly measured an input-contract mismatch at ingest: 18 distinct sealed cases failed before any reasoning (observed 17, 18 and 18 per system), and the remaining failures' cause is unknown. It cannot tell us how well the agents reason.
-- Refusal probes SP-23 and SP-24 failed in the frozen run; 28 of 47 probes were not exercised.
+- Refusal probes SP-23 and SP-24 failed in the frozen run, and both still fail the bank-intake refusal contract. SP-23: the bank accepted and sent the request (201) although the holder side refused it, and the holder readback was 404. SP-24: the bank accepted a request (201) whose declared issuer was rewritten to Bank B; the holder accepted it (200) and it never appeared in Bank A's inbox. The fix is to check the request before signing; it is not in the frozen candidate. Evidence: `agents/eval/out/BANK_REQUEST_HANDOFF.md`. 28 of 47 probes were not exercised.
+- Encryption at rest covers the passport store only. The mock bank's delivered demo state was observed in plaintext (SP-47).
 - On the frozen local app, a `?token=` login URL is accepted and can be logged. The hosted router refuses credential-bearing URLs; the local app does not.
 
 ## Run it
 
-{{RUNBOOK}}: replace with the commands from `alibi/RUNBOOK.md` when it lands (backend, mock merchant, mock bank, both recipients, Maya’s fixture, recorded replay).
+The whole two-bank demo, with no API key, from the repo root:
+
+```bash
+agents/execution/run_demo.sh --replay
+```
+
+It starts a clean case 1 stack (backend, mock merchant, mock bank, both recipients and Maya's fixture), opens the holder and Bank A windows, and walks the demo one Enter at a time: the £2,160 payout lands and Alibi raises its alert, Bank A sends its Request for Context, then Bank B sends its own. `--replay` uses the recorded agents and labels them so; everything else runs live. Without `--replay` it calls Gemini and needs `GEMINI_API_KEY` in `.env`. Bank tokens are read from `data/alibi/bank_tokens.json` and never printed.
 
 The web front end (`web/`) needs Node 22.12 or newer and pnpm 10:
 
 ```bash
 cd web
 pnpm install
-pnpm dev        # Alibi http://localhost:4321 (phone view at /phone/), merchant :4322, bank :4323
+pnpm dev        # Alibi http://localhost:4321, merchant :4322, bank :4323
 pnpm verify     # format, lint, type check, tests, build
 ```
 

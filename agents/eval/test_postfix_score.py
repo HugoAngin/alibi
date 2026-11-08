@@ -39,3 +39,19 @@ def test_duplicate_prediction_is_rejected(public_capture):
     path.write_text(json.dumps(rows + [rows[0]]))
     with pytest.raises(ValueError, match='denominator'):
         score(capture, source, gold)
+
+
+@pytest.mark.parametrize('mode', ['agents', 'one_pass', 'rules'])
+def test_nested_development_modes_keep_main_and_adversarial_denominators(public_capture, mode):
+    capture, source, gold = public_capture
+    folders = list((capture / 'workers').iterdir())
+    for folder in folders:
+        target = capture / 'workers' / mode / folder.name
+        target.mkdir(parents=True)
+        (target / 'predictions.json').write_bytes((folder / 'predictions.json').read_bytes())
+    result = score(capture, source, gold, mode=mode, nested=True)
+    assert all(metrics['cases'] == 1 and metrics['safe_complete'] == 0
+               for metrics in result.values())
+    next((capture / 'workers' / mode).glob('*/predictions.json')).unlink()
+    with pytest.raises(ValueError, match='denominator'):
+        score(capture, source, gold, mode=mode, nested=True)

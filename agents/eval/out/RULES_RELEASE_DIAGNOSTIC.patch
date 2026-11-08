@@ -1,0 +1,52 @@
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -58,6 +58,7 @@
+ from pydantic import TypeAdapter, ValidationError
+ 
+ from alibi.core import reconcile
++from alibi.core.release import is_balance_release
+ from alibi.core.canon import make_id
+ from alibi.core.reconcile import (
+     FAILED_STATUSES,
+@@ -1031,14 +1032,13 @@
+                 if records is not None:
+                     merchant = [r for r in records if r.subject_ref == txn.subject_ref
+                                 and r.source_trust == SourceTrust.ISSUER_VERIFIED]
+-                    releases = [r for r in merchant if r.kind == RecordKind.MESSAGE
+-                                and r.amount_pence == txn.amount_pence and r.currency == txn.currency
+-                                and timedelta(0) <= txn.booked_at - r.occurred_at <= self.window
+-                                and re.search(r"\b(?:seller|platform) balance\b", r.text or "", re.I)]
++                    # A later correction can change a rejected diagnostic into a release.
++                    # Retain examined messages privately even when no release is recognized.
++                    evidence.extend(r.ref() for r in merchant if r.kind == RecordKind.MESSAGE)
++                    releases = [r for r in merchant if is_balance_release(r, txn, self.window)]
+                     if releases:
+                         code = GAP_BALANCE_RELEASE
+                         gap = "An issuer message reports funds in the platform balance, but no bank settlement is established."
+-                        evidence.extend(r.ref() for r in releases)
+                     elif not merchant:
+                         code = GAP_NO_RECORDS
+                         gap = "No issuer-verified merchant records are available to establish this credit's source."
+--- /dev/null
++++ b/alibi/tests/test_rules_release_diagnostic_safety.py
+@@ -0,0 +1,20 @@
++"""Rules release diagnostics share the strict semantic check with one-pass."""
++import pytest
++
++from alibi.adapter import run_case
++from alibi.tests.test_release_diagnostic_safety import RELEASE_GAP, release_case, correction_invalidates
++
++
++@pytest.mark.parametrize("change", [None, "unrelated", "negative", "conditional", "currency", "status", "untrusted"])
++def test_rules_only_affirmative_issuer_release_changes_gap(tmp_path, change):
++    case, _ = release_case(change)
++    rows = run_case(case, "rules", root=tmp_path / "run")
++    for row in rows:
++        assert row["failure"] is None
++        assert all(c["status"] == "unresolved" and (c["gap"] == RELEASE_GAP) == (change is None)
++                   for c in row["claims"].values())
++
++
++@pytest.mark.parametrize("initially_release", [True, False])
++def test_rules_release_correction_invalidates_minimal_review(tmp_path, initially_release):
++    correction_invalidates(tmp_path, "rules", initially_release)

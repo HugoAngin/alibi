@@ -1,0 +1,201 @@
+--- a/alibi/baselines/one_pass.py
++++ b/alibi/baselines/one_pass.py
+@@ -62,6 +62,7 @@
+ from alibi.core import investigate_rules as core_rules
+ from alibi.core.answered import examined_refs
+ from alibi.core import reconcile
++from alibi.core.release import is_balance_release
+ from alibi.core.canon import make_id
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
+ from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES
+@@ -527,7 +528,7 @@
+             code_keys = {ref.key() for ref in evidence}
+             for ref in proposed.refs:
+                 item = self.material.get(ref.record_id, ref.revision)
+-                if item is None or item.ref().key() in code_keys:
++                if item is None:
+                     continue
+                 key = (_ident(item), item.revision)
+                 if isinstance(item, EvidenceRecord) and item.kind == RecordKind.MESSAGE:
+@@ -536,7 +537,8 @@
+                     reason = (f"{key[0]}@{key[1]} is not in the shareable evidence under the holder's "
+                               "policy; not attached to the claim.")
+                 else:
+-                    evidence.append(item.ref())
++                    if item.ref().key() not in code_keys:
++                        evidence.append(item.ref())
+                     continue
+                 self.unsafe_refs.append(f"{key[0]}@{key[1]}")
+                 self.note("validation", outcome="refused", refs=[item.ref()], reason=reason,
+@@ -682,12 +684,15 @@
+             else:
+                 why = f"the payout's own status {payout.status} is not a settlement status and does not show a bank transfer"
+             gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no settlement record for payout {ref} was retrieved; {why}."
+-            if any(r.kind == RecordKind.MESSAGE for r in records):
++            examined_messages = [r for r in records if r.kind == RecordKind.MESSAGE
++                                 and r.subject_ref == txn.subject_ref]
++            releases = [r for r in examined_messages if is_balance_release(r, txn, core_rules.DEFAULT_WINDOW)]
++            if releases:
+                 gap += (f" {GAP_BALANCE_RELEASE}: a 'released to balance' message is a release to the "
+                         "platform balance, not a settlement.")
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary(),
+                             "No settlement record for the candidate payout.", gap=gap,
+-                            evidence=[txn.ref(), *pool_refs])
++                            evidence=[txn.ref(), *pool_refs, *(r.ref() for r in examined_messages)])
+         if found.conflicts:
+             conflict = found.conflicts[0]
+             if _conflict_code(conflict, txn) == GAP_SETTLEMENT_AFTER:
+@@ -702,10 +707,20 @@
+                    "checked against this credit.")
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), gap,
+                             f"Merchant records unavailable ({self.records_err}).", gap=gap, evidence=[txn.ref()])
++        examined_messages = [r for r in records if r.kind == RecordKind.MESSAGE
++                             and r.subject_ref == txn.subject_ref]
++        releases = [r for r in examined_messages if is_balance_release(r, txn, core_rules.DEFAULT_WINDOW)]
++        if not any(r.kind == RecordKind.PAYOUT for r in records) and releases:
++            gap = (f"{GAP_BALANCE_RELEASE}: issuer evidence reports this amount available in the "
++                   "platform balance; it does not establish bank settlement.")
++            return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn),
++                            found.summary() or gap, "Balance release only.", gap=gap,
++                            evidence=[txn.ref(), *(r.ref() for r in examined_messages)])
+         if not any(r.kind == RecordKind.PAYOUT for r in records):
+             gap = f"{GAP_NO_RECORDS}: the passport holds no payout record for this subject."
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary() or gap,
+-                            "No payout records.", gap=gap, evidence=[txn.ref()])
++                            "No payout records.", gap=gap,
++                            evidence=[txn.ref(), *(r.ref() for r in examined_messages)])
+         reasons = "; ".join(f"{', '.join(p.record_id for p in r.payouts)}: {r.reason}" for r in found.rejected)
+         gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no payout fits this credit under the candidate rule ({reasons})."
+         return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary(),
+--- /dev/null
++++ b/alibi/core/release.py
+@@ -0,0 +1,24 @@
++"""Conservative diagnostic recognition of issuer-attested platform-balance releases."""
++import re
++from datetime import timedelta
++
++from alibi.core.schemas import BankTxn, EvidenceRecord, RecordKind, SourceTrust
++
++_AVAILABLE = re.compile(r"\b(?:is|are) now available in (?:your |the )?(?:seller|platform) balance\b", re.I)
++_RELEASED = re.compile(r"\b(?:has|have) been released to (?:your |the )?(?:seller|platform) balance\b", re.I)
++_NEGATED = re.compile(r"\b(?:no|not|never|isn't|aren't|wasn't|pending|failed|reversed|cancelled|if|whether|might|may|would|could)\b", re.I)
++
++
++def is_balance_release(record: EvidenceRecord, txn: BankTxn, window: timedelta) -> bool:
++    """Recognize a release diagnostic, never proof of settlement or permission to share."""
++    if (record.subject_ref != txn.subject_ref or record.source_trust != SourceTrust.ISSUER_VERIFIED
++            or record.kind != RecordKind.MESSAGE or record.amount_pence != txn.amount_pence
++            or record.currency != txn.currency or not txn.is_credit
++            or not timedelta(0) <= txn.booked_at - record.occurred_at <= window):
++        return False
++    if record.status == "released_to_balance":
++        return True
++    if record.status is not None:
++        return False
++    text = " ".join((record.text or "").split())
++    return not _NEGATED.search(text) and bool(_AVAILABLE.search(text) or _RELEASED.search(text))
+--- /dev/null
++++ b/alibi/tests/test_release_diagnostic_safety.py
+@@ -0,0 +1,102 @@
++"""Public release diagnostics use issuer facts and preserve private revision dependencies."""
++import json
++
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi import api
++from alibi.adapter import _World, _run, run_case
++from alibi.connectors.case_source import CaseClock, parse_time
++from alibi.core.schemas import ClaimStatus, SigningDomain
++from alibi.llm.fake import FakeClient
++
++
++RELEASE_GAP = "balance_release_not_settlement"
++NO_PROPOSAL = {"claims": [], "disclosures": [], "rationale": "offline"}
++
++
++def release_case(change=None):
++    case = without_gold(load_case(17))
++    release = next(d for d in case["merchant_deliveries"] if d["event"]["kind"] == "balance_release")
++    if change == "unrelated":
++        release["event"]["message"] = "A support ticket about your seller balance has been opened."
++    elif change == "negative":
++        release["event"]["message"] = "No funds are available in your seller balance."
++    elif change == "conditional":
++        release["event"]["message"] = "If the amount is now available in your seller balance, request a withdrawal."
++    elif change == "currency":
++        release["event"]["currency"] = "EUR"
++    elif change == "status":
++        release["event"]["status"] = "failed"
++    elif change == "untrusted":
++        case["merchant_deliveries"].remove(release)
++        case["imports"].append({"received_at": release["received_at"], "record": release["event"]})
++    return case, release["event"]["record_id"]
++
++
++@pytest.mark.parametrize("number,gap", [(17, RELEASE_GAP), (18, RELEASE_GAP), (32, "no_merchant_records")])
++def test_one_pass_release_uses_observed_evidence_and_fixed_strategy(tmp_path, number, gap):
++    client = FakeClient({"*": NO_PROPOSAL})
++    predictions = run_case(number, "one_pass", client=client, root=tmp_path / "run")
++    assert client.call_count == len(predictions)
++    for row in predictions:
++        assert row["failure"] is None
++        assert row["retrieval"]["lookups"] == 0
++        assert all(c["status"] == "unresolved" and c["gap"] == gap for c in row["claims"].values())
++        assert all(c["evidence_refs"] == [] for c in row["claims"].values())
++
++
++@pytest.mark.parametrize("change", ["unrelated", "negative", "conditional", "currency", "status", "untrusted"])
++def test_one_pass_rejects_non_release_messages(tmp_path, change):
++    case, _ = release_case(change)
++    client = FakeClient({"*": NO_PROPOSAL})
++    rows = run_case(case, "one_pass", client=client, root=tmp_path / "run")
++    assert client.call_count == len(rows)
++    for row in rows:
++        assert row["failure"] is None
++        assert row["retrieval"]["lookups"] == 0
++        assert all(c["status"] == "unresolved" and c["gap"] != RELEASE_GAP for c in row["claims"].values())
++
++
++def correction_invalidates(tmp_path, mode, initially_release):
++    case, rid = release_case(None if initially_release else "negative")
++    at = parse_time(case["rfcs"][0]["issued_at"], "at")
++    world = _World(case, tmp_path / "world")
++    client = FakeClient({"*": NO_PROPOSAL})
++    try:
++        world.seed(CaseClock(case, at))
++        rfc = world.store.get_request(case["rfcs"][0]["request_id"])
++        result, run = _run(world, mode, rfc, at, client)
++        assert all(c.status == ClaimStatus.UNRESOLVED for c in result.claims)
++        for claim in result.claims:
++            assert (RELEASE_GAP in (claim.gap or "")) == initially_release
++            assert rid in {ref.ref_id for ref in claim.examined_refs}
++            assert claim.evidence_refs == [] and claim.calculation is None
++        if mode == "one_pass":
++            assert run.lookups == 0 and run.model_calls == 1
++        draft = api.build_review(world.store, rfc.request_id, audience=rfc.audience, now=at)
++        approval = api.approve(world.store, draft.draft_id, holder_id="holder_maya", now=at)
++        assert draft.body.attachments == []
++        assert rid not in json.dumps(draft.body.to_json_dict())
++        body = world.store.get_source(rid).to_event().to_json_dict()
++        body.update(event_id="public-release-correction-two", revision=2, corrects_revision=1,
++                    correction_reason="Public synthetic correction", text=(
++                        "No funds are available in your seller balance." if initially_release else
++                        "Good news! The amount is now available in your seller balance."))
++        payload = {"event": body, "signature": world.keystore.sign(
++            body, kid="merchant_mock", domain=SigningDomain.RECORD).to_json_dict()}
++        changed = api.ingest_merchant_event(world.store, payload, registry=world.registry, now=at)
++        assert {c.claim_id for c in result.claims} <= set(changed.invalidated["claims"])
++        assert draft.draft_id in changed.invalidated["drafts"]
++        assert approval.approval_id in changed.invalidated["approvals"]
++        with pytest.raises(api.ApprovalError):
++            api.sign_and_package(world.store, approval.approval_id, keystore=world.keystore, now=at)
++        rerun, _ = _run(world, mode, rfc, at, client)
++        assert all((RELEASE_GAP in (c.gap or "")) != initially_release for c in rerun.claims)
++    finally:
++        world.close()
++
++
++@pytest.mark.parametrize("initially_release", [True, False])
++def test_one_pass_release_correction_invalidates_minimal_review(tmp_path, initially_release):
++    correction_invalidates(tmp_path, "one_pass", initially_release)

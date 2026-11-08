@@ -1589,16 +1589,20 @@ and make no network or LLM calls. The conftest fixtures `keystore`, `registry` a
 
 ## Known issues
 
-- RFC B q2 (refunds over October) is `supported` by the investigation
-  (18000 pence), but
-  `build_review` downgrades it to `unresolved` in the package. The rules engine sums a
-  refunds-only total with sign +1, while the package's calculation check expects the
-  `SIGN_BY_KIND` sign (-1 for a refund), so it reports "the calculation does not match the
-  disclosed evidence". This is a mismatch between `alibi/core/investigate_rules.py` and
-  `alibi/core/package.py`, and it is reported to their owners. So Bank B accepts a package that
-  answers only q1. `alibi/tests/test_api.py` runs the whole Bank B flow in
-  `test_rfc_b_delivers_both_supported_totals`, marked as a strict expected failure: once the
-  core agrees on one sign, that test passes, the suite reports it, and the marker comes off.
+- Request ids are unique across all banks, not per bank. A bank that sends a `request_id` another
+  bank already used is refused, and the refusal shows that the id exists. Use unique ids, as the
+  fixtures do.
+- `verify_package` binds a package to a subject and a request only when the caller passes
+  `expected_subject` and `expected_request_id`. Without them it still rejects attachments that
+  name more than one subject. The package body does not carry the subject yet, so bank-side
+  callers should always pass both.
+- The rules investigation catches double counting only within one run. Two RFCs that each ask
+  about a credit backed by the same payout can each get `supported`.
+- Calculation signs (not an issue, a rule): `net_payout` and `net_total` net kinds with
+  `SIGN_BY_KIND`, so refunds and fees subtract. Every other total covers one kind with one sign:
+  positive amounts (the rules engine's refunds total is +18000) or the kind's `SIGN_BY_KIND`
+  direction (a receipt total compared with a bank debit). Bank B gets both RFC B answers
+  `supported`.
 
 ## Differences from DESIGN.md
 

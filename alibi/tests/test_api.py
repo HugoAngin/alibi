@@ -268,10 +268,6 @@ def test_rfc_b_reuses_the_passport_with_its_own_package_and_fresh_approval(ctx):
     assert source_rows(ctx.store, subject) == held
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "core mismatch, reported to lead: investigate_rules sums a refunds_total with sign +1 "
-    "while package._term_check expects SIGN_BY_KIND (-1 for a refund), so build_body "
-    "downgrades RFC B q2 to unresolved. Strict: remove this marker once the core agrees"))
 def test_rfc_b_delivers_both_supported_totals(ctx):
     fx = load(ctx)
     b = deliver(ctx, fx, RFC_B)

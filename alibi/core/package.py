@@ -42,7 +42,7 @@ from alibi.core.approval import (
     merge_refs,
 )
 from alibi.core.policy import REASON_EXCLUDED_REF, CompiledPolicy, FilterResult, compile_policy
-from alibi.core.reconcile import SETTLED_STATUSES, SIGN_BY_KIND
+from alibi.core.reconcile import NET_METHODS, SETTLED_STATUSES, allowed_signs
 from alibi.core.schemas import (
     SCHEMA_PACKAGE,
     Attachment,
@@ -497,7 +497,7 @@ def _scrub_calculation(calc: Calculation | None, scrubber: _Scrubber,
 
 
 def _term_check(term: CalcTerm, contents: Mapping[str, Any],
-                held: Collection[str]) -> bool | None:
+                held: Collection[str], *, method: str) -> bool | None:
     content = contents.get(term.ref.key())
     if not isinstance(content, Mapping):
         return True if term.ref.token() in held else None
@@ -511,9 +511,8 @@ def _term_check(term: CalcTerm, contents: Mapping[str, Any],
     kind = content.get("kind")
     if not isinstance(kind, str):
         return None
-    expected_sign = SIGN_BY_KIND.get(kind)
     return (amount == term.amount_pence and currency == term.currency and kind == term.kind
-            and (expected_sign is None or expected_sign == term.sign))
+            and term.sign in allowed_signs(method, kind))
 
 
 def _target_check(calc: Calculation, contents: Mapping[str, Any],
@@ -565,7 +564,10 @@ def _calc_check(calc: Calculation, contents: Mapping[str, Any],
                 held: Collection[str] = ()) -> bool | None:
     """True when every value the calculation shows matches the disclosed contents, False on
     a mismatch, None when something cannot be checked. Refs in ``held`` count as known."""
-    verdicts = [_term_check(term, contents, held) for term in calc.terms]
+    if calc.method not in NET_METHODS and len(
+            {(term.kind, term.sign) for term in calc.terms if term.ref.ref_type == "record"}) > 1:
+        return False  # a one-kind total (refunds_total...) neither mixes kinds nor nets records
+    verdicts = [_term_check(term, contents, held, method=calc.method) for term in calc.terms]
     if calc.target_ref is not None:
         verdicts.append(_target_check(calc, contents, held))
     if calc.timing is not None:

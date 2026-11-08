@@ -877,3 +877,34 @@ def test_store_roundtrip_keeps_the_package_verifiable(control, tmp_path, registr
         loaded = store.get_package(control.package.package_id, audience="bank_a")
     assert isinstance(loaded, ContextPackage)
     assert verify_package(loaded, registry, expected_audience="bank_a", now=now).accepted
+
+
+def test_one_kind_totals_keep_one_sign_and_net_totals_subtract():
+    """A refunds total checks as +18000 or in the refund direction, never mixing signs or
+    kinds. Only net methods subtract refunds and fees."""
+    from alibi.core.package import _calc_check
+    from alibi.core.schemas import CalcTerm, Calculation, EvidenceRef
+
+    amounts = {"ord_1001": ("order", 60000), "rfd_2001": ("refund", 18000),
+               "rfd_2002": ("refund", 2000), "fee_3001": ("fee", 6000)}
+    refs = {rid: EvidenceRef(ref_type="record", ref_id=rid, revision=1) for rid in amounts}
+    contents = {refs[rid].key(): {"kind": kind, "amount_pence": pence, "currency": "GBP"}
+                for rid, (kind, pence) in amounts.items()}
+
+    def calc(method, *signed_ids):
+        terms = [CalcTerm(ref=refs[rid], kind=amounts[rid][0], sign=sign,
+                          amount_pence=amounts[rid][1], currency="GBP")
+                 for rid, sign in signed_ids]
+        return Calculation(method=method, currency="GBP", terms=terms,
+                           total_pence=sum(t.signed_pence for t in terms))
+
+    assert _calc_check(calc("refunds_total", ("rfd_2001", 1), ("rfd_2002", 1)), contents) is True
+    assert _calc_check(calc("refunds_total", ("rfd_2001", -1), ("rfd_2002", -1)),
+                       contents) is True
+    # A one-kind total cannot net its records against each other or add another kind.
+    assert _calc_check(calc("refunds_total", ("rfd_2001", 1), ("rfd_2002", -1)),
+                       contents) is False
+    assert _calc_check(calc("refunds_total", ("rfd_2001", 1), ("ord_1001", 1)), contents) is False
+    assert _calc_check(calc("net_total", ("ord_1001", 1), ("rfd_2001", -1), ("fee_3001", -1)),
+                       contents) is True
+    assert _calc_check(calc("net_total", ("ord_1001", 1), ("rfd_2001", 1)), contents) is False

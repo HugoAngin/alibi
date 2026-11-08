@@ -35,6 +35,8 @@ __all__ = [
     "BANK_DEBIT",
     "FAILED_STATUSES",
     "METHOD_NET_PAYOUT",
+    "METHOD_NET_TOTAL",
+    "NET_METHODS",
     "PENDING_STATUSES",
     "SETTLED_STATUSES",
     "SIGN_BY_KIND",
@@ -42,6 +44,7 @@ __all__ = [
     "MissingAmountError",
     "MixedCurrencyError",
     "ReconcileError",
+    "allowed_signs",
     "check_settlement_timing",
     "compare_to_target",
     "credit_supported",
@@ -74,6 +77,24 @@ _MAX_SAFE_PENCE = 2**53 - 1
 BANK_CREDIT = "bank_credit"       # CalcTerm.kind of a bank credit: +amount
 BANK_DEBIT = "bank_debit"         # CalcTerm.kind of a bank debit: -|amount|
 METHOD_NET_PAYOUT = "net_payout"  # Calculation.method used by reconcile_credit
+METHOD_NET_TOTAL = "net_total"    # Calculation.method of a period total net of refunds and fees
+
+# Methods that net several kinds with SIGN_BY_KIND. Every other method totals records of one
+# kind, with one sign for every term (package verification enforces both).
+NET_METHODS = frozenset({METHOD_NET_PAYOUT, METHOD_NET_TOTAL})
+
+
+def allowed_signs(method: str, kind: str) -> frozenset[int]:
+    """Signs a merchant term of ``kind`` may carry in a calculation using ``method``.
+
+    Net methods use SIGN_BY_KIND. Any other method totals one kind either as positive amounts
+    (a refunds total of +18000) or in the kind's SIGN_BY_KIND direction (a receipt total of
+    -4500 compared with a bank debit)."""
+    fixed = SIGN_BY_KIND.get(kind)
+    if method in NET_METHODS:
+        return frozenset({fixed}) if fixed is not None else frozenset({1, -1})
+    return frozenset({1, 1 if fixed is None else fixed})
+
 
 Evidence = EvidenceRecord | BankTxn
 

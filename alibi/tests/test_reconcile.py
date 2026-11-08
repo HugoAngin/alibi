@@ -533,3 +533,13 @@ def test_credit_supported_rederives_the_verdict_from_explicit_fields():
                                   settlement=settlement())
     forced = unbalanced.model_copy(update={"balanced": True})  # model_copy skips validation
     assert forced.difference_pence == 6000 and not credit_supported(forced)
+
+
+def test_allowed_signs_net_only_under_net_methods():
+    from alibi.core.reconcile import METHOD_NET_PAYOUT, METHOD_NET_TOTAL, allowed_signs
+    assert allowed_signs(METHOD_NET_PAYOUT, "refund") == {-1}
+    assert allowed_signs(METHOD_NET_TOTAL, "fee") == {-1}
+    assert allowed_signs(METHOD_NET_TOTAL, "order") == {1}
+    # A one-kind total may show refunds of 18000 as +18000 or in the refund direction.
+    assert allowed_signs("refunds_total", "refund") == {1, -1}
+    assert allowed_signs("sales_total", "order") == {1}

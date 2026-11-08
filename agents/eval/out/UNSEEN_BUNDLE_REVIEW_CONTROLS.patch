@@ -1,0 +1,100 @@
+--- /dev/null
++++ b/alibi/tests/test_runtime_review_controls.py
+@@ -0,0 +1,41 @@
++import copy
++from alibi.tests.test_agents_runner import make, client_for, challenger
++from alibi.agents.runner import run_stats
++from alibi.core.schemas import SigningDomain
++
++
++def stopped(result):
++    return any(e.result.get('stop_reason') == 'repeated_action_no_progress' for e in result.trace)
++
++
++def test_identical_lookup_returning_fresh_revisions_keeps_all_rounds(make, keystore):
++    ctx = make('supported')
++    original = ctx.fx['settlement_lookup']('PO-5001')
++    calls = []
++    def lookup(ref):
++        calls.append(ref)
++        event = copy.deepcopy(original['event'])
++        revision = len(calls)
++        event.update(event_id=f'public-fresh-{revision}', revision=revision)
++        if revision > 1:
++            event.update(corrects_revision=revision-1, correction_reason='Public test revision')
++        return {'event': event, 'signature': keystore.sign(event, kid='merchant_demo',
++                 domain=SigningDomain.RECORD).to_json_dict()}
++    result = ctx.run(client_for(challenger_script=challenger()), settlement_lookup=lookup)
++    assert len(calls) == 3
++    assert run_stats(result)['rounds'] == 3
++    assert not stopped(result)
++    assert ctx.store.get_source('stl_88001').revision == 3
++
++
++def test_repeated_refresh_with_no_new_revision_is_not_stopped(make):
++    ctx = make('supported')
++    calls = []
++    def refresh(txn_id):
++        calls.append(txn_id)
++        return ctx.store.get_bank_txn(txn_id).to_json_dict()
++    result = ctx.run(client_for(challenger_script=challenger(action=('refresh_txn', {'txn_id': 'txn_9001'}))),
++                     txn_refresh=refresh)
++    assert len(calls) == 3
++    assert run_stats(result)['rounds'] == 3
++    assert not stopped(result)
+--- /dev/null
++++ b/alibi/tests/test_telemetry_review_controls.py
+@@ -0,0 +1,53 @@
++import copy
++import json
++from alibi.adapter import _World
++from alibi.connectors.case_source import CaseClock, load_case_without_gold, parse_time
++from alibi.gateway import Gateway
++
++
++def test_query_visibility_and_telemetry_snapshot_do_not_include_future_lookup(tmp_path):
++    case = load_case_without_gold(1)
++    future = case['rfcs'][1]['issued_at']
++    for entry in case['merchant_lookup']:
++        entry['available_from'] = future
++    payout = case['merchant_lookup'][0]['event']
++    covered = payout['covers_record_ids'][0]
++    clock = CaseClock(case, case['rfcs'][0]['issued_at'])
++    world = _World(case, tmp_path)
++    try:
++        world.seed(clock)
++        first = world.ingest_telemetry(clock)
++        count = first['available']['issuer_verified']
++        gateway = Gateway(world.store, subject_ref=world.subject, run_id='public-cutoff',
++                          now=clock.as_of, registry=world.registry, **world.connectors())
++        assert gateway.lookup_payouts(covers_record_id=covered) == []
++        assert world.ingest_telemetry(clock)['available']['issuer_verified'] == count
++        world.advance(clock, parse_time(future, 'future'))
++        gateway = Gateway(world.store, subject_ref=world.subject, run_id='public-visible',
++                          now=clock.as_of, registry=world.registry, **world.connectors())
++        assert gateway.lookup_payouts(covers_record_id=covered)
++        assert world.ingest_telemetry(clock)['available']['issuer_verified'] > count
++        assert first['available']['issuer_verified'] == count
++    finally:
++        world.close()
++
++
++def test_raw_delivery_error_and_collection_exception_never_escape_metadata(tmp_path, monkeypatch):
++    case = load_case_without_gold(1)
++    clock = CaseClock(case, case['rfcs'][0]['issued_at'])
++    world = _World(case, tmp_path)
++    try:
++        world.seed(clock)
++        monkeypatch.setattr(world.merchant, 'deliveries', lambda: [
++            {'outcome': 'refused', 'reason': 'PRIVATE_ERROR_SENTINEL', 'event_id': 'PRIVATE_ID',
++             'payload': {'text': 'PRIVATE_PAYLOAD'}},
++            {'outcome': 'PRIVATE_OUTCOME', 'reason': 'mapping failed: PRIVATE_MAPPING'}])
++        metadata = world.ingest_telemetry(clock)
++        assert metadata['merchant']['reasons'] == {'ingest_refused': 1, 'mapping_error': 1}
++        assert 'PRIVATE_' not in json.dumps(metadata)
++        def fail():
++            raise RuntimeError('PRIVATE_EXCEPTION_SENTINEL')
++        monkeypatch.setattr(world.merchant, 'deliveries', fail)
++        assert world.ingest_telemetry(clock) == {'version': 1, 'collection_error': 1}
++    finally:
++        world.close()

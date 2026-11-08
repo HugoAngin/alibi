@@ -1,0 +1,1831 @@
+--- a/alibi/adapter.py
++++ b/alibi/adapter.py
+@@ -51,7 +51,7 @@
+ from alibi.bank.service import create_bank_app
+ from alibi.connectors import keys
+ from alibi.connectors.bank_feed import FeedClient, HttpFeed
+-from alibi.connectors.case_source import CaseClock, parse_time
++from alibi.connectors.case_source import KIND_MAP, CaseClock, parse_time
+ from alibi.connectors.clients import BankClient, MerchantClient, bootstrap, connect
+ from alibi.connectors.merchant import create_merchant_app
+ from alibi.connectors.plug import rfc_sink, webhook_sink
+@@ -87,7 +87,9 @@
+ STRATEGIES = {
+     "rules": ("deterministic: list the subject's records and bank entries; when no stored payout "
+               "settles the credit, look up the settlement for the payout reference the credit "
+-              "carries or the subject's own records name; one call per reference"),
++              "carries or the subject's own records name; one call per reference; failing "
++              "that, query the merchant's payouts by an issuer-verified order record (#number) "
++              "or an explicit day named in issuer text, at most two queries"),
+     "one_pass": "look up any payout reference named in a balance_release message",
+     "agents": ("adaptive: the Detective proposes checks and the Challenger requests at most one "
+                "lookup per round (settlement by reference, payouts by covered record or date), "
+@@ -199,6 +201,7 @@
+                                subject_ref=self.subject, connection_id=f"conn-case-{self.number}")
+         self.issued: set[str] = set()
+         self.notes: list[str] = []
++        self.import_statuses: list[str] = []
+ 
+     def close(self) -> None:
+         for client in (self.merchant_client, self.bank_client):
+@@ -217,6 +220,7 @@
+         summary = bootstrap(self.store, self.registry, case=self.number, merchant=self.merchant,
+                             banks=self.banks, feed=self.feed, clock=clock)
+         self.issued.update(summary.get("rfcs") or {})
++        self.import_statuses.extend(summary.get("imports") or [])
+         return summary
+ 
+     def advance(self, clock: CaseClock, moment: datetime) -> None:
+@@ -228,8 +232,62 @@
+         self.banks[RECIPIENTS[0]].advance(moment)  # one bank service behind both recipients
+         self.feed.sync(now=moment)
+         for put in import_case_imports(self.store, clock, since=previous):
++            self.import_statuses.append(put.status)
+             self.notes.append(f"import {put.record.record_id}: {put.status}")
+         self.issue_visible(clock)
++
++    def ingest_telemetry(self, clock: CaseClock) -> dict[str, Any]:
++        """Cumulative input outcomes and current inventory; fixed labels and counts only.
++
++        This observes already-visible input and existing service delivery logs. It never
++        maps an input again, performs evidence retrieval, or changes an ingest decision.
++        """
++        try:
++            def kinds(entries, field):
++                counts: dict[str, int] = {}
++                allowed = {kind.value for kind in RecordKind}
++                for entry in entries:
++                    raw = entry.get(field, {}).get("kind")
++                    kind = KIND_MAP.get(raw, raw) if isinstance(raw, str) else None
++                    label = kind if kind in allowed else "unsupported"
++                    counts[label] = counts.get(label, 0) + 1
++                return counts
++
++            merchant = {"accepted": 0, "skipped": 0, "refused": 0, "reasons": {},
++                        "visible_by_kind": kinds(clock.visible_merchant_deliveries(), "event")}
++            for delivery in self.merchant.deliveries():
++                status, reason = delivery.get("outcome"), delivery.get("reason")
++                if status in {"inserted", "corrected", "duplicate"}:
++                    bucket, label = "accepted", status
++                elif status == "stale":
++                    bucket, label = "skipped", "stale"
++                elif status == "not_delivered":
++                    bucket, label = "skipped", "not_delivered"
++                else:
++                    bucket = "refused"
++                    label = ("mapping_error" if isinstance(reason, str) and reason.startswith("mapping failed:")
++                             else "untrusted_issuer" if reason == "issuer has no configured signing key"
++                             else "ingest_refused" if status == "refused" else "other_error")
++                merchant[bucket] += 1
++                merchant["reasons"][label] = merchant["reasons"].get(label, 0) + 1
++            visible = clock.visible_imports()
++            refused = max(0, len(visible) - len(self.import_statuses))
++            imported_kinds = kinds(visible, "record")
++            unsupported = min(refused, imported_kinds.get("unsupported", 0))
++            imports = {"accepted": sum(s in {"inserted", "corrected", "duplicate"} for s in self.import_statuses),
++                       "skipped": refused + sum(s == "stale" for s in self.import_statuses),
++                       "refused": refused,
++                       "reasons": {"unsupported_kind": unsupported, "import_refused": refused - unsupported},
++                       "visible_by_kind": imported_kinds}
++            available = {"issuer_verified": 0, "self_supplied": 0, "bank_observed": 0}
++            for record in self.store.list_sources(self.subject):
++                trust = record.source_trust.value
++                if trust in available:
++                    available[trust] += 1
++            return {"version": 1, "merchant": merchant, "imports": imports, "available": available}
++        except Exception:
++            # Diagnostics must not change a successful prediction into a worker failure.
++            return {"version": 1, "collection_error": 1}
+ 
+     def issue_visible(self, clock: CaseClock) -> None:
+         for rfc in clock.visible_rfcs():
+@@ -567,7 +625,8 @@
+                 "lookups": int(one_pass_run.lookups),
+                 "observed_inputs": int(one_pass_run.observed_inputs), "tool_calls": tool_calls}
+     lookups = sum(1 for e in result.trace
+-                  if e.step == "tool_call" and e.actor == "gateway" and e.tool == "lookup_settlement")
++                  if e.step == "tool_call" and e.actor == "gateway"
++                  and e.tool in ("lookup_settlement", "lookup_payouts"))
+     observed = len(world.store.list_sources(world.subject)) + len(world.store.list_bank_txns(world.subject))
+     return {"model_calls": 0, "tokens": 0, "lookups": lookups, "observed_inputs": observed,
+             "tool_calls": tool_calls}
+@@ -659,7 +718,8 @@
+              *, client: Any = None, run_id: str | None = None, replay: bool | None = None,
+              root: Path | str | None = None,
+              trusted_issuers: Mapping[str, str] | None = None,
+-             synthetic_key_seed: str | None = None) -> list[dict[str, Any]]:
++             synthetic_key_seed: str | None = None,
++             ingest_telemetry: bool = True) -> list[dict[str, Any]]:
+     """Run one case in ``mode`` through the simulated services and return its predictions.
+ 
+     ``case`` is a case number (``agents.data.api.load_case``) or a case dict; gold is stripped.
+@@ -709,13 +769,18 @@
+                 moment = fixed if fixed is not None else parse_time(rfc_case["issued_at"], "issued_at")
+                 if moment > clock.as_of:
+                     world.advance(clock, moment)
++                telemetry = world.ingest_telemetry(clock) if ingest_telemetry else None
+                 try:
+                     rfc = world.store.get_request(rfc_case["request_id"], audience=rfc_case["audience"])
+                 except StoreError as exc:
+                     predictions.append(_refused(world, rfc_case, mode, clock.as_of, schema,
+                                                 f"request not in the passport: {_clip(exc)}"))
++                    if telemetry is not None:
++                        predictions[-1]["ingest_telemetry"] = telemetry
+                     continue
+                 predictions.append(_answer(world, mode, rfc, clock.as_of, engine_client, schema))
++                if telemetry is not None:
++                    predictions[-1]["ingest_telemetry"] = telemetry
+     finally:
+         world.close()
+     return predictions
+--- a/alibi/agents/actions.py
++++ b/alibi/agents/actions.py
+@@ -9,9 +9,11 @@
+   ``Material.settlement_lookup_refs`` then names the reference, so the candidate rule treats a
+   payout returned for its own reference as the merchant's answer about its settlement;
+ * ``lookup_payouts_covering {record_id}``: payouts and settlements whose ``covers_record_ids``
+-  name a retrieved record (a passport listing filtered in code);
++  name a retrieved record: the merchant's answer through ``Gateway.lookup_payouts`` when a
++  payout query connector is configured (scope, signer and subject checked there), else a
++  passport listing filtered in code;
+ * ``lookup_by_date {payout_date}``: payouts and settlements initiated or effective on a
+-  ``YYYY-MM-DD`` day (a passport listing filtered in code);
++  ``YYYY-MM-DD`` day, the same way;
+ * ``refresh_txn {txn_id}``: the bank's current revision of a retrieved transaction
+   (``Gateway.refresh_txn``);
+ * ``none``.
+@@ -93,6 +95,15 @@
+ def _typed(exc: GatewayError) -> str:
+     outcome = getattr(exc, "outcome", "error")
+     return outcome if outcome in ("refused", "unavailable", "budget_exceeded", "not_found", "error") else "error"
++
++
++def _query(gateway: Any, **key: str) -> list[EvidenceRecord] | None:
++    """The merchant's payouts for one key through ``Gateway.lookup_payouts`` (scope, signer
++    and subject checked there), or ``None`` when the gateway has no payout query connector.
++    Gateway refusals propagate to the caller's typed handling."""
++    if getattr(gateway, "payout_query", None) is None or not hasattr(gateway, "lookup_payouts"):
++        return None
++    return list(gateway.lookup_payouts(**key))
+ 
+ 
+ def execute_action(gateway: Any, material: Material, action: NextAction | NextCheck,
+@@ -113,6 +124,7 @@
+     records: list[EvidenceRecord] = []
+     txns: list[BankTxn] = []
+     outcome, reason = "ok", None
++    connector_query = False
+     try:
+         if kind == "lookup_settlement":
+             ref = args.get("payout_reference")
+@@ -129,8 +141,12 @@
+             if not isinstance(record_id, str) or not material.has(record_id):
+                 outcome, reason = "refused", "record_id is not in the retrieved material"
+             else:
+-                listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
+-                records = [r for r in listed if record_id in r.related_record_ids]
++                connector_query = (getattr(gateway, "payout_query", None) is not None
++                                   and hasattr(gateway, "lookup_payouts"))
++                records = _query(gateway, covers_record_id=record_id)
++                if records is None:   # no payout query connector: the passport listing
++                    listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
++                    records = [r for r in listed if record_id in r.related_record_ids]
+                 if not records:
+                     outcome, reason = "not_found", f"no payout or settlement covers {record_id}"
+         elif kind == "lookup_by_date":
+@@ -138,9 +154,13 @@
+             if day is None:
+                 outcome, reason = "refused", "payout_date is not YYYY-MM-DD"
+             else:
+-                listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
+-                records = [r for r in listed if r.occurred_at.date() == day
+-                           or (r.effective_at is not None and r.effective_at.date() == day)]
++                connector_query = (getattr(gateway, "payout_query", None) is not None
++                                   and hasattr(gateway, "lookup_payouts"))
++                records = _query(gateway, payout_date=day.isoformat())
++                if records is None:   # no payout query connector: the passport listing
++                    listed = gateway.list_records(kinds=list(LOOKUP_KINDS))
++                    records = [r for r in listed if r.occurred_at.date() == day
++                               or (r.effective_at is not None and r.effective_at.date() == day)]
+                 if not records:
+                     outcome, reason = "not_found", f"no payout or settlement on {day.isoformat()}"
+         elif kind == "refresh_txn":
+@@ -157,7 +177,8 @@
+         outcome, reason = "error", f"unexpected error ({type(exc).__name__})"
+ 
+     keys = [f"{r.record_id}@{r.revision}" for r in records] + [f"{t.txn_id}@{t.revision}" for t in txns]
+-    index = material.add_lookup(kind, args, outcome, refs=keys, reason=reason, actor="challenger")
++    index = material.add_lookup(kind, args, outcome, refs=keys, reason=reason, actor="challenger",
++                                connector_query=connector_query)
+     new_keys = []
+     for record in records:
+         if material.add_record(record, via_lookup=index):
+--- a/alibi/agents/material.py
++++ b/alibi/agents/material.py
+@@ -70,10 +70,12 @@
+     refs: list[str] = field(default_factory=list)   # keys of what it returned
+     reason: str | None = None
+     actor: str = "gateway"
++    connector_query: bool = False
+ 
+     def as_dict(self) -> dict[str, Any]:
+         return {"index": self.index, "tool": self.tool, "args": self.args, "outcome": self.outcome,
+-                "refs": list(self.refs), "reason": self.reason, "actor": self.actor}
++                "refs": list(self.refs), "reason": self.reason, "actor": self.actor,
++                **({"connector_query": True} if self.connector_query else {})}
+ 
+ 
+ class Material:
+@@ -114,9 +116,9 @@
+ 
+     def add_lookup(self, tool: str, args: dict[str, Any], outcome: str, *,
+                    refs: list[str] | None = None, reason: str | None = None,
+-                   actor: str = "gateway") -> int:
++                   actor: str = "gateway", connector_query: bool = False) -> int:
+         index = len(self.lookups)
+-        self.lookups.append(Lookup(index, tool, dict(args), outcome, list(refs or []), reason, actor))
++        self.lookups.append(Lookup(index, tool, dict(args), outcome, list(refs or []), reason, actor, connector_query))
+         return index
+ 
+     def _note(self, key: str, via_lookup: int | None, new: bool) -> None:
+@@ -212,8 +214,9 @@
+ 
+     @property
+     def lookup_count(self) -> int:
+-        """Retrievals that went to a connector (settlement lookups and bank refreshes)."""
+-        return sum(1 for lk in self.lookups if lk.tool in ("lookup_settlement", "refresh_txn")
++        """Connector-backed retrievals; passport-only covering/date listings do not count."""
++        return sum(1 for lk in self.lookups
++                   if (lk.tool in ("lookup_settlement", "refresh_txn") or lk.connector_query)
+                    and lk.outcome not in ("refused", "budget_exceeded", "skipped"))
+ 
+     def via_lookup(self, ident: str, revision: int) -> int | None:
+--- a/alibi/agents/runner.py
++++ b/alibi/agents/runner.py
+@@ -8,7 +8,7 @@
+    the scoped, budgeted ``Gateway`` into a ``Material`` (every revision pinned, every later
+    retrieval tagged with the lookup that fetched it).
+ 2. Each question is classified: by its team question id, else by keyword
+-   (``classify_question``). Period totals (sales, refunds, fees, net) are summed in code
++   (the shared evidence-question classifier). Period totals (sales, refunds, fees, net) are summed in code
+    exactly like the rules baseline; the Detective sees them but never decides them.
+ 3. Source-of-funds questions, per credit:
+    a. the pinned candidate rule (``settlement_candidates``) joins the credit to payouts;
+@@ -75,6 +75,8 @@
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
+ from alibi.core.answered import examined_refs
+ from alibi.core.investigate_rules import (
++    BREAKDOWN,
++    DOCUMENTED_TOTALS,
+     COMPONENT_KINDS,
+     COUNTED_STATUSES,
+     EXCLUDED_STATUSES,
+@@ -86,7 +88,7 @@
+     SOURCE_OF_FUNDS,
+     UNMAPPED,
+     Classification,
+-    classify_question,
++    classify as classify_evidence_question,
+ )
+ from alibi.core.policy import compile_policy
+ from alibi.core.reconcile import FAILED_STATUSES, PENDING_STATUSES, SIGN_BY_KIND, ReconcileError
+@@ -132,12 +134,8 @@
+              GAP_PENDING_AT_BOOKING, GAP_SETTLEMENT_FAILED, GAP_AMBIGUOUS, GAP_AMOUNT_MISMATCH,
+              GAP_MISSING_CITED, GAP_NO_RECORDS)
+ 
+-# Team question ids decide the question kind before any keyword does.
+-KNOWN_QUESTIONS = {"q.source_of_funds": SOURCE_OF_FUNDS, "q.breakdown": SOURCE_OF_FUNDS,
+-                   "q.sales_refunds_in_period": NET_TOTAL}
+-PERIOD_CATEGORIES = (SALES_TOTAL, REFUNDS_TOTAL, FEES_TOTAL, NET_TOTAL)
+-_TOTAL_KINDS = {SALES_TOTAL: (RecordKind.ORDER,), REFUNDS_TOTAL: (RecordKind.REFUND,),
+-                FEES_TOTAL: (RecordKind.FEE,), NET_TOTAL: (RecordKind.ORDER, RecordKind.REFUND)}
++# Use the same scope-aware classification and categories as rules and one-pass.
++PERIOD_CATEGORIES = (SALES_TOTAL, REFUNDS_TOTAL, FEES_TOTAL, NET_TOTAL, DOCUMENTED_TOTALS)
+ _LABELS = {RecordKind.ORDER: "sales", RecordKind.REFUND: "refunds", RecordKind.FEE: "fees"}
+ _RANK = {ClaimStatus.SUPPORTED: 0, ClaimStatus.UNRESOLVED: 1, ClaimStatus.CONTRADICTED: 2}
+ _TRACE_OUTCOMES = frozenset({"ok", "refused", "unavailable", "error", "budget_exceeded", "not_found"})
+@@ -167,7 +165,8 @@
+                       registry: Any | None = None, now: datetime | None = None,
+                       action_budget: int = 3, max_rounds: int = 3,
+                       second_opinion: roles.SecondOpinion | None = None,
+-                      call_budget: Any | None = None) -> InvestigationResult:
++                      call_budget: Any | None = None,
++                      payout_query: Callable | None = None) -> InvestigationResult:
+     """Answer every question of ``request`` (a request_id or ``RequestForContext``) with the
+     agents pipeline (module doc) and save links, claims, alerts and the trace.
+ 
+@@ -188,7 +187,8 @@
+         run_id = next_run_id(store, rfc.request_id, audience=rfc.audience)
+         gateway = Gateway(store, subject_ref=rfc.subject_ref, run_id=run_id, registry=registry,
+                           budget=budget, settlement_lookup=settlement_lookup,
+-                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
++                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id,
++                          payout_query=payout_query)
+     else:
+         scope = getattr(gateway, "subject_ref", None)
+         if scope is not None and scope != rfc.subject_ref:
+@@ -339,7 +339,7 @@
+             self.question_id = question.question_id
+             found = kinds[question.question_id]
+             proposal = proposals.get(question.question_id)
+-            if found.category == SOURCE_OF_FUNDS:
++            if found.category in (SOURCE_OF_FUNDS, BREAKDOWN):
+                 outcome = self.source_of_funds(question, proposal)
+             elif found.category in PERIOD_CATEGORIES and self.rfc.period is not None:
+                 outcome = self.period_total(found)
+@@ -383,13 +383,8 @@
+ 
+     def classify(self, question: Question) -> Classification:
+         self.question_id = question.question_id
+-        found = classify_question(question.text, self.rfc)
+-        known = KNOWN_QUESTIONS.get(question.question_id)
+-        how = "keyword"
+-        if known is not None and (found.category in (UNMAPPED, SEVERAL_TOTALS)
+-                                  or (known == SOURCE_OF_FUNDS) != (found.category == SOURCE_OF_FUNDS)):
+-            found = Classification(known, _TOTAL_KINDS.get(known, ()), (question.question_id,))
+-            how = "question id"
++        found = classify_evidence_question(question, self.rfc)
++        how = "question id" if found.keywords == (question.question_id,) else "keyword"
+         self.note("note", reason=f"Question classified as {found.category} by {how}.",
+                   result={"category": found.category, "kinds": [k.value for k in found.kinds],
+                           "keywords": list(found.keywords)})
+@@ -572,6 +567,7 @@
+         result = self.candidates(txn)
+         last: ChallengerOutput | None = None
+         stale = False        # the last proposal predates a retrieval that changed the material
++        previous_action = None
+         for index in range(self.max_rounds):
+             self.rounds += 1
+             merchant, settlements = self.role_records()
+@@ -615,6 +611,18 @@
+                 stale = True
+             result = self.candidates(txn)
+             claim["link_state"], claim["linked_to"] = _link_view(result, join.choice)
++            action_key = (out.next_action.type, out.next_action.args.model_dump(exclude_none=True))
++            # The Challenger has seen the previous result and requested the same read.
++            # Stop only after that repeat confirms no new material. Transport failures
++            # remain retryable, and refresh_txn may observe a correction on a later call.
++            if (action_key == previous_action
++                    and out.next_action.type in {"lookup_settlement", "lookup_payouts_covering", "lookup_by_date"}
++                    and res.outcome in {"ok", "not_found", "refused"} and not res.new_keys):
++                self.note("note", actor="challenger", tool=res.tool,
++                          reason="Repeated retrieval added no material after its result was reviewed; stopping the loop.",
++                          result={"stop_reason": "repeated_action_no_progress", "round": index + 1})
++                break
++            previous_action = action_key if res.outcome in {"ok", "not_found", "refused"} else None
+         outcome = self.verdict(txn, result, join)
+         if last is not None and stale:
+             self.note("note", actor="challenger",
+@@ -979,7 +987,7 @@
+                                          f"for {span}.", skipped_text]))
+             return _Outcome(ClaimStatus.UNRESOLVED, unknown, gap, f"No {label} records found.", gap=gap)
+         net = found.category == NET_TOTAL
+-        signs = SIGN_BY_KIND if net else {found.kinds[0]: 1}
++        signs = SIGN_BY_KIND if net else {kind: 1 for kind in found.kinds}
+         try:
+             calc = reconcile.sum_terms(counted, method=found.category, signs=signs)
+         except ReconcileError as exc:
+@@ -990,7 +998,11 @@
+         subtotals = [f"{_LABELS[kind]} {sum(r.amount_pence or 0 for r in rows)} from {len(rows)} record"
+                      f"{'s' if len(rows) != 1 else ''} ({', '.join(f'{r.record_id} {r.amount_pence}' for r in rows[:12])})"
+                      if rows else f"{_LABELS[kind]} 0 (no counted records)" for kind, rows in groups]
+-        if net:
++        if found.category == DOCUMENTED_TOTALS:
++            statement = f"Documented totals over {span}: " + "; ".join(
++                f"{_LABELS[kind]} {_money(sum(r.amount_pence or 0 for r in rows), calc.currency)}"
++                for kind, rows in groups) + "."
++        elif net:
+             formula = " ".join(f"{'+' if signs[kind] > 0 else '-'} {_LABELS[kind]} {sum(r.amount_pence or 0 for r in rows)}"
+                                for kind, rows in groups)
+             statement = f"Documented {label} over {span} net to {total} ({formula.lstrip('+ ')})."
+--- a/alibi/api.py
++++ b/alibi/api.py
+@@ -112,6 +112,7 @@
+     GatewayError,
+     NotFoundError,
+     ScopeError,
++    PayoutQuery,
+     SettlementLookup,
+     TxnRefresh,
+     Unavailable,
+@@ -578,7 +579,8 @@
+                       txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
+                       registry: TrustRegistry | None = None,
+                       now: datetime | None = None, client: Any = None,
+-                      holder_claim: Any = None) -> InvestigationResult:
++                      holder_claim: Any = None,
++                      payout_query: PayoutQuery | None = None) -> InvestigationResult:
+     """Investigate a stored request and save its links, claims and trace.
+ 
+     ``holder_claim`` (rules and one-pass modes) is the holder's own untrusted account of a credit,
+@@ -616,14 +618,15 @@
+             from alibi.agents import runner as agents_runner   # lazy: the runner imports this module
+             result = agents_runner.run_investigation(
+                 store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
+-                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now)
++                txn_refresh=txn_refresh, budget=budget, registry=registry, now=now,
++                payout_query=payout_query)
+             actor = agents_runner.ACTOR
+         else:
+             from alibi.baselines import one_pass
+             result = one_pass.run_investigation(
+                 store, rfc, client=client, gateway=gateway, settlement_lookup=settlement_lookup,
+                 txn_refresh=txn_refresh, budget=budget, registry=registry, now=now,
+-                holder_claim=holder_claim)
++                holder_claim=holder_claim, payout_query=payout_query)
+             actor = one_pass.ACTOR
+         answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
+                             for claim in result.claims)
+@@ -640,7 +643,8 @@
+                           run_id=core_rules.next_run_id(store, rfc.request_id,
+                                                         audience=rfc.audience),
+                           registry=registry, budget=budget, settlement_lookup=settlement_lookup,
+-                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
++                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id,
++                          payout_query=payout_query)
+     result = core_rules.run_investigation(rfc, store, gateway, mode, now=now,
+                                           holder_claim=holder_claim)
+     answers = ", ".join(f"{claim.question_id} {ClaimStatus(claim.status).value}"
+--- a/alibi/baselines/one_pass.py
++++ b/alibi/baselines/one_pass.py
+@@ -62,6 +62,7 @@
+ from alibi.core import investigate_rules as core_rules
+ from alibi.core.answered import examined_refs
+ from alibi.core import reconcile
++from alibi.core.release import is_balance_release
+ from alibi.core.canon import make_id
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
+ from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES
+@@ -182,7 +183,8 @@
+                       gateway: Any | None = None, settlement_lookup: Callable | None = None,
+                       txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
+                       registry: Any | None = None, now: datetime | None = None,
+-                      model: str | None = None, holder_claim: Any = None) -> InvestigationResult:
++                      model: str | None = None, holder_claim: Any = None,
++                      payout_query: Callable | None = None) -> InvestigationResult:
+     """Run the one-pass baseline for a stored request and return the saved result
+     (``mode="single_call"``). Same arguments as ``alibi.api.run_investigation`` plus
+     ``client`` (``GeminiClient`` or ``FakeClient``) and an optional ``model`` id;
+@@ -190,14 +192,15 @@
+     return run_one_pass(store, request, client=client, gateway=gateway,
+                         settlement_lookup=settlement_lookup, txn_refresh=txn_refresh,
+                         budget=budget, registry=registry, now=now, model=model,
+-                        holder_claim=holder_claim).result
++                        holder_claim=holder_claim, payout_query=payout_query).result
+ 
+ 
+ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
+                  gateway: Any | None = None, settlement_lookup: Callable | None = None,
+                  txn_refresh: Callable | None = None, budget: int = DEFAULT_BUDGET,
+                  registry: Any | None = None, now: datetime | None = None,
+-                 model: str | None = None, holder_claim: Any = None) -> OnePassRun:
++                 model: str | None = None, holder_claim: Any = None,
++                 payout_query: Callable | None = None) -> OnePassRun:
+     """Run the baseline and return the result with its proposal and counts.
+ 
+     Without ``gateway`` one is built for the request's subject under the next single_call run
+@@ -205,6 +208,8 @@
+     once (a ``CallBudget`` of 1). Never raises for a model or connector failure: those become
+     unresolved claims and typed trace events. ``holder_claim`` is the holder's own untrusted
+     account of a credit (``{txn_id, stated_minor}``): checked against the records, never evidence.
++    ``payout_query`` is only handed to the gateway: the baseline's fixed retrieval strategy
++    never calls ``lookup_payouts``.
+     """
+     rfc = request if isinstance(request, RequestForContext) else store.get_request(request)
+     at = _clock(now)
+@@ -214,7 +219,8 @@
+         gateway = Gateway(store, subject_ref=rfc.subject_ref,
+                           run_id=next_run_id(store, rfc.request_id, audience=rfc.audience), registry=registry,
+                           budget=budget, settlement_lookup=settlement_lookup,
+-                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
++                          txn_refresh=txn_refresh, now=now, request_id=rfc.request_id,
++                          payout_query=payout_query)
+     scope = getattr(gateway, "subject_ref", None)
+     if scope is not None and scope != rfc.subject_ref:
+         raise ValueError("the gateway is scoped to a different subject than the request")
+@@ -339,11 +345,18 @@
+         # MAX_REFERENCE_LOOKUPS of them. The gateway still checks scope and signer, and nothing
+         # a lookup returns triggers a further lookup.
+         written: dict[str, list[EvidenceRecord]] = {}
++        # Typed bank references are already known values, so recognizing an issuer
++        # message that names one does not need the free-text token shape heuristic.
++        declared = {ref for txn in self.material.txns() for ref in txn.refs}
+         for message in messages:
+             if message.source_trust != SourceTrust.ISSUER_VERIFIED:
+                 continue
+-            for token in _TEXT_REF.findall(message.text or ""):
+-                if not (re.search(r"[A-Za-z]", token) and re.search(r"\d", token)) \
++            exact = [ref for ref in sorted(declared) if re.search(
++                rf"(?<![A-Za-z0-9-]){re.escape(ref)}(?![A-Za-z0-9-])",
++                message.text or "", re.IGNORECASE)]
++            for token in dict.fromkeys([*exact, *_TEXT_REF.findall(message.text or "")]):
++                if (token not in exact and not (re.search(r"[A-Za-z]", token)
++                                                and re.search(r"\d", token))) \
+                         or _norm(token) in by_norm:
+                     continue
+                 if token in written or len(written) < core_rules.MAX_REFERENCE_LOOKUPS:
+@@ -522,7 +535,7 @@
+             code_keys = {ref.key() for ref in evidence}
+             for ref in proposed.refs:
+                 item = self.material.get(ref.record_id, ref.revision)
+-                if item is None or item.ref().key() in code_keys:
++                if item is None:
+                     continue
+                 key = (_ident(item), item.revision)
+                 if isinstance(item, EvidenceRecord) and item.kind == RecordKind.MESSAGE:
+@@ -531,7 +544,8 @@
+                     reason = (f"{key[0]}@{key[1]} is not in the shareable evidence under the holder's "
+                               "policy; not attached to the claim.")
+                 else:
+-                    evidence.append(item.ref())
++                    if item.ref().key() not in code_keys:
++                        evidence.append(item.ref())
+                     continue
+                 self.unsafe_refs.append(f"{key[0]}@{key[1]}")
+                 self.note("validation", outcome="refused", refs=[item.ref()], reason=reason,
+@@ -677,12 +691,15 @@
+             else:
+                 why = f"the payout's own status {payout.status} is not a settlement status and does not show a bank transfer"
+             gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no settlement record for payout {ref} was retrieved; {why}."
+-            if any(r.kind == RecordKind.MESSAGE for r in records):
++            examined_messages = [r for r in records if r.kind == RecordKind.MESSAGE
++                                 and r.subject_ref == txn.subject_ref]
++            releases = [r for r in examined_messages if is_balance_release(r, txn, core_rules.DEFAULT_WINDOW)]
++            if releases:
+                 gap += (f" {GAP_BALANCE_RELEASE}: a 'released to balance' message is a release to the "
+                         "platform balance, not a settlement.")
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary(),
+                             "No settlement record for the candidate payout.", gap=gap,
+-                            evidence=[txn.ref(), *pool_refs])
++                            evidence=[txn.ref(), *pool_refs, *(r.ref() for r in examined_messages)])
+         if found.conflicts:
+             conflict = found.conflicts[0]
+             if _conflict_code(conflict, txn) == GAP_SETTLEMENT_AFTER:
+@@ -697,10 +714,20 @@
+                    "checked against this credit.")
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), gap,
+                             f"Merchant records unavailable ({self.records_err}).", gap=gap, evidence=[txn.ref()])
++        examined_messages = [r for r in records if r.kind == RecordKind.MESSAGE
++                             and r.subject_ref == txn.subject_ref]
++        releases = [r for r in examined_messages if is_balance_release(r, txn, core_rules.DEFAULT_WINDOW)]
++        if not any(r.kind == RecordKind.PAYOUT for r in records) and releases:
++            gap = (f"{GAP_BALANCE_RELEASE}: issuer evidence reports this amount available in the "
++                   "platform balance; it does not establish bank settlement.")
++            return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn),
++                            found.summary() or gap, "Balance release only.", gap=gap,
++                            evidence=[txn.ref(), *(r.ref() for r in examined_messages)])
+         if not any(r.kind == RecordKind.PAYOUT for r in records):
+             gap = f"{GAP_NO_RECORDS}: the passport holds no payout record for this subject."
+             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary() or gap,
+-                            "No payout records.", gap=gap, evidence=[txn.ref()])
++                            "No payout records.", gap=gap,
++                            evidence=[txn.ref(), *(r.ref() for r in examined_messages)])
+         reasons = "; ".join(f"{', '.join(p.record_id for p in r.payouts)}: {r.reason}" for r in found.rejected)
+         gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no payout fits this credit under the candidate rule ({reasons})."
+         return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), found.summary(),
+--- a/alibi/connectors/clients.py
++++ b/alibi/connectors/clients.py
+@@ -253,6 +253,15 @@
+             return None
+         return {"event": best["event"], "signature": best["signature"]}
+ 
++    def payout_query(self, key: str, value: str) -> list[dict[str, Any]]:
++        """``alibi.gateway.PayoutQuery``: the signed records the merchant serves for one
++        ``covers_record_id`` or ``payout_date`` key, without ``extra``. The gateway decides
++        whether the key is in scope and validates every record before it is used."""
++        if key not in ("covers_record_id", "payout_date"):
++            raise ValueError("payout_query takes covers_record_id or payout_date")
++        return [{"event": envelope["event"], "signature": envelope["signature"]}
++                for envelope in self.lookup(**{key: value})]
++
+     # ----------------------------------------------------------------------- admin
+ 
+     def identity(self) -> dict[str, Any]:
+@@ -377,11 +386,13 @@
+ 
+ def connect(merchant: MerchantClient | None = None, feed=None) -> dict[str, Callable]:
+     """The connector keyword arguments for ``alibi.api.run_investigation``: the merchant's
+-    ``settlement_lookup`` and the feed client's ``refresh`` as ``txn_refresh``. Pass them as
++    ``settlement_lookup`` and ``payout_query``, and the feed client's ``refresh`` as
++    ``txn_refresh``. Pass them as
+     ``run_investigation(store, request_id, registry=registry, now=now, **connect(m, f))``."""
+     out: dict[str, Callable] = {}
+     if merchant is not None:
+         out["settlement_lookup"] = merchant.settlement_lookup
++        out["payout_query"] = merchant.payout_query
+     if feed is not None:
+         out["txn_refresh"] = feed.refresh
+     return out
+--- a/alibi/core/investigate_rules.py
++++ b/alibi/core/investigate_rules.py
+@@ -58,6 +58,7 @@
+ from pydantic import TypeAdapter, ValidationError
+ 
+ from alibi.core import reconcile
++from alibi.core.release import is_balance_release
+ from alibi.core.canon import make_id
+ from alibi.core.reconcile import (
+     FAILED_STATUSES,
+@@ -229,6 +230,46 @@
+ # A reference written in issuer text: four or more letters, digits and hyphens as a whole token
+ # (same shape as the one-pass baseline's fixed retrieval); a letter and a digit are required.
+ _TEXT_REF = re.compile(r"(?<![\w-])[A-Za-z0-9][A-Za-z0-9-]{3,}(?![\w-])")
++# An explicit issuer field may contain a spaced reference. Keep its literal value;
++# never normalize separators, infer a provider prefix, or change gateway authorization.
++_TEXT_REF_FIELD = re.compile(
++    r"^\s*(?:payout|payment|transfer)[_ ]ref(?:erence)?\s*[:=]\s*"
++    r"([A-Za-z0-9][A-Za-z0-9_.:@ -]{0,63}?)\s*$", re.IGNORECASE)
++# An order number written as ``#1291`` in issuer text (a payout-clue key, never a reference).
++_ORDER_CLUE = re.compile(r"(?<![\w#])#(\d{3,12})(?!\d)")
++_MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
++           "september", "october", "november", "december")
++_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
++_DATE_CLUE = re.compile(r"(?:\b(" + "|".join(_WEEKDAYS) + r")\s+)?\b(\d{1,2})\s+("
++                        + "|".join(_MONTHS) + r")\b", re.IGNORECASE)
++
++
++def _date_clues(record: EvidenceRecord, txn: BankTxn, window: timedelta) -> list[str]:
++    """Explicit ``<day> <Month>`` dates in an issuer text, as ``YYYY-MM-DD``: the year is the
++    text's own (or the year before, for a date that would otherwise follow the text), a
++    weekday written with it must agree, and the day must be no later than the text and
++    within ``window`` before the credit's booking day. Nothing is guessed from a weekday
++    alone."""
++    out: list[str] = []
++    written = record.occurred_at.date()
++    for weekday, day, month in _DATE_CLUE.findall(record.text or ""):
++        for year in (written.year, written.year - 1):
++            try:
++                date = datetime(year, _MONTHS.index(month.lower()) + 1, int(day)).date()
++            except ValueError:
++                date = None
++            if date is not None and date <= written:
++                break
++        else:
++            continue
++        if date is None or (weekday and _WEEKDAYS[date.weekday()] != weekday.lower()):
++            continue
++        lead = (txn.booked_at.date() - date).days
++        if 0 <= lead <= max(window.days, 0):
++            text = date.isoformat()
++            if text not in out:
++                out.append(text)
++    return out
+ _ORIGIN = "the credit's origin remains unresolved"
+ 
+ 
+@@ -709,6 +750,8 @@
+                 match = _match(txn, found, self.window)
+         if match.payout is None and match.state == LinkState.UNMATCHED and not match.excluded:
+             named = self.fetch_by_issuer_text(txn, found)
++            if not named:
++                named = self.fetch_by_payout_clue(txn, found)
+             # A named payout still pending is not a source (it had not settled when last
+             # observed); one that fits the credit is kept only to name that gap.
+             waiting = {rid: pair for rid, pair in named.items()
+@@ -758,13 +801,16 @@
+         step reuses it instead of asking again. The gateway decides whether each reference is
+         this subject's to ask about."""
+         known = {p.payment_ref.upper() for p in found if p.payment_ref}
+-        tokens = [ref.upper() for ref in txn.refs]
+-        tokens += sorted(reference_tokens(txn) - set(tokens))
++        # Lookup keys are exact provider values. Upper-casing is useful for matching,
++        # but must never rewrite the observed value sent to the connector.
++        described = [match.group(0) for match in re.finditer(_REF_TOKEN.pattern,
++                     txn.description, re.IGNORECASE) if any(c.isdigit() for c in match.group(0))]
++        tokens = list(dict.fromkeys([*txn.refs, *described]))
+         tried = 0
+         for token in tokens:
+             if tried >= MAX_REFERENCE_LOOKUPS:
+                 break
+-            if token in known or not _is_ref(token):
++            if token.upper() in known or not _is_ref(token):
+                 continue
+             tried += 1
+             record, err = self.read("lookup_settlement", f"lookup_settlement {token}",
+@@ -779,7 +825,7 @@
+             if record.subject_ref != self.request.subject_ref or not record.payment_ref:
+                 continue
+             self.fetched[record.payment_ref] = record
+-            if record.kind == RecordKind.PAYOUT and record.payment_ref.upper() == token:
++            if record.kind == RecordKind.PAYOUT and record.payment_ref == token:
+                 self.note("validation", tool="lookup_settlement", refs=[txn.ref(), record.ref()],
+                           reason=(f"The lookup for {token}, a reference on the credit, returned "
+                                   f"payout {record.ref().key()}, which is taken as a candidate."),
+@@ -817,8 +863,10 @@
+             own = {ref.upper() for ref in (record.payment_ref, record.settlement_ref,
+                                            record.withdrawal_ref) if ref}
+             for line in (record.text or "").splitlines():
+-                tokens = [t for t in _TEXT_REF.findall(line)
+-                          if re.search(r"[A-Za-z]", t) and re.search(r"\d", t)]
++                field = _TEXT_REF_FIELD.fullmatch(line)
++                candidates = ([field.group(1)] if field else []) + _TEXT_REF.findall(line)
++                tokens = list(dict.fromkeys(t for t in candidates
++                          if re.search(r"[A-Za-z]", t) and re.search(r"\d", t)))
+                 mapped = any(t.upper() in carried for t in tokens)
+                 for token in tokens:
+                     key = token.upper()
+@@ -863,6 +911,79 @@
+                       args={"payment_ref": token},
+                       result={"record_id": record.record_id, "revision": record.revision,
+                               "kind": record.kind.value, "status": record.status or "none"})
++        return out
++
++    def fetch_by_payout_clue(self, txn: BankTxn, found: list[EvidenceRecord]
++                             ) -> dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]]:
++        """Bounded merchant query from an explicit clue in issuer text, when nothing in the
++        passport, on the credit or named by reference matches. Only with a payout query
++        connector. A clue is an order number written ``#<digits>`` that is the
++        ``payment_ref`` of one of this subject's issuer-verified order records from the same
++        issuer (queried by ``covers_record_id``), or an explicit day and month name (``24
++        June``, optional weekday that must agree) no later than the text and within the
++        match window before the credit (queried by ``payout_date``). At most
++        ``MAX_REFERENCE_LOOKUPS`` queries; the gateway checks scope, signer and subject; a
++        returned payout must still match the credit by amount, currency and date. Returns
++        ``record_id -> (payout, records naming the clue)``."""
++        if getattr(self.gateway, "payout_query", None) is None \
++                or not hasattr(self.gateway, "lookup_payouts"):
++            return {}
++        records, _ = self.read("list_records", "list_records messages and orders",
++                               lambda: self.gateway.list_records(
++                                   kinds=[RecordKind.MESSAGE, RecordKind.ORDER]))
++        own = [r for r in records or [] if r.subject_ref == self.request.subject_ref
++               and r.source_trust == SourceTrust.ISSUER_VERIFIED]
++        texts = sorted((r for r in own if r.kind == RecordKind.MESSAGE and r.text),
++                       key=lambda r: (r.occurred_at, r.record_id))
++        orders = {(r.issuer_id, r.payment_ref): r for r in own
++                  if r.kind == RecordKind.ORDER and r.payment_ref}
++        keys: list[tuple[str, str, EvidenceRecord]] = []
++        for record in reversed(texts):   # the latest clue first
++            for number in _ORDER_CLUE.findall(record.text or ""):
++                order = orders.get((record.issuer_id, number))
++                if order is not None:
++                    keys.append(("covers_record_id", order.record_id, record))
++                    break
++            for day in _date_clues(record, txn, self.window):
++                keys.append(("payout_date", day, record))
++        out: dict[str, tuple[EvidenceRecord, list[EvidenceRecord]]] = {}
++        seen: set[tuple[str, str]] = set()
++        for key, value, source in keys:
++            if len(seen) >= MAX_REFERENCE_LOOKUPS:
++                break
++            if (key, value) in seen:
++                continue
++            seen.add((key, value))
++            dependencies = self.text_dependencies.setdefault(txn.txn_id, [])
++            dependencies.append(source.ref())
++            if key == "covers_record_id":
++                dependencies.extend(r.ref() for r in own if r.record_id == value)
++            got, err = self.read("lookup_payouts", f"lookup_payouts {key} {value}",
++                                 lambda key=key, value=value:
++                                 self.gateway.lookup_payouts(**{key: value}))
++            payouts = [self.current(r) for r in got or []]
++            payouts = [r for r in payouts if r.kind == RecordKind.PAYOUT
++                       and r.subject_ref == self.request.subject_ref
++                       and r.source_trust == SourceTrust.ISSUER_VERIFIED
++                       and r.issuer_id == source.issuer_id]
++            dependencies.extend(r.ref() for r in payouts)
++            if not payouts:
++                if err is None:
++                    self.note("note", tool="lookup_payouts", refs=[source.ref()],
++                              reason=f"The payout query by {key} {value}, from issuer-verified "
++                                     f"{source.ref().key()}, returned no payout.",
++                              args={key: value})
++                continue
++            for record in payouts:
++                if record.payment_ref:
++                    self.fetched.setdefault(record.payment_ref, record)
++                out.setdefault(record.record_id, (record, [source]))
++            self.note("validation", tool="lookup_payouts",
++                      refs=[txn.ref(), source.ref(), *(r.ref() for r in payouts)],
++                      reason=(f"The payout query by {key} {value}, from issuer-verified "
++                              f"{source.ref().key()}, returned {_ids(payouts, keys=True)}, "
++                              "taken as candidates."),
++                      args={key: value}, result={"count": len(payouts)})
+         return out
+ 
+     def unlinked(self, txn: BankTxn, match: _Match) -> _Outcome:
+@@ -921,14 +1042,13 @@
+                 if records is not None:
+                     merchant = [r for r in records if r.subject_ref == txn.subject_ref
+                                 and r.source_trust == SourceTrust.ISSUER_VERIFIED]
+-                    releases = [r for r in merchant if r.kind == RecordKind.MESSAGE
+-                                and r.amount_pence == txn.amount_pence and r.currency == txn.currency
+-                                and timedelta(0) <= txn.booked_at - r.occurred_at <= self.window
+-                                and re.search(r"\b(?:seller|platform) balance\b", r.text or "", re.I)]
++                    # A later correction can change a rejected diagnostic into a release.
++                    # Retain examined messages privately even when no release is recognized.
++                    evidence.extend(r.ref() for r in merchant if r.kind == RecordKind.MESSAGE)
++                    releases = [r for r in merchant if is_balance_release(r, txn, self.window)]
+                     if releases:
+                         code = GAP_BALANCE_RELEASE
+                         gap = "An issuer message reports funds in the platform balance, but no bank settlement is established."
+-                        evidence.extend(r.ref() for r in releases)
+                     elif not merchant:
+                         code = GAP_NO_RECORDS
+                         gap = "No issuer-verified merchant records are available to establish this credit's source."
+--- /dev/null
++++ b/alibi/core/release.py
+@@ -0,0 +1,24 @@
++"""Conservative diagnostic recognition of issuer-attested platform-balance releases."""
++import re
++from datetime import timedelta
++
++from alibi.core.schemas import BankTxn, EvidenceRecord, RecordKind, SourceTrust
++
++_AVAILABLE = re.compile(r"\b(?:is|are) now available in (?:your |the )?(?:seller|platform) balance\b", re.I)
++_RELEASED = re.compile(r"\b(?:has|have) been released to (?:your |the )?(?:seller|platform) balance\b", re.I)
++_NEGATED = re.compile(r"\b(?:no|not|never|isn't|aren't|wasn't|pending|failed|reversed|cancelled|if|whether|might|may|would|could)\b", re.I)
++
++
++def is_balance_release(record: EvidenceRecord, txn: BankTxn, window: timedelta) -> bool:
++    """Recognize a release diagnostic, never proof of settlement or permission to share."""
++    if (record.subject_ref != txn.subject_ref or record.source_trust != SourceTrust.ISSUER_VERIFIED
++            or record.kind != RecordKind.MESSAGE or record.amount_pence != txn.amount_pence
++            or record.currency != txn.currency or not txn.is_credit
++            or not timedelta(0) <= txn.booked_at - record.occurred_at <= window):
++        return False
++    if record.status == "released_to_balance":
++        return True
++    if record.status is not None:
++        return False
++    text = " ".join((record.text or "").split())
++    return not _NEGATED.search(text) and bool(_AVAILABLE.search(text) or _RELEASED.search(text))
+--- a/alibi/gateway.py
++++ b/alibi/gateway.py
+@@ -61,17 +61,24 @@
+ 
+ __all__ = [
+     "DEFAULT_BUDGET", "DEFAULT_WINDOW", "BudgetExceeded", "Gateway", "GatewayError",
+-    "NotFoundError", "RejectedResult", "ScopeError", "SettlementLookup", "TxnRefresh",
+-    "Unavailable",
++    "NotFoundError", "PayoutQuery", "RejectedResult", "ScopeError", "SettlementLookup",
++    "TxnRefresh", "Unavailable",
+ ]
+ 
+ SettlementLookup = Callable[[str], dict | None]   # payment_ref -> signed merchant event payload
+ TxnRefresh = Callable[[str], dict | None]          # txn_id -> bank txn JSON
++# (key, value) -> signed merchant event payloads; key is "covers_record_id" or "payout_date"
++PayoutQuery = Callable[[str, str], list | None]
+ 
+ DEFAULT_BUDGET = 12
+ DEFAULT_WINDOW = timedelta(days=5)
+ MAX_TRACE_ITEMS = 50   # items listed in one trace result; the count is always exact
+ ACTOR = "gateway"
++MAX_PAYOUT_RESULTS = 10   # a payout query answering more than this is rejected, never truncated
++PAYOUT_QUERY_KEYS = ("covers_record_id", "payout_date")
++# Records a payout query may be asked to cover: what a payout's ``covers_record_ids`` names.
++_COVERED_KINDS = frozenset({RecordKind.ORDER, RecordKind.REFUND, RecordKind.FEE})
++_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+ 
+ _IDENT = TypeAdapter(Ident)
+ _REF = TypeAdapter(Ref)
+@@ -282,7 +289,7 @@
+                  registry: TrustRegistry | None = None, budget: int = DEFAULT_BUDGET,
+                  settlement_lookup: SettlementLookup | None = None,
+                  txn_refresh: TxnRefresh | None = None, now: datetime | None = None,
+-                 request_id: str | None = None):
++                 request_id: str | None = None, payout_query: PayoutQuery | None = None):
+         if isinstance(budget, bool) or not isinstance(budget, int) or budget < 0:
+             raise ValueError("budget must be a non-negative integer")
+         if now is not None and (not isinstance(now, datetime) or now.utcoffset() is None):
+@@ -295,6 +302,7 @@
+         self.budget = budget
+         self.settlement_lookup = settlement_lookup
+         self.txn_refresh = txn_refresh
++        self.payout_query = payout_query
+         self.now = now
+         self.calls_used = 0
+         self.trace: list[TraceEvent] = []
+@@ -412,6 +420,116 @@
+                 summary["returned_revision"] = put.record.revision
+             return record, summary, [record.ref()]
+         return self._call("lookup_settlement", {"payment_ref": payment_ref}, run)
++
++    def lookup_payouts(self, *, covers_record_id: str | None = None,
++                       payout_date: str | None = None) -> list[EvidenceRecord]:
++        """Ask the merchant connector for payouts by exactly one key.
++
++        ``covers_record_id``: payouts whose ``covers_record_ids`` name that record. The record
++        must be one of this subject's active, issuer-verified order, refund or fee records
++        (another subject's raises ``ScopeError``; a self-supplied or other-kind record is
++        refused), and every result must come from that record's issuer and name it among
++        its covered records.
++
++        ``payout_date``: payouts initiated or settled on that UTC day (``YYYY-MM-DD``). The day
++        must not be after the run's clock and must fall within ``DEFAULT_WINDOW`` before (or
++        on the day of) one of this subject's own bank credits; every result must come from one
++        of the issuers of the subject's issuer-verified records and occur or settle that day.
++
++        Every result must be a ``payout`` or ``settlement`` for this subject. The connector is
++        not called when the key is out of scope; an answer with any result failing the checks,
++        or more than ``MAX_PAYOUT_RESULTS`` results, is rejected whole. Accepted results are
++        ingested with connector ``merchant_lookup`` and the active stored records are returned
++        by (occurred_at, record_id); an empty list when the merchant knows none.
++        """
++        def run():
++            given = {name: value for name, value in (("covers_record_id", covers_record_id),
++                                                     ("payout_date", payout_date))
++                     if value is not None}
++            if len(given) != 1:
++                raise GatewayError("give exactly one of covers_record_id, payout_date")
++            (key, value), = given.items()
++            if key == "covers_record_id":
++                covered = self._record(value)
++                if covered.source_trust != SourceTrust.ISSUER_VERIFIED:
++                    raise ScopeError("covers_record_id is not an issuer-verified record")
++                if covered.kind not in _COVERED_KINDS:
++                    raise ScopeError("covers_record_id is not an order, refund or fee record")
++                issuers, value = {covered.issuer_id}, covered.record_id
++                day = None
++            else:
++                day = self._query_day(value)
++                issuers = {r.issuer_id for r in self.store.list_sources(self.subject_ref)
++                           if r.source_trust == SourceTrust.ISSUER_VERIFIED}
++                if not issuers:
++                    raise ScopeError("this subject has no issuer-verified records to query")
++            if self.payout_query is None:
++                raise Unavailable("no payout query connector is configured")
++            if self.registry is None:
++                raise Unavailable("no trust registry is configured to verify lookup results")
++            try:
++                payloads = self.payout_query(key, value)
++            except Exception as exc:  # whatever the connector raised, report only its type
++                raise Unavailable(f"the payout query failed ({type(exc).__name__})") from None
++            if payloads is None:
++                payloads = []
++            if not isinstance(payloads, list):
++                raise RejectedResult("the payout query returned something other than a list")
++            if len(payloads) > MAX_PAYOUT_RESULTS:
++                raise RejectedResult(f"the payout query returned more than {MAX_PAYOUT_RESULTS} "
++                                     "records")
++            raws = [_connector_object(payload) for payload in payloads]
++            kinds = {kind.value for kind in SETTLEMENT_EVIDENCE_KINDS}
++            for raw in raws:
++                event = raw.get("event")
++                if not isinstance(event, dict) or event.get("kind") not in kinds:
++                    raise RejectedResult("the payout query returned something other than a payout")
++                if event.get("subject_ref") != self.subject_ref:
++                    raise RejectedResult("the payout query returned another subject's record")
++                if event.get("issuer_id") not in issuers:
++                    raise RejectedResult("the payout query returned a record from another issuer")
++                if key == "covers_record_id":
++                    related = event.get("related_record_ids")
++                    if not isinstance(related, list) or value not in related:
++                        raise RejectedResult("the payout query returned a payout that does not "
++                                             "cover the record")
++                elif day not in (str(event.get("occurred_at") or "")[:10],
++                                 str(event.get("effective_at") or "")[:10]):
++                    raise RejectedResult("the payout query returned a payout on another day")
++            records: dict[str, EvidenceRecord] = {}
++            statuses: list[str] = []
++            # Nested ingests use savepoints; any later bad signature or active-scope mismatch
++            # rolls back the complete answer, including source invalidations from earlier items.
++            with self.store.transaction():
++                for raw in raws:
++                    try:
++                        put = ingest_merchant_event(self.store, self.registry, raw,
++                                                    connector=CONNECTOR_LOOKUP,
++                                                    subject_ref=self.subject_ref, now=self._clock())
++                    except IngestError as exc:
++                        raise RejectedResult(f"the payout query result was rejected: {exc.reason}"
++                                             ) from None
++                    record = put.record if put.active else self.store.get_source(put.record.record_id)
++                    if record.kind not in SETTLEMENT_EVIDENCE_KINDS \
++                            or record.subject_ref != self.subject_ref \
++                            or record.issuer_id not in issuers \
++                            or record.source_trust != SourceTrust.ISSUER_VERIFIED:
++                        raise RejectedResult("the passport's payout record does not match the query")
++                    if key == "covers_record_id" and value not in record.related_record_ids:
++                        raise RejectedResult("the active payout no longer covers the queried record")
++                    if key == "payout_date" and day not in (
++                            record.occurred_at.date().isoformat(),
++                            record.effective_at.date().isoformat() if record.effective_at else None):
++                        raise RejectedResult("the active payout is no longer on the queried day")
++                    records[record.record_id] = record
++                    statuses.append(put.status)
++            found = _by_time(list(records.values()))
++            summary = {key: value, **_list_summary(found)}
++            if statuses:
++                summary["put_statuses"] = sorted(set(statuses))
++            return found, summary, [r.ref() for r in found]
++        return self._call("lookup_payouts", {"covers_record_id": covers_record_id,
++                                             "payout_date": payout_date}, run)
+ 
+     def refresh_txn(self, txn_id: str) -> BankTxn:
+         """Re-read one of this subject's txns from the bank and return its active revision.
+@@ -500,6 +618,24 @@
+         if any(wanted in _txn_tokens(txn) for txn in self.store.list_bank_txns(self.subject_ref)):
+             return own
+         return set()
++
++    def _query_day(self, value: Any) -> str:
++        """A ``payout_date`` in scope: a real ``YYYY-MM-DD`` day, not after the clock, within
++        ``DEFAULT_WINDOW`` before (or on the day of) one of the subject's own bank credits."""
++        if not isinstance(value, str) or not _DAY.fullmatch(value):
++            raise GatewayError("payout_date must be YYYY-MM-DD")
++        try:
++            day = datetime.strptime(value, "%Y-%m-%d").date()
++        except ValueError:
++            raise GatewayError("payout_date must be a real calendar day") from None
++        if day > self._clock().date():
++            raise ScopeError("payout_date is after the run's clock")
++        window = DEFAULT_WINDOW.days
++        if not any(txn.is_credit and 0 <= (txn.booked_at.date() - day).days <= window
++                   for txn in self.store.list_bank_txns(self.subject_ref)):
++            raise ScopeError("payout_date is not within the window before one of this "
++                             "subject's bank credits")
++        return value
+ 
+     def _call(self, tool: str, args: dict[str, Any], run: Callable[[], tuple]) -> Any:
+         args = {name: _arg(value) for name, value in args.items() if value is not None}
+--- /dev/null
++++ b/alibi/tests/test_agents_no_progress.py
+@@ -0,0 +1,32 @@
++"""Public FakeClient regressions for redundant Challenger rounds."""
++import pytest
++from alibi.tests.test_agents_runner import make, client_for, challenger, events
++from alibi.agents.runner import run_stats
++from alibi.core.schemas import ClaimStatus
++
++@pytest.mark.parametrize("missing", [False, True])
++def test_repeated_identical_lookup_without_new_material_stops_after_feedback(make, missing):
++    ctx = make("supported")
++    kw = {"settlement_lookup": lambda ref: None} if missing else {}
++    result = ctx.run(client_for(challenger_script=challenger()), max_rounds=8, **kw)
++    stats = run_stats(result)
++    assert stats["rounds"] == 2
++    assert stats["action_budget_used"] == 2
++    assert len(events(result, actor="gateway", tool="lookup_settlement")) == 2
++    assert stats["model_calls"] == 4
++    assert result.claims[0].status == ClaimStatus.UNRESOLVED
++    assert any(e.result.get("stop_reason") == "repeated_action_no_progress" for e in result.trace)
++
++
++def test_transient_lookup_failure_still_allows_retry(make):
++    ctx = make("supported")
++    calls = []
++    def lookup(ref):
++        calls.append(ref)
++        if len(calls) <= 2:
++            raise RuntimeError("temporary public test outage")
++        return ctx.fx["settlement_lookup"](ref)
++    result = ctx.run(client_for(challenger_script=challenger()), settlement_lookup=lookup)
++    assert len(calls) == 3
++    assert run_stats(result)["rounds"] == 3
++    assert not any(e.result.get("stop_reason") == "repeated_action_no_progress" for e in result.trace)
+--- /dev/null
++++ b/alibi/tests/test_agents_question_generalization.py
+@@ -0,0 +1,64 @@
++"""Semantic questions and literal retrieval must survive renamed public fixture IDs."""
++import json
++import pytest
++from alibi.adapter import run_case
++from alibi.llm.fake import FakeClient
++from alibi.tests.test_literal_reference_generalization import variant
++
++
++def challenger(model, system, user, schema):
++    payload = json.loads(user)
++    ref = payload['bank'][0]['payment_references'][0]
++    payouts = [r for r in payload['merchant'] if r['kind'] == 'payout']
++    ready = bool(payouts)
++    return {'claim_id': payload['claim']['claim_id'],
++            'proposed_status': 'supported' if ready else 'unresolved',
++            'bank_settlement_established': ready, 'payout_reference': ref,
++            'confirming_refs': [{'record_id': r['record_id'], 'revision': r['revision'], 'why': 'Signed payout'} for r in payouts],
++            'conflicting_refs': [], 'missing_evidence': [] if ready else ['settlement'],
++            'next_action': {'type': 'none' if ready else 'lookup_settlement',
++                            'args': {} if ready else {'payout_reference': ref}, 'reason': 'Exact observed bank reference'},
++            'trace': [], 'rationale': 'Synthetic scripted lookup; code validates the result.'}
++
++
++def client():
++    return FakeClient({'You are the Detective': {'alerts': [], 'claims': []},
++                       'You are the Challenger': challenger,
++                       'You are the Curator': {'disclosures': [], 'exclusions': [], 'gaps': [], 'rationale': 'No proposal'}})
++
++
++@pytest.mark.parametrize('ref', ['pay-Ab9-701', 'SETTLEMENTALPHA', 'pay_alpha_7', 'pay.alpha.7', 'Pay Group 7'])
++def test_agents_preserve_exact_action_reference_and_classify_renamed_questions(tmp_path, ref):
++    case = json.loads(json.dumps(variant(ref, 2)).replace('mock-marketplace', 'public-synthetic-provider'))
++    for request in case['rfcs']:
++        for q in request['questions']:
++            if q['question_id'] == 'q.sales_refunds_in_period':
++                q.update(question_id='q.period_components', text='Show documented sales and refunds over this period.')
++    rows = run_case(case, 'agents', client=client(), root=tmp_path / 'agents',
++                    trusted_issuers={'public_provider_key': 'public-synthetic-provider'})
++    assert all(row['failure'] is None for row in rows)
++    claims = {key: value for row in rows for key, value in row['claims'].items()}
++    assert claims['q.origin_evidence']['status'] == 'supported'
++    assert claims['q.origin_evidence']['facts']['payout_references'] == [ref]
++    assert claims['q.amount_components']['status'] == 'supported'
++    assert claims['q.amount_components']['facts']['breakdown_minor']['net'] == 432000
++    assert claims['q.period_components']['status'] == 'supported'
++    assert claims['q.period_components']['facts'] == {'sales_minor': 480000, 'sale_count': 8, 'refunds_minor': 36000, 'refund_count': 2}
++
++
++def test_arbitrary_breakdown_id_works_without_a_source_question(tmp_path):
++    case = variant('PayAlpha42', 3)
++    case['rfcs'] = [case['rfcs'][0]]
++    case['rfcs'][0]['questions'] = [q for q in case['rfcs'][0]['questions'] if q['question_id'] == 'q.amount_components']
++    rows = run_case(case, 'agents', client=client(), root=tmp_path / 'only_breakdown')
++    claim = rows[0]['claims']['q.amount_components']
++    assert claim['status'] == 'supported'
++    assert claim['facts']['breakdown_minor']['net'] == 648000
++
++
++def test_unrelated_question_remains_unresolved(tmp_path):
++    case = variant('PayAlpha42')
++    case['rfcs'] = [case['rfcs'][0]]
++    case['rfcs'][0]['questions'] = [{'question_id': 'q.unmapped_general', 'text': 'What will next year look like?'}]
++    rows = run_case(case, 'agents', client=client(), root=tmp_path / 'unknown')
++    assert rows[0]['claims']['q.unmapped_general']['status'] == 'unresolved'
+--- a/alibi/tests/test_agents_runner.py
++++ b/alibi/tests/test_agents_runner.py
+@@ -196,8 +196,9 @@
+     ctx = make("supported")
+     result = ctx.run(client_for(challenger_script=challenger()))   # always asks for a lookup
+     stats = run_stats(result)
+-    assert stats["action_budget_used"] == 3 and stats["rounds"] == 3
+-    assert len(events(result, actor="gateway", tool="lookup_settlement")) == 3
++    assert stats["action_budget_used"] == 2 and stats["rounds"] == 2
++    assert len(events(result, actor="gateway", tool="lookup_settlement")) == 2
++    assert any(e.result.get("stop_reason") == "repeated_action_no_progress" for e in result.trace)
+     (claim,) = result.claims
+     assert claim.status == ClaimStatus.UNRESOLVED and claim.gap.startswith("challenger_unresolved:")
+     wide = make("supported")
+--- /dev/null
++++ b/alibi/tests/test_ingest_telemetry.py
+@@ -0,0 +1,56 @@
++import copy
++import json
++from alibi.adapter import run_case
++from alibi.connectors.case_source import load_case_without_gold
++
++
++def public_case_with_import():
++    case = load_case_without_gold(1)
++    record = copy.deepcopy(case['merchant_deliveries'][0]['event'])
++    record['record_id'] = 'public-import-control'
++    record['event_id'] = 'public-import-control-event'
++    case['imports'] = [{'received_at': case['rfcs'][0]['issued_at'], 'record': record}]
++    return case
++
++
++def test_unsupported_import_is_counted_without_raw_values(tmp_path):
++    case = public_case_with_import()
++    bad = copy.deepcopy(case['imports'][0])
++    bad['record']['kind'] = 'PRIVATE_KIND_SENTINEL'
++    bad['record']['record_id'] = 'PRIVATE_RECORD_SENTINEL'
++    bad['record']['text'] = 'PRIVATE_TEXT_SENTINEL'
++    case['imports'].append(bad)
++    rows = run_case(case, 'rules', root=tmp_path / 'with')
++    telemetry = rows[0]['ingest_telemetry']
++    assert telemetry['imports']['skipped'] >= 1
++    assert telemetry['imports']['reasons']['unsupported_kind'] >= 1
++    assert telemetry['available']['issuer_verified'] > 0
++    encoded = json.dumps(telemetry)
++    assert 'PRIVATE_' not in encoded
++    assert case['subject_ref'] not in encoded
++    assert all(k not in encoded for k in ['record_id', 'event_id', 'reason_message', 'seed', 'signature'])
++
++
++def test_valid_control_metadata_is_optional_and_does_not_change_answers(tmp_path):
++    case = public_case_with_import()
++    yes = run_case(case, 'rules', root=tmp_path / 'yes')
++    no = run_case(case, 'rules', root=tmp_path / 'no', ingest_telemetry=False)
++    assert yes[0]['ingest_telemetry']['merchant']['accepted'] > 0
++    assert yes[0]['ingest_telemetry']['imports']['accepted'] > 0
++    assert all('ingest_telemetry' not in p for p in no)
++    assert [p['claims'] for p in yes] == [p['claims'] for p in no]
++
++
++def test_future_import_not_counted_before_visibility_and_issuer_refusal_is_aggregate(tmp_path):
++    case = public_case_with_import()
++    bad = copy.deepcopy(case['imports'][0])
++    bad['record']['kind'] = 'PRIVATE_FUTURE_KIND'
++    bad['received_at'] = case['rfcs'][1]['issued_at']
++    case['imports'].append(bad)
++    case['merchant_deliveries'][0]['event']['issuer_id'] = 'PRIVATE_UNKNOWN_ISSUER'
++    rows = run_case(case, 'rules', root=tmp_path)
++    first, second = [p['ingest_telemetry'] for p in rows]
++    assert first['imports']['refused'] == 0
++    assert second['imports']['refused'] == 1
++    assert first['merchant']['reasons']['untrusted_issuer'] == 1
++    assert 'PRIVATE_' not in json.dumps([first, second])
+--- /dev/null
++++ b/alibi/tests/test_literal_reference_generalization.py
+@@ -0,0 +1,68 @@
++"""Public synthetic variants: exact connector lookup keys must keep observed casing."""
++import json
++import pytest
++from agents.data.api import load_case
++from alibi.adapter import run_case
++
++
++def variant(ref, scale=1):
++    case = load_case(1)
++    case.pop('gold', None)
++    raw = json.dumps(case).replace('PO-0001-01', ref).replace('maya-001', 'holder-zeta-921')
++    raw = raw.replace('rec-0001-', 'rentry-921-').replace('txn-0001-', 'credit-921-')
++    raw = raw.replace('rfc-0001-', 'request-921-')
++    case = json.loads(raw)
++    def amounts(obj):
++        if isinstance(obj, dict):
++            for key, value in obj.items():
++                if key == 'amount_minor' and type(value) is int:
++                    obj[key] = value * scale
++                elif key == 'stated_minor':
++                    obj[key] = {k: v * scale for k, v in value.items()}
++                else:
++                    amounts(value)
++        elif isinstance(obj, list):
++            for item in obj:
++                amounts(item)
++    amounts(case)
++    for request in case['rfcs']:
++        for q in request['questions']:
++            if q['question_id'] == 'q.source_of_funds':
++                q.update(question_id='q.origin_evidence', text='Where did this credit come from?')
++            elif q['question_id'] == 'q.breakdown':
++                q.update(question_id='q.amount_components', text='Explain how this credit was calculated.')
++    return case
++
++
++@pytest.mark.parametrize('ref,scale', [('pay-Ab9-701', 1), ('wire-z7-9', 3), ('TrNs-712', 2)])
++def test_changed_identity_amount_and_literal_reference_remain_supported(tmp_path, ref, scale):
++    rows = run_case(variant(ref, scale), 'rules', root=tmp_path / 'variants')
++    assert all(row['failure'] is None for row in rows)
++    row = next(row for row in rows if row['request_id'] == 'request-921-01')
++    source = row['claims']['q.origin_evidence']
++    breakdown = row['claims']['q.amount_components']
++    assert source['status'] == 'supported'
++    assert source['facts']['payout_references'] == [ref]
++    assert breakdown['status'] == 'supported'
++    assert breakdown['facts']['breakdown_minor']['net'] == 216000 * scale
++
++
++def test_description_only_reference_keeps_its_observed_case(tmp_path):
++    case = variant('ref-Mix42-911')
++    for delivery in case['bank_deliveries']:
++        if delivery['row']['amount_minor'] > 0:
++            delivery['row']['payment_reference'] = None
++    row = run_case(case, 'rules', root=tmp_path / 'description')[0]
++    assert row['claims']['q.origin_evidence']['status'] == 'supported'
++    assert row['claims']['q.origin_evidence']['facts']['payout_references'] == ['ref-Mix42-911']
++
++
++def test_lookup_does_not_guess_another_casing(tmp_path):
++    case = variant('ref-Mix42-911')
++    for delivery in case['bank_deliveries']:
++        row = delivery['row']
++        if row['amount_minor'] > 0:
++            row['payment_reference'] = 'REF-MIX42-911'
++            row['description'] = 'CREDIT REF-MIX42-911'
++    row = run_case(case, 'rules', root=tmp_path / 'mismatched')[0]
++    assert row['claims']['q.origin_evidence']['status'] == 'unresolved'
+--- /dev/null
++++ b/alibi/tests/test_literal_reference_parity.py
+@@ -0,0 +1,20 @@
++"""Typed exact reference shapes across offline modes, public-derived fixtures only."""
++import json
++import pytest
++from alibi.adapter import run_case
++from alibi.llm.fake import FakeClient
++from alibi.tests.test_literal_reference_generalization import variant
++
++NO_PROPOSAL = {'claims': [], 'disclosures': [], 'rationale': 'Public synthetic control'}
++
++@pytest.mark.parametrize('ref', ['pay-Ab9-701', 'SETTLEMENTALPHA', 'pay_alpha_7', 'pay.alpha.7', 'Pay Group 7'])
++@pytest.mark.parametrize('mode', ['rules', 'one_pass'])
++def test_typed_literal_reference_shape_with_new_issuer(tmp_path, mode, ref):
++    case = json.loads(json.dumps(variant(ref, 2)).replace('mock-marketplace', 'public-synthetic-provider'))
++    rows = run_case(case, mode, client=FakeClient({'*': NO_PROPOSAL}),
++                    trusted_issuers={'public_provider_key': 'public-synthetic-provider'}, root=tmp_path / 'run')
++    assert all(row['failure'] is None for row in rows)
++    first = next(row for row in rows if row['request_id'] == 'request-921-01')
++    assert first['claims']['q.origin_evidence']['status'] == 'supported'
++    assert first['claims']['q.origin_evidence']['facts']['payout_references'] == [ref]
++    assert first['claims']['q.amount_components']['facts']['breakdown_minor']['net'] == 432000
+--- /dev/null
++++ b/alibi/tests/test_payout_query.py
+@@ -0,0 +1,208 @@
++"""Connector-backed payout query (``Gateway.lookup_payouts``): scope, signer and subject
++checks, the rules engine's bounded clue fallback on public cases 42 and 43, and the agents'
++covering/date actions routed through the gateway. Public development data only."""
++
++import copy
++import tempfile
++from pathlib import Path
++
++import pytest
++
++from agents.data.api import load_case
++from alibi.adapter import run_case
++from alibi.agents.actions import ActionBudget, execute_action
++from alibi.agents.material import Material
++from alibi.agents.models import NextAction
++from alibi.core.ingest import import_self_supplied, ingest_bank_txns, ingest_merchant_event
++from alibi.core.schemas import KeyPurpose, RecordKind, SourceTrust
++from alibi.core.signing import DemoKeystore
++from alibi.core.store import NotFound, Store
++from alibi.fixtures import maya
++from alibi.gateway import (MAX_PAYOUT_RESULTS, Gateway, GatewayError, RejectedResult, ScopeError,
++                           Unavailable)
++
++SUBJ = maya.SUBJECT_REF
++
++
++@pytest.fixture(scope="module")
++def fx():
++    return maya.load_variant("supported")
++
++
++def _event(fx, record_id):
++    return copy.deepcopy(next(e for e in fx["merchant_events"] if e["record_id"] == record_id))
++
++
++@pytest.fixture
++def passport(tmp_path, registry, keystore, fx, now):
++    store = Store(tmp_path / "db" / "passport.db")
++    for body in fx["merchant_events"]:
++        ingest_merchant_event(store, registry, maya.sign_event(body, keystore), subject_ref=SUBJ,
++                              now=now)
++    ingest_bank_txns(store, fx["bank_txns"], subject_ref=SUBJ, connection_id=maya.CONNECTION_ID,
++                     now=now)
++    foreign = {**_event(fx, "ord_1001"), "record_id": "ord_9001", "event_id": "evt_ord_9001_r1",
++               "subject_ref": "subj_other"}
++    ingest_merchant_event(store, registry, maya.sign_event(foreign, keystore), now=now)
++    yield store
++    store.close()
++
++
++def _payout(fx, **over):
++    body = {**_event(fx, "po_5001"), "record_id": "po_5002", "event_id": "evt_po_5002_r1",
++            "payment_ref": "PO-5002"}
++    body.update(over)
++    return body
++
++
++def _gateway(passport, registry, now, query, **kw):
++    return Gateway(passport, subject_ref=SUBJ, run_id="run_pq_test", now=now, registry=registry,
++                   payout_query=query, **kw)
++
++
++def _recording(answer):
++    calls = []
++
++    def query(key, value):
++        calls.append((key, value))
++        return answer() if callable(answer) else answer
++    return query, calls
++
++
++def test_covering_query_ingests_signed_payouts_of_this_subject(passport, registry, keystore, fx,
++                                                                now):
++    query, calls = _recording(lambda: [maya.sign_event(_payout(fx), keystore)])
++    gw = _gateway(passport, registry, now, query)
++    [record] = gw.lookup_payouts(covers_record_id="ord_1001")
++    assert calls == [("covers_record_id", "ord_1001")]
++    assert record.record_id == "po_5002" and record.kind == RecordKind.PAYOUT
++    assert record.connector == "merchant_lookup"
++    assert record.source_trust == SourceTrust.ISSUER_VERIFIED
++    assert passport.get_source("po_5002") == record
++    assert gw.trace[-1].result["count"] == 1 and gw.trace[-1].outcome == "ok"
++
++
++def test_date_query_is_bounded_to_the_window_before_an_own_credit(passport, registry, keystore,
++                                                                  fx, now):
++    query, calls = _recording(lambda: [maya.sign_event(_payout(fx), keystore)])
++    gw = _gateway(passport, registry, now, query)
++    assert [r.record_id for r in gw.lookup_payouts(payout_date="2026-11-02")] == ["po_5002"]
++    for day in ("2026-10-01", "2026-11-04"):   # far before the credit, after its booking day
++        with pytest.raises(ScopeError, match="window"):
++            gw.lookup_payouts(payout_date=day)
++    with pytest.raises(GatewayError, match="YYYY-MM-DD"):
++        gw.lookup_payouts(payout_date="2 November")
++    with pytest.raises(GatewayError, match="real calendar day"):
++        gw.lookup_payouts(payout_date="2026-02-30")
++    with pytest.raises(GatewayError, match="exactly one"):
++        gw.lookup_payouts(covers_record_id="ord_1001", payout_date="2026-11-02")
++    assert calls == [("payout_date", "2026-11-02")]
++
++
++def test_foreign_self_supplied_and_non_component_records_never_reach_the_connector(
++        passport, registry, now):
++    import_self_supplied(passport, {"record_id": "ord_mine", "kind": "order", "currency": "GBP",
++                                    "occurred_at": "2026-10-30T08:30:00Z", "amount_pence": 100},
++                         subject_ref=SUBJ, now=now)
++    query, calls = _recording([])
++    gw = _gateway(passport, registry, now, query)
++    with pytest.raises(ScopeError, match="outside this run's subject"):
++        gw.lookup_payouts(covers_record_id="ord_9001")   # another subject's order
++    with pytest.raises(ScopeError, match="issuer-verified"):
++        gw.lookup_payouts(covers_record_id="self_ord_mine")   # holder-supplied
++    with pytest.raises(ScopeError, match="order, refund or fee"):
++        gw.lookup_payouts(covers_record_id="msg_7001")
++    assert calls == []
++    assert [e.outcome for e in gw.trace] == ["refused"] * 3
++
++
++def test_wrong_signer_issuer_subject_or_cover_rejects_the_whole_answer(
++        passport, registry, keystore, fx, now, tmp_path):
++    other = DemoKeystore(tmp_path / "other_keys", specs={
++        "other_merchant": (KeyPurpose.RECORD_SIGNING, "other_market")}).ensure()
++    merged = registry.merged(other.registry())
++    good = maya.sign_event(_payout(fx), keystore)
++    cases = {
++        "another issuer": [good, maya.sign_event(_payout(fx, record_id="po_x", event_id="evt_po_x",
++                                                          issuer_id="other_market"),
++                                                 other, kid="other_merchant")],
++        "another subject": [maya.sign_event(_payout(fx, subject_ref="subj_other"), keystore)],
++        "does not cover": [maya.sign_event(_payout(fx, related_record_ids=["ord_1002"]),
++                                           keystore)],
++        "other than a payout": [maya.sign_event(_event(fx, "ord_1002"), keystore)],
++        "signature does not verify": [{**good, "event": {**good["event"], "amount_pence": 1}}],
++        f"more than {MAX_PAYOUT_RESULTS}": [good] * (MAX_PAYOUT_RESULTS + 1),
++    }
++    for message, answer in cases.items():
++        gw = _gateway(passport, merged, now, lambda key, value, a=answer: a)
++        with pytest.raises(RejectedResult, match=message):
++            gw.lookup_payouts(covers_record_id="ord_1001")
++        assert gw.trace[-1].outcome == "refused", message
++    with pytest.raises(NotFound):
++        passport.get_source("po_5002")   # nothing from a rejected answer was kept
++
++
++def test_missing_connector_or_registry_is_unavailable(passport, registry, now):
++    with pytest.raises(Unavailable, match="no payout query"):
++        _gateway(passport, registry, now, None).lookup_payouts(covers_record_id="ord_1001")
++    with pytest.raises(Unavailable, match="registry"):
++        Gateway(passport, subject_ref=SUBJ, run_id="run_pq", now=now,
++                payout_query=lambda k, v: []).lookup_payouts(covers_record_id="ord_1001")
++
++
++def _rules(number):
++    case = copy.deepcopy(load_case(number))
++    case.pop("gold", None)   # the run never sees gold
++    [pred] = run_case(case, "rules", root=Path(tempfile.mkdtemp()))
++    return case, pred
++
++
++@pytest.mark.parametrize("number, variant", [(42, "orders_and_weekday"), (43, "date_only")])
++def test_public_clue_cases_retrieve_the_lookup_only_payout(number, variant):
++    case, pred = _rules(number)
++    assert case["variant"] == variant
++    # The payout the clue names, from the case's own public data: the lookup-only payout that
++    # settled before the credit and carries its amount (not gold, not a case-id table).
++    [link] = pred["links"]
++    credit = next(d["row"] for d in case["bank_deliveries"] if d["row"]["txn_id"] == link["txn_id"])
++    [want] = [l["event"]["record_id"] for l in case["merchant_lookup"]
++              if l["event"]["amount_minor"] == credit["amount_minor"]]
++    assert link["state"] == "linked" and link["payout_record_ids"] == [want]
++    assert {c["status"] for c in pred["claims"].values()} == {"supported"}
++    assert 1 <= pred["retrieval"]["lookups"] <= 4
++
++
++class _FakeGateway:
++    def __init__(self, records):
++        self.payout_query = object()
++        self.records, self.calls = records, []
++
++    def lookup_payouts(self, **key):
++        self.calls.append(key)
++        return self.records
++
++    def list_records(self, **_):
++        raise AssertionError("the passport listing must not be used with a payout query")
++
++
++def test_agent_covering_and_date_actions_use_the_gateway_query(passport, fx, now):
++    order, payout = passport.get_source("ord_1001"), passport.get_source("po_5001")
++    material = Material(SUBJ)
++    material.add_record(order)
++    gw = _FakeGateway([payout])
++    covering = execute_action(gw, material, NextAction(type="lookup_payouts_covering",
++                                                       args={"record_id": "ord_1001"}),
++                              ActionBudget())
++    dated = execute_action(gw, material, NextAction(type="lookup_by_date",
++                                                    args={"payout_date": "2026-11-02"}),
++                           ActionBudget())
++    assert covering.outcome == "ok" and dated.outcome == "ok"
++    assert gw.calls == [{"covers_record_id": "ord_1001"}, {"payout_date": "2026-11-02"}]
++    assert material.has("po_5001")
++    assert material.lookup_count == 2
++    assert all(lookup.connector_query for lookup in material.lookups)
++    refused = execute_action(gw, material, NextAction(type="lookup_payouts_covering",
++                                                      args={"record_id": "ord_9001"}),
++                             ActionBudget())
++    assert refused.outcome == "refused" and len(gw.calls) == 2
++    assert material.lookup_count == 2
+--- /dev/null
++++ b/alibi/tests/test_query_safety.py
+@@ -0,0 +1,111 @@
++"""Public synthetic query safeguards: active scope, atomic ingestion and private dependencies."""
++import copy
++import json
++
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi import api
++from alibi.adapter import _World, _run
++from alibi.connectors.case_source import CaseClock, parse_time
++from alibi.core.ingest import ingest_merchant_event
++from alibi.core.schemas import SigningDomain
++from alibi.core.store import NotFound
++from alibi.fixtures import maya
++from alibi.gateway import RejectedResult
++from alibi.tests.test_payout_query import fx, passport, _gateway, _payout, _event
++
++
++@pytest.mark.parametrize("key", ["covers_record_id", "payout_date"])
++@pytest.mark.parametrize("still_matches", [False, True])
++def test_stale_response_rechecks_the_active_query_fields(passport, registry, keystore, fx, now,
++                                                         key, still_matches):
++    initial = _payout(fx)
++    payload = maya.sign_event(initial, keystore)
++    ingest_merchant_event(passport, registry, payload, now=now)
++    latest = {**initial, "event_id": "evt_query_revision_2", "revision": 2,
++              "corrects_revision": 1, "correction_reason": "Public query correction"}
++    if not still_matches:
++        if key == "covers_record_id":
++            latest["related_record_ids"] = ["ord_1002"]
++        else:
++            latest["occurred_at"] = "2026-11-01T10:00:00Z"
++            latest.pop("effective_at", None)
++    ingest_merchant_event(passport, registry, maya.sign_event(latest, keystore), now=now)
++    gateway = _gateway(passport, registry, now, lambda k, v: [payload])
++    value = "ord_1001" if key == "covers_record_id" else "2026-11-02"
++    if still_matches:
++        [record] = gateway.lookup_payouts(**{key: value})
++        assert record.revision == 2
++    else:
++        with pytest.raises(RejectedResult, match="active payout"):
++            gateway.lookup_payouts(**{key: value})
++
++
++@pytest.mark.parametrize("correction", [False, True])
++def test_later_bad_signature_rolls_back_earlier_valid_items(passport, registry, keystore, fx,
++                                                          now, correction):
++    first = _payout(fx)
++    if correction:
++        first = _event(fx, "po_5001")
++        first.update(event_id="evt_atomic_correction", revision=2, corrects_revision=1,
++                     correction_reason="Public correction that must roll back")
++        first["amount_pence"] += 1
++    bad = maya.sign_event(_payout(fx, record_id="po_bad", event_id="evt_bad"), keystore)
++    bad["event"]["amount_pence"] += 1  # raw scope valid, signature invalid
++    gateway = _gateway(passport, registry, now,
++                        lambda k, v: [maya.sign_event(first, keystore), bad])
++    with pytest.raises(RejectedResult, match="signature"):
++        gateway.lookup_payouts(covers_record_id="ord_1001")
++    if correction:
++        assert passport.get_source("po_5001").revision == 1
++    else:
++        with pytest.raises(NotFound):
++            passport.get_source("po_5002")
++    with pytest.raises(NotFound):
++        passport.get_source("po_bad")
++
++
++@pytest.mark.parametrize("number, outcome, target", [
++    (42, "success", "clue"), (42, "success", "order"),
++    (42, "empty", "clue"), (42, "error", "order"),
++    (43, "success", "clue"), (43, "empty", "clue")])
++def test_query_clue_and_order_revisions_remain_private_dependencies(tmp_path, number, outcome, target):
++    case = without_gold(load_case(number))
++    at = parse_time(case["rfcs"][0]["issued_at"], "at")
++    world = _World(case, tmp_path / "world")
++    try:
++        world.seed(CaseClock(case, at))
++        if outcome != "success":
++            def query(k, v):
++                if outcome == "error":
++                    raise RuntimeError("Public unavailable control")
++                return []
++            world.merchant.payout_query = query
++        rfc = world.store.get_request(case["rfcs"][0]["request_id"])
++        result, _ = _run(world, "rules", rfc, at, None)
++        clue = "rec-0042-023" if number == 42 else "rec-0043-019"
++        ref_id = clue if target == "clue" else "rec-0042-012"
++        assert all(ref_id in {ref.ref_id for ref in c.examined_refs} for c in result.claims)
++        assert all(c.status.value == ("supported" if outcome == "success" else "unresolved")
++                   for c in result.claims)
++        draft = api.build_review(world.store, rfc.request_id, audience=rfc.audience, now=at)
++        approval = api.approve(world.store, draft.draft_id, holder_id="holder_maya", now=at)
++        assert clue not in json.dumps(draft.body.to_json_dict())
++        if outcome != "success":
++            assert draft.body.attachments == []
++        body = world.store.get_source(ref_id).to_event().to_json_dict()
++        body.update(event_id="evt_query_dependency_revision", revision=2, corrects_revision=1,
++                    correction_reason="Public clue correction")
++        if target == "clue":
++            body["text"] = "The earlier payout clue was incorrect."
++        else:
++            body["payment_ref"] = "ORDER-CORRECTED-991"
++        payload = {"event": body, "signature": world.keystore.sign(
++            body, kid="merchant_mock", domain=SigningDomain.RECORD).to_json_dict()}
++        put = api.ingest_merchant_event(world.store, payload, registry=world.registry, now=at)
++        assert {c.claim_id for c in result.claims} <= set(put.invalidated["claims"])
++        assert draft.draft_id in put.invalidated["drafts"]
++        assert approval.approval_id in put.invalidated["approvals"]
++    finally:
++        world.close()
+--- /dev/null
++++ b/alibi/tests/test_reference_formats.py
+@@ -0,0 +1,66 @@
++"""Exact spaced issuer-text references; no provider normalization or new authorization."""
++import copy
++
++from agents.data.api import load_case
++from alibi.adapter import run_case
++
++
++def issuer_text_case():
++    case = copy.deepcopy(load_case(73))
++    case.pop('gold', None)
++    credit = next(d['row'] for d in case['bank_deliveries'] if d['row']['amount_minor'] > 0)
++    ref = credit['payment_reference']
++    credit['payment_reference'] = None
++    credit['description'] = 'SECOND PLATFORM LTD'
++    notice = next(d['event'] for d in case['merchant_deliveries'] if d['event']['kind'] == 'earnings_update')
++    notice['text'] += '\ntransfer_ref: ' + ref
++    return case
++
++
++def test_exact_spaced_reference_on_bank_credit_works(tmp_path):
++    rows = run_case(73, 'rules', root=tmp_path / 'bank')
++    assert rows[0]['claims']['q.source_of_funds']['status'] == 'supported'
++
++
++def test_exact_spaced_reference_in_verified_issuer_field_works(tmp_path):
++    rows = run_case(issuer_text_case(), 'rules', root=tmp_path / 'text')
++    assert rows[0]['claims']['q.source_of_funds']['status'] == 'supported'
++
++
++def test_spaced_reference_is_not_invented_from_earnings_week(tmp_path):
++    case = issuer_text_case()
++    notice = next(d['event'] for d in case['merchant_deliveries'] if d['event']['kind'] == 'earnings_update')
++    notice['text'] = notice['text'].split('\n')[0]
++    rows = run_case(case, 'rules', root=tmp_path / 'absent')
++    assert rows[0]['claims']['q.source_of_funds']['status'] == 'unresolved'
++
++
++def test_self_supplied_spaced_field_does_not_authorize_lookup(tmp_path, keystore, registry, now):
++    import pytest
++    from alibi import api
++    from alibi.gateway import Gateway, ScopeError
++    store = api.open_store(tmp_path / 'scope.db')
++    try:
++        fx = api.load_fixture(store, 'supported', keystore=keystore, now=now)
++        api.import_self_supplied(store, {
++            'record_id': 'self_spaced_reference', 'kind': 'message',
++            'occurred_at': '2026-11-03T08:00:00Z',
++            'text': 'transfer_ref: SPLAT W32 2695',
++        }, subject_ref=fx['subject_ref'], now=now)
++        called = []
++        gateway = Gateway(store, subject_ref=fx['subject_ref'], run_id='run_spaced_scope',
++                          registry=registry, settlement_lookup=lambda ref: called.append(ref), now=now)
++        with pytest.raises(ScopeError):
++            gateway.lookup_settlement('SPLAT W32 2695')
++        assert called == []
++    finally:
++        store.close()
++
++
++def test_explicit_reference_values_preserve_literal_separators():
++    from alibi.core.investigate_rules import _TEXT_REF_FIELD
++    assert _TEXT_REF_FIELD.fullmatch('transfer_ref: SPLAT W32 2695').group(1) == 'SPLAT W32 2695'
++    assert _TEXT_REF_FIELD.fullmatch('payment reference = SOME ID 1234').group(1) == 'SOME ID 1234'
++    assert _TEXT_REF_FIELD.fullmatch('Our ref: PO/0046/02') is None
++    assert _TEXT_REF_FIELD.fullmatch('0047/02;16.07.2026;872,62') is None
++    assert _TEXT_REF_FIELD.fullmatch('transfer_ref: ../../foreign') is None
+--- /dev/null
++++ b/alibi/tests/test_release_diagnostic_safety.py
+@@ -0,0 +1,102 @@
++"""Public release diagnostics use issuer facts and preserve private revision dependencies."""
++import json
++
++import pytest
++
++from agents.data.api import load_case, without_gold
++from alibi import api
++from alibi.adapter import _World, _run, run_case
++from alibi.connectors.case_source import CaseClock, parse_time
++from alibi.core.schemas import ClaimStatus, SigningDomain
++from alibi.llm.fake import FakeClient
++
++
++RELEASE_GAP = "balance_release_not_settlement"
++NO_PROPOSAL = {"claims": [], "disclosures": [], "rationale": "offline"}
++
++
++def release_case(change=None):
++    case = without_gold(load_case(17))
++    release = next(d for d in case["merchant_deliveries"] if d["event"]["kind"] == "balance_release")
++    if change == "unrelated":
++        release["event"]["message"] = "A support ticket about your seller balance has been opened."
++    elif change == "negative":
++        release["event"]["message"] = "No funds are available in your seller balance."
++    elif change == "conditional":
++        release["event"]["message"] = "If the amount is now available in your seller balance, request a withdrawal."
++    elif change == "currency":
++        release["event"]["currency"] = "EUR"
++    elif change == "status":
++        release["event"]["status"] = "failed"
++    elif change == "untrusted":
++        case["merchant_deliveries"].remove(release)
++        case["imports"].append({"received_at": release["received_at"], "record": release["event"]})
++    return case, release["event"]["record_id"]
++
++
++@pytest.mark.parametrize("number,gap", [(17, RELEASE_GAP), (18, RELEASE_GAP), (32, "no_merchant_records")])
++def test_one_pass_release_uses_observed_evidence_and_fixed_strategy(tmp_path, number, gap):
++    client = FakeClient({"*": NO_PROPOSAL})
++    predictions = run_case(number, "one_pass", client=client, root=tmp_path / "run")
++    assert client.call_count == len(predictions)
++    for row in predictions:
++        assert row["failure"] is None
++        assert row["retrieval"]["lookups"] == 0
++        assert all(c["status"] == "unresolved" and c["gap"] == gap for c in row["claims"].values())
++        assert all(c["evidence_refs"] == [] for c in row["claims"].values())
++
++
++@pytest.mark.parametrize("change", ["unrelated", "negative", "conditional", "currency", "status", "untrusted"])
++def test_one_pass_rejects_non_release_messages(tmp_path, change):
++    case, _ = release_case(change)
++    client = FakeClient({"*": NO_PROPOSAL})
++    rows = run_case(case, "one_pass", client=client, root=tmp_path / "run")
++    assert client.call_count == len(rows)
++    for row in rows:
++        assert row["failure"] is None
++        assert row["retrieval"]["lookups"] == 0
++        assert all(c["status"] == "unresolved" and c["gap"] != RELEASE_GAP for c in row["claims"].values())
++
++
++def correction_invalidates(tmp_path, mode, initially_release):
++    case, rid = release_case(None if initially_release else "negative")
++    at = parse_time(case["rfcs"][0]["issued_at"], "at")
++    world = _World(case, tmp_path / "world")
++    client = FakeClient({"*": NO_PROPOSAL})
++    try:
++        world.seed(CaseClock(case, at))
++        rfc = world.store.get_request(case["rfcs"][0]["request_id"])
++        result, run = _run(world, mode, rfc, at, client)
++        assert all(c.status == ClaimStatus.UNRESOLVED for c in result.claims)
++        for claim in result.claims:
++            assert (RELEASE_GAP in (claim.gap or "")) == initially_release
++            assert rid in {ref.ref_id for ref in claim.examined_refs}
++            assert claim.evidence_refs == [] and claim.calculation is None
++        if mode == "one_pass":
++            assert run.lookups == 0 and run.model_calls == 1
++        draft = api.build_review(world.store, rfc.request_id, audience=rfc.audience, now=at)
++        approval = api.approve(world.store, draft.draft_id, holder_id="holder_maya", now=at)
++        assert draft.body.attachments == []
++        assert rid not in json.dumps(draft.body.to_json_dict())
++        body = world.store.get_source(rid).to_event().to_json_dict()
++        body.update(event_id="public-release-correction-two", revision=2, corrects_revision=1,
++                    correction_reason="Public synthetic correction", text=(
++                        "No funds are available in your seller balance." if initially_release else
++                        "Good news! The amount is now available in your seller balance."))
++        payload = {"event": body, "signature": world.keystore.sign(
++            body, kid="merchant_mock", domain=SigningDomain.RECORD).to_json_dict()}
++        changed = api.ingest_merchant_event(world.store, payload, registry=world.registry, now=at)
++        assert {c.claim_id for c in result.claims} <= set(changed.invalidated["claims"])
++        assert draft.draft_id in changed.invalidated["drafts"]
++        assert approval.approval_id in changed.invalidated["approvals"]
++        with pytest.raises(api.ApprovalError):
++            api.sign_and_package(world.store, approval.approval_id, keystore=world.keystore, now=at)
++        rerun, _ = _run(world, mode, rfc, at, client)
++        assert all((RELEASE_GAP in (c.gap or "")) != initially_release for c in rerun.claims)
++    finally:
++        world.close()
++
++
++@pytest.mark.parametrize("initially_release", [True, False])
++def test_one_pass_release_correction_invalidates_minimal_review(tmp_path, initially_release):
++    correction_invalidates(tmp_path, "one_pass", initially_release)
+--- /dev/null
++++ b/alibi/tests/test_rules_release_diagnostic_safety.py
+@@ -0,0 +1,20 @@
++"""Rules release diagnostics share the strict semantic check with one-pass."""
++import pytest
++
++from alibi.adapter import run_case
++from alibi.tests.test_release_diagnostic_safety import RELEASE_GAP, release_case, correction_invalidates
++
++
++@pytest.mark.parametrize("change", [None, "unrelated", "negative", "conditional", "currency", "status", "untrusted"])
++def test_rules_only_affirmative_issuer_release_changes_gap(tmp_path, change):
++    case, _ = release_case(change)
++    rows = run_case(case, "rules", root=tmp_path / "run")
++    for row in rows:
++        assert row["failure"] is None
++        assert all(c["status"] == "unresolved" and (c["gap"] == RELEASE_GAP) == (change is None)
++                   for c in row["claims"].values())
++
++
++@pytest.mark.parametrize("initially_release", [True, False])
++def test_rules_release_correction_invalidates_minimal_review(tmp_path, initially_release):
++    correction_invalidates(tmp_path, "rules", initially_release)

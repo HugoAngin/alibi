@@ -16,7 +16,10 @@ import { inboxFixture, packageFixture } from '../src/data/analyst';
 
 const preview = packageFixture('preview-rfc-0001-01') as AnalystPackage;
 
-function withAuth(status: string, extra: Partial<AnalystPackage['authentication']> = {}): AnalystPackage {
+function withAuth(
+  status: string,
+  extra: Partial<AnalystPackage['authentication']> = {},
+): AnalystPackage {
   return { ...preview, authentication: { ...preview.authentication, status, ...extra } };
 }
 
@@ -34,7 +37,10 @@ describe('authentication verdicts (SP-25 to SP-32)', () => {
   });
 
   it('shows the verifier reasons verbatim when it gives them', () => {
-    const reasons = ['body_sha256 does not match the package body', 'Alibi package signature: signature does not verify'];
+    const reasons = [
+      'body_sha256 does not match the package body',
+      'Alibi package signature: signature does not verify',
+    ];
     expect(rejectionReasons(withAuth('invalid', { reasons }))).toEqual(reasons);
     expect(rejectionReasons(withAuth('expired'))).toEqual(['Package authentication: expired']);
   });
@@ -44,9 +50,15 @@ describe('decisions', () => {
   const at = '2026-11-08T10:00:00Z';
   it('clear and escalate are final; request_more is not', () => {
     expect(isFinal(null)).toBe(false);
-    expect(isFinal({ disposition: 'clear', analyst_name: 'a', recorded_at: at, note: 'x' })).toBe(true);
-    expect(isFinal({ disposition: 'escalate', analyst_name: 'a', recorded_at: at, note: 'x' })).toBe(true);
-    expect(isFinal({ disposition: 'request_more', analyst_name: 'a', recorded_at: at, note: 'x' })).toBe(false);
+    expect(isFinal({ disposition: 'clear', analyst_name: 'a', recorded_at: at, note: 'x' })).toBe(
+      true,
+    );
+    expect(
+      isFinal({ disposition: 'escalate', analyst_name: 'a', recorded_at: at, note: 'x' }),
+    ).toBe(true);
+    expect(
+      isFinal({ disposition: 'request_more', analyst_name: 'a', recorded_at: at, note: 'x' }),
+    ).toBe(false);
   });
 
   it('preview actions are disabled; real backend paths are enabled', () => {
@@ -59,9 +71,15 @@ describe('decisions', () => {
 
 describe('trust labels', () => {
   it('labels redacted extracts as attested by Alibi, never as issuer-signed', () => {
-    expect(attestationNote({ attestation: 'package_signer', redacted: true })).toBe('Redacted extract, attested by Alibi');
-    expect(attestationNote({ attestation: 'none', redacted: true })).toBe('Redacted extract, attested by Alibi');
-    expect(attestationNote({ attestation: 'issuer_signature', redacted: false })).toBe('Issuer signature verified');
+    expect(attestationNote({ attestation: 'package_signer', redacted: true })).toBe(
+      'Redacted extract, attested by Alibi',
+    );
+    expect(attestationNote({ attestation: 'none', redacted: true })).toBe(
+      'Redacted extract, attested by Alibi',
+    );
+    expect(attestationNote({ attestation: 'issuer_signature', redacted: false })).toBe(
+      'Issuer signature verified',
+    );
     expect(attestationNote({ attestation: 'none', redacted: false })).toBeNull();
   });
 });

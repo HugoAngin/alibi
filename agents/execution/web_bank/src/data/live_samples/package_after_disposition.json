@@ -1,0 +1,132 @@
+{
+  "authentication": {
+    "audience": "bank_a",
+    "kid": "alibi_demo",
+    "package_id": "pkg_985a1a74e6072250ac3d0afd",
+    "reasons": [],
+    "valid": true
+  },
+  "claims": [
+    {
+      "evidence_refs": [
+        {
+          "ref_id": "txn-0001-004",
+          "ref_type": "txn",
+          "revision": 1
+        }
+      ],
+      "gap": "No payout record matches this credit by reference, or by amount and currency within 5 days before its booking.",
+      "question_id": "q.source_of_funds",
+      "status": "unresolved"
+    },
+    {
+      "evidence_refs": [],
+      "gap": "The rules engine could not map this question to evidence it can check.",
+      "question_id": "q.breakdown",
+      "status": "unresolved"
+    }
+  ],
+  "dispositions": [
+    {
+      "analyst": "analyst_a1",
+      "decided_at": "2026-11-04T14:00:00Z",
+      "decision": "request_more",
+      "disposition_id": "dsp_c0d9cd7981d7c4dda4ed8168",
+      "package_digest": "9b8c322230d51b39b1f7b0fa8e21b4b480c5660bffdfa2df5af899ed30633f67",
+      "package_id": "pkg_985a1a74e6072250ac3d0afd",
+      "question_ids": [],
+      "reason": "Need the settlement record",
+      "recipient": "bank_a",
+      "request_id": "rfc-0001-01",
+      "requested_evidence": ["Settlement record for payout PO-0001-01"],
+      "supersedes": null
+    }
+  ],
+  "follow_ups": ["rfc-0001-01-f1"],
+  "package": {
+    "body": {
+      "attachments": [
+        {
+          "attachment_id": "att_a59ee8f200f4355957eb2f36",
+          "form": "redacted_extract",
+          "generalised_fields": [],
+          "ref": {
+            "ref_id": "txn-0001-004",
+            "ref_type": "txn",
+            "revision": 1
+          },
+          "source_trust": "bank_observed"
+        }
+      ],
+      "audience": "bank_a",
+      "case_ref": "case_0e33bde06b098a3da6855582",
+      "claims": [
+        {
+          "evidence_refs": [
+            {
+              "ref_id": "txn-0001-004",
+              "ref_type": "txn",
+              "revision": 1
+            }
+          ],
+          "gap": "No payout record matches this credit by reference, or by amount and currency within 5 days before its booking.",
+          "question_id": "q.source_of_funds",
+          "rationale": "Not matched: no payout of 216000 pence GBP occurred within 5 days before the booking at 2026-10-28T06:30:00Z, and the credit carries no payout reference.",
+          "statement": "The source of credit txn-0001-004 of 216000 pence GBP is not established from the available records.",
+          "status": "unresolved"
+        },
+        {
+          "evidence_refs": [],
+          "gap": "The rules engine could not map this question to evidence it can check.",
+          "question_id": "q.breakdown",
+          "rationale": "The question does not match a check the rules engine runs: the source of a requested transaction, or documented sales, refunds or fees over the request's period.",
+          "statement": "The rules engine did not establish an answer to this question.",
+          "status": "unresolved"
+        }
+      ],
+      "expires_at": "2026-11-09T09:00:00Z",
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "What is the origin of the incoming payment of \u00a32,160.00 booked on 2026-10-28?"
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "Please show how this amount was calculated."
+        }
+      ],
+      "request_id": "rfc-0001-01",
+      "scope": {
+        "txn_ids": ["txn-0001-004"]
+      }
+    },
+    "body_sha256": "032f078034c0d0e09024d8e8e1fea40ba6d603d09af2af44fc44734bb9713af1",
+    "issued_at": "2026-11-02T09:00:00Z",
+    "package_id": "pkg_985a1a74e6072250ac3d0afd"
+  },
+  "receipt": {
+    "accepted": true,
+    "package_id": "pkg_985a1a74e6072250ac3d0afd",
+    "package_sha256": "9b8c322230d51b39b1f7b0fa8e21b4b480c5660bffdfa2df5af899ed30633f67",
+    "reasons": [],
+    "receipt_id": "rcp_8663894714433662ec4de576",
+    "received_at": "2026-11-04T14:00:00Z",
+    "recipient": "bank_a"
+  },
+  "sources": [
+    {
+      "attachment_id": "att_a59ee8f200f4355957eb2f36",
+      "attestation": "package_signer",
+      "claimed_trust": "bank_observed",
+      "form": "redacted_extract",
+      "lower_trust": true,
+      "note": "Bank transaction from the holder's bank feed, attested only by the package signer (lower trust).",
+      "ref": {
+        "ref_id": "txn-0001-004",
+        "ref_type": "txn",
+        "revision": 1
+      }
+    }
+  ],
+  "status": "verified"
+}

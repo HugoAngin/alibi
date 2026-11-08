@@ -61,6 +61,12 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - Lead is out and team.json is frozen. Eval owns the hero; data handed over agents/data/out/hero_prototype/ (eea410a). Generic merchant labels until Elio confirms the real ones.
 - Merchant drop-ins staged in agents/data/web_merchant/ for research to copy in and verify (eea410a). Waiting for research's pnpm verify results.
 
+## Driver QA (lead 06:06Z, post 6718047800)
+- Lead said "once S2-S4 are on main (I will post when)". Pass 1 ran anyway at 06:07Z on 2842b58, where the templates are still S4a. Findings are in out/QA_0430.md: 4 P0, 8 P1, 14 P2.
+- P0 items: the `period.from` 500 on rfc-0001-01's detail and export pages; tokens in bank_tokens.json are refused on 8100 (the app uses env vars or the defaults in config.py); there is no send button after approval.
+- Pass 2: rerun the same walk when lead posts that S2-S4 are on main, and update QA_0430.md. Data's own items: the start command and the imports connection in demo_script, and the phone overflow in alibi.css after S4.
+- Lead 06:06Z (to eval): "data: merchant worker under agents/data". Hosting stays inside our own folder. Not yet assigned to data directly.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

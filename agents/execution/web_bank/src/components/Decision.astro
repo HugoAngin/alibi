@@ -60,14 +60,29 @@ const scope = followupScope(pkg);
           </label>
         ))}
         <p>
-          Analyst: <strong>{form.analyst_name}</strong> <span class="small">(from your sign-in)</span>
+          Analyst: <strong>{form.analyst_name}</strong>{' '}
+          <span class="small">(from your sign-in)</span>
         </p>
         <label for="decision-reason">Reason (required)</label>
-        <textarea id="decision-reason" name="note" required minlength="3" rows="3"></textarea>
-        <p class="human">This records a human decision. It does not change the customer's account.</p>
+        <textarea
+          id="decision-reason"
+          name="note"
+          required
+          minlength="3"
+          maxlength="300"
+          rows="3"
+        ></textarea>
+        <p class="human">
+          This records a human decision. It does not change the customer's account.
+        </p>
         <button type="submit">Record decision</button>
       </fieldset>
-      {!canDecide && <p class="small">Not connected to the bank service: this is the built-in preview, so nothing can be recorded.</p>}
+      {!canDecide && (
+        <p class="small">
+          Not connected to the bank service: this is the built-in preview, so nothing can be
+          recorded.
+        </p>
+      )}
     </form>
   )}
 </section>
@@ -79,7 +94,7 @@ const scope = followupScope(pkg);
     <form method="post" action="/act/">
       <input type="hidden" name="kind" value="followup" />
       <input type="hidden" name="return_to" value={returnTo} />
-      <input type="hidden" name="parent_request_id" value={follow.parent_request_id} />
+      <input type="hidden" name="package_id" value={pkg.package.package_id} />
       <fieldset disabled={!canFollow}>
         <legend>Follow-up</legend>
         <p>
@@ -101,13 +116,23 @@ const scope = followupScope(pkg);
           .
         </p>
         <p class="small">
-          A follow-up cannot widen the scope. To ask about anything else, send a new request from the case.
+          A follow-up cannot widen the scope. To ask about anything else, send a new request from
+          the case.
         </p>
         <label for="followup-question">What else do you need?</label>
-        <textarea id="followup-question" name="question" required rows="3">{follow.question_prefill}</textarea>
+        <textarea
+          id="followup-question"
+          name="question"
+          required
+          rows="3"
+        >{follow.question_prefill}</textarea>
         <button type="submit">Send follow-up through the bank connection</button>
       </fieldset>
-      {!canFollow && <p class="small">Not connected to the bank service: this is the built-in preview, so nothing is sent.</p>}
+      {!canFollow && (
+        <p class="small">
+          Not connected to the bank service: this is the built-in preview, so nothing is sent.
+        </p>
+      )}
     </form>
   </section>
 )}

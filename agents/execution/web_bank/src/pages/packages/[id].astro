@@ -4,31 +4,37 @@
  * the backend as JSON with the bank's credential, or the built-in case 1 preview. Another bank's
  * package ID gets the backend's 404, shown as "not found" with no hint it exists (SP-18).
  */
-import { ALIBI_API_ORIGIN, BANK_A_TOKEN, BANK_SESSION_SECRET } from 'astro:env/server';
+import {
+  ALIBI_API_ORIGIN,
+  BANK_API_ORIGIN,
+  BANK_A_TOKEN,
+  BANK_SESSION_SECRET,
+} from 'astro:env/server';
 
-import { loadContext } from '@alibi/ui/api';
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
 import Decision from '@/components/Decision.astro';
 import Evidence from '@/components/Evidence.astro';
 import Verification from '@/components/Verification.astro';
-import { packageFixture } from '@/data/analyst';
+import { analyst as demoAnalyst, bank } from '@/data/cases';
+import { bankTarget } from '@/lib/bankApi';
+import { loadPackage } from '@/lib/load';
 import { SESSION_COOKIE, verifySession } from '@/lib/session';
-import { ROUTES, backendHeaders, isPackage, takeFlash } from '@/lib/screens';
+import { RECIPIENT, backendHeaders, takeFlash } from '@/lib/screens';
 import { showsEvidence } from '@/lib/view';
 
 export const prerender = false;
 
-const analyst = await verifySession(BANK_SESSION_SECRET, Astro.cookies.get(SESSION_COOKIE)?.value, Date.now());
-if (ALIBI_API_ORIGIN && !analyst) return Astro.redirect('/sign-in/', 303);
+const analyst = await verifySession(
+  BANK_SESSION_SECRET,
+  Astro.cookies.get(SESSION_COOKIE)?.value,
+  Date.now(),
+);
+const target = bankTarget(BANK_API_ORIGIN, ALIBI_API_ORIGIN);
+if (target.origin && !analyst) return Astro.redirect('/sign-in/', 303);
 
 const id = Astro.params.id ?? '';
-const loaded = await loadContext({
-  origin: ALIBI_API_ORIGIN,
-  path: ROUTES.package(id),
-  isShape: isPackage,
-  fixture: () => packageFixture(id),
-  headers: backendHeaders(BANK_A_TOKEN),
-});
+const who = { id: RECIPIENT, name: bank.name, analyst_name: analyst ?? demoAnalyst.name };
+const loaded = await loadPackage(id, target, who, backendHeaders(BANK_A_TOKEN));
 const flash = takeFlash(Astro.cookies);
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 if (loaded.source === 'missing') Astro.response.status = 404;
@@ -82,7 +88,8 @@ const returnTo = `/packages/${encodeURIComponent(id)}/`;
             (loaded.data.package.txn_ids ?? []).map((t) => <code>{t}</code>)
           ) : loaded.data.package.period ? (
             <>
-              <code>{loaded.data.package.period.from}</code> to <code>{loaded.data.package.period.to}</code>
+              <code>{loaded.data.package.period.from}</code> to{' '}
+              <code>{loaded.data.package.period.to}</code>
             </>
           ) : (
             '—'

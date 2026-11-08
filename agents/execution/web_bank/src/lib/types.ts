@@ -22,13 +22,7 @@ export interface Recipient {
 }
 
 export type AuthStatus =
-  | 'valid'
-  | 'invalid'
-  | 'expired'
-  | 'wrong_audience'
-  | 'replayed'
-  | 'preview'
-  | (string & {});
+  'valid' | 'invalid' | 'expired' | 'wrong_audience' | 'replayed' | 'preview' | (string & {});
 
 export type ClaimStatus = 'supported' | 'contradicted' | 'unresolved';
 export type Trust = 'issuer_verified' | 'bank_observed' | 'self_supplied';
@@ -41,7 +35,8 @@ export interface InboxPackage {
   expires_at: string;
   subject_ref_masked: string;
   authentication: AuthStatus;
-  claim_counts: { supported: number; contradicted: number; unresolved: number };
+  /** Absent when the backend's inbox does not carry per-package claims; open the package instead. */
+  claim_counts?: { supported: number; contradicted: number; unresolved: number };
   disposition: Decision | null;
   href: string;
 }

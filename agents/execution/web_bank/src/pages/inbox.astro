@@ -4,27 +4,33 @@
  * with the bank's credential, or shows the built-in case 1 preview. Only packages bound to this
  * bank are listed; the backend enforces that, not this page (SP-17).
  */
-import { ALIBI_API_ORIGIN, BANK_A_TOKEN, BANK_SESSION_SECRET } from 'astro:env/server';
+import {
+  ALIBI_API_ORIGIN,
+  BANK_API_ORIGIN,
+  BANK_A_TOKEN,
+  BANK_SESSION_SECRET,
+} from 'astro:env/server';
 
-import { loadContext } from '@alibi/ui/api';
 import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
-import { inboxFixture } from '@/data/analyst';
+import { analyst as demoAnalyst, bank } from '@/data/cases';
+import { bankTarget } from '@/lib/bankApi';
+import { loadInbox } from '@/lib/load';
 import { SESSION_COOKIE, verifySession } from '@/lib/session';
-import { ROUTES, backendHeaders, isInbox } from '@/lib/screens';
+import { RECIPIENT, backendHeaders } from '@/lib/screens';
 import { CLAIM_LABEL, authVerdict, showsClaimCounts } from '@/lib/view';
 
 export const prerender = false;
 
-const analyst = await verifySession(BANK_SESSION_SECRET, Astro.cookies.get(SESSION_COOKIE)?.value, Date.now());
-if (ALIBI_API_ORIGIN && !analyst) return Astro.redirect('/sign-in/', 303);
+const analyst = await verifySession(
+  BANK_SESSION_SECRET,
+  Astro.cookies.get(SESSION_COOKIE)?.value,
+  Date.now(),
+);
+const target = bankTarget(BANK_API_ORIGIN, ALIBI_API_ORIGIN);
+if (target.origin && !analyst) return Astro.redirect('/sign-in/', 303);
 
-const loaded = await loadContext({
-  origin: ALIBI_API_ORIGIN,
-  path: ROUTES.inbox(),
-  isShape: isInbox,
-  fixture: () => inboxFixture(),
-  headers: backendHeaders(BANK_A_TOKEN),
-});
+const who = { id: RECIPIENT, name: bank.name, analyst_name: analyst ?? demoAnalyst.name };
+const loaded = await loadInbox(target, who, backendHeaders(BANK_A_TOKEN));
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
@@ -40,8 +46,8 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
         </p>
       )}
       <p class="lede">
-        Packages bound to <code>{loaded.data.recipient.id}</code> only. Other banks' packages are not listed and
-        cannot be opened by ID.
+        Packages bound to <code>{loaded.data.recipient.id}</code> only. Other banks' packages are
+        not listed and cannot be opened by ID.
       </p>
 
       <section aria-labelledby="pkg-title">
@@ -76,10 +82,12 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
                       <code>{p.received_at}</code>
                     </td>
                     <td>
-                      <span class={`auth auth--${authVerdict(p.authentication)}`}>{p.authentication}</span>
+                      <span class={`auth auth--${authVerdict(p.authentication)}`}>
+                        {p.authentication}
+                      </span>
                     </td>
                     <td>
-                      {showsClaimCounts(p) ? (
+                      {showsClaimCounts(p) && p.claim_counts ? (
                         <span class="counts">
                           <span>
                             {CLAIM_LABEL.supported} {p.claim_counts.supported}
@@ -91,6 +99,8 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
                             {CLAIM_LABEL.unresolved} {p.claim_counts.unresolved}
                           </span>
                         </span>
+                      ) : showsClaimCounts(p) ? (
+                        <a href={`/packages/${encodeURIComponent(p.package_id)}/`}>open package</a>
                       ) : (
                         <span title="Rejected packages are not read as evidence">—</span>
                       )}
@@ -103,8 +113,8 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
           </div>
         )}
         <p class="small">
-          Authentication says the package is intact and signed by Alibi for this bank. It says nothing about whether
-          a claim inside it is true.
+          Authentication says the package is intact and signed by Alibi for this bank. It says
+          nothing about whether a claim inside it is true.
         </p>
       </section>
 
@@ -121,7 +131,8 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
                 </>
               )}
               {' · '}
-              {r.status.replace('_', ' ')} · {r.question_count} question{r.question_count === 1 ? '' : 's'}
+              {r.status.replace('_', ' ')} · {r.question_count} question
+              {r.question_count === 1 ? '' : 's'}
             </li>
           ))}
         </ul>

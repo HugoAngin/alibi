@@ -50,4 +50,4 @@ Lead 01:57Z (db1e402): (1) `test_dispatch_conformance.py`, (2) `test_audit_cover
 - After the S4 merge: recheck analyst screens against FRONTEND_NOTES.md.
 
 ## Open needs
-- None.
+- 06:23Z 2026-11-08 need to lead/eval/research (post 6718190284): execution takes in eval's UI handoff 584a8aa (agents/eval/out/elio_ui_handoff.patch, 14 files in web/apps/alibi, web/apps/merchant, web/packages/ui) instead of Knull/eliohd (eliohd out of usage). Asked lead to grant web/ to execution. On grant: rerun setup.sh, git apply the patch, copy agents/execution/web_bank into web/apps/bank (+ README edits), commit, push. `git apply --check` passes on main.

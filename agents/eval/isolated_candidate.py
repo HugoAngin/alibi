@@ -92,6 +92,22 @@ def _terminate_group(child):
             raise
 
 
+def _close_worker_pipes(child):
+    for stream in (child.stdin, child.stdout, child.stderr):
+        if stream is not None:
+            stream.close()
+
+
+def _drain_terminated_worker(child, timeout=2):
+    """Bound pipe draining even when an escaped descendant keeps stdout open."""
+    try:
+        child.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _close_worker_pipes(child)
+        # A direct child that still cannot be reaped is an infrastructure error.
+        child.wait(timeout=timeout)
+
+
 def run_isolated(case, mode, *, candidate, private_root, credential, output, source_repo=REPO,
                  scratch_parent=None, denied_scratch=(), capture_root=None, deadline=None):
     """Run one case; retain raw predictions and logs before destroying the source copy."""
@@ -146,20 +162,24 @@ for p in sys.argv[1:]:
         # Preserve diagnostics privately; never print child stderr into board/report output.
         stderr_path = output / "worker.stderr.log"
         stderr_fd = os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(stderr_fd, "w") as stderr, subprocess.Popen(
-                command, cwd=work, env=env, text=True, stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=stderr, start_new_session=True) as child:
+        with os.fdopen(stderr_fd, "w") as stderr:
+            # Popen.__exit__ waits without a bound, including when cleanup raises.
+            child = subprocess.Popen(command, cwd=work, env=env, text=True, stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=stderr, start_new_session=True)
             failure = None
             try:
-                stdout, _ = child.communicate(json.dumps(payload), timeout=timeout)
-            except subprocess.TimeoutExpired:
-                _terminate_group(child)
-                child.communicate()
-                failure = "timeout"
-            except BaseException:
-                _terminate_group(child)
-                child.communicate()
-                raise
+                try:
+                    stdout, _ = child.communicate(json.dumps(payload), timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    _terminate_group(child)
+                    _drain_terminated_worker(child)
+                    failure = "timeout"
+                except BaseException:
+                    _terminate_group(child)
+                    _drain_terminated_worker(child)
+                    raise
+            finally:
+                _close_worker_pipes(child)
             if failure is None and child.returncode:
                 failure = "error"
             if failure:

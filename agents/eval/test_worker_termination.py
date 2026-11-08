@@ -125,3 +125,45 @@ def test_permission_failure_is_ignored_only_for_confirmed_exited_child(monkeypat
     isolated._terminate_group(child)
     assert attempts == [(child.pid, signal.SIGKILL)]
     assert child.polls >= 2
+
+
+def test_stdout_held_by_detached_descendant_has_bounded_drain():
+    # A new-session descendant survives killpg and keeps the inherited stdout open.
+    descendant = "import time; time.sleep(60)"
+    leader = ("import subprocess,sys,time; "
+              f"child=subprocess.Popen([sys.executable,'-c',{descendant!r}],start_new_session=True); "
+              "print(child.pid,flush=True); time.sleep(60)")
+    child = subprocess.Popen([sys.executable, "-c", leader], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, text=True, start_new_session=True)
+    descendant_pid = None
+    try:
+        descendant_pid = int(child.stdout.readline())
+        isolated._terminate_group(child)
+        started = time.monotonic()
+        isolated._drain_terminated_worker(child, timeout=.15)
+        assert time.monotonic() - started < 1
+        assert child.returncode == -signal.SIGKILL
+        assert child.stdout.closed
+        # Verify that timeout was caused by a surviving process, not an empty pipe.
+        os.kill(descendant_pid, 0)
+    finally:
+        if descendant_pid is not None:
+            os.killpg(descendant_pid, signal.SIGKILL)
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+        child.wait(timeout=5)
+        child.stdout.close()
+
+
+def test_bounded_drain_does_not_hide_an_unreaped_direct_child():
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                             stdout=subprocess.PIPE, start_new_session=True)
+    try:
+        started = time.monotonic()
+        with pytest.raises(subprocess.TimeoutExpired):
+            isolated._drain_terminated_worker(child, timeout=.1)
+        assert time.monotonic() - started < 1
+        assert child.stdout.closed and child.poll() is None
+    finally:
+        os.killpg(child.pid, signal.SIGKILL)
+        child.wait(timeout=5)

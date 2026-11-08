@@ -1,0 +1,161 @@
+---
+/**
+ * Bank A's inbox of received Alibi packages. Reads `/bank/bank_a/inbox` from the backend as JSON
+ * with the bank's credential, or shows the built-in case 1 preview. Only packages bound to this
+ * bank are listed; the backend enforces that, not this page (SP-17).
+ */
+import { ALIBI_API_ORIGIN, BANK_A_TOKEN } from 'astro:env/server';
+
+import { loadContext } from '@alibi/ui/api';
+import ConsoleLayout from '@/layouts/ConsoleLayout.astro';
+import { inboxFixture } from '@/data/analyst';
+import { ROUTES, backendHeaders, isInbox } from '@/lib/screens';
+import { CLAIM_LABEL, authVerdict, showsClaimCounts } from '@/lib/view';
+
+export const prerender = false;
+
+const loaded = await loadContext({
+  origin: ALIBI_API_ORIGIN,
+  path: ROUTES.inbox(),
+  isShape: isInbox,
+  fixture: () => inboxFixture(),
+  headers: backendHeaders(BANK_A_TOKEN),
+});
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<ConsoleLayout title="Alibi inbox">
+  <h1>Alibi packages received</h1>
+  {loaded.source === 'missing' ? (
+    <p>{loaded.reason}</p>
+  ) : (
+    <>
+      {loaded.source === 'fixture' && (
+        <p class="note" role="note">
+          Built-in case 1 preview, not live data. {loaded.reason}
+        </p>
+      )}
+      <p class="lede">
+        Packages bound to <code>{loaded.data.recipient.id}</code> only. Other banks' packages are not listed and
+        cannot be opened by ID.
+      </p>
+
+      <section aria-labelledby="pkg-title">
+        <h2 id="pkg-title">Packages</h2>
+        {loaded.data.packages.length === 0 ? (
+          <p>No packages have been received.</p>
+        ) : (
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Package</th>
+                  <th scope="col">Request</th>
+                  <th scope="col">Received</th>
+                  <th scope="col">Authentication</th>
+                  <th scope="col">Claims</th>
+                  <th scope="col">Decision</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loaded.data.packages.map((p) => (
+                  <tr>
+                    <td>
+                      <a href={`/packages/${encodeURIComponent(p.package_id)}/`}>
+                        <code>{p.package_id}</code>
+                      </a>
+                    </td>
+                    <td>
+                      <code>{p.request_id}</code>
+                    </td>
+                    <td>
+                      <code>{p.received_at}</code>
+                    </td>
+                    <td>
+                      <span class={`auth auth--${authVerdict(p.authentication)}`}>{p.authentication}</span>
+                    </td>
+                    <td>
+                      {showsClaimCounts(p) ? (
+                        <span class="counts">
+                          <span>
+                            {CLAIM_LABEL.supported} {p.claim_counts.supported}
+                          </span>
+                          <span>
+                            {CLAIM_LABEL.contradicted} {p.claim_counts.contradicted}
+                          </span>
+                          <span>
+                            {CLAIM_LABEL.unresolved} {p.claim_counts.unresolved}
+                          </span>
+                        </span>
+                      ) : (
+                        <span title="Rejected packages are not read as evidence">—</span>
+                      )}
+                    </td>
+                    <td>{p.disposition ?? 'none'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p class="small">
+          Authentication says the package is intact and signed by Alibi for this bank. It says nothing about whether
+          a claim inside it is true.
+        </p>
+      </section>
+
+      <section aria-labelledby="sent-title">
+        <h2 id="sent-title">Requests sent</h2>
+        <ul class="plain">
+          {loaded.data.requests_sent.map((r) => (
+            <li>
+              <code>{r.request_id}</code>
+              {r.parent_request_id && (
+                <>
+                  {' '}
+                  follow-up of <code>{r.parent_request_id}</code>
+                </>
+              )}
+              {' · '}
+              {r.status.replace('_', ' ')} · {r.question_count} question{r.question_count === 1 ? '' : 's'}
+            </li>
+          ))}
+        </ul>
+      </section>
+    </>
+  )}
+</ConsoleLayout>
+
+<style>
+  h1 {
+    font-size: var(--t-lg);
+  }
+  .note {
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px dashed var(--c-line);
+    background: var(--c-surface);
+  }
+  .table-wrap {
+    overflow-x: auto;
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+  }
+  .counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+  .auth {
+    font-weight: 600;
+  }
+  .auth--rejected {
+    text-decoration: underline wavy;
+  }
+  .small {
+    font-size: var(--t-sm);
+  }
+  .plain {
+    list-style: none;
+    padding: 0;
+  }
+</style>

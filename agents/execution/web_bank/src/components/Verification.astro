@@ -1,0 +1,193 @@
+---
+/**
+ * The three separate checks (WEB_BANK_NOTES.md items 1-3). Package authentication, source trust
+ * and claim status look different on purpose, and passing one never implies the others. A rejected
+ * package shows only the authentication panel and the verifier's reasons, verbatim.
+ */
+import type { AnalystPackage } from '@/lib/types';
+import { CLAIM_LABEL, TRUST_LABEL, attestationNote, authVerdict, rejectionReasons } from '@/lib/view';
+
+interface Props {
+  pkg: AnalystPackage;
+}
+
+const { pkg } = Astro.props;
+const auth = pkg.authentication;
+const verdict = authVerdict(auth.status);
+---
+
+<section aria-labelledby="checks-title">
+  <h2 id="checks-title">Verification</h2>
+  <p class="independent">
+    These three are independent: a valid package can carry low-trust sources and unresolved claims.
+  </p>
+
+  <div class="panels">
+    <section class="panel panel--auth" aria-labelledby="auth-title">
+      <h3 id="auth-title">Package authentication</h3>
+      <p class="question">Is this the package Alibi signed for us?</p>
+      <p class={`verdict verdict--${verdict}`}>
+        {verdict === 'verified' && '■ Signature valid, addressed to us, not expired'}
+        {verdict === 'duplicate' && '■ Duplicate receipt: showing the original result'}
+        {verdict === 'preview' && '□ Not verified: built-in preview, nothing was signed or sent'}
+        {verdict === 'rejected' && `✕ Rejected: ${auth.status}`}
+      </p>
+      <dl>
+        <dt>Signer key</dt>
+        <dd>
+          <code>{auth.signer_key_id}</code>
+        </dd>
+        <dt>Digest</dt>
+        <dd>
+          <code class="digest">{auth.package_digest}</code>
+        </dd>
+        <dt>Received</dt>
+        <dd>
+          <code>{auth.received_at}</code>
+        </dd>
+      </dl>
+      {auth.checks.length > 0 && (
+        <ul class="checks">
+          {auth.checks.map((c) => (
+            <li>
+              <strong>{c.result === 'pass' ? 'pass' : 'FAIL'}</strong> {c.name}: {c.detail}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p class="small">{auth.note}</p>
+    </section>
+
+    {verdict === 'rejected' ? (
+      <section class="refusal" role="alert" aria-labelledby="rejected-title">
+        <h3 id="rejected-title">Package rejected</h3>
+        <p>Its contents are not shown as evidence. Reasons from the verifier:</p>
+        <ul>
+          {rejectionReasons(pkg).map((r) => (
+            <li>
+              <code>{r}</code>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ) : (
+      <>
+        <section class="panel panel--trust" aria-labelledby="trust-title">
+          <h3 id="trust-title">Source trust</h3>
+          <p class="question">Who vouches for each attachment?</p>
+          <ul class="items">
+            {pkg.source_trust.map((s) => (
+              <li>
+                <span class="badge">{TRUST_LABEL[s.trust] ?? s.trust}</span>
+                <code>
+                  {s.record_id} r{s.revision}
+                </code>
+                <span class="small">{s.issuer}</span>
+                {attestationNote(s) && <span class="attest">{attestationNote(s)}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section class="panel panel--claims" aria-labelledby="claims-title">
+          <h3 id="claims-title">Claim status</h3>
+          <p class="question">Does the evidence support each answer?</p>
+          <ul class="items">
+            {pkg.claim_status.map((c) => (
+              <li>
+                <span class="badge">{CLAIM_LABEL[c.status] ?? c.status}</span>
+                <code>{c.question_id}</code>
+                <span>{c.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </>
+    )}
+  </div>
+</section>
+
+<style>
+  .independent {
+    font-weight: 600;
+  }
+  .panels {
+    display: grid;
+    gap: var(--space-md);
+  }
+  @media (min-width: 900px) {
+    .panels {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .panel {
+    background: var(--c-surface);
+    padding: var(--space-sm);
+  }
+  /* Different in grayscale too: solid top rule, left rule, double border. */
+  .panel--auth {
+    border: 1px solid var(--c-line);
+    border-top: 4px solid var(--c-ink);
+  }
+  .panel--trust {
+    border: 1px solid var(--c-line);
+    border-left: 6px solid var(--c-ink-soft);
+  }
+  .panel--claims {
+    border: 4px double var(--c-ink-soft);
+  }
+  h3 {
+    font-size: var(--t-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0;
+  }
+  .question {
+    margin-top: var(--space-3xs);
+    font-style: italic;
+  }
+  .verdict {
+    font-weight: 700;
+  }
+  .verdict--rejected {
+    text-decoration: underline wavy;
+  }
+  .items {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: var(--space-xs);
+  }
+  .items li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+    align-items: baseline;
+  }
+  .badge {
+    border: 1px solid var(--c-ink-soft);
+    border-radius: var(--radius-sm);
+    padding: 0 var(--space-2xs);
+    font-size: var(--t-sm);
+  }
+  .attest {
+    font-size: var(--t-sm);
+    border: 1px dashed var(--c-ink-soft);
+    padding: 0 var(--space-2xs);
+  }
+  .refusal {
+    border: 2px solid var(--c-bad);
+    background: var(--c-surface);
+    padding: var(--space-sm);
+  }
+  .digest {
+    word-break: break-all;
+  }
+  .small {
+    font-size: var(--t-sm);
+  }
+  .checks {
+    font-size: var(--t-sm);
+    padding-left: var(--space-md);
+  }
+</style>

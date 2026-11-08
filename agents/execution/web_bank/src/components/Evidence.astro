@@ -1,0 +1,238 @@
+---
+/**
+ * Evidence by question, with settlement timing (released to balance is not settled to bank),
+ * the reconciliation as recomputed by the bank's verifier, contradictions and generic gaps
+ * (WEB_BANK_NOTES.md items 10-13). Only rendered for packages whose authentication passed.
+ */
+import type { AnalystPackage } from '@/lib/types';
+import { CLAIM_LABEL, TRUST_LABEL, attestationNote, formatMoney } from '@/lib/view';
+
+interface Props {
+  pkg: AnalystPackage;
+}
+
+const { pkg } = Astro.props;
+const recon = pkg.reconciliation;
+---
+
+<section aria-labelledby="evidence-title">
+  <h2 id="evidence-title">Evidence by question</h2>
+  {pkg.evidence_by_question.map((q) => (
+    <article class="card" id={`evidence-${q.question_id}`}>
+      <header class="card-head">
+        <h3>
+          <code>{q.question_id}</code>
+        </h3>
+        <span class="badge">{CLAIM_LABEL[q.claim.status] ?? q.claim.status}</span>
+      </header>
+      <p>{q.question}</p>
+      <p class="small">Rationale: {q.claim.rationale}</p>
+
+      {q.evidence.length > 0 ? (
+        <ul class="items">
+          {q.evidence.map((e) => (
+            <li>
+              <span class="badge">{TRUST_LABEL[e.trust] ?? e.trust}</span>
+              <code>
+                {e.record_id} r{e.revision}
+              </code>
+              <span class="small">{e.summary}</span>
+              {attestationNote(e) && <span class="attest">{attestationNote(e)}</span>}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="small">No evidence attached.</p>
+      )}
+
+      {q.timing && (
+        <dl class="timing" aria-label="Settlement timing">
+          <dt>Payout reference</dt>
+          <dd>
+            <code>{q.timing.payout_ref}</code>
+          </dd>
+          <dt>Released to seller balance</dt>
+          <dd>
+            <code>{q.timing.released_to_balance_at}</code> <span class="small">(not a bank settlement)</span>
+          </dd>
+          <dt>Settled to bank</dt>
+          <dd>
+            <code>{q.timing.bank_settled_at}</code>
+          </dd>
+          <dt>Credit booked</dt>
+          <dd>
+            <code>{q.timing.credit_booked_at}</code>
+          </dd>
+          <dt>Settled before booking</dt>
+          <dd>
+            <strong>{q.timing.settled_before_booking ? '✓ yes' : '✕ no'}</strong>
+          </dd>
+        </dl>
+      )}
+
+      {q.calculation && (
+        <p class="small">
+          Calculation <code>{q.calculation.expression}</code> = {formatMoney(q.calculation.result)}, recomputed by{' '}
+          {q.calculation.computed_by}: {q.calculation.matches ? '✓ matches' : '✕ does not match'}
+        </p>
+      )}
+      {q.gap && <p class="small">Gap: {q.gap}</p>}
+    </article>
+  ))}
+</section>
+
+<section class="card" aria-labelledby="recon-title">
+  <h2 id="recon-title">Reconciliation</h2>
+  {recon.lines.length === 0 ? (
+    <p>{recon.title}</p>
+  ) : (
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">
+              <span class="visually-hidden">Sign</span>
+            </th>
+            <th scope="col">Line</th>
+            <th scope="col">Sources</th>
+            <th scope="col" class="num">
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {recon.lines.map((l) => (
+            <tr>
+              <td>{l.sign}</td>
+              <td>{l.label}</td>
+              <td class="small">{l.source_ids.length} records</td>
+              <td class="num">{formatMoney(l.amount)}</td>
+            </tr>
+          ))}
+          <tr class="total">
+            <td>=</td>
+            <td>Result</td>
+            <td />
+            <td class="num">{formatMoney(recon.result)}</td>
+          </tr>
+          {recon.compared_to && (
+            <tr>
+              <td />
+              <td>Compared to {recon.compared_to.label}</td>
+              <td />
+              <td class="num">{formatMoney(recon.compared_to.amount)}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )}
+  {recon.matches !== null && (
+    <p>
+      <strong>{recon.matches ? '✓ Reconciles' : '✕ Does not reconcile'}</strong>, recomputed by the bank's{' '}
+      {recon.computed_by} from the cited amounts.
+    </p>
+  )}
+</section>
+
+<section class="card" aria-labelledby="contra-title">
+  <h2 id="contra-title">Contradictions</h2>
+  {pkg.contradictions.length === 0 ? (
+    <p class="small">No contradictions recorded.</p>
+  ) : (
+    <ul>
+      {pkg.contradictions.map((c) => (
+        <li>
+          <code>{c.question_id}</code>: {c.description}
+        </li>
+      ))}
+    </ul>
+  )}
+</section>
+
+<section class="card" aria-labelledby="gaps-title">
+  <h2 id="gaps-title">Gaps</h2>
+  {pkg.gaps.length === 0 ? (
+    <p class="small">No gaps recorded.</p>
+  ) : (
+    <ul>
+      {pkg.gaps.map((g) => (
+        <li>
+          <code>{g.question_id}</code>: {g.description} <span class="small">({g.reason_code.replaceAll('_', ' ')})</span>
+        </li>
+      ))}
+    </ul>
+  )}
+</section>
+
+<style>
+  .card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    padding: var(--space-sm);
+    margin-block: var(--space-sm);
+  }
+  .card-head {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  h3 {
+    margin: 0;
+    font-size: var(--t-base);
+  }
+  .items {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2xs);
+  }
+  .items li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+    align-items: baseline;
+  }
+  .badge {
+    border: 1px solid var(--c-ink-soft);
+    border-radius: var(--radius-sm);
+    padding: 0 var(--space-2xs);
+    font-size: var(--t-sm);
+  }
+  .attest {
+    font-size: var(--t-sm);
+    border: 1px dashed var(--c-ink-soft);
+    padding: 0 var(--space-2xs);
+  }
+  .timing {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-3xs) var(--space-sm);
+    border-left: 3px solid var(--c-ink-soft);
+    padding-left: var(--space-sm);
+  }
+  .timing dd {
+    margin: 0;
+  }
+  .table-wrap {
+    overflow-x: auto;
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .total {
+    font-weight: 700;
+  }
+  .small {
+    font-size: var(--t-sm);
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+</style>

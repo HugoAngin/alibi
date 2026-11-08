@@ -1,0 +1,747 @@
+{
+  "authentication": {
+    "checks": [],
+    "note": "Static preview. No package has been signed, sent or verified.",
+    "package_digest": "\u2014",
+    "received_at": "\u2014",
+    "signer_key_id": "\u2014",
+    "status": "preview",
+    "verified_at": "\u2014"
+  },
+  "claim_status": [
+    {
+      "question_id": "q.source_of_funds",
+      "status": "supported",
+      "summary": "Payout PO-0001-01 settled before the bank booked the credit."
+    },
+    {
+      "question_id": "q.breakdown",
+      "status": "supported",
+      "summary": "The cited sales, refunds and fees reconcile to the booked credit."
+    }
+  ],
+  "contradictions": [],
+  "disposition_form": {
+    "action": "/preview/disabled",
+    "analyst_name": "J. Okafor",
+    "current": null,
+    "options": [
+      {
+        "label": "Clear",
+        "value": "clear"
+      },
+      {
+        "label": "Escalate",
+        "value": "escalate"
+      },
+      {
+        "label": "Request more",
+        "value": "request_more"
+      }
+    ]
+  },
+  "evidence_by_question": [
+    {
+      "calculation": null,
+      "claim": {
+        "rationale": "Payout PO-0001-01 settled before the bank booked the credit.",
+        "status": "supported"
+      },
+      "evidence": [
+        {
+          "attachment_id": "att-txn-0001-004",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-txn-0001-004",
+          "issuer": "Mock bank",
+          "record_id": "txn-0001-004",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "Bank credit \u00b7 216000 minor units GBP",
+          "trust": "bank_observed"
+        },
+        {
+          "attachment_id": "att-rec-0001-021",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-021",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-021",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "payout \u00b7 216000 minor units GBP",
+          "trust": "issuer_verified"
+        }
+      ],
+      "gap": null,
+      "question": "What is the origin of the incoming payment of \u00a32,160.00 booked on 2026-10-28?",
+      "question_id": "q.source_of_funds",
+      "timing": {
+        "bank_settled_at": "2026-10-27T16:00:00Z",
+        "credit_booked_at": "2026-10-28T06:30:00Z",
+        "payout_ref": "PO-0001-01",
+        "released_to_balance_at": "2026-10-26T08:00:00Z",
+        "settled_before_booking": true
+      }
+    },
+    {
+      "calculation": {
+        "computed_by": "fixture arithmetic",
+        "expression": "240000 - 18000 - 6000 = 216000",
+        "matches": true,
+        "result": {
+          "currency": "GBP",
+          "minor": 216000
+        }
+      },
+      "claim": {
+        "rationale": "The cited sales, refunds and fees reconcile to the booked credit.",
+        "status": "supported"
+      },
+      "evidence": [
+        {
+          "attachment_id": "att-txn-0001-004",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-txn-0001-004",
+          "issuer": "Mock bank",
+          "record_id": "txn-0001-004",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "Bank credit \u00b7 216000 minor units GBP",
+          "trust": "bank_observed"
+        },
+        {
+          "attachment_id": "att-rec-0001-021",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-021",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-021",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "payout \u00b7 216000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-001",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-001",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-001",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 30000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-003",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-003",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-003",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 25000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-006",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-006",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-006",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 40000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-008",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-008",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-008",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 35000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-010",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-010",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-010",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 20000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-013",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-013",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-013",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 45000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-015",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-015",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-015",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 15000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-017",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-017",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-017",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "sale \u00b7 30000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-005",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-005",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-005",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "refund \u00b7 10000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-012",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-012",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-012",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "refund \u00b7 8000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-002",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-002",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-002",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 750 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-004",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-004",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-004",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 625 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-007",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-007",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-007",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 1000 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-009",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-009",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-009",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 875 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-011",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-011",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-011",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 500 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-014",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-014",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-014",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 1125 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-016",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-016",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-016",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 375 minor units GBP",
+          "trust": "issuer_verified"
+        },
+        {
+          "attachment_id": "att-rec-0001-018",
+          "attestation": "none",
+          "detail": "Static source preview. The live verifier checks the delivered package.",
+          "href": "#trust-att-rec-0001-018",
+          "issuer": "mock-marketplace",
+          "record_id": "rec-0001-018",
+          "redacted": false,
+          "revision": 1,
+          "signature_check": "not_checked",
+          "summary": "fee \u00b7 750 minor units GBP",
+          "trust": "issuer_verified"
+        }
+      ],
+      "gap": null,
+      "question": "Please show how this amount was calculated.",
+      "question_id": "q.breakdown",
+      "timing": {
+        "bank_settled_at": "2026-10-27T16:00:00Z",
+        "credit_booked_at": "2026-10-28T06:30:00Z",
+        "payout_ref": "PO-0001-01",
+        "released_to_balance_at": "2026-10-26T08:00:00Z",
+        "settled_before_booking": true
+      }
+    }
+  ],
+  "followup_form": {
+    "action": "/preview/disabled",
+    "consent_note": "A follow-up needs the holder's separate approval.",
+    "parent_request_id": "rfc-0001-01",
+    "period": {
+      "from": "",
+      "to": ""
+    },
+    "question_prefill": "",
+    "subject_ref_masked": "***001"
+  },
+  "gaps": [],
+  "package": {
+    "expires_at": "\u2014",
+    "issued_at": "\u2014",
+    "package_id": "preview-rfc-0001-01",
+    "period": {
+      "from": "2026-10-28T00:00:00Z",
+      "to": "2026-10-29T00:00:00Z"
+    },
+    "period_display_only": true,
+    "recipient": "Bank A",
+    "request_id": "rfc-0001-01",
+    "subject_ref_masked": "***001",
+    "txn_ids": [
+      "txn-0001-004"
+    ]
+  },
+  "recipient": {
+    "analyst_name": "J. Okafor",
+    "id": "bank_a",
+    "name": "Bank A"
+  },
+  "reconciliation": {
+    "compared_to": {
+      "amount": {
+        "currency": "GBP",
+        "minor": 216000
+      },
+      "label": "Bank credit"
+    },
+    "computed_at": "2026-11-02T09:00:00Z",
+    "computed_by": "fixture arithmetic",
+    "difference": {
+      "currency": "GBP",
+      "minor": 0
+    },
+    "expression": "240000 - 18000 - 6000 = 216000",
+    "lines": [
+      {
+        "amount": {
+          "currency": "GBP",
+          "minor": 240000
+        },
+        "kind": "sale",
+        "label": "Sales",
+        "sign": "+",
+        "source_ids": [
+          "rec-0001-001 r1",
+          "rec-0001-003 r1",
+          "rec-0001-006 r1",
+          "rec-0001-008 r1",
+          "rec-0001-010 r1",
+          "rec-0001-013 r1",
+          "rec-0001-015 r1",
+          "rec-0001-017 r1"
+        ]
+      },
+      {
+        "amount": {
+          "currency": "GBP",
+          "minor": 18000
+        },
+        "kind": "refund",
+        "label": "Refunds",
+        "sign": "-",
+        "source_ids": [
+          "rec-0001-005 r1",
+          "rec-0001-012 r1"
+        ]
+      },
+      {
+        "amount": {
+          "currency": "GBP",
+          "minor": 6000
+        },
+        "kind": "fee",
+        "label": "Fees",
+        "sign": "-",
+        "source_ids": [
+          "rec-0001-002 r1",
+          "rec-0001-004 r1",
+          "rec-0001-007 r1",
+          "rec-0001-009 r1",
+          "rec-0001-011 r1",
+          "rec-0001-014 r1",
+          "rec-0001-016 r1",
+          "rec-0001-018 r1"
+        ]
+      }
+    ],
+    "matches": true,
+    "result": {
+      "currency": "GBP",
+      "minor": 216000
+    },
+    "title": "Reconciliation"
+  },
+  "source_trust": [
+    {
+      "attachment_id": "att-txn-0001-004",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-txn-0001-004",
+      "issuer": "Mock bank",
+      "record_id": "txn-0001-004",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "Bank credit \u00b7 216000 minor units GBP",
+      "trust": "bank_observed"
+    },
+    {
+      "attachment_id": "att-rec-0001-021",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-021",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-021",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "payout \u00b7 216000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-001",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-001",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-001",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 30000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-003",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-003",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-003",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 25000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-006",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-006",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-006",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 40000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-008",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-008",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-008",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 35000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-010",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-010",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-010",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 20000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-013",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-013",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-013",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 45000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-015",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-015",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-015",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 15000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-017",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-017",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-017",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "sale \u00b7 30000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-005",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-005",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-005",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "refund \u00b7 10000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-012",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-012",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-012",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "refund \u00b7 8000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-002",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-002",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-002",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 750 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-004",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-004",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-004",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 625 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-007",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-007",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-007",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 1000 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-009",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-009",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-009",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 875 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-011",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-011",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-011",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 500 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-014",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-014",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-014",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 1125 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-016",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-016",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-016",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 375 minor units GBP",
+      "trust": "issuer_verified"
+    },
+    {
+      "attachment_id": "att-rec-0001-018",
+      "attestation": "none",
+      "detail": "Static source preview. The live verifier checks the delivered package.",
+      "href": "#trust-att-rec-0001-018",
+      "issuer": "mock-marketplace",
+      "record_id": "rec-0001-018",
+      "redacted": false,
+      "revision": 1,
+      "signature_check": "not_checked",
+      "summary": "fee \u00b7 750 minor units GBP",
+      "trust": "issuer_verified"
+    }
+  ]
+}

@@ -41,7 +41,7 @@
 @@ -63,7 +63,7 @@
  from alibi.core import reconcile
  from alibi.core.canon import make_id
- from alibi.core.facts import derive_facts
+ from alibi.core.facts import answered_calculation, answered_refs, derive_facts
 -from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES, classify_question
 +from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES
  from alibi.core.package import PackageError, build_body

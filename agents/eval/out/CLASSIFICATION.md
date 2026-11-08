@@ -1,6 +1,6 @@
 # One-pass question classification: proposed fix (public cases only)
 
-Not applied to the repo. Nothing was committed. Verified in a disposable copy against repo HEAD `f77b141`; the two target files are unchanged since `fea799d`.
+The native change is staged for the application owner. The original public checks used `f77b141`. `CLASSIFICATION.patch` now applies to `1b5c21a`, preserving candidate 4's minimum-disclosure helpers. The combined issuer, classification, bank, draft order, and port probe patches passed 167 targeted tests in a disposable copy.
 
 ## Finding
 
@@ -22,7 +22,7 @@ Not applied to the repo. Nothing was committed. Verified in a disposable copy ag
 | `classify-02-one_pass.patch` | Needed for the one-pass goal. `answer` uses `core_rules.classify`. The new `breakdown()` follows the source verdict: for one supported credit it returns the source's own reconciliation; otherwise it is **unresolved with the source gap and cites nothing** (no refs, no calculation). `source_once()` caches the source verdict, so links and notes are written once. `period_total` sums `documented_totals` with per-kind signs and states each kind's total. |
 | `classify-03-test_one_pass_classification.patch` | New `alibi/tests/test_one_pass_classification.py` (6 tests; a copy is alongside). |
 
-Apply: `cd /Users/tamim/code/agentverse_wtt && patch -p1 < .../proposed-fixes/classify-combined.patch`
+Apply from the repo root with `git apply agents/eval/out/CLASSIFICATION.patch`.
 
 ## Tests (all `uv run --frozen` with the repo's locked env, `ALIBI_DATA_DIR` set to a temp dir)
 

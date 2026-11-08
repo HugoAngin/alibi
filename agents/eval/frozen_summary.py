@@ -8,7 +8,7 @@ import re
 
 
 SYSTEMS = ("agents", "one_pass", "rules")
-MODES = ("frozen", "public_live", "public_rehearsal")
+MODES = ("frozen", "public_live", "public_rehearsal", "post_fix_second_look")
 METRICS = set("""cases requests families safe_complete safe_complete_rate requests_safe questions
 status_accuracy gold_linked predicted_linked match_precision match_recall unmatched
 link_state_accuracy supported_claims citation_accuracy gold_non_supported gap_recall
@@ -90,7 +90,11 @@ def build_summary(scores: dict, run: dict, scheduling: dict | None = None) -> di
         original = _dict(_dict(retained.get("usage_by_system")).get(name))
         for key in ("totals", "partial_known_totals", "workers_with_known_values"):
             row[key] = _select(original.get(key), COUNTERS)
-    if "original_run_sha256" in signature and not all(
+    second_look = scores.get("mode") == "post_fix_second_look"
+    if second_look and (signature.get("kind") != "post_fix_second_look"
+                        or _digest(signature.get("original_run_sha256")) is None):
+        raise ValueError("second-look export requires its explicit kind and original capture digest")
+    if "original_run_sha256" in signature and not second_look and not all(
             isinstance(scheduling.get(key), dict) and scheduling[key].get("aggregate")
             for key in ("original", "resume")):
         raise ValueError("resume export requires original and continuation scheduling")
@@ -115,7 +119,18 @@ def build_summary(scores: dict, run: dict, scheduling: dict | None = None) -> di
                     "systems": _systems(scheduling.get("systems"), {"attempted", "completed", "failed", "not_started"})},
         "interpretation_and_caveats": CAVEATS.copy(),
     }
-    if "original" in scheduling and "resume" in scheduling:
+    if second_look:
+        result["second_look"] = {
+            "original_run_sha256": _digest(signature.get("original_run_sha256")),
+            "trusted_setup_sha256": _digest(signature.get("trusted_setup_sha256")),
+        }
+        result["interpretation_and_caveats"].append(
+            "Post-fix second look on reused cases, not a fresh unseen evaluation. "
+            "The original frozen result remains unchanged; the separately declared synthetic "
+            "issuer setup was applied identically to all systems. Later public fixes are not "
+            "part of this pinned candidate."
+        )
+    elif "original" in scheduling and "resume" in scheduling:
         result["interrupted_capture"] = {
             "original_run_sha256": _digest(signature.get("original_run_sha256")),
             "permission_proof_sha256": _digest(signature.get("permission_proof_sha256")),

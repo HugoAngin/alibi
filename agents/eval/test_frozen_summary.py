@@ -103,6 +103,24 @@ def test_resume_missing_scheduling_fails_closed():
         export.build_summary(scores, run, schedule)
 
 
+def test_second_look_is_labelled_without_resume_or_private_setup_contents():
+    scores, run, schedule = synthetic()
+    scores["mode"] = "post_fix_second_look"
+    run["input"].update(kind="post_fix_second_look", original_run_sha256="d" * 64,
+                        trusted_setup_sha256="e" * 64,
+                        trusted_public_key_fingerprints={SECRET: SECRET}, seed=SECRET)
+    result = export.build_summary(scores, run, schedule)
+    assert result["mode"] == "post_fix_second_look"
+    assert result["second_look"] == {"original_run_sha256": "d" * 64,
+                                      "trusted_setup_sha256": "e" * 64}
+    assert "interrupted_capture" not in result
+    assert "reused cases" in result["interpretation_and_caveats"][-1]
+    assert SECRET not in json.dumps(result)
+    run["input"]["kind"] = "frozen"
+    with pytest.raises(ValueError, match="second-look export requires"):
+        export.build_summary(scores, run, schedule)
+
+
 def test_resume_export_cannot_write_into_original_capture(tmp_path):
     capture = tmp_path / "original"
     resume = capture / "resume"

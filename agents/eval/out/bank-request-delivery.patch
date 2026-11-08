@@ -1,0 +1,120 @@
+diff --git a/web/apps/bank/src/lib/actions.ts b/web/apps/bank/src/lib/actions.ts
+--- a/web/apps/bank/src/lib/actions.ts
++++ b/web/apps/bank/src/lib/actions.ts
+@@ -103,6 +103,36 @@
+   | { kind: 'forbidden'; status: 403 | 401 | 400; message: string }
+   | { kind: 'sent'; result: ActionResult };
+
++/** The bank can record a request before the passport accepts delivery. */
++function requestDelivery(data: unknown): ActionResult {
++  const forwarded =
++    typeof data === 'object' && data !== null && 'forwarded' in data ? data.forwarded : undefined;
++  if (forwarded === null) {
++    return {
++      kind: 'unavailable',
++      message:
++        'The bank already has this request on record. Check that it appears in the customer’s Alibi.',
++    };
++  }
++  if (typeof forwarded === 'object' && forwarded !== null && 'status' in forwarded) {
++    if (forwarded.status === 'accepted') return { kind: 'ok', data };
++    if ('reason' in forwarded && typeof forwarded.reason === 'string') {
++      if (
++        forwarded.status === 'refused' &&
++        'code' in forwarded &&
++        typeof forwarded.code === 'string'
++      ) {
++        return { kind: 'refused', refusal: { code: forwarded.code, reason: forwarded.reason } };
++      }
++      return { kind: 'unavailable', message: forwarded.reason };
++    }
++  }
++  return {
++    kind: 'unavailable',
++    message: 'The backend did not confirm delivery to the customer’s Alibi.',
++  };
++}
++
+ export async function handleAct(input: ActInput, deps: ActDeps): Promise<ActOutcome> {
+   if (input.requestOrigin !== input.siteOrigin)
+     return { kind: 'forbidden', status: 403, message: 'Cross-site request refused.' };
+@@ -116,5 +146,11 @@
+     body: plan.body,
+     headers: deps.headers,
+   });
+-  return { kind: 'sent', result };
++  return {
++    kind: 'sent',
++    result:
++      input.fields.kind === 'request' && result.kind === 'ok'
++        ? requestDelivery(result.data)
++        : result,
++  };
+ }
+diff --git a/web/apps/bank/tests/actions.test.ts b/web/apps/bank/tests/actions.test.ts
+--- a/web/apps/bank/tests/actions.test.ts
++++ b/web/apps/bank/tests/actions.test.ts
+@@ -15,11 +15,11 @@
+
+ type Call = Parameters<Forward>[0];
+
+-function recorder() {
++function recorder(result: Awaited<ReturnType<Forward>> = { kind: 'ok', data: null }) {
+   const calls: Call[] = [];
+   const forward: Forward = async (opts) => {
+     calls.push(opts);
+-    return { kind: 'ok', data: null };
++    return result;
+   };
+   return { calls, forward };
+ }
+@@ -33,9 +33,13 @@
+
+ async function act(
+   fields: Record<string, string>,
+-  opts: { origin?: string | null; analyst?: string | null } = {},
++  opts: {
++    origin?: string | null;
++    analyst?: string | null;
++    result?: Awaited<ReturnType<Forward>>;
++  } = {},
+ ) {
+-  const rec = recorder();
++  const rec = recorder(opts.result);
+   const outcome = await handleAct(
+     {
+       fields,
+@@ -141,6 +145,33 @@
+   });
+ });
+
++describe('request delivery', () => {
++  const request = { kind: 'request', case_id: 'FC-0147' };
++
++  it('reports success when the passport accepts the request', async () => {
++    const data = { forwarded: { status: 'accepted' } };
++    const { outcome, calls } = await act(request, { result: { kind: 'ok', data } });
++    expect(outcome).toEqual({ kind: 'sent', result: { kind: 'ok', data } });
++    expect(calls[0]?.body).toEqual({ request_id: 'rfc-0001-01' });
++  });
++
++  it('shows the passport refusal even when issuing the request was successful', async () => {
++    const refusal = { code: 'invalid_request', reason: 'The passport refused the signed request.' };
++    const { outcome } = await act(request, {
++      result: { kind: 'ok', data: { forwarded: { status: 'refused', ...refusal } } },
++    });
++    expect(outcome).toEqual({ kind: 'sent', result: { kind: 'refused', refusal } });
++  });
++
++  it('distinguishes a transport error, an unconfirmed reissue and a malformed reply', async () => {
++    const reason = 'The passport did not answer.';
++    for (const data of [{ forwarded: { status: 'error', reason } }, { forwarded: null }, {}]) {
++      const { outcome } = await act(request, { result: { kind: 'ok', data } });
++      expect(outcome).toMatchObject({ kind: 'sent', result: { kind: 'unavailable' } });
++    }
++  });
++});
++
+ describe('analyst session', () => {
+   const secret = 'test-session-secret';
+   const now = Date.UTC(2026, 10, 8, 4, 30);

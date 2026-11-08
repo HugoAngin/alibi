@@ -101,6 +101,15 @@ def set_worker(name: str, values: dict[str, str]) -> None:
          stdin=json.dumps(values))
 
 
+def missing_build_env() -> str | None:
+    """www's build bakes Clerk's publishable key in from web/apps/alibi/.env (git-ignored, so a
+    fresh checkout or worktree has none); without it every www page answers 500."""
+    env = WEB / "apps" / "alibi" / ".env"
+    return None if env.exists() else (
+        f"{env} is missing, so a www build would have no Clerk key and every page would fail. "
+        "Copy it from the checkout that has it (or run from there), then rerun.")
+
+
 def redeploy() -> None:
     print("deploying Modal alibi-backend (warm, one container)", flush=True)
     _run(["uvx", "--from", "modal", "modal", "deploy", "agents/research/deploy/modal_app.py"],
@@ -117,6 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--redeploy", action="store_true", help="afterwards, deploy Modal and the three Workers")
     args = parser.parse_args(argv)
 
+    problem = missing_build_env() if args.redeploy else None
+    if problem:
+        raise SystemExit(problem)          # before anything changes
     p = plan(args.origin)
     for line in describe(p):
         print(("would set " if args.dry_run else "setting ") + line, flush=True)

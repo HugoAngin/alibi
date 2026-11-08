@@ -43,3 +43,16 @@ def test_fresh_tokens_are_long_and_distinct():
     p = s.plan(s.DEFAULT_ORIGIN)
     values = list(p.modal.values())
     assert len(set(values)) == 3 and all(len(v) >= 40 for v in values)
+
+
+def test_redeploy_refuses_before_any_change_without_the_clerk_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(s, "WEB", tmp_path)
+    called = []
+    monkeypatch.setattr(s, "set_modal", lambda values: called.append("modal"))
+    try:
+        s.main(["--redeploy"])
+    except SystemExit as exc:
+        assert "Clerk" in str(exc)
+    else:
+        raise AssertionError("expected a refusal")
+    assert called == []

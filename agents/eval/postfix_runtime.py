@@ -39,6 +39,16 @@ def replay(root):
     return common.load_json(root / 'summary.json')
 
 
+def prepare_credentials(mode, credential_file):
+    """Load the parent's key before isolated workers deny access to the source file."""
+    if mode == 'rules':
+        return
+    if credential_file is None or not credential_file.is_file():
+        raise ValueError('live development modes require an explicit existing credential file')
+    from alibi.llm.client import load_api_key
+    load_api_key(credential_file)
+
+
 def capture(cases, *, output, candidate, private_root, deadline, trusted_issuers_file=None,
             trusted_issuers_sha256=None, mode='rules', credential_file=None):
     """Private worker artifacts; only counts and fixed failure codes exported."""
@@ -139,8 +149,7 @@ def main(argv=None):
         raise ValueError('future timezone-aware deadline required')
     candidate = subprocess.check_output(['git', 'rev-parse', args.candidate + '^{commit}'],
                                        cwd=REPO, text=True).strip()
-    if args.mode != 'rules' and (args.credential_file is None or not args.credential_file.is_file()):
-        parser.error('live development modes require an explicit existing credential file')
+    prepare_credentials(args.mode, args.credential_file)
     manifest = common.load_json(args.manifest)
     trust_digest = None
     if args.trusted_issuers_file is not None:

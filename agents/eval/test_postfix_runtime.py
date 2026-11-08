@@ -77,3 +77,17 @@ def test_live_mode_requires_explicit_credentials_before_worker_start(tmp_path, m
     with pytest.raises(ValueError, match='credential'):
         diagnostic.capture([], output=tmp_path, candidate='test', private_root=tmp_path,
             mode='agents', deadline=datetime.now(timezone.utc) + timedelta(seconds=30))
+
+
+def test_live_credentials_are_loaded_in_parent_without_reading_for_rules(tmp_path, monkeypatch):
+    from alibi.llm import client
+    seen = []
+    monkeypatch.setattr(client, 'load_api_key', lambda path: seen.append(path))
+    credential = tmp_path / 'private-env'
+    credential.write_text('synthetic test; no real key')
+    diagnostic.prepare_credentials('rules', None)
+    assert not seen
+    diagnostic.prepare_credentials('all', credential)
+    assert seen == [credential]
+    with pytest.raises(ValueError, match='credential file'):
+        diagnostic.prepare_credentials('one_pass', tmp_path / 'absent')

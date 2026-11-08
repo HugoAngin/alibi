@@ -1,0 +1,182 @@
+---
+/**
+ * The site header: a large "alibi" wordmark pressed into the paper at the top of the page, with
+ * Simulate and Join on the right. It sits in the page and scrolls away with it; it is not
+ * sticky. Signed-in visitors see "Dashboard" and their account instead of Join.
+ * In the local demo, Join opens the demo sign-in as Maya.
+ */
+import { Show, UserButton } from '@clerk/astro/components';
+
+interface Props {
+  /** Which link is current, if any. */
+  current?: 'simulate' | 'join';
+  /** Lay the header over the top of the page on wide screens (the landing hero sits under it). */
+  overlay?: boolean;
+}
+
+const { current, overlay = false } = Astro.props;
+// Local demo (src/lib/demoHolder.ts): no Clerk widgets, a plain sign-out instead.
+const demo =
+  Astro.locals.demoHolder === undefined ? null : { signedIn: Boolean(Astro.locals.demoHolder) };
+---
+
+<header class:list={['head', 's-wrap', overlay && 'head--overlay']}>
+  <a class="wordmark" href="/" aria-label="Alibi home">
+    alibi
+  </a>
+  <nav class="links" aria-label="Main">
+    <a class="link" href="/simulate/" aria-current={current === 'simulate' ? 'page' : undefined}>
+      Simulate
+    </a>
+    {demo ? (
+      demo.signedIn ? (
+        <>
+          <a class="s-btn s-btn--primary" href="/app/">
+            Dashboard
+          </a>
+          <form class="account" method="post" action="/demo-session/?out=1">
+            <button class="link" type="submit">
+              Sign out
+            </button>
+          </form>
+        </>
+      ) : (
+        <a class="s-btn s-btn--primary" href="/demo-sign-in/">
+          Join
+        </a>
+      )
+    ) : (
+      <>
+        <Show when="signed-out">
+          <a
+            class="s-btn s-btn--primary"
+            href="/sign-up/"
+            aria-current={current === 'join' ? 'page' : undefined}
+          >
+            Join
+          </a>
+        </Show>
+        <Show when="signed-in">
+          <a class="s-btn s-btn--primary" href="/app/">
+            Dashboard
+          </a>
+          <span class="account">
+            <UserButton />
+          </span>
+        </Show>
+      </>
+    )}
+  </nav>
+</header>
+
+<style>
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 24px;
+    max-width: 80rem;
+    padding-top: var(--s-head-pad);
+  }
+
+  /* Over the page, not stuck to the viewport: it scrolls away with the hero. */
+  @media (min-width: 901px) {
+    .head--overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+    }
+  }
+
+  /* Debossed into the paper. This layer draws only the rim: a light lower lip and a soft shadow
+   * on the upper edge. The floor is the ::after layer on top, because Chrome paints text-shadow
+   * over a text-clipped background. Offsets are in em so the depth scales with the type. */
+  .wordmark {
+    position: relative;
+    display: inline-block;
+    font: 700 var(--s-head-wm) / 0.9 var(--s-font-display);
+    letter-spacing: -0.035em;
+    text-decoration: none;
+    color: transparent;
+    text-shadow:
+      0 0.014em 0 rgb(255 255 255 / 0.95),
+      0 0.024em 0.02em rgb(255 255 255 / 0.6),
+      0 -0.008em 0.012em rgb(31 27 22 / 0.35);
+  }
+
+  /* The crater floor: black under the upper wall, lifting towards the lit lower wall, with a
+   * fine paper grain showing through. */
+  .wordmark::after {
+    content: 'alibi';
+    position: absolute;
+    inset: 0;
+    color: transparent;
+    text-shadow: none;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .1 0'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)'/%3E%3C/svg%3E"),
+      linear-gradient(180deg, #000 0%, #14110e 42%, #3b352d 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  .links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 48px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    font: 500 1rem/1 var(--s-font-body);
+    color: var(--s-ink);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.16s var(--s-ease);
+  }
+
+  .link:hover,
+  .link[aria-current='page'] {
+    background: var(--s-paper-2);
+  }
+
+  .links .s-btn {
+    margin-left: 8px;
+  }
+
+  .account {
+    display: inline-flex;
+    padding-inline: 6px;
+  }
+
+  @media (max-width: 480px) {
+    .head {
+      gap: 8px 12px;
+    }
+
+    .links {
+      gap: 0;
+    }
+
+    .link {
+      min-height: 40px;
+      padding-inline: 8px;
+      font-size: 0.9375rem;
+    }
+
+    .links .s-btn {
+      min-height: 40px;
+      padding-inline: 12px;
+      margin-left: 4px;
+      font-size: 0.9375rem;
+    }
+  }
+</style>

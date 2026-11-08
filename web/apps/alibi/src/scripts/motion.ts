@@ -1,6 +1,6 @@
 /**
- * Site motion: Lenis smooth scrolling, smooth in-page anchors (the island
- * header's "Core" link), and fade-up reveals for elements marked
+ * Site motion: Lenis smooth scrolling, smooth in-page anchors, and
+ * fade-up reveals for elements marked
  * `data-reveal`. Everything is skipped when the visitor prefers reduced
  * motion. Other scripts can follow the scroll through the `alibi:scroll`
  * window event, which carries the scroll position.
@@ -24,7 +24,7 @@ if (!reduced) {
     const target = document.querySelector(url.hash);
     if (!target) return;
     event.preventDefault();
-    lenis.scrollTo(target as HTMLElement, { offset: -88 });
+    lenis.scrollTo(target as HTMLElement, { offset: -24 });
     history.replaceState(null, '', url.hash);
   });
 } else {

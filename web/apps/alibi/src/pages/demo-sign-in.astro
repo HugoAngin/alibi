@@ -6,7 +6,7 @@
 import { ALIBI_DEMO_HOLDER, HOLDER_SESSION_SECRET } from 'astro:env/server';
 
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import IslandHeader from '@/components/site/IslandHeader.astro';
+import SiteHeader from '@/components/site/SiteHeader.astro';
 import { demoHolderEnabled, safeNext } from '@/lib/demoHolder';
 
 export const prerender = false;
@@ -21,7 +21,7 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 
 <BaseLayout title="Sign in" description="Local demo sign-in.">
-  <IslandHeader />
+  <SiteHeader />
   <main id="main" class="auth">
     <div class="panel">
       <h1>Sign in to Alibi</h1>

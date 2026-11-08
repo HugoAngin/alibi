@@ -6,7 +6,7 @@
 import { SignUp } from '@clerk/astro/components';
 
 import BaseLayout from '@/layouts/BaseLayout.astro';
-import IslandHeader from '@/components/site/IslandHeader.astro';
+import SiteHeader from '@/components/site/SiteHeader.astro';
 import { clerkAppearance } from '@/lib/clerk';
 
 // Local demo (src/lib/demoHolder.ts): no Clerk, sign in as Maya instead.
@@ -14,7 +14,7 @@ if (Astro.locals.demoHolder !== undefined) return Astro.redirect('/demo-sign-in/
 ---
 
 <BaseLayout title="Join" description="Create your Alibi account.">
-  <IslandHeader current="join" />
+  <SiteHeader current="join" />
   <main id="main" class="auth">
     <div class="panel">
       <h1>Start living with an alibi</h1>

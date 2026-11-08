@@ -1,17 +1,17 @@
 ---
 /**
- * The product landing page: island header, the vertical journey through how Alibi works (hero,
+ * The product landing page: site header, the vertical journey through how Alibi works (hero,
  * six chapters and a recap), a way into the case study, and Join.
  * Composition only; copy lives in src/data/product.ts.
  */
 import { Show } from '@clerk/astro/components';
 
-import IslandHeader from '@/components/site/IslandHeader.astro';
+import SiteHeader from '@/components/site/SiteHeader.astro';
 import Journey from '@/components/site/Journey.astro';
 import SiteFooter from '@/components/site/SiteFooter.astro';
 ---
 
-<IslandHeader />
+<SiteHeader overlay />
 
 <main id="main">
   <Journey />
@@ -43,8 +43,8 @@ import SiteFooter from '@/components/site/SiteFooter.astro';
         <a class="s-btn s-btn--primary" href="/sign-up/">
           Join
         </a>
-        <a class="s-btn s-btn--ghost" href="/sign-in/">
-          Sign in
+        <a class="s-btn s-btn--ghost" href="/simulate/">
+          Simulate
         </a>
       </Show>
       <Show when="signed-in">

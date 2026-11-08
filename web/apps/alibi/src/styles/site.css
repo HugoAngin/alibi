@@ -13,9 +13,12 @@
   --s-ink-soft: #5e554a;
   --s-ink-faint: #7b7266;
   --s-line: rgb(31 27 22 / 0.08);
-  /* One accent: the ink-blue of a passport stamp. 7:1 on the paper. */
-  --s-accent: #2b45c4;
-  --s-accent-soft: #e8ebf7;
+  /* One accent: cerulean #437C90. 4.2:1 on the paper, just under AA for small text. */
+  --s-accent: #437c90;
+  --s-accent-soft: #e3eef1;
+  /* Lettering pressed into a cerulean fill: dark ink, a dark upper edge and a light lower lip. */
+  --s-fill-ink: #000;
+  --s-fill-deboss: 0 1px 0 rgb(255 255 255 / 0.32), 0 -1px 0 rgb(0 0 0 / 0.3);
   --s-ok: #1f7a4a;
   --s-bad: #b4322d;
 
@@ -32,6 +35,11 @@
   --s-shadow: 0 1px 2px rgb(31 27 22 / 0.05), 0 8px 24px rgb(31 27 22 / 0.06);
   --s-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --s-section: clamp(5rem, 3rem + 6vw, 8rem);
+  /* The site header: a large debossed wordmark. Its height is known, so the landing hero can
+   * sit underneath it on wide screens. */
+  --s-head-pad: clamp(16px, 2.5vw, 32px);
+  --s-head-wm: clamp(3.25rem, 1.6rem + 6.4vw, 8rem);
+  --s-head-h: calc(var(--s-head-pad) + var(--s-head-wm) * 0.9);
   --s-max: 72rem;
 }
 
@@ -42,7 +50,7 @@ html[data-view='site'] body {
 }
 
 html[data-view='site'] {
-  scroll-padding-top: 6rem;
+  scroll-padding-top: 1.5rem;
 }
 
 /* Lenis */
@@ -106,10 +114,13 @@ html.lenis body {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  justify-content: center;
   min-height: 48px;
-  padding: 0 20px;
+  /* Vertical padding and a real line height, so a label that wraps stays readable. */
+  padding: 10px 20px;
   border-radius: 10px;
-  font: 500 1rem/1 var(--s-font-body);
+  font: 500 1rem/1.25 var(--s-font-body);
+  text-align: center;
   text-decoration: none;
   transition:
     background-color 0.16s var(--s-ease),
@@ -119,11 +130,18 @@ html.lenis body {
   transform: scale(0.98);
 }
 .s-btn--primary {
-  background: var(--s-ink);
-  color: var(--s-paper);
+  border: 0;
+  background: var(--s-accent);
+  color: var(--s-fill-ink);
+  font-weight: 600;
+  text-shadow: var(--s-fill-deboss);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 -1px 0 rgb(0 0 0 / 0.12);
+  cursor: pointer;
 }
 .s-btn--primary:hover {
-  background: #352f27;
+  background: #4d8a9f;
 }
 .s-btn--ghost {
   background: var(--s-card);
@@ -138,7 +156,7 @@ html.lenis body {
 .s-ref {
   display: inline-block;
   padding: 2px 6px;
-  border: 1px solid rgb(43 69 196 / 0.35);
+  border: 1px solid rgb(67 124 144 / 0.35);
   border-radius: 4px;
   font: 500 0.75rem/1.4 var(--s-font-mono);
   font-variant-numeric: tabular-nums;

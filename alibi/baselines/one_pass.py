@@ -62,6 +62,7 @@ from alibi.agents.roles import call_cost
 from alibi.core import investigate_rules as core_rules
 from alibi.core import reconcile
 from alibi.core.canon import make_id
+from alibi.core.facts import derive_facts
 from alibi.core.investigate_rules import COMPONENT_KINDS, COUNTED_STATUSES, EXCLUDED_STATUSES, classify_question
 from alibi.core.package import PackageError, build_body
 from alibi.core.policy import CompiledPolicy, compile_policy
@@ -510,6 +511,8 @@ class _Run:
             statement=_clip(statement), status=outcome.status, rationale=_clip(outcome.rationale),
             evidence_refs=_unique(evidence), calculation=outcome.calculation,
             gap=_clip(outcome.gap) if outcome.gap else None, run_id=self.run_id,
+            facts=derive_facts(self.store, self.rfc, question, outcome.status,
+                               outcome.evidence, outcome.calculation),
             created_at=self.now)
         self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
                   result={"claim_id": claim.claim_id, "status": claim.status.value,

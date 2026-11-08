@@ -72,6 +72,7 @@ from alibi.agents.models import ChallengerOutput, DetectiveClaim, DetectiveOutpu
 from alibi.agents.roles import RoleError, RoleResult
 from alibi.core import reconcile
 from alibi.core.canon import make_id
+from alibi.core.facts import derive_facts
 from alibi.core.investigate_rules import (
     COMPONENT_KINDS,
     COUNTED_STATUSES,
@@ -1111,6 +1112,8 @@ class _Run:
                           status=outcome.status, rationale=_clip(outcome.rationale, 4000),
                           evidence_refs=_unique(outcome.evidence), calculation=outcome.calculation,
                           gap=_clip(outcome.gap, 4000) if outcome.gap else None, run_id=self.run_id,
+                          facts=derive_facts(self.store, self.rfc, question, outcome.status,
+                                             outcome.evidence, outcome.calculation),
                           created_at=self.now)
             self.note("status_change", reason=outcome.reason, refs=claim.evidence_refs,
                       result={"claim_id": claim.claim_id, "status": claim.status.value, "final": True})

@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from agents.eval.native_verify import SCHEMA as NATIVE_SCHEMA, verify_native
 from agents.eval.sharing_delivery import (
     MAX_PACKAGE_BYTES,
     TrustRegistry,
@@ -34,8 +35,7 @@ def _reject_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON number: {value}")
 
 
-def _read_object(path: Path, error_code: str) -> dict:
-    raw = _read_bytes(path)
+def _decode_object(raw: bytes, error_code: str) -> dict:
     if len(raw) > MAX_PACKAGE_BYTES:
         raise VerificationError("too_large")
     try:
@@ -48,8 +48,11 @@ def _read_object(path: Path, error_code: str) -> dict:
     return value
 
 
-def _load_registry(path: Path) -> TrustRegistry:
-    data = _read_object(path, "invalid_registry")
+def _read_object(path: Path, error_code: str) -> dict:
+    return _decode_object(_read_bytes(path), error_code)
+
+
+def _reference_registry(data: dict) -> TrustRegistry:
     keys = data.get("keys")
     fields = {"key_id", "purpose", "owner", "public_key"}
     if set(data) != {"keys"} or not isinstance(keys, list):
@@ -81,8 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path, help="original signed JSON envelope, as exported")
     parser.add_argument("--registry", type=Path, required=True,
-                        help="trusted JSON public key registry in TrustRegistry.to_json() format")
+                        help="separately pinned public key registry for this package format")
     parser.add_argument("--recipient", required=True, help="expected audience, e.g. bank_a")
+    parser.add_argument("--request-id", help="expected request ID")
+    parser.add_argument("--subject", help="expected subject, requires visible subject binding in a native export")
     parser.add_argument("--at", metavar="UTC_TIME",
                         help="evaluation time, e.g. 2026-11-08T10:00:00Z (default: current UTC time)")
     parser.add_argument("--issuer-proof", type=Path, action="append", default=[],
@@ -90,10 +95,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         now = _evaluation_time(args.at)
-        registry = _load_registry(args.registry)
-        proofs = [_read_object(path, "invalid_issuer_proof") for path in args.issuer_proof]
-        result = verify_package(_read_bytes(args.package), recipient=args.recipient,
-                                registry=registry, now=now, issuer_records=proofs)
+        raw = _read_bytes(args.package)
+        package = _decode_object(raw, "malformed")
+        registry = _read_object(args.registry, "invalid_registry")
+        if package.get("schema_version") == NATIVE_SCHEMA:
+            if args.issuer_proof:
+                raise VerificationError("invalid_issuer_proof", "native exports embed issuer signatures")
+            result = verify_native(package, raw, registry, recipient=args.recipient, now=now,
+                                   request_id=args.request_id, subject=args.subject)
+        else:
+            if args.subject is not None:
+                raise VerificationError("subject_unverifiable")
+            proofs = [_read_object(path, "invalid_issuer_proof") for path in args.issuer_proof]
+            result = verify_package(raw, recipient=args.recipient, registry=_reference_registry(registry),
+                                    now=now, issuer_records=proofs)
+            if args.request_id is not None and result.request_id != args.request_id:
+                raise VerificationError("wrong_request")
     except VerificationError as exc:
         code = exc.code
     except OSError:

@@ -44,3 +44,12 @@ uv run --frozen python -m agents.eval.baselines --mode rules --case 1 --case 2
 ```
 
 The baseline CLI reads only public development cases. The evaluator-only runner supplies sealed inputs after freeze. Use `--mode one_pass --log data/alibi/dev-one-pass.jsonl` for a live public run with a separate provider log.
+
+Check a delivered native package using the original export and a separately pinned public registry.
+
+```bash
+uv run --frozen python -m agents.eval.verify_package data/alibi/export.json \
+  --registry data/alibi/keys/trust_registry.json --recipient bank_a --request-id rfc_a_001
+```
+
+Use `--at` with the fixture clock for a replay. The output separates package authentication from issuer signatures, redacted extracts and claim status. Use `--subject` when the bank must verify the subject from the export. An extract that omits that binding returns `subject_unverifiable`.

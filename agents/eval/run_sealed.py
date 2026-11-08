@@ -57,15 +57,18 @@ def _probe_rows(path: Path | None) -> list[dict]:
 def _extra_capture_files(output: Path) -> dict:
     paths = [output / "scheduling.json", output / "progress.json"]
     paths += sorted(path for path in (output / "capture-workers").rglob("*") if path.is_file())
+    paths += sorted(path for path in (output / "checkpoint").rglob("*") if path.is_file())
     return {str(path.relative_to(output)): _digest(path) for path in paths}
 
 
-def _parallel_capture(output: Path, cases: list[dict], isolation: dict) -> None:
+def _parallel_capture(output: Path, cases: list[dict], isolation: dict, signature: dict | None = None) -> None:
     # Imported only after module initialization: isolated_candidate also uses score_saved.
     from agents.eval.isolated_candidate import LIMITS, run_isolated
     from agents.eval.parallel_capture import schedule
 
     systems = {mode: dict(attempted=0, completed=0, failed=0, not_started=0) for mode in MODES}
+    checkpoint_written = False
+    completed_workers = set()
     with ExitStack() as stack:
         roots = [Path(stack.enter_context(TemporaryDirectory(prefix="alibi-capture-lane-")))
                  for _ in range(isolation["workers"])]
@@ -89,6 +92,23 @@ def _parallel_capture(output: Path, cases: list[dict], isolation: dict) -> None:
             finally:
                 lanes.put(lane)
 
+        def maybe_checkpoint(aggregate):
+            nonlocal checkpoint_written
+            checkpoint_at = isolation.get("checkpoint_at")
+            finished = aggregate["completed"] + aggregate["errors"] + aggregate["not_started"]
+            if (checkpoint_at is not None and not checkpoint_written and finished < aggregate["total"]
+                    and datetime.now(timezone.utc) >= checkpoint_at):
+                from agents.eval.capture_checkpoint import create_checkpoint
+                for destination in destinations.values():
+                    destination.flush()
+                create_checkpoint(output, cases, gold_path=isolation["gold_path"],
+                                  adversarial_ids=isolation["adversarial_ids"], signature=signature or {},
+                                  scheduling={"aggregate": aggregate, "systems": systems, "limits": dict(LIMITS)},
+                                  completed_workers=completed_workers)
+                checkpoint_written = True
+                print(json.dumps({"checkpoint_saved": True, "incomplete": True,
+                                  "full_denominator": True}), flush=True)
+
         def progress(outcome, aggregate):
             mode, case = outcome["job"]
             counts = systems[mode]
@@ -103,6 +123,7 @@ def _parallel_capture(output: Path, cases: list[dict], isolation: dict) -> None:
                     rows = failure_rows(case, mode, "error", "isolated worker raised " + outcome["error"])
                 else:
                     rows, _metadata = outcome["result"]
+                    completed_workers.add(f"{mode}-{case['case_number']}")
                 counts["failed" if any(row.get("failure") for row in rows) else "completed"] += 1
             for row in rows:
                 destinations[mode].write(json.dumps(row, allow_nan=False) + "\n")
@@ -110,10 +131,12 @@ def _parallel_capture(output: Path, cases: list[dict], isolation: dict) -> None:
             snapshot = {"aggregate": aggregate, "systems": systems}
             common.write_json(output / "progress.json", snapshot)
             print(json.dumps({"capture_progress": snapshot}, sort_keys=True), flush=True)
+            maybe_checkpoint(aggregate)
 
         jobs = [(mode, case) for case in cases for mode in MODES]
         result = schedule(jobs, run_job, workers=isolation["workers"],
-                          deadline=isolation["deadline"], progress=progress, stop_on_error=True)
+                          deadline=isolation["deadline"], progress=progress, stop_on_error=True,
+                          heartbeat=maybe_checkpoint if isolation.get("checkpoint_at") is not None else None)
         summary = {"aggregate": result["metadata"], "systems": systems, "limits": LIMITS}
         common.write_json(output / "progress.json", summary)
         common.write_json(output / "scheduling.json", summary)
@@ -175,7 +198,7 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
     if frozen:
         common.write_json(output / PROBE_RECEIPT, receipt)
     if isolation is not None:
-        _parallel_capture(output, cases, isolation)
+        _parallel_capture(output, cases, isolation, signature)
     else:
         for mode, filename in PREDICTION_FILES.items():
             with (output / filename).open("x", encoding="utf-8") as destination:
@@ -368,9 +391,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--candidate-ref", help="run a declared sealed-candidate tag with isolated workers")
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
+    parser.add_argument("--checkpoint-at", type=_aware_deadline,
+                        help="one full-denominator completed-so-far snapshot during the frozen capture")
     for option in ("out", "cases", "gold", "manifest", "model_config", "private_root", "probes"):
         _path_argument(parser, option)
     args = parser.parse_args(argv)
+    if args.checkpoint_at is not None and (not args.candidate_ref or args.dry_run or args.public_live):
+        parser.error("checkpoint-at requires an isolated frozen capture")
     if args.out is None or not (0 < args.timeout < 3600):
         parser.error("set an external --out directory and a valid timeout")
     output = _private_path(args.out)
@@ -438,12 +465,16 @@ def main(argv: list[str] | None = None) -> None:
         verify_file_isolation(blocked, gold_path)
         signature = {"dry": False, "commit": commit, "manifest": _digest(args.manifest), "timeout": args.timeout}
         lock = gold_path.parent / f"capture-{manifest['set_sha256']}.json"
+        if isolation is not None and args.checkpoint_at is not None:
+            isolation.update(checkpoint_at=args.checkpoint_at, gold_path=gold_path, adversarial_ids=attack_ids)
 
     if isolation is not None:
         from agents.eval.isolated_candidate import LIMITS
         signature.update({"candidate": candidate, "evaluator_commit": evaluator,
                           "workers": args.workers, "deadline": args.deadline.isoformat(),
                           "limits": dict(LIMITS), "inherited_llm_cap": False})
+        if args.checkpoint_at is not None:
+            signature["checkpoint_at"] = args.checkpoint_at.isoformat()
     _capture_once(output, cases, signature, dry=args.dry_run, timeout=args.timeout, blocked=blocked,
                   probes=args.probes, lock=lock, isolation=isolation)
     if kind == "frozen":

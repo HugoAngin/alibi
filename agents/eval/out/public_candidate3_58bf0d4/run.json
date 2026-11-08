@@ -1,0 +1,62 @@
+{
+  "input": {
+    "kind": "public_live",
+    "commit": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+    "inputs": "6ff40aee4055f270ad526c8b17da39388187d481c6f64f67a611ff34263ae669",
+    "timeout": 90,
+    "candidate": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+    "evaluator_commit": "5d75083ecde332551ec8a64b817bc0b7dfba8d46",
+    "workers": 4,
+    "deadline": "2026-11-08T12:50:00+00:00",
+    "limits": {
+      "agents": 180,
+      "one_pass": 90,
+      "rules": 30
+    },
+    "inherited_llm_cap": false
+  },
+  "files": {
+    "agents.jsonl": "1be4fd4452b3a7541cd0828a8011b573015d1a87329f66e73f01d5380036fc7c",
+    "one_pass.jsonl": "1ff467ee277ac1d30bbf00c2a7515a8fe16c17391d3f8718e9e6449ffd72a948",
+    "rules.jsonl": "e73a96040b0e8fb8e22b3521b91bbdd7ccb91092d645f31be7d95a2b37676544",
+    "probes.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "extra_files": {
+    "scheduling.json": "cf81038c0c1bc86f2ebe42c23e165badfb5fe76e0f48f9958fa3e0ec6d93c46b",
+    "progress.json": "cf81038c0c1bc86f2ebe42c23e165badfb5fe76e0f48f9958fa3e0ec6d93c46b",
+    "capture-workers/agents-1/llm_log.jsonl": "142cf7fccf6052343871adbf0c1bc411fb21f7d5d405fe26f2cc60a124399809",
+    "capture-workers/agents-1/metadata.json": "e1196455201125d5b1d3b1560175c0ae2ce3778ed5a93cfb48dc343759016ece",
+    "capture-workers/agents-1/predictions.json": "109f613edad90c58ddf4ae0f1f9a0464b2a200f1816ce6767db574aad7888ee4",
+    "capture-workers/agents-1/raw.json": "a60e43322e113f66c798c27c38eec7e0ae5d523bbc25a989701bc54a03e00dde",
+    "capture-workers/agents-1/replay.json": "1cceeaed0673cc94c9bf83db1b0689199444ad118b6842d0a400771297fe76c7",
+    "capture-workers/agents-1/usage.json": "ce72ca2bce6b6d53340f1987f8dc9e5295d1e4bb7a589838756ee50e4c997e0c",
+    "capture-workers/agents-2/llm_log.jsonl": "239324a1b4bb37828449d1691e21ac0d88f9cd1e650c810909236dcfb93058f1",
+    "capture-workers/agents-2/metadata.json": "c171a9edc590bc813597eccecf20e97a4befee4830f2735daeca56578ae13bda",
+    "capture-workers/agents-2/predictions.json": "325b88c78e8dee3ec2126ebc1a04372d3743a3db30ce88acd9e4a0144e8c253e",
+    "capture-workers/agents-2/raw.json": "d001855b723715ba8cd0f41020399980f0a486b95a17cdd94345df16c9d9daa2",
+    "capture-workers/agents-2/replay.json": "8d0be2c2a1143c9b4c7c60b3d401fff5b80a6bdf3ce3f027d3712e49fd9e97e4",
+    "capture-workers/agents-2/usage.json": "d1efca1baa645c187c4184dfd2340f8825a00bc2bf41b174a6292b4e792e03c9",
+    "capture-workers/one_pass-1/llm_log.jsonl": "78d7f64f9f80cbbd1f10be5d6ef71d970a55bb30e0e145fd15ef3c52d84bcc76",
+    "capture-workers/one_pass-1/metadata.json": "ed32e986f1369acc5dc73d7a523add7388f8e9a12022c5954d0f8375a6ae839e",
+    "capture-workers/one_pass-1/predictions.json": "acf9a52c006824a0fee678d37b2719fb429a539b9532dce8fafea39d13d7d78c",
+    "capture-workers/one_pass-1/raw.json": "2f0500e2e131c95551cf1eaa70cef5b8cbcb3466e79a5ba96d5f25f5f00ae223",
+    "capture-workers/one_pass-1/replay.json": "d89e393744052ca8a65e68445f4d681062e07047bdecc61d28b9c7b891a22c5e",
+    "capture-workers/one_pass-1/usage.json": "08a069bd721bfe6d644d041a979187df5b0ca40369bea577ab4dff8fb2e4fad7",
+    "capture-workers/one_pass-2/llm_log.jsonl": "2465a08c5329c2c81e0bba50069fd9c8a350f056476506beecf4a4210a8ed52c",
+    "capture-workers/one_pass-2/metadata.json": "144e5ea071712370ddae91afdca1402aa7ac3e07443f33d186d1e2ed8933f835",
+    "capture-workers/one_pass-2/predictions.json": "a63bdd4a3872d2bf8699a3b84b5985f2398a8334d2ba3f1528423816582890ec",
+    "capture-workers/one_pass-2/raw.json": "e85b72a8d7602393bc7825d55100b56cb65ceb842932694c650f92bbbdeff40d",
+    "capture-workers/one_pass-2/replay.json": "a363335e7dca636f402d459d28232c1db8fdbc98c73ae1531fb3f30e0ce5091e",
+    "capture-workers/one_pass-2/usage.json": "4f79c86b608a2cc203124355372682a2a56a804afe77b1fc6759f3406b080570",
+    "capture-workers/rules-1/llm_log.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "capture-workers/rules-1/metadata.json": "ed9771f2d213e5526bd57ba82c1b342cf8b8c10993ae13a306bfde7feb34bea4",
+    "capture-workers/rules-1/predictions.json": "9999e76873078137b0a37a13c43ee7c49f9b295582bdb12915308e8f6ddd557b",
+    "capture-workers/rules-1/raw.json": "9999e76873078137b0a37a13c43ee7c49f9b295582bdb12915308e8f6ddd557b",
+    "capture-workers/rules-1/usage.json": "85cb60238b8dc7a1ef138aa2228e7c4a1bdd8e3546e58f558368b808569ca4d4",
+    "capture-workers/rules-2/llm_log.jsonl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "capture-workers/rules-2/metadata.json": "80fb102dcb2a1fe0f8ea610ce1bc9d270da4938eacef85d8f925441a641bf382",
+    "capture-workers/rules-2/predictions.json": "f04c1bed6b01acfefb9317e78917a2965538a839bde9815f315b5adeb9e6eba4",
+    "capture-workers/rules-2/raw.json": "f04c1bed6b01acfefb9317e78917a2965538a839bde9815f315b5adeb9e6eba4",
+    "capture-workers/rules-2/usage.json": "85cb60238b8dc7a1ef138aa2228e7c4a1bdd8e3546e58f558368b808569ca4d4"
+  }
+}

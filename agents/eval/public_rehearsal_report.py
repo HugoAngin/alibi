@@ -16,6 +16,8 @@ from alibi.eval import common, jsonschema_lite
 
 CAPTURE = Path(__file__).resolve().parent / "out" / "public_rehearsal_c6ea270"
 PARALLEL_CAPTURE = CAPTURE.parent / "public_parallel_c6ea270"
+CANDIDATE3_CAPTURE = CAPTURE.parent / "public_candidate3_58bf0d4"
+CANDIDATE3 = "58bf0d4a199f5ad3833fa9bde751d31140219975"
 CANDIDATE = "c6ea270164ac992e7b5f3c0869a79d3d56bf74c8"
 PUBLIC_CASES = (1, 2)
 
@@ -28,30 +30,45 @@ def _field_count(value, name: str) -> int:
     return 0
 
 
-def _parallel_metrics(cases: list[dict]) -> dict:
-    run = common.load_json(PARALLEL_CAPTURE / "run.json")
-    if run["input"]["candidate"] != CANDIDATE:
+def _parallel_metrics(cases: list[dict], capture=PARALLEL_CAPTURE, candidate=CANDIDATE, prefix="parallel") -> dict:
+    run = common.load_json(capture / "run.json")
+    if run["input"]["candidate"] != candidate:
         raise ValueError("parallel capture candidate differs from the documented candidate")
     rows = [row for name in PREDICTION_FILES.values()
-            for row in common.read_jsonl(PARALLEL_CAPTURE / name)]
+            for row in common.read_jsonl(capture / name)]
     if any(row["case_number"] not in PUBLIC_CASES for row in rows):
         raise ValueError("parallel capture contains a non-rehearsal case")
     with TemporaryDirectory(prefix="alibi-public-parallel-score-") as directory:
         output = Path(directory)
         for filename in (*PREDICTION_FILES.values(), PROBE_FILE):
-            shutil.copyfile(PARALLEL_CAPTURE / filename, output / filename)
+            shutil.copyfile(capture / filename, output / filename)
         metrics = score_saved(output, cases, [], kind="public_live")
+        scores = common.load_json(output / "scores.json")
+        for mode, score in scores["independent"].items():
+            metrics[f"second_scorer_{mode}_safe_complete"] = score["metrics"]["safe_complete"]
     schema = common.load_schema("prediction")
     metrics["prediction_schema_rows"] = len(rows)
     metrics["prediction_schema_invalid_rows"] = sum(bool(jsonschema_lite.errors(schema, row)) for row in rows)
     for failure in ("invalid_output", "timeout"):
         metrics[f"rfc_{failure}_count"] = sum((row.get("failure") or {}).get("type") == failure for row in rows)
-    scheduling = common.load_json(PARALLEL_CAPTURE / "scheduling.json")
+    metrics["rfc_failures"] = sum(bool(row.get("failure")) for row in rows)
+    scheduling = common.load_json(capture / "scheduling.json")
     metrics.update({f"scheduler_{key}": int(value) for key, value in scheduling["aggregate"].items()
                     if type(value) in (int, bool)})
     for mode, counts in scheduling["systems"].items():
         metrics.update({f"{mode}_workers_{key}": value for key, value in counts.items()})
-    return {f"parallel_{key}": value for key, value in metrics.items()}
+    if prefix == "candidate3":
+        # This committed aggregate retains the original worker measurements;
+        # replay's temporary directory intentionally contains no worker logs.
+        retained = common.load_json(capture / "scores.json")["retained_capture"]
+        for mode, usage in retained["usage_by_system"].items():
+            for key in ("model_calls", "tokens", "cost_usd_estimate"):
+                metrics[f"retained_usage_{mode}_{key}"] = usage["totals"][key]
+            metrics[f"retained_usage_{mode}_unknown_workers"] = usage["unknown_workers"]
+        for mode, difference in retained["claim_divergence_by_system"].items():
+            for key in ("differing_rfcs", "unknown_comparison_rfcs", "policy_filtering_rfcs"):
+                metrics[f"claim_divergence_{mode}_{key}"] = difference[key]
+    return {f"{prefix}_{key}": value for key, value in metrics.items()}
 
 
 def replay() -> dict:
@@ -101,6 +118,7 @@ def replay() -> dict:
     metrics["retained_usage_cost_usd_estimate_total"] = round(sum(
         measured["cost_usd_estimate"] for measured in usage.values()), 10)
     metrics.update(_parallel_metrics(cases))
+    metrics.update(_parallel_metrics(cases, CANDIDATE3_CAPTURE, CANDIDATE3, "candidate3"))
     return metrics
 
 

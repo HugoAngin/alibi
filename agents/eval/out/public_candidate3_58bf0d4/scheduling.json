@@ -1,0 +1,41 @@
+{
+  "aggregate": {
+    "total": 6,
+    "attempted": 6,
+    "completed": 6,
+    "errors": 0,
+    "not_started": 0,
+    "initial_workers": 4,
+    "final_workers": 4,
+    "rate_limit_reduced": false,
+    "deadline_reached": false,
+    "aborted": false,
+    "abort_reason": null,
+    "deadline": "2026-11-08T12:50:00+00:00"
+  },
+  "systems": {
+    "agents": {
+      "attempted": 2,
+      "completed": 2,
+      "failed": 0,
+      "not_started": 0
+    },
+    "one_pass": {
+      "attempted": 2,
+      "completed": 2,
+      "failed": 0,
+      "not_started": 0
+    },
+    "rules": {
+      "attempted": 2,
+      "completed": 2,
+      "failed": 0,
+      "not_started": 0
+    }
+  },
+  "limits": {
+    "agents": 180,
+    "one_pass": 90,
+    "rules": 30
+  }
+}

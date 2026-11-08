@@ -1,0 +1,61 @@
+{
+  "candidate_tag": "sealed-candidate-3",
+  "candidate_commit": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+  "mode": "rules",
+  "fixture_clock": "2026-11-08T10:00:00Z",
+  "rows": 47,
+  "outcomes": {
+    "blocked": 15,
+    "not_run": 28,
+    "not_blocked": 4
+  },
+  "failed_refusal_ids": [
+    "SP-23",
+    "SP-24"
+  ],
+  "accepted_controls": [
+    "SP-30",
+    "SP-32"
+  ],
+  "receipt_verified": true,
+  "source_clean": true,
+  "gate": {
+    "banks": {
+      "bank_a": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      },
+      "bank_b": {
+        "approve_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "dispatch_refusals": {
+          "anonymous": 401,
+          "bank_a": 403,
+          "bank_b": 403
+        },
+        "foreign_status": 404,
+        "independent_verification": true,
+        "verified_receipts": 1
+      }
+    },
+    "case": 1,
+    "passed": true
+  },
+  "results_sha256": "bf8dc227fb5c18ab1a9e8e6b97576767166e1fa80fc583ff0ac1ee77397a5e12",
+  "receipt_sha256": "4714247aefd40c97d5e1ef56da8bc9eed08f08a1c11865f053a14f691aa8cc91",
+  "orchestration_sha256": "9826b379bb94bfc660d51ec85084b61972f817c2291244d527a9fdaf5ec638a7"
+}

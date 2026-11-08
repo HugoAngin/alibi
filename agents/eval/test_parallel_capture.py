@@ -186,6 +186,33 @@ def test_adapter_failure_result_does_not_abort():
     assert result['metadata']['completed'] == 6
 
 
+def test_heartbeat_runs_without_completion_and_bounds_wait(monkeypatch):
+    release = Event()
+    real_wait = scheduler.wait
+    waits = []
+    beats = []
+
+    def wait(futures, *, timeout, return_when):
+        waits.append(timeout)
+        if len(waits) == 1:
+            return set(), set(futures)
+        return real_wait(futures, timeout=timeout, return_when=return_when)
+
+    def heartbeat(meta):
+        beats.append(meta)
+        release.set()
+
+    def run(index):
+        assert release.wait(1)
+        return index
+
+    monkeypatch.setattr(scheduler, "wait", wait)
+    result = scheduler.schedule(range(4), run, heartbeat=heartbeat)
+    assert beats[0]['attempted'] == 4 and beats[0]['completed'] == 0
+    assert all(timeout <= 1 for timeout in waits)
+    assert result['metadata']['completed'] == 4
+
+
 def test_deadline_during_setup_is_not_an_integrity_abort(monkeypatch):
     now = datetime.now(timezone.utc)
     current = [now]

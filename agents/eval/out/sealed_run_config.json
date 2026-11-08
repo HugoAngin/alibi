@@ -51,5 +51,6 @@
   "candidate_tag": "sealed-candidate-3",
   "refreeze_reason": "Before pack opening, candidate2 added typed facts from cited records/calculations; candidate3 additionally clips top-level trace steps to their existing schema limit before validation. Lead superseded2 at11:16 UTC.",
   "trace_schema_failure": "Candidate3 includes trace output shaping; other invalid outputs still count without retries.",
-  "candidate_variants_examined": 3
+  "candidate_variants_examined": 3,
+  "checkpoint_at": "2026-11-08T12:05:00+00:00"
 }

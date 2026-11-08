@@ -12,7 +12,7 @@ def test_public_replay_is_read_only_and_reproduces_capture(monkeypatch):
     monkeypatch.setattr(run_sealed, "run_case_worker", must_not_run)
     def snapshot():
         return {str(path): sha256(path.read_bytes()).hexdigest()
-                for root in (report.CAPTURE, report.PARALLEL_CAPTURE)
+                for root in (report.CAPTURE, report.PARALLEL_CAPTURE, report.CANDIDATE3_CAPTURE)
                 for path in root.rglob("*") if path.is_file()}
 
     before = snapshot()
@@ -35,3 +35,14 @@ def test_public_replay_is_read_only_and_reproduces_capture(monkeypatch):
     assert metrics["parallel_scheduler_completed"] == 6
     assert metrics["parallel_scheduler_errors"] == 0
     assert metrics["parallel_scheduler_initial_workers"] == metrics["parallel_scheduler_final_workers"] == 4
+    assert [metrics[f"candidate3_{key}"] for key in
+            ("safe_complete", "one_pass_safe_complete", "rules_safe_complete")] == [1, 0, 1]
+    assert all(metrics[f"candidate3_second_scorer_{mode}_safe_complete"] == 0
+               for mode in ("agents", "one_pass", "rules"))
+    assert metrics["candidate3_prediction_schema_rows"] == 12
+    assert metrics["candidate3_prediction_schema_invalid_rows"] == metrics["candidate3_rfc_failures"] == 0
+    assert metrics["candidate3_rfc_timeout_count"] == 0
+    assert metrics["candidate3_retained_usage_agents_tokens"] == 108460
+    assert metrics["candidate3_retained_usage_agents_unknown_workers"] == 0
+    assert metrics["candidate3_claim_divergence_agents_differing_rfcs"] == 0
+    assert metrics["candidate3_claim_divergence_agents_unknown_comparison_rfcs"] == 4

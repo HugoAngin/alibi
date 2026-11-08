@@ -28,7 +28,7 @@ def _rate_limited(result: Any) -> bool:
 
 def schedule(jobs: Iterable[Any], run_job: Callable[[Any], Any], *, workers: int = 4,
              deadline: datetime | None = None, progress: Callable | None = None,
-             stop_on_error: bool = False) -> dict:
+             stop_on_error: bool = False, heartbeat: Callable | None = None) -> dict:
     """Return input-ordered outcomes with attempted/completed/deadline counts.
 
     Ordinary worker exceptions become error outcomes with only their class name,
@@ -37,6 +37,8 @@ def schedule(jobs: Iterable[Any], run_job: Callable[[Any], Any], *, workers: int
     is not misrepresented as a complete run. The caller must preserve that run.
     With stop_on_error, worker exceptions stop new submissions and queued jobs
     become unavailable; already running jobs drain without cancellation or retry.
+    Optional heartbeat(metadata) runs on the coordinator at most one second
+    between waits, even with no completions; it never runs on a worker thread.
     """
     if type(workers) is not int or not 1 <= workers <= 4:
         raise ValueError("workers must be an integer from 1 to 4")
@@ -85,6 +87,8 @@ def schedule(jobs: Iterable[Any], run_job: Callable[[Any], Any], *, workers: int
             remaining = (deadline - _now()).total_seconds() if deadline else None
             # After expiry, drain bounded workers without spinning on a zero timeout.
             wait_seconds = max(0.001, remaining) if remaining is not None and remaining > 0 else None
+            if heartbeat is not None:
+                wait_seconds = min(wait_seconds, 1.0) if wait_seconds is not None else 1.0
             done, _ = wait(active, timeout=wait_seconds, return_when=FIRST_COMPLETED)
             for future in sorted(done, key=active.__getitem__):
                 index = active.pop(future)
@@ -102,6 +106,8 @@ def schedule(jobs: Iterable[Any], run_job: Callable[[Any], Any], *, workers: int
                         counts["final_workers"] = target
                         counts["rate_limit_reduced"] = True
                     finish(index, "completed", result=result)
+            if heartbeat is not None:
+                heartbeat(dict(counts))
     assert all(outcome is not None for outcome in outcomes)
     assert counts["attempted"] == counts["completed"] + counts["errors"]
     return {"outcomes": outcomes, "metadata": counts}

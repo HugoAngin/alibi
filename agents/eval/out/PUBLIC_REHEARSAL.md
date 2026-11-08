@@ -54,4 +54,26 @@ The replay command computes `parallel_rfc_invalid_output_count=2`, `parallel_rfc
 
 Parallel capture: [agents](public_parallel_c6ea270/agents.jsonl), [one-pass](public_parallel_c6ea270/one_pass.jsonl), [rules](public_parallel_c6ea270/rules.jsonl), [run metadata](public_parallel_c6ea270/run.json), [scheduling](public_parallel_c6ea270/scheduling.json), [original scores](public_parallel_c6ea270/scores.json), [probe rows](public_parallel_c6ea270/probes.jsonl).
 
+## Candidate 3 public capture
+
+Candidate `58bf0d4a199f5ad3833fa9bde751d31140219975` was rehearsed separately after the structured-facts and challenger-trace fixes. The replay asserts this exact SHA and reports this capture under `candidate3_` metrics. The previous candidate's sequential and parallel captures remain above; none is substituted or pooled.
+
+| Result | agents | one_pass | rules |
+| --- | ---: | ---: | ---: |
+| Official safe-complete cases | 1/2 | 0/2 | 1/2 |
+| Existing second scorer safe-complete cases | 0/2 | 0/2 | 0/2 |
+| Recorded calls | 13 | 4 | 0 |
+| Recorded tokens | 108,460 | 43,672 | 0 |
+| Retained estimated USD | 0.20164175 | 0.048516 | 0 |
+
+All six worker jobs completed, all 12 prediction envelopes validate, and no RFC failure, timeout or retry was recorded. Retained usage reports zero unknown workers. The replay reads these original usage aggregates from the committed scores; it does not reconstruct cost from empty temporary worker directories. The model per-request scorer costs remain unknown.
+
+The second scorer rejects agents Case 1 for a specific stricter interpretation: the source-of-funds claim cites 20 references, including the two references in that question's accepted set plus 18 references supporting the breakdown question. Its facts now exactly match public gold. The official scorer accepts coverage of a sufficient evidence set; `score_cases.score_request` instead requires an exact accepted citation set for each question. Thus the second scorer gives that RFC one correct question out of two, despite zero unnecessary disclosures across the RFC. This is a disclosed difference in scoring semantics, not capture corruption or a remaining structured-facts failure. Both outcomes must remain visible; they do not corroborate one another. No scoring mathematics was changed. This disagreement alone is not evidence that capture is invalid, but the chosen headline interpretation must remain explicit before unseen evaluation.
+
+Case 2 still fails the official safe-complete check where the unresolved settlement package contains unnecessary evidence. One-pass continues to expose its keyword/rules-mapping limitation: source-of-funds returns `no_merchant_records`, while breakdown and multiple-period-total questions remain unresolved. It has no follow-up retrieval. Rules have prior public-case calibration, so this is not an untouched-baseline comparison.
+
+No observed status/reference divergence occurs in these four RFCs per system. Final `package_claims` still omit facts, so all four RFC comparisons per system retain an unknown component; zero observed divergence does not establish final recipient correctness. The earlier restrictive-policy check remains separate evidence with three claim-status changes across two RFCs.
+
+Candidate 3 capture: [agents](public_candidate3_58bf0d4/agents.jsonl), [one-pass](public_candidate3_58bf0d4/one_pass.jsonl), [rules](public_candidate3_58bf0d4/rules.jsonl), [run](public_candidate3_58bf0d4/run.json), [scheduling](public_candidate3_58bf0d4/scheduling.json), [scores and usage](public_candidate3_58bf0d4/scores.json). Fresh security evidence is separate: [probe outcomes](s5-candidate3-probes.jsonl), [receipt](s5-candidate3-probes.jsonl.receipt.json), [verification](s5-candidate3-verification.json). The live-case capture's empty probe file is not a security pass.
+
 A separate original-tag persistence check found that the standalone bank retained both verified signed packages in plaintext (20 and 10 attachments). The passport-store encryption check does not cover that bank state. See [the retained SP-47 finding](s5-bank-persistence-sp47.json) and the probe reproduction in `agents/eval/CASE_FORMAT.md`. This is separate from the model comparison and must remain visible in submission limitations.

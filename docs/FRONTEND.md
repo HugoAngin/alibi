@@ -48,6 +48,7 @@ Later, once integration (S5) lands, `uv run --frozen python -m alibi.demo --time
 | Who | Path | What |
 | --- | --- | --- |
 | research (Elio) | `alibi/app/templates/` | All templates and partials |
+| lead (Elio driving), until 09:30 (27cb13a) | `web/apps/alibi/src/components/app/`, `web/apps/alibi/src/pages/app/` | Holder app mobile redesign; requests outside these folders go to `agents/lead/out/MOBILE_NEEDS.md`. |
 | execution (Mouaad), from research (e1be433) | `web/` | The public Astro front end: landing page that becomes the phone app on mobile, plus the simulated merchant and bank sites. Separate from the Python app above; see `web/README.md` |
 | data (Hugo) | `alibi/app/static/` | The stylesheet and any static assets |
 | execution (Mouaad) | `agents/execution/out/` | Review of the analyst screens against `ANALYST_FLOW.md`; send changes to Elio |

@@ -267,10 +267,12 @@ def investigate(store, fx, keystore, now, request_id=RFC_A, *, lookup=True,
                 include_corrections=False, budget=12, **kwargs):
     lookup_fn = (maya.settlement_lookup(fx, keystore, include_corrections=include_corrections)
                  if lookup else None)
-    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, request_id),
+    request = store.get_request(request_id)
+    gateway = FakeGateway(store, subject_ref=SUBJ,
+                          run_id=next_run_id(store, request_id, audience=request.audience),
                           registry=keystore.registry(), budget=budget,
                           settlement_lookup=lookup_fn, now=now)
-    result = run_investigation(store.get_request(request_id), store, gateway, now=now, **kwargs)
+    result = run_investigation(request, store, gateway, now=now, **kwargs)
     return result, gateway
 
 
@@ -641,22 +643,22 @@ def test_the_rules_baseline_is_deterministic(passport, keystore, now):
     assert a.to_json_dict() == b.to_json_dict()  # same store state, same result
 
     rerun, _ = investigate(store_a, fx, keystore, now)
-    assert (a.run_id, rerun.run_id) == (canon.make_id("run", RFC_A, "rules", 0),
-                                        canon.make_id("run", RFC_A, "rules", 1))
+    assert (a.run_id, rerun.run_id) == (canon.make_id("run", "bank_a", RFC_A, "rules", 0),
+                                        canon.make_id("run", "bank_a", RFC_A, "rules", 1))
     for first, again in zip(a.claims, rerun.claims, strict=True):
         assert first.claim_id != again.claim_id
         assert (first.status, keys(first.evidence_refs), first.statement, first.gap) \
             == (again.status, keys(again.evidence_refs), again.statement, again.gap)
     assert [(l.link_state, l.record_ref, l.candidates) for l in a.links] \
         == [(l.link_state, l.record_ref, l.candidates) for l in rerun.links]
-    assert next_run_id(store_a, RFC_A) == canon.make_id("run", RFC_A, "rules", 2)
+    assert next_run_id(store_a, RFC_A, audience="bank_a") == canon.make_id("run", "bank_a", RFC_A, "rules", 2)
 
 
 def test_links_claims_and_trace_are_saved(passport, keystore, now):
     store, fx = passport("supported")
     result, gateway = investigate(store, fx, keystore, now)
     run_id = result.run_id
-    assert run_id == canon.make_id("run", RFC_A, "rules", 0) == gateway.run_id
+    assert run_id == canon.make_id("run", "bank_a", RFC_A, "rules", 0) == gateway.run_id
     assert result.mode == "rules" and result.request_id == RFC_A
 
     (claim,) = result.claims
@@ -685,7 +687,7 @@ def test_links_claims_and_trace_are_saved(passport, keystore, now):
 
 def test_rules_steps_join_the_gateway_sequence_when_it_offers_log_step(passport, keystore, now):
     store, fx = passport("supported")
-    gateway = LoggingGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A),
+    gateway = LoggingGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A, audience="bank_a"),
                              registry=keystore.registry(), now=now,
                              settlement_lookup=maya.settlement_lookup(fx, keystore))
     result = run_investigation(store.get_request(RFC_A), store, gateway, now=now)
@@ -706,7 +708,7 @@ def test_rules_steps_join_the_gateway_sequence_when_it_offers_log_step(passport,
 @pytest.mark.parametrize("mode", ["agents", "single_call", "RULES"])
 def test_other_modes_are_not_implemented(passport, keystore, now, mode):
     store, fx = passport("supported")
-    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A), now=now)
+    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A, audience="bank_a"), now=now)
     with pytest.raises(NotImplementedError):
         run_investigation(store.get_request(RFC_A), store, gateway, mode=mode, now=now)
     assert gateway.calls_used == 0 and gateway.trace == []
@@ -926,7 +928,7 @@ def test_a_gateway_under_another_run_id_is_refused_before_any_call(passport, key
     assert store.list_claims(request_id=RFC_A, state=None) == []
 
     # A gateway serves one run: a rerun through it is refused instead of half-saved.
-    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A),
+    gateway = FakeGateway(store, subject_ref=SUBJ, run_id=next_run_id(store, RFC_A, audience="bank_a"),
                           registry=keystore.registry(), settlement_lookup=lookup, now=now)
     first = run_investigation(store.get_request(RFC_A), store, gateway, now=now)
     calls = gateway.calls_used
@@ -1126,7 +1128,7 @@ def real(tmp_path, keystore, registry, now):
         lookup_fn = (maya.settlement_lookup(fx, keystore, include_corrections=include_corrections)
                      if lookup else None)
         gateway = gateway_module.Gateway(
-            store, subject_ref=SUBJ, run_id=next_run_id(store, request.request_id),
+            store, subject_ref=SUBJ, run_id=next_run_id(store, request.request_id, audience=request.audience),
             registry=registry, now=now, budget=budget, settlement_lookup=lookup_fn,
             request_id=request.request_id)
         return run_investigation(request, store, gateway, now=now), gateway
@@ -1246,3 +1248,14 @@ def test_integration_self_supplied_imports_never_support(real, now):
     lookups = [e for e in result.trace if e.tool == "lookup_settlement" and e.step == "tool_call"]
     assert lookups and all(e.result == {"found": False} for e in lookups)
     assert result.unavailable == []
+
+def test_run_ids_belong_to_one_banks_request(tmp_path):
+    """Another bank using the same request_id gets unrelated run ids (no shared counter)."""
+    store = Store(tmp_path / "runs.db")
+    try:
+        a = next_run_id(store, "rfc_shared", audience="bank_a")
+        b = next_run_id(store, "rfc_shared", audience="bank_b")
+        assert a == canon.make_id("run", "bank_a", "rfc_shared", "rules", 0)
+        assert b == canon.make_id("run", "bank_b", "rfc_shared", "rules", 0)
+    finally:
+        store.close()

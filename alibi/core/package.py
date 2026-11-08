@@ -214,15 +214,19 @@ def _claim_refs(claim: Claim) -> list[EvidenceRef]:
     return merge_refs(claim.evidence_refs, calculation_refs(claim.calculation))
 
 
-def cited_refs(claims: Iterable[Claim], *, request_id: str | None = None) -> list[EvidenceRef]:
+def cited_refs(claims: Iterable[Claim], *, request_id: str | None = None,
+               audience: str | None = None) -> list[EvidenceRef]:
     """Every ref the active claims cite (evidence and calculation refs), sorted by key.
 
-    Pass it to ``make_draft(source_revisions=...)`` so a correction to any cited source, shared
-    or not, invalidates the draft and its approval.
+    ``request_id`` and ``audience`` (both, since request ids are per bank) keep only one
+    request's claims. Pass the result to ``make_draft(source_revisions=...)`` so a correction to
+    any cited source, shared or not, invalidates the draft and its approval.
     """
     refs: list[EvidenceRef] = []
     for claim in claims:
         if request_id is not None and claim.request_id != request_id:
+            continue
+        if audience is not None and claim.audience != audience:
             continue
         if DerivedState(claim.state) == DerivedState.ACTIVE:
             refs += _claim_refs(claim)
@@ -253,7 +257,8 @@ def _pick_claims(request: RequestForContext, claims: Iterable[Claim]) -> dict[st
                 claim = Claim.model_validate(claim)
             except ValidationError as exc:
                 raise PackageError(f"invalid claim ({_summary(exc)})") from exc
-        if (claim.request_id != request.request_id or claim.question_id not in questions
+        if (claim.request_id != request.request_id or claim.audience != request.audience
+                or claim.question_id not in questions
                 or DerivedState(claim.state) != DerivedState.ACTIVE):
             continue
         current = best.get(claim.question_id)

@@ -408,7 +408,10 @@ class Question(AlibiModel):
 
 
 class RequestForContext(AlibiModel):
-    """A bank's Request for Context. The audience is bound to the authenticated issuer."""
+    """A bank's Request for Context. The audience is bound to the authenticated issuer.
+
+    A request is identified by ``(audience, request_id)``. Request ids are the bank's own and
+    need only be unique per bank, so one bank's ids never block or reveal another's."""
 
     schema_version: Literal["alibi.rfc.v1"] = SCHEMA_RFC
     issuer: Ident
@@ -549,6 +552,7 @@ class Claim(AlibiModel):
 
     claim_id: Ident
     request_id: Ident
+    audience: Ident           # with request_id, identifies the request (ids are per bank)
     question_id: Ident
     statement: LongText
     status: ClaimStatus

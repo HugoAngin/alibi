@@ -81,14 +81,15 @@ from alibi.core.schemas import (
 
 __all__ = [
     "DEFAULT_DB_PATH", "MASTER_KEY_ENV", "MAX_REVISION", "SELF_SUPPLIED_PREFIX",
-    "IdempotencyConflict", "NamespaceError", "NotFound", "PutResult", "RevisionConflict",
-    "Store", "StoreError", "dependency_refs", "dependency_tokens", "load_master_key",
+    "AmbiguousRequest", "IdempotencyConflict", "NamespaceError", "NotFound", "PutResult",
+    "RevisionConflict", "Store", "StoreError", "dependency_refs", "dependency_tokens",
+    "load_master_key",
 ]
 
 DEFAULT_DB_PATH = Path("data/alibi/passport.db")
 MASTER_KEY_ENV = "ALIBI_MASTER_KEY"
 KEY_FILE_NAME = "master.key"
-SCHEMA_VERSION = "3"   # 2 -> 3: requests keyed by (issuer, request_id); migrated on open
+SCHEMA_VERSION = "3"   # 2 -> 3: requests keyed by (issuer, request_id), the bank; migrated on open
 SELF_SUPPLIED_PREFIX = "self_"
 MAX_REVISION = 2**53 - 1
 _KEY_CHECK = b"alibi.store.key-check.v1"
@@ -120,6 +121,13 @@ class NamespaceError(StoreError):
 
 class NotFound(StoreError):
     """No stored object has that id or revision."""
+
+
+class AmbiguousRequest(StoreError):
+    """A bare ``request_id`` names requests from more than one bank; pass ``audience``.
+
+    Request ids are the bank's own, so a request is identified by ``(audience, request_id)``.
+    Only holder-side lookups can be ambiguous: bank-facing code always passes the bank."""
 
 
 def _no_invalidations() -> dict[str, list[str]]:
@@ -755,10 +763,14 @@ class Store:
                 f"ON CONFLICT ({id_col}) DO UPDATE SET {updates}", values)
 
     def _append_once(self, table: str, id_col: str, obj: M, obj_id: str,
-                     columns: dict[str, Any], blob: bytes, what: str) -> bool:
+                     columns: dict[str, Any], blob: bytes, what: str,
+                     scope: dict[str, Any] | None = None) -> bool:
         """Insert an append-only row. Identical content again is a no-op (False); different
-        content under the same id raises ``IdempotencyConflict``."""
-        rows = self._q(f"SELECT * FROM {table} WHERE {id_col} = ?", (obj_id,))
+        content under the same key (``id_col`` plus the ``scope`` columns, which must also be
+        in ``columns``) raises ``IdempotencyConflict``."""
+        keys = {id_col: obj_id, **(scope or {})}
+        where = " AND ".join(f"{column} = ?" for column in keys)
+        rows = self._q(f"SELECT * FROM {table} WHERE {where}", [_value(v) for v in keys.values()])
         if rows:
             if canon.digest(self._row_obj(table, type(obj), rows[0])) == canon.digest(obj):
                 return False
@@ -1115,9 +1127,12 @@ class Store:
             self._set_deps("claim", claim.claim_id, dependency_tokens(claim))
 
     @_locked
-    def list_claims(self, *, request_id: str | None = None,
+    def list_claims(self, *, request_id: str | None = None, audience: str | None = None,
                     state: str | None = "active") -> list[Claim]:
-        return self._select("claims", Claim, {"request_id": request_id, "state": state})
+        """Claims in storage order. A request is ``(request_id, audience)``: pass both to get
+        one bank's request, since another bank may use the same request_id."""
+        claims = self._select("claims", Claim, {"request_id": request_id, "state": state})
+        return claims if audience is None else [c for c in claims if c.audience == audience]
 
     def save_alert(self, alert: Alert) -> None:
         """Insert or replace an alert by ``alert_id``."""
@@ -1210,21 +1225,30 @@ class Store:
         return "inserted"
 
     @_locked
-    def get_request(self, request_id: str, *, issuer: str | None = None) -> RequestForContext:
-        """The request ``request_id``. With ``issuer``, that bank's request under the id.
+    def get_request(self, request_id: str, *, issuer: str | None = None,
+                    audience: str | None = None, strict: bool = False) -> RequestForContext:
+        """The request ``request_id``. With ``issuer`` (or its alias ``audience``: an RFC's issuer
+        is the bank it is addressed to), that bank's request under the id.
 
         Without ``issuer`` a bare id resolves to the request received first under it, so an
         id that only one bank uses (the normal case) is unambiguous, and a later bank reusing
         the id never captures the drafts, approvals and packages that name the earlier one.
+        With ``strict`` a bare id that several banks used raises ``AmbiguousRequest`` instead
+        (the holder API uses this, so a call never guesses between banks).
         """
+        if issuer is None:
+            issuer = audience
         if issuer is not None:
             rows = self._q("SELECT * FROM requests WHERE issuer = ? AND request_id = ?",
                            (issuer, request_id))
         else:
-            rows = self._q("SELECT * FROM requests WHERE request_id = ? ORDER BY rowid LIMIT 1",
+            rows = self._q("SELECT * FROM requests WHERE request_id = ? ORDER BY rowid",
                            (request_id,))
         if not rows:
             raise NotFound(f"no request {request_id!r}")
+        if len(rows) > 1 and strict:
+            raise AmbiguousRequest(f"request {request_id!r} was received from more than one "
+                                   "bank; pass audience")
         return self._row_obj("requests", RequestForContext, rows[0])
 
     @_locked
@@ -1253,8 +1277,10 @@ class Store:
         return self._get("drafts", "draft_id", draft_id, Draft, "draft")
 
     @_locked
-    def list_drafts(self, *, request_id: str | None = None) -> list[Draft]:
-        return self._select("drafts", Draft, {"request_id": request_id})
+    def list_drafts(self, *, request_id: str | None = None,
+                    audience: str | None = None) -> list[Draft]:
+        drafts = self._select("drafts", Draft, {"request_id": request_id})
+        return drafts if audience is None else [d for d in drafts if d.audience == audience]
 
     def update_draft_status(self, draft_id: str, status: DraftStatus | str,
                             reason: str | None = None) -> Draft:
@@ -1299,9 +1325,11 @@ class Store:
         return self._get("approvals", "approval_id", approval_id, Approval, "approval")
 
     @_locked
-    def list_approvals(self, *, request_id: str | None = None,
+    def list_approvals(self, *, request_id: str | None = None, audience: str | None = None,
                        status: str | None = None) -> list[Approval]:
-        return self._select("approvals", Approval, {"request_id": request_id, "status": status})
+        approvals = self._select("approvals", Approval, {"request_id": request_id,
+                                                         "status": status})
+        return approvals if audience is None else [a for a in approvals if a.audience == audience]
 
     # ----------------------------------------------------------------------- packages, deliveries
 

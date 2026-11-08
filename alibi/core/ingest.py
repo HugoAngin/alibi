@@ -568,7 +568,7 @@ def _check_rfc_scope(store: Store, rfc: RequestForContext,
         if txn is None or txn.subject_ref != rfc.subject_ref or txn.account_ref not in allowed:
             raise _Refused("txn_ids include a transaction outside this request's scope", target)
     if rfc.parent_request_id is not None:
-        try:
+        try:   # only this bank's own requests: another bank's ids are invisible here
             parent = store.get_request(rfc.parent_request_id, issuer=rfc.issuer)
         except NotFound:
             parent = None
@@ -596,7 +596,9 @@ def receive_rfc(store: Store, registry: TrustRegistry | None, payload: Any, *,
     a period inside the parent's, ``txn_ids`` within the parent's; otherwise the refusal
     reads ``scope_wider_than_parent: ...``). Request ids are the issuer's own namespace: the
     same issuer sending the same ``request_id`` with identical content is idempotent and with
-    different content is refused, while another bank may use the same id for its own request.
+    different content is refused, while another bank may use the same id for its own request. Another bank's use of that id neither conflicts nor shows: a parent is
+    looked up among this bank's own requests only, and naming another bank's request is refused
+    exactly like naming none.
     """
     at = _clock(now)
     fingerprint = _fingerprint(payload)

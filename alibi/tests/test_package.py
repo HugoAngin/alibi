@@ -179,7 +179,7 @@ def claim_a(ev, **over) -> Claim:
     calc = reconcile_credit(ev["txn_9001"], components=[ev[c] for c in COMPONENTS],
                             payout=ev["po_5001"], settlement=ev["stl_88001"])
     data = {
-        "claim_id": "clm_a_q1", "request_id": "rfc_a_001", "question_id": "q1",
+        "claim_id": "clm_a_q1", "request_id": "rfc_a_001", "audience": "bank_a", "question_id": "q1",
         "statement": ("The 2160.00 GBP credit is the threadline payout PO-5001, settled as "
                       "STL-88001 before the credit was booked."),
         "status": ClaimStatus.SUPPORTED,
@@ -195,7 +195,7 @@ def claims_b(ev) -> list[Claim]:
     """Supported RFC B answers whose text names items (the scan must catch them)."""
     orders = [ev[record_id] for record_id in ORDERS]
     return [
-        Claim(claim_id="clm_b_q1", request_id="rfc_b_001", question_id="q1",
+        Claim(claim_id="clm_b_q1", request_id="rfc_b_001", audience="bank_b", question_id="q1",
               statement=("Documented October sales were 240000 pence, including a Vintage wool "
                          "overcoat, charcoal."),
               status=ClaimStatus.SUPPORTED,
@@ -203,7 +203,7 @@ def claims_b(ev) -> list[Claim]:
                          "Cashmere scarf, oatmeal."),
               evidence_refs=[o.ref() for o in orders],
               calculation=sum_terms(orders, method="documented_sales"), created_at=NOW),
-        Claim(claim_id="clm_b_q2", request_id="rfc_b_001", question_id="q2",
+        Claim(claim_id="clm_b_q2", request_id="rfc_b_001", audience="bank_b", question_id="q2",
               statement="One refund of 18000 pence was issued for the Cashmere scarf, oatmeal.",
               status=ClaimStatus.SUPPORTED,
               rationale="The refund record rfd_2001 refunds part of order ord_1003.",
@@ -224,7 +224,7 @@ def retail(keystore):
                      description="NORTHGATE RETAIL CARD PAYMENT", refs=("NGR-731942",))
     request = rfc_a(request_id="rfc_a_002", txn_ids=["txn_9002"], questions=[
         {"question_id": "q1", "text": "What was the 45.99 GBP card payment on 6 November for?"}])
-    claim = Claim(claim_id="clm_retail_q1", request_id="rfc_a_002", question_id="q1",
+    claim = Claim(claim_id="clm_retail_q1", request_id="rfc_a_002", audience="bank_a", question_id="q1",
                   statement="The card payment is the purchase on receipt NGR-731942.",
                   status=ClaimStatus.SUPPORTED, rationale="The receipt amount matches the debit.",
                   evidence_refs=[receipt.ref(), debit.ref()],
@@ -686,7 +686,7 @@ def test_denied_kind_is_never_named_even_when_no_claim_cites_it(ev):
     assert any(e.field == "kind" and e.ref.ref_id == "rfd_2001" for e in review.withheld_fields)
 
     # An unresolved answer's own gap is scrubbed too, even when the passport holds no refund.
-    gap_claim = Claim(claim_id="clm_gap", request_id="rfc_b_001", question_id="q1",
+    gap_claim = Claim(claim_id="clm_gap", request_id="rfc_b_001", audience="bank_b", question_id="q1",
                       statement="Documented October sales are not established.",
                       status=ClaimStatus.UNRESOLVED, rationale="Sales could not be totalled.",
                       gap="The refund records for October could not be matched to the orders.",
@@ -737,7 +737,7 @@ def test_scan_never_rewrites_an_extracts_own_identity(keystore, registry, now):
     split = signed(keystore, event(
         "ord_100-b", "order", "2026-10-20T10:00:00Z", status="completed", amount_pence=2500,
         currency="GBP", items=item_rows([("Linen shirt, white", "shirts", 1, 2500)])))
-    claim = Claim(claim_id="clm_q1", request_id="rfc_b_001", question_id="q1",
+    claim = Claim(claim_id="clm_q1", request_id="rfc_b_001", audience="bank_b", question_id="q1",
                   statement="Documented October sales were 2500 pence.",
                   status=ClaimStatus.SUPPORTED, rationale="One completed order.",
                   evidence_refs=[split.ref()],
@@ -908,3 +908,14 @@ def test_one_kind_totals_keep_one_sign_and_net_totals_subtract():
     assert _calc_check(calc("net_total", ("ord_1001", 1), ("rfd_2001", -1), ("fee_3001", -1)),
                        contents) is True
     assert _calc_check(calc("net_total", ("ord_1001", 1), ("rfd_2001", 1)), contents) is False
+
+
+def test_a_claim_for_another_banks_request_with_the_same_id_is_never_packaged(ev):
+    """Request ids are per bank: build_body skips a claim whose audience is not the request's,
+    even with the same request_id and question_id."""
+    foreign = claim_a(ev, claim_id="clm_squat", audience="bank_b",
+                      statement="An answer meant for bank_b only.")
+    body, review = build_body(rfc_a(), [foreign], list(ev.values()), [], now=NOW)
+    assert [(c.question_id, c.status) for c in body.claims] == [("q1", ClaimStatus.UNRESOLVED)]
+    assert "meant for bank_b" not in json.dumps(body.to_json_dict())
+    assert body.attachments == []

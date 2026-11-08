@@ -663,3 +663,47 @@ def test_rebuilding_a_body_that_was_invalidated_earlier_gets_a_fresh_pending_dra
     assert restored.body_sha256 == first.body_sha256
     assert api.DraftStatus(restored.status) == api.DraftStatus.PENDING
     assert api.DraftStatus(ctx.store.get_draft(removed.draft_id).status) == api.DraftStatus.INVALIDATED
+def test_two_banks_can_share_a_request_id_without_mixing_their_answers(ctx, tmp_path):
+    """Request ids are per bank. bank_b reusing bank_a's id gets its own request, run, draft,
+    case and package, identical to what it gets under its own id; bank_a's flow is unaffected;
+    and a bare id is refused as ambiguous instead of guessing."""
+    fx = load(ctx)
+    body = {**ctx.store.get_request(RFC_B).to_json_dict(), "request_id": RFC_A}
+    squat = api.receive_rfc(ctx.store, body, authenticated_issuer="bank_b",
+                            registry=ctx.registry, now=ctx.now)
+    assert (squat.request_id, squat.audience) == (RFC_A, "bank_b")
+    with pytest.raises(api.AmbiguousRequest):
+        api.run_investigation(ctx.store, RFC_A, now=ctx.now)
+    with pytest.raises(api.AmbiguousRequest):
+        api.build_review(ctx.store, RFC_A, now=ctx.now)
+
+    packages = {}
+    for bank in ("bank_a", "bank_b"):
+        run = api.run_investigation(ctx.store, RFC_A, audience=bank,
+                                    settlement_lookup=fx["settlement_lookup"],
+                                    registry=ctx.registry, now=ctx.now)
+        assert {claim.audience for claim in run.claims} == {bank}
+        draft = api.build_review(ctx.store, RFC_A, audience=bank, now=ctx.now)
+        request = ctx.store.get_request(RFC_A, audience=bank)
+        assert draft.audience == bank and draft.body.questions == request.questions
+        approval = api.approve(ctx.store, draft.draft_id, holder_id=HOLDER, now=ctx.now)
+        packages[bank] = api.sign_and_package(ctx.store, approval.approval_id,
+                                              keystore=ctx.keystore, now=ctx.now)
+        result = api.verify_package(packages[bank].to_json_dict(), expected_audience=bank,
+                                    registry=ctx.registry, now=ctx.now,
+                                    expected_request_id=RFC_A)
+        assert result.accepted
+    a, b = packages["bank_a"].body, packages["bank_b"].body
+    assert a.case_ref != b.case_ref
+    assert [c.status for c in a.claims] == [SUPPORTED]
+
+    # bank_b's answers are exactly the ones it gets when nobody else uses its id.
+    alone = api.open_store(tmp_path / "alone.db")
+    try:
+        reference = deliver(ctx, load(ctx, store=alone), RFC_B, store=alone).package.body
+    finally:
+        alone.close()
+    assert [(c.question_id, c.status, c.statement) for c in b.claims] == \
+        [(c.question_id, c.status, c.statement) for c in reference.claims]
+    assert [(c.question_id, c.status) for c in b.claims] == [("q1", SUPPORTED),
+                                                             ("q2", SUPPORTED)]

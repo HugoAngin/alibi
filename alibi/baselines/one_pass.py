@@ -157,13 +157,14 @@ class _Outcome:
 # --------------------------------------------------------------------------- public entry points
 
 
-def next_run_id(store: Store, request_id: str) -> str:
-    """``make_id("run", request_id, "single_call", n)`` for the first ``n`` no stored claim or
-    trace of this request uses."""
+def next_run_id(store: Store, request_id: str, *, audience: str | None = None) -> str:
+    """``make_id("run", audience, request_id, "single_call", n)`` (no bank: ``make_id("run",
+    request_id, "single_call", n)``) for the first ``n`` no stored claim or trace of this request
+    uses; request ids are per bank."""
     used = {claim.run_id for claim in store.list_claims(request_id=request_id, state=None)}
     n = 0
     while True:
-        run_id = make_id("run", request_id, MODE, n)
+        run_id = make_id("run", audience, request_id, MODE, n) if audience else make_id("run", request_id, MODE, n)
         if run_id not in used and not store.list_traces(run_id):
             return run_id
         n += 1
@@ -200,13 +201,13 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
         if registry is None and settlement_lookup is not None:
             registry = DemoKeystore(DEFAULT_KEY_DIR).ensure().registry()
         gateway = Gateway(store, subject_ref=rfc.subject_ref,
-                          run_id=next_run_id(store, rfc.request_id), registry=registry,
+                          run_id=next_run_id(store, rfc.request_id, audience=rfc.audience), registry=registry,
                           budget=budget, settlement_lookup=settlement_lookup,
                           txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
     scope = getattr(gateway, "subject_ref", None)
     if scope is not None and scope != rfc.subject_ref:
         raise ValueError("the gateway is scoped to a different subject than the request")
-    run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id)
+    run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id, audience=rfc.audience)
     run = _Run(rfc, store, gateway, client, run_id=run_id, now=at,
                model=model or config.FLASH)
     return run.execute()
@@ -503,7 +504,7 @@ class _Run:
                           result={"path": "claims.refs", "record_id": key[0], "revision": key[1]})
         claim = Claim(
             claim_id=make_id("clm", self.run_id, question.question_id),
-            request_id=self.rfc.request_id, question_id=question.question_id,
+            request_id=self.rfc.request_id, audience=self.rfc.audience, question_id=question.question_id,
             statement=_clip(statement), status=outcome.status, rationale=_clip(outcome.rationale),
             evidence_refs=_unique(evidence), calculation=outcome.calculation,
             gap=_clip(outcome.gap) if outcome.gap else None, run_id=self.run_id,

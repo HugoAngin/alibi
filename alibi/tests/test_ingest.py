@@ -538,3 +538,40 @@ def test_a_bank_cannot_name_another_banks_transaction(passport, registry, keysto
     # A period-only request names no account, so it needs none.
     stored = receive_rfc(passport, registry, rfc_b(fx), authenticated_issuer="bank_b", now=now)
     assert stored.request_id == "rfc_b_001" and stored.txn_ids is None
+
+
+def test_another_bank_can_neither_squat_nor_probe_a_request_id(passport, registry, keystore,
+                                                                fx, now):
+    """bank_b sending bank_a's request_id first neither blocks bank_a's genuine request nor
+    learns anything: request ids are scoped to the bank that sent them."""
+    squat = rfc_b(fx, request_id="rfc_a_001")
+    assert receive_rfc(passport, registry, squat, authenticated_issuer="bank_b",
+                       now=now).audience == "bank_b"
+    genuine = receive_rfc(passport, registry, maya.sign_request(rfc_a(fx), keystore),
+                          authenticated_issuer="bank_a", now=now, account_refs=BANK_A_ACCOUNTS)
+    assert genuine == RequestForContext.model_validate(rfc_a(fx))
+    assert passport.get_request("rfc_a_001", audience="bank_a") == genuine
+    assert passport.get_request("rfc_a_001", audience="bank_b") == \
+        RequestForContext.model_validate(squat)
+    # Each bank's own replay is a duplicate, and only its own changed content conflicts.
+    assert receive_rfc(passport, registry, squat, authenticated_issuer="bank_b",
+                       now=now).audience == "bank_b"
+    with pytest.raises(IngestError, match="different content"):
+        receive_rfc(passport, registry, rfc_b(fx, request_id="rfc_a_001",
+                                              expires_at="2026-11-13T09:00:00Z"),
+                    authenticated_issuer="bank_b", now=now)
+
+    # Naming another bank's request as a parent is refused exactly like naming no request.
+    receive_rfc(passport, registry, maya.sign_request(rfc_a(fx, request_id="rfc_a_only"),
+                                                      keystore),
+                authenticated_issuer="bank_a", now=now, account_refs=BANK_A_ACCOUNTS)
+
+    def refusal(parent):
+        with pytest.raises(IngestError) as exc:
+            receive_rfc(passport, registry,
+                        rfc_b(fx, request_id="rfc_b_child", parent_request_id=parent),
+                        authenticated_issuer="bank_b", now=now)
+        return str(exc.value).replace(parent, "<parent>")
+
+    assert refusal("rfc_a_only") == refusal("rfc_nobody")
+    assert "parent_request_id" in refusal("rfc_a_only")

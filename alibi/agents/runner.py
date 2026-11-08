@@ -141,13 +141,14 @@ UNMAPPED_GAP = "The investigation could not map this question to evidence it can
 # --------------------------------------------------------------------------- public
 
 
-def next_run_id(store: Store, request_id: str) -> str:
-    """``make_id("run", request_id, "agents", n)`` for the first ``n`` no stored claim or trace
-    of this request uses (mirrors ``investigate_rules.next_run_id`` for the agents mode)."""
+def next_run_id(store: Store, request_id: str, *, audience: str | None = None) -> str:
+    """``make_id("run", audience, request_id, "agents", n)`` (``make_id("run", request_id, "agents",
+    n)`` without a bank) for the first ``n`` no stored claim or trace of this request uses
+    (mirrors ``investigate_rules.next_run_id`` for the agents mode; request ids are per bank)."""
     used = {claim.run_id for claim in store.list_claims(request_id=request_id, state=None)}
     n = 0
     while True:
-        run_id = make_id("run", request_id, MODE, n)
+        run_id = make_id("run", audience, request_id, MODE, n) if audience else make_id("run", request_id, MODE, n)
         if run_id not in used and not store.list_traces(run_id):
             return run_id
         n += 1
@@ -177,7 +178,7 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
         if registry is None and settlement_lookup is not None:
             from alibi.api import default_keystore  # lazy: alibi.api may dispatch to this module
             registry = default_keystore().registry()
-        run_id = next_run_id(store, rfc.request_id)
+        run_id = next_run_id(store, rfc.request_id, audience=rfc.audience)
         gateway = Gateway(store, subject_ref=rfc.subject_ref, run_id=run_id, registry=registry,
                           budget=budget, settlement_lookup=settlement_lookup,
                           txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
@@ -185,7 +186,7 @@ def run_investigation(store: Store, request: str | RequestForContext, *, client:
         scope = getattr(gateway, "subject_ref", None)
         if scope is not None and scope != rfc.subject_ref:
             raise ValueError("the gateway is scoped to a different subject than the request")
-        run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id)
+        run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id, audience=rfc.audience)
     run = _Run(rfc, store, gateway, client, run_id=run_id, now=at, action_budget=action_budget,
                max_rounds=max_rounds, second_opinion=second_opinion, call_budget=call_budget)
     return run.run()
@@ -1049,6 +1050,7 @@ class _Run:
         for question, outcome in claims:
             self.question_id = question.question_id
             claim = Claim(claim_id=make_id("clm", self.run_id, question.question_id), request_id=self.rfc.request_id,
+                          audience=self.rfc.audience,
                           question_id=question.question_id, statement=_clip(outcome.statement, 4000),
                           status=outcome.status, rationale=_clip(outcome.rationale, 4000),
                           evidence_refs=_unique(outcome.evidence), calculation=outcome.calculation,

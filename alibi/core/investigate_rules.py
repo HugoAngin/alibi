@@ -299,14 +299,17 @@ def reference_tokens(txn: BankTxn) -> frozenset[str]:
     return frozenset({ref.upper() for ref in txn.refs} | words)
 
 
-def next_run_id(store: Store, request_id: str) -> str:
-    """The id of the next rules run for ``request_id``: ``make_id("run", request_id, "rules",
-    n)``, where ``n`` counts the rules runs already recorded in the store (by their claims or
-    trace). Build the gateway with this id so its calls share the run's trace."""
-    used = {claim.run_id for claim in store.list_claims(request_id=request_id, state=None)}
+def next_run_id(store: Store, request_id: str, *, audience: str) -> str:
+    """The id of the next rules run for the request ``(audience, request_id)``:
+    ``make_id("run", audience, request_id, "rules", n)``, where ``n`` counts that request's
+    rules runs already recorded in the store (by their claims or trace). Another bank using
+    the same request_id gets unrelated run ids. Build the gateway with this id so its calls
+    share the run's trace."""
+    used = {claim.run_id for claim in
+            store.list_claims(request_id=request_id, audience=audience, state=None)}
     n = 0
     while True:
-        run_id = make_id("run", request_id, MODE, n)
+        run_id = make_id("run", audience, request_id, MODE, n)
         if run_id not in used and not store.list_traces(run_id):
             return run_id
         n += 1
@@ -319,7 +322,8 @@ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mo
 
     Reads go through ``gateway`` (``alibi.gateway.Gateway`` or anything with its interface).
     Links, claims, the gateway's trace and the rules trace are saved to ``store``. The run id
-    is ``next_run_id(store, request.request_id)``, so reruns are distinct but deterministic.
+    is ``next_run_id(store, request.request_id, audience=request.audience)``, so reruns are
+    distinct but deterministic.
     ``mode`` other than ``"rules"`` raises ``NotImplementedError`` before anything happens. A
     gateway scoped to another subject, or recording under another run id (build a new one per
     run with ``run_id=next_run_id(...)``), raises ``ValueError`` before any call. ``window``
@@ -336,11 +340,12 @@ def run_investigation(request: RequestForContext, store: Store, gateway: Any, mo
         raise ValueError("the gateway is scoped to a different subject than the request")
     if window <= timedelta(0):
         raise ValueError("window must be a positive duration")
-    run_id = next_run_id(store, request.request_id)
+    run_id = next_run_id(store, request.request_id, audience=request.audience)
     gateway_run = getattr(gateway, "run_id", None)
     if gateway_run is not None and gateway_run != run_id:
         raise ValueError("the gateway records its calls under another run id; build a new "
-                         "gateway for each run with run_id=next_run_id(store, request_id)")
+                         "gateway for each run with run_id=next_run_id(store, request_id, "
+                         "audience=...)")
     run = _Run(request, store, gateway, run_id=run_id, now=now or utc_now(), window=window)
     claims = [run.answer(question) for question in request.questions]
     return run.finish(claims)
@@ -459,7 +464,8 @@ class _Run:
             rationale = f"{rationale} {outcome.detail}"
         claim = Claim(
             claim_id=make_id("clm", self.run_id, question.question_id),
-            request_id=self.request.request_id, question_id=question.question_id,
+            request_id=self.request.request_id, audience=self.request.audience,
+            question_id=question.question_id,
             statement=_clip(outcome.statement), status=outcome.status,
             rationale=_clip(rationale), evidence_refs=_unique(outcome.evidence),
             calculation=outcome.calculation,
@@ -1089,7 +1095,8 @@ class _Run:
                 self.store.append_traces(gateway_events)
             self.store.append_traces(rules_events)
         stored = {c.claim_id: c for c in
-                  self.store.list_claims(request_id=self.request.request_id, state=None)}
+                  self.store.list_claims(request_id=self.request.request_id,
+                                         audience=self.request.audience, state=None)}
         links = []
         for link in self.links.values():
             saved = {l.link_id: l for l in self.store.list_links(txn_id=link.txn_ref.ref_id,

@@ -60,6 +60,12 @@ The flow can be re-run. Running the quick start again on the same passport with 
 (after a restart, say) returns the same draft (now `packaged`), the same approval (now
 `consumed`) and the identical package, and records no second delivery.
 
+Request ids are the bank's own, so a request is identified by `(audience, request_id)`. Two
+banks may use the same id without blocking or seeing each other. A bare request_id works while
+only one bank has used it. Once several have, pass the bank, as in
+`run_investigation(..., audience="bank_a")` and `build_review(..., audience="bank_a")`.
+Otherwise the call raises `AmbiguousRequest` instead of guessing.
+
 ## Conventions
 
 - **Money** is integer pence with an ISO 4217 currency code. Floats, booleans and numeric
@@ -253,7 +259,7 @@ Every error message is safe to show: it names ids, fields and reasons, never pay
 | `PolicyError` | A rule or policy is malformed. `record_policy` writes a refused audit event. |
 | `RuleClarificationError` (`.interpretations`) | A subclass of `PolicyError`. A plain-English rule could not be resolved, so nothing was saved. The refused audit event holds counts only, never the rule texts. |
 | `PackageError` | A draft cannot be built: no investigation yet, or the latest one is out of date. A refused audit event is written. |
-| `StoreError` | The base store error. Its subclasses are `NotFound` (no such id or revision), `IdempotencyConflict` (same key, different bytes), `RevisionConflict` (same revision, different content) and `NamespaceError` (a record id in the wrong namespace). |
+| `StoreError` | The base store error. Its subclasses are `NotFound` (no such id or revision), `IdempotencyConflict` (same key, different bytes), `RevisionConflict` (same revision, different content), `NamespaceError` (a record id in the wrong namespace) and `AmbiguousRequest` (a bare request_id that several banks used; pass `audience`). A passport created before store schema version 3 is refused with a `StoreError`; load the fixtures again into a new one. |
 | `SignatureError` (`.reason`) | A key, envelope or signature fails a check. |
 | `GatewayError` | A gateway call fails. Its subclasses are `ScopeError`, `BudgetExceeded`, `Unavailable` and `NotFoundError`. The rules investigation turns these into typed unresolved reasons, so they reach callers only when they use a `Gateway` directly. |
 | `NotImplementedError` | `run_investigation` was given a mode that is not built. |
@@ -518,13 +524,13 @@ arriving after Maya approved a draft:
   "invalidated": {
     "links": [],
     "claims": [
-      "clm_f0066dfa6b93fab4f0899762"
+      "clm_cc8751048e05f4a468325189"
     ],
     "drafts": [
-      "drf_6e9a1a2004b109c04657ba18"
+      "drf_8522ad872123e0d3d32c1743"
     ],
     "approvals": [
-      "apr_3eb197e791325b5f2019323c"
+      "apr_2e338a61dd6525420fb1ff74"
     ]
   }
 }
@@ -673,7 +679,10 @@ parent, booked inside its period). A wider follow-up is refused with a reason th
 resending a `request_id` with identical content is idempotent and with different content is
 refused, while another bank may use the same id for its own request without conflict (the
 store keys requests by `(issuer, request_id)`; `store.get_request(request_id, issuer=...)`
-tells them apart and the bare id resolves to the request received first under it).
+tells them apart and the bare id resolves to the request received first under it). Another bank's use of that id neither conflicts nor shows: a parent is
+looked up among this bank's own requests only, and naming another bank's request is refused
+exactly like naming none. Holder calls (`run_investigation`, `build_review`) pass `audience`
+when several banks used an id; a bare id that several banks used raises `AmbiguousRequest`.
 
 RFC A, signed by `bank_a`:
 
@@ -717,14 +726,18 @@ Raises `IngestError`.
 ### `run_investigation`
 
 ```python
-run_investigation(store, request, *, mode="rules", gateway=None, settlement_lookup=None,
-                  txn_refresh=None, budget=12, registry=None, now=None) -> InvestigationResult
+run_investigation(store, request, *, mode="rules", audience=None, gateway=None,
+                  settlement_lookup=None, txn_refresh=None, budget=12, registry=None,
+                  now=None) -> InvestigationResult
 ```
 
 Investigates a stored request and saves its links, claims and trace. `request` is a request_id
 or the stored `RequestForContext` (a different model under the same id raises
-`IdempotencyConflict`). Without `gateway`, a `Gateway` is built for the request's subject and
-the next run id, with the given connector callables, budget and registry (the registry
+`IdempotencyConflict`). `audience` names the bank whose request it is. It is needed only when
+several banks used that request_id; otherwise the call raises `AmbiguousRequest`. Each claim
+carries `audience`. Run ids are `make_id("run", audience, request_id, "rules", n)`, so another
+bank's runs never share them. Without `gateway`, a `Gateway` is built for the request's subject
+and the next run id, with the given connector callables, budget and registry (the registry
 verifies settlement lookups). The rules engine matches by reference, then by amount and date.
 It always retrieves the matched payout's settlement, reconciles the amounts in code and takes
 each claim status from explicit fields only. Matching amounts alone never support a claim.
@@ -733,14 +746,14 @@ The result for RFC A (excerpt):
 
 ```json
 {
-  "run_id": "run_99f69070716e4148b0b3a0fa",
+  "run_id": "run_17444153fb44e6825f5e2924",
   "request_id": "rfc_a_001",
   "mode": "rules",
   "calls_used": 5,
   "unavailable": [],
   "links": [
     {
-      "link_id": "lnk_ad97e1e5d88250728ee89bff",
+      "link_id": "lnk_fdf12250f382e5af8ba0198d",
       "txn_ref": "txn:txn_9001@1",
       "link_state": "linked",
       "record_ref": "record:po_5001@1",
@@ -753,7 +766,8 @@ The result for RFC A (excerpt):
   ],
   "claims": [
     {
-      "claim_id": "clm_f0066dfa6b93fab4f0899762",
+      "claim_id": "clm_cc8751048e05f4a468325189",
+      "audience": "bank_a",
       "question_id": "q1",
       "status": "supported",
       "statement": "Credit txn_9001 of 216000 pence GBP is payout po_5001 (reference PO-5001), settled as stl_88001 before the credit was booked.",
@@ -837,8 +851,8 @@ statuses, never amounts or text:
 
 ```json
 {
-  "trace_id": "trc_f036517f7beb9f6c0789bbb7",
-  "run_id": "run_99f69070716e4148b0b3a0fa",
+  "trace_id": "trc_79943a7ef2b5153b301546d6",
+  "run_id": "run_17444153fb44e6825f5e2924",
   "seq": 4,
   "at": "2026-11-07T12:00:00Z",
   "actor": "gateway",
@@ -987,10 +1001,13 @@ belongs to another subject. A `PolicyError` writes a refused audit event targeti
 ### `build_review`
 
 ```python
-build_review(store, request_id, *, now=None, removed=()) -> Draft
+build_review(store, request_id, *, audience=None, now=None, removed=()) -> Draft
 ```
 
-Builds and saves the draft the holder reviews. It uses the claims of the request's latest
+Builds and saves the draft the holder reviews. `audience` names the bank whose request it is.
+It is needed only when several banks used `request_id`; otherwise the call raises
+`AmbiguousRequest`. Only that bank's claims are used, and the body's `case_ref` is derived from
+the bank and the request. It uses the claims of the request's latest
 investigation run, meaning the run recorded last, whatever clock it ran on (all its claims must
 still be active), every source and txn those claims cite (the
 cited revisions, which are the active ones while the claims are active), and the subject's
@@ -1006,12 +1023,12 @@ The draft for RFC A with no policy (excerpt):
 
 ```json
 {
-  "draft_id": "drf_6e9a1a2004b109c04657ba18",
+  "draft_id": "drf_8522ad872123e0d3d32c1743",
   "request_id": "rfc_a_001",
   "audience": "bank_a",
   "status": "pending",
   "policy_version": "policy_cf1cbb66a638b4860a516671",
-  "body_sha256": "00d642b36aa81af05732b3fc6ebbaaef4b874ebde608806aa6fa84dc4a5fd50c",
+  "body_sha256": "b8b3861868c2e66128f876e599b4742fbd0c3d5b30ced8b41b52677556acf78a",
   "created_at": "2026-11-07T12:00:00Z",
   "source_revisions": [
     "record:fee_3001@1",
@@ -1247,10 +1264,10 @@ a fresh approval.
 
 ```json
 {
-  "approval_id": "apr_3eb197e791325b5f2019323c",
+  "approval_id": "apr_2e338a61dd6525420fb1ff74",
   "request_id": "rfc_a_001",
   "audience": "bank_a",
-  "body_sha256": "00d642b36aa81af05732b3fc6ebbaaef4b874ebde608806aa6fa84dc4a5fd50c",
+  "body_sha256": "b8b3861868c2e66128f876e599b4742fbd0c3d5b30ced8b41b52677556acf78a",
   "policy_version": "policy_cf1cbb66a638b4860a516671",
   "source_revisions": [
     "record:fee_3001@1",
@@ -1264,7 +1281,7 @@ a fresh approval.
     "txn:txn_9001@1"
   ],
   "holder_id": "holder_maya",
-  "draft_id": "drf_6e9a1a2004b109c04657ba18",
+  "draft_id": "drf_8522ad872123e0d3d32c1743",
   "approved_at": "2026-11-07T12:00:00Z",
   "expires_at": "2026-11-07T12:15:00Z",
   "status": "pending"
@@ -1280,13 +1297,13 @@ audit event:
 
 ```json
 {
-  "audit_id": "aud_716cc0e8a95f687c39a519d2",
+  "audit_id": "aud_6074703b8a1bdc035aa79464",
   "at": "2026-11-07T12:00:00Z",
   "actor": "holder_maya",
   "action": "approve",
-  "target_id": "apr_3eb197e791325b5f2019323c",
+  "target_id": "apr_2e338a61dd6525420fb1ff74",
   "outcome": "duplicate",
-  "detail": "retry for draft drf_6e9a1a2004b109c04657ba18: returned the existing pending approval"
+  "detail": "retry for draft drf_8522ad872123e0d3d32c1743: returned the existing pending approval"
 }
 ```
 
@@ -1320,7 +1337,7 @@ txn extract are shown):
 ```json
 {
   "schema_version": "alibi.package.v1",
-  "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+  "package_id": "pkg_20ca710b85c4221443fd54c6",
   "issued_at": "2026-11-07T12:00:00Z",
   "body": {
     "schema_version": "alibi.package_body.v1",
@@ -1408,12 +1425,12 @@ txn extract are shown):
     ],
     "expires_at": "2026-11-14T12:00:00Z"
   },
-  "body_sha256": "00d642b36aa81af05732b3fc6ebbaaef4b874ebde608806aa6fa84dc4a5fd50c",
+  "body_sha256": "b8b3861868c2e66128f876e599b4742fbd0c3d5b30ced8b41b52677556acf78a",
   "signature": {
     "alg": "Ed25519",
     "kid": "alibi_demo",
     "domain": "alibi:package:v1",
-    "sig": "4baf5a993e16423cc421d73ead9d3172f3b07db79942355733caa5ec94f65acb1783fcd7cca5f91f85ed00c0cff0dfc8fc6026ba3025344500c84029099b2502"
+    "sig": "ae567933906fa7ac018258b3bdb1a9d90152c3492744a84308d5bc8fb174a5983459a037c13b6d6a53993b1518fb2a98b22956201237f804d8b7df54f15ea80b"
   }
 }
 ```
@@ -1422,11 +1439,11 @@ The delivery record:
 
 ```json
 {
-  "delivery_id": "dlv_e3e32c273f312aa5f0145bbf",
-  "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+  "delivery_id": "dlv_b5a24bc70b21ddb4b85bd855",
+  "package_id": "pkg_20ca710b85c4221443fd54c6",
   "request_id": "rfc_a_001",
   "audience": "bank_a",
-  "package_sha256": "7cb31b053790aee5ec98d110c20f073ff06bfb645e2fefd403f614197ee6b138",
+  "package_sha256": "b87ac3c90dfdd7a596d90eb362d391e2ee4ff022019e1a14a8ac5bf34c6aaf3f",
   "delivered_at": "2026-11-07T12:00:00Z",
   "status": "sent"
 }
@@ -1443,11 +1460,11 @@ approved draft's body gives:
 
 ```json
 {
-  "audit_id": "aud_2aa4f3eb6558f08a13ca2d02",
+  "audit_id": "aud_061a48ded410a323a7de3ed5",
   "at": "2026-11-07T12:00:00Z",
   "actor": "alibi",
   "action": "sign_and_package",
-  "target_id": "apr_3eb197e791325b5f2019323c",
+  "target_id": "apr_2e338a61dd6525420fb1ff74",
   "outcome": "refused",
   "detail": "refused: the package body changed after it was approved"
 }
@@ -1532,10 +1549,10 @@ fixture today):
 ```json
 {
   "accepted": true,
-  "package_sha256": "7cb31b053790aee5ec98d110c20f073ff06bfb645e2fefd403f614197ee6b138",
+  "package_sha256": "b87ac3c90dfdd7a596d90eb362d391e2ee4ff022019e1a14a8ac5bf34c6aaf3f",
   "authentication": {
     "valid": true,
-    "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+    "package_id": "pkg_20ca710b85c4221443fd54c6",
     "audience": "bank_a",
     "kid": "alibi_demo",
     "reasons": []
@@ -1590,7 +1607,7 @@ Bank B verifying Bank A's package:
   "accepted": false,
   "authentication": {
     "valid": false,
-    "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+    "package_id": "pkg_20ca710b85c4221443fd54c6",
     "audience": "bank_a",
     "kid": "alibi_demo",
     "reasons": [
@@ -1620,9 +1637,9 @@ and make no network or LLM calls. The conftest fixtures `keystore`, `registry` a
 
 - Request ids are per bank (`(issuer, request_id)`), so two banks may reuse an id. Everything
   that names a bare `request_id` (claims, drafts, approvals, packages, `run_investigation`,
-  `build_review`) resolves a shared id to the request received first under it; a later bank's
-  request under the same id is reachable only through `store.get_request(id, issuer=...)` and
-  cannot be investigated or packaged through the bare-id API. Fixtures use distinct ids.
+  `build_review`) resolves a shared id to the request received first under it at the store level, while
+  the holder API (`run_investigation`, `build_review`) refuses a bare id that several banks
+  used with `AmbiguousRequest` and takes `audience=` to name the bank. Fixtures use distinct ids.
 - `verify_package` binds the subject through `case_ref` only when it is given
   `expected_subject`, or `store` and the request is held. Without either it still rejects
   attachments that name more than one subject. Packages signed before the binding landed carry
@@ -1654,3 +1671,12 @@ The code's public behaviour wins. These API functions take arguments DESIGN.md d
   `approved` or `packaged`, so the whole flow can be re-run.
 - `verify_package(registry=None)` reads the pinned `trust_registry.json` instead of opening the
   demo keystore, so verifying never creates keys.
+- A request is identified by `(audience, request_id)`, not by `request_id` alone. Store schema
+  version 3 keys the requests table by both columns.
+  - `store.get_request` takes `audience` and raises `AmbiguousRequest` for a bare id that
+    several banks used.
+  - `list_claims`, `list_drafts` and `list_approvals` take `audience`.
+  - `Claim` carries `audience`.
+  - `next_run_id(store, request_id, *, audience)` derives run ids from the bank as well.
+  - `case_ref` is `make_id("case", audience, parent_request_id or request_id)`.
+  - `run_investigation` and `build_review` take `audience`.

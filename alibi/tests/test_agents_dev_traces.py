@@ -49,7 +49,7 @@ def claim(status: str, *, statement="The source is not established.", rationale=
           refs=(), calculation=None, question_id="q1") -> Claim:
     if status == "unresolved" and gap is None:
         gap = "settlement_not_found: no settlement."
-    return Claim(claim_id=make_id("clm", RUN, question_id), request_id="rfc_a_001", question_id=question_id,
+    return Claim(claim_id=make_id("clm", RUN, question_id), request_id="rfc_a_001", audience="bank_a", question_id=question_id,
                  statement=statement, status=ClaimStatus(status), rationale=rationale,
                  evidence_refs=list(refs), calculation=calculation, gap=gap, run_id=RUN, created_at=NOW)
 

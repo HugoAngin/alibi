@@ -216,7 +216,7 @@ def test_calculation_validator_rechecks_arithmetic():
 
 
 def test_claim_status_rules():
-    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "question_id": "q1",
+    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "audience": "bank_a", "question_id": "q1",
             "statement": "s", "rationale": "r", "created_at": T0}
     with pytest.raises(ValidationError):
         Claim.model_validate({**base, "status": "supported"})
@@ -227,7 +227,7 @@ def test_claim_status_rules():
 
 
 def test_claim_carries_a_gap_code_with_its_detail_and_typed_facts():
-    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "question_id": "q.source_of_funds",
+    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "audience": "bank_a", "question_id": "q.source_of_funds",
             "statement": "s", "rationale": "r", "created_at": T0}
     claim = Claim.model_validate({**base, "status": "unresolved",
                                   "gap": "settlement_pending_at_booking",

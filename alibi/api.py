@@ -16,6 +16,9 @@ an audit event. Conventions:
   the demo keystore under ``data/alibi/keys`` (created on first use). ``verify_package`` only
   reads the pinned ``trust_registry.json`` there. Tests always pass their own.
 * Errors are the core's typed exceptions, and their messages are safe to show.
+* A request is identified by ``(audience, request_id)``: request ids are the bank's own. A
+  bare request_id works while only one bank has used it; otherwise pass ``audience`` (the
+  bank), or the call raises ``AmbiguousRequest``.
 """
 
 import copy
@@ -88,6 +91,7 @@ from alibi.core.signing import (
 )
 from alibi.core.store import (
     DEFAULT_DB_PATH,
+    AmbiguousRequest,
     IdempotencyConflict,
     NamespaceError,
     NotFound,
@@ -124,7 +128,8 @@ __all__ = [
     "LinkState", "PackageBody", "Period", "Policy", "RecipientRule", "RecordKind",
     "RequestForContext", "Review", "SourceTrust", "TraceEvent", "VerificationResult",
     # errors
-    "ApprovalError", "BudgetExceeded", "GatewayError", "IdempotencyConflict", "IngestError",
+    "AmbiguousRequest", "ApprovalError", "BudgetExceeded", "GatewayError", "IdempotencyConflict",
+    "IngestError",
     "NamespaceError", "NotFound", "NotFoundError", "PackageError", "PolicyError",
     "RevisionConflict", "RuleClarificationError", "ScopeError", "SignatureError",
     "StoreError", "Unavailable",
@@ -199,16 +204,20 @@ def _registry(registry: TrustRegistry | None) -> TrustRegistry:
     return registry if registry is not None else default_keystore().registry()
 
 
-def _stored_request(store: Store, request: str | RequestForContext) -> RequestForContext:
-    """The stored request for a request_id, or for a model that must equal the stored one."""
+def _stored_request(store: Store, request: str | RequestForContext,
+                    audience: str | None = None) -> RequestForContext:
+    """The stored request for a request_id (from ``audience`` when given; a bare id must be
+    unique, else ``AmbiguousRequest``), or for a model that must equal the stored one."""
     if isinstance(request, RequestForContext):
-        stored = store.get_request(request.request_id)
+        if audience is not None and audience != request.audience:
+            raise StoreError("audience does not match the request's audience")
+        stored = store.get_request(request.request_id, audience=request.audience)
         if canon.digest(stored) != canon.digest(request):
             raise IdempotencyConflict(
                 f"request {request.request_id!r} differs from the stored request")
         return stored
     if isinstance(request, str):
-        return store.get_request(request)
+        return store.get_request(request, audience=audience, strict=True)
     raise StoreError("request must be a request_id or a RequestForContext")
 
 
@@ -219,13 +228,15 @@ def _current_policy(store: Store, subject_ref: str) -> tuple[Policy | None, Comp
     return policy, compile_policy(policy)
 
 
-def _latest_claims(store: Store, request_id: str) -> list[Claim]:
+def _latest_claims(store: Store, rfc: RequestForContext) -> list[Claim]:
     """The claims of the request's investigation run recorded last, which must all be active.
 
-    "Last" is storage order (``list_claims`` returns rows as inserted, and every run inserts
-    new claims), not ``created_at``: a rerun on an earlier clock is still the latest run.
+    Only this bank's request counts (another bank may use the same request_id). "Last" is
+    storage order (``list_claims`` returns rows as inserted, and every run inserts new claims),
+    not ``created_at``: a rerun on an earlier clock is still the latest run.
     """
-    claims = store.list_claims(request_id=request_id, state=None)
+    request_id = rfc.request_id
+    claims = store.list_claims(request_id=request_id, audience=rfc.audience, state=None)
     if not claims:
         raise PackageError(f"request {request_id} has no investigation results yet; "
                            "call run_investigation first")
@@ -273,7 +284,8 @@ def _existing_approval(store: Store, draft: Draft, holder_id: Any) -> Approval |
     if DraftStatus(draft.status) not in (DraftStatus.APPROVED, DraftStatus.PACKAGED):
         return None
     usable = (ApprovalStatus.PENDING, ApprovalStatus.CONSUMED)
-    matches = [approval for approval in store.list_approvals(request_id=draft.request_id)
+    matches = [approval for approval in store.list_approvals(request_id=draft.request_id,
+                                                             audience=draft.audience)
                if approval.draft_id == draft.draft_id and approval.holder_id == holder_id
                and approval.audience == draft.audience
                and approval.body_sha256 == draft.body_sha256
@@ -311,12 +323,13 @@ def _invalidate_for_policy(store: Store, subject_ref: str, version_tag: str,
     reason = f"the disclosure policy changed to {version_tag}"
     drafts, approvals = [], []
     for rfc in store.list_requests(subject_ref=subject_ref):
-        for draft in store.list_drafts(request_id=rfc.request_id):
+        # Scope by bank too: another bank's request may share this request_id.
+        for draft in store.list_drafts(request_id=rfc.request_id, audience=rfc.audience):
             if draft.status in (DraftStatus.PENDING, DraftStatus.APPROVED) \
                     and draft.policy_version != version_tag:
                 store.update_draft_status(draft.draft_id, DraftStatus.INVALIDATED, reason)
                 drafts.append(draft.draft_id)
-        for approval in store.list_approvals(request_id=rfc.request_id,
+        for approval in store.list_approvals(request_id=rfc.request_id, audience=rfc.audience,
                                              status=ApprovalStatus.PENDING.value):
             if approval.policy_version != version_tag:
                 store.update_approval(Approval.model_validate({
@@ -380,7 +393,7 @@ def _regenerated_body(store: Store, rfc: RequestForContext, draft: Draft,
     that changed any answer, even only its rationale, changes the body. None when the latest
     run cannot be packaged (no claims, or claims invalidated by newer evidence)."""
     try:
-        claims = _latest_claims(store, rfc.request_id)
+        claims = _latest_claims(store, rfc)
         refs = core_package.cited_refs(claims, request_id=rfc.request_id)
         evidence = [_load_ref(store, ref) for ref in refs]
         body, _ = core_package.build_body(rfc, claims, evidence, compiled, now=draft.created_at,
@@ -539,6 +552,7 @@ def receive_rfc(store: Store, payload: Any, *, authenticated_issuer: str,
 
 
 def run_investigation(store: Store, request: str | RequestForContext, *, mode: str = "rules",
+                      audience: str | None = None,
                       gateway: Gateway | None = None,
                       settlement_lookup: SettlementLookup | None = None,
                       txn_refresh: TxnRefresh | None = None, budget: int = DEFAULT_BUDGET,
@@ -546,21 +560,24 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                       now: datetime | None = None) -> InvestigationResult:
     """Investigate a stored request and save its links, claims and trace.
 
-    ``request`` is a request_id or the stored ``RequestForContext``. Without ``gateway`` a
-    ``Gateway`` is built for the request's subject and the next run id, with the connector
-    callables, budget and registry given (the registry verifies settlement lookups). Only
-    ``mode="rules"`` is built; other modes raise ``NotImplementedError``.
+    ``request`` is a request_id or the stored ``RequestForContext``. ``audience`` names the
+    bank whose request it is; it is needed only when several banks used that request_id
+    (otherwise ``AmbiguousRequest``). Without ``gateway`` a ``Gateway`` is built for the
+    request's subject and the next run id, with the connector callables, budget and registry
+    given (the registry verifies settlement lookups). Only ``mode="rules"`` is built; other
+    modes raise ``NotImplementedError``.
     """
     if mode != core_rules.MODE:
         raise NotImplementedError(f"mode {mode!r} is not built yet; this build runs mode "
                                   "'rules' only (agents and single_call arrive later)")
     at = _clock(now)
-    rfc = _stored_request(store, request)
+    rfc = _stored_request(store, request, audience)
     if gateway is None:
         if registry is None and settlement_lookup is not None:
             registry = default_keystore().registry()
         gateway = Gateway(store, subject_ref=rfc.subject_ref,
-                          run_id=core_rules.next_run_id(store, rfc.request_id),
+                          run_id=core_rules.next_run_id(store, rfc.request_id,
+                                                        audience=rfc.audience),
                           registry=registry, budget=budget, settlement_lookup=settlement_lookup,
                           txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
     result = core_rules.run_investigation(rfc, store, gateway, mode, now=now)
@@ -568,7 +585,8 @@ def run_investigation(store: Store, request: str | RequestForContext, *, mode: s
                         for claim in result.claims)
     _audit(store, action="run_investigation", actor=core_rules.ACTOR, outcome="ok", at=at,
            target_id=rfc.request_id,
-           detail=f"run {result.run_id}: {answers}; {result.calls_used} gateway calls")
+           detail=f"run {result.run_id} for {rfc.audience}: {answers}; "
+                  f"{result.calls_used} gateway calls")
     return result
 
 
@@ -628,10 +646,12 @@ def record_policy(store: Store, subject_ref: str, rules: Any, *, policy_id: str 
 # --------------------------------------------------------------------------- review, approval, dispatch
 
 
-def build_review(store: Store, request_id: str, *, now: datetime | None = None,
-                 removed: Collection[str] = ()) -> Draft:
+def build_review(store: Store, request_id: str, *, audience: str | None = None,
+                 now: datetime | None = None, removed: Collection[str] = ()) -> Draft:
     """Build and save the draft the holder reviews for a request.
 
+    ``audience`` names the bank whose request it is; it is needed only when several banks used
+    ``request_id`` (otherwise ``AmbiguousRequest``).
     Uses the active claims of the request's investigation run recorded last, every source and
     txn they cite (the cited revisions, which are the active ones while the claims are active),
     and the subject's latest policy (or none). ``removed`` names sources the holder took out.
@@ -640,11 +660,12 @@ def build_review(store: Store, request_id: str, *, now: datetime | None = None,
     package.
     """
     at = _clock(now)
-    rfc = _stored_request(store, request_id)
+    rfc = _stored_request(store, request_id, audience)
     try:
         with store.transaction():
-            claims = _latest_claims(store, rfc.request_id)
-            refs = core_package.cited_refs(claims, request_id=rfc.request_id)
+            claims = _latest_claims(store, rfc)
+            refs = core_package.cited_refs(claims, request_id=rfc.request_id,
+                                           audience=rfc.audience)
             evidence = [_load_ref(store, ref) for ref in refs]
             _, compiled = _current_policy(store, rfc.subject_ref)
             body, review = core_package.build_body(rfc, claims, evidence, compiled, now=at,
@@ -705,7 +726,8 @@ def approve(store: Store, draft_id: str, *, holder_id: str,
                        detail=f"retry for draft {draft.draft_id}: returned the existing "
                               f"{ApprovalStatus(existing.status).value} approval")
                 return existing
-            rfc = _get(store.get_request, draft.request_id, "request")
+            rfc = _get(lambda rid: store.get_request(rid, audience=draft.audience),
+                       draft.request_id, "request")
             _, compiled = _current_policy(store, rfc.subject_ref)
             revisions = core_approval.current_revisions(store, draft.source_revisions)
             # Consent-matrix refusals, in the matrix order: C11, C7, C8, then C6 (a superseded
@@ -786,7 +808,8 @@ def sign_and_package(store: Store, approval_id: str, *, keystore: DemoKeystore |
             if not approval.draft_id:
                 raise ApprovalError(["the approval names no draft"])
             draft = _get(store.get_draft, approval.draft_id, "draft")
-            rfc = _get(store.get_request, approval.request_id, "request")
+            rfc = _get(lambda rid: store.get_request(rid, audience=approval.audience),
+                       approval.request_id, "request")
             _, compiled = _current_policy(store, rfc.subject_ref)
             refs = core_approval.merge_refs(approval.source_revisions, draft.source_revisions,
                                             core_approval.body_refs(draft.body))

@@ -33,6 +33,19 @@ For native bank checks SP-25 to SP-32, issue a real Bank A request and approve a
 
 For consent probes against the native bank, set `fixtures.consent_bank_service` to the service key containing that bank origin. The default inbox, package view and raw envelope routes are `/inbox`, `/packages/{package_id}` and `/packages/{package_id}/raw`. A successful dispatch control checks the approval against the signed body's digest and the dispatch receipt against the signed envelope's separate digest. Leave this fixture unset when using the legacy app-hosted bank view.
 
+After dispatching one public Case 1 package to each bank, generate the native
+profile from the signed receipts and the holder's source view. Supply a private
+base config with the disposable loopback origins and synthetic bearer tokens.
+The generator writes an owner-only file and preserves explicit overrides.
+
+```bash
+uv run --frozen python -m agents.eval.probe_profile --config "$ALIBI_BASE_PROBES" \
+  --key-dir "$ALIBI_DEMO_KEYS" --out "$ALIBI_LIVE_PROBES"
+```
+
+This prepares SP-17, SP-18, SP-20, SP-21 and SP-25 through SP-32. Supply the
+remaining route and fixture settings in the base config for the full catalogue.
+
 For the sealed comparison, start the disposable stack from the clean frozen candidate and verify the running services from the runbook before capture. Use the whole catalogue and a new output path.
 
 ```bash
@@ -40,7 +53,7 @@ uv run --frozen python -m agents.eval.run_probes --config data/alibi/live-probes
   --candidate-evidence --results "$ALIBI_FROZEN_PROBES"
 ```
 
-Keep the adjacent `<results filename>.receipt.json` with that capture. It records the probe checkout commit and a digest of the outcomes. Review the observed coverage and allowed controls before opening the lockbox, since a receipt can also describe a capture with zero observed outcomes. The evaluator confirms that the configured services run that candidate. The receipt itself records the checkout and output, with no service attestation.
+Keep the adjacent `<results filename>.receipt.json` with that capture. It records the probe checkout commit and a digest of the outcomes. Candidate capture and the lockbox runner each require a definite outcome for a demo refusal probe and for the demo control. A failed check counts as an observation and stays visible in the scores. Review full coverage and any failed controls before opening the lockbox. The evaluator confirms the service revision separately from the receipt.
 
 `score_capture` takes normalized records extracted from actual application output. Include `case_number`, `request_id`, `audience`, `answers` keyed by question and `disclosed_refs` for every reference in the delivered body. Each answer has `status`, `facts`, `gap` and `evidence_refs`. The scorer counts a case as complete only when every request passes, so a missing second-bank response stays in the denominator. The probe file is a JSON object keyed by probe ID, or the `observed` report printed by `uv run --frozen python -m pytest -q -s agents/eval/test_sharing_flow.py` for the local reference. Use separate probe captures for each system. The final output line contains numeric metrics, with unexercised probes listed separately above it.
 
@@ -107,3 +120,11 @@ python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \
 ```
 
 The runner verifies the seal before and after capture. It checks the probe receipt against the sealed commit and captured outcomes before starting the one allowed run, then retains the receipt with the predictions and probe JSONL. Both live modes deny workers access to that directory so later cases and systems cannot read earlier predictions. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.
+
+Render the aggregate deck handoff from the saved scores without launching workers:
+
+```bash
+uv run --frozen python -m agents.eval.headline "$ALIBI_FROZEN_OUT/scores.json"
+```
+
+This writes `HEADLINE.md` alongside the scores and prints one JSON object. If the frozen set has no `hidden_reference` family, pass `--public-scores` pointing to a public run's `scores.json` to add that separately labelled row. The exact sign test uses family-level net wins and losses. Zero-failure upper bounds use observed trials, with coverage shown separately.

@@ -106,10 +106,16 @@ def _attachment(value, keys, subject):
         if sig is not None:
             raise VerificationError("source_signature_invalid")
         return ref, AttachmentCheck(attachment_id, trust, "absent", None, "package_signer", form, revision)
-    if kind != "record" or trust != "issuer_verified" or sig is None or issuer is None:
-        raise VerificationError("source_signature_missing")
     if row.get("generalised_fields"):
         raise VerificationError("schema", "full records cannot have generalised fields")
+    if kind != "record":
+        raise VerificationError("schema", "only records can be attached in full")
+    if trust == "self_supplied":
+        if sig is not None:
+            raise VerificationError("source_signature_invalid")
+        return ref, AttachmentCheck(attachment_id, trust, "absent", None, "package_signer", form, revision)
+    if sig is None or issuer is None:
+        raise VerificationError("source_signature_missing")
     try:
         kid = _signature(content, sig, keys, domain=RECORD_DOMAIN, purpose="record_signing", issuer=issuer)
     except VerificationError as exc:

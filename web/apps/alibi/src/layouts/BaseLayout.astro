@@ -21,6 +21,7 @@ const { title, description = product.lede, view = 'site' } = Astro.props;
 const pageTitle = title ? `${title} · ${product.name}` : `${product.name} — ${product.tagline}`;
 const fonts =
   'https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap';
+import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
 ---
 
 <!doctype html>
@@ -49,6 +50,7 @@ const fonts =
   </head>
 
   <body>
+    <ReplayBanner />
     <a class="skip-link" href="#main">
       Skip to content
     </a>

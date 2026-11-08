@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from agents.eval.baselines import predict_baseline, propose_baseline
 from agents.eval.case_io import request_context
 from agents.eval.demo_fixture import build_analyst_preview, build_mock_bank, build_mock_merchant
+from agents.eval.evidence_engine import EvidenceReport, LookupCache, diff_reports, evidence_report, run_engine
 from agents.eval.http_probe_runtime import attempt
 from agents.eval.probe_capture import score_probe_steps
 from agents.eval.score_capture import compare_captures, score_capture
@@ -27,6 +28,8 @@ __all__ = [
     "compare_captures", "dispatch_approved", "fixed_candidate_pool", "match_credit",
     "period_totals", "predict_baseline", "propose_baseline", "reconcile_credit", "request_context", "score_capture", "score_probe_steps",
     "sign_record", "verify_package",
+    # Advisory evidence engine (agents/eval/out/EVIDENCE_ENGINE.md); not wired into the app runner.
+    "EvidenceReport", "LookupCache", "diff_reports", "evidence_report", "run_engine",
 ]
 
 

@@ -542,9 +542,9 @@ class AttachmentCheck:
     revision: int | None = None  # v1: the attached revision
 
 
-def _with_source_attestation(attachment: dict) -> dict:
+def _with_source_attestation(attachment: dict, *, native: bool = False) -> dict:
     redacted = attachment.get("presentation") == "redacted_extract"
-    if redacted:
+    if redacted or (native and attachment.get("attested_by") == "package_signer"):
         attestation = "package_signer"
     elif attachment.get("source_signature") == "valid":
         attestation = "issuer_signature"
@@ -569,7 +569,8 @@ class VerificationResult:
 
     def to_dict(self) -> dict:
         result = asdict(self)
-        result["attachments"] = tuple(_with_source_attestation(item) for item in result["attachments"])
+        result["attachments"] = tuple(_with_source_attestation(item, native=self.schema_version == "alibi.package.v1")
+                                      for item in result["attachments"])
         return result
 
 

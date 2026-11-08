@@ -56,6 +56,9 @@ const rest = step.sources.slice(SHOW);
         {first.map((s) => (
           <li>
             <code>{ref(s.record_id, s.revision)}</code> <Badge kind="trust" value={s.trust} />
+            {typeof s.via_lookup === 'number' && (
+              <span class="via-lookup">via lookup {s.via_lookup + 1}</span>
+            )}
           </li>
         ))}
       </ul>
@@ -66,6 +69,9 @@ const rest = step.sources.slice(SHOW);
             {rest.map((s) => (
               <li>
                 <code>{ref(s.record_id, s.revision)}</code> <Badge kind="trust" value={s.trust} />
+                {typeof s.via_lookup === 'number' && (
+                  <span class="via-lookup">via lookup {s.via_lookup + 1}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -84,9 +90,36 @@ const rest = step.sources.slice(SHOW);
               : ' does not match the cited amounts'}
           </span>
         </p>
-      ) : (
-        <p class="none">No arithmetic for this question.</p>
+      ) : null}
+      {step.calculation && (step.calculation.terms ?? []).length > 0 && (
+        <table class="terms">
+          <thead>
+            <tr>
+              <th scope="col">Sign</th>
+              <th scope="col">Line</th>
+              <th scope="col">Sources</th>
+              <th scope="col" class="num">
+                Amount
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {(step.calculation.terms ?? []).map((t) => (
+              <tr>
+                <td data-label="Sign">{t.sign === '-' ? '−' : '+'}</td>
+                <td data-label="Line">{t.label}</td>
+                <td data-label="Sources">
+                  {t.source_ids.length} record{t.source_ids.length === 1 ? '' : 's'}
+                </td>
+                <td data-label="Amount" class="num">
+                  {money(t.amount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
+      {step.calculation ? null : <p class="none">No arithmetic for this question.</p>}
     </li>
     <li>
       <span class="label">Status</span>
@@ -98,6 +131,33 @@ const rest = step.sources.slice(SHOW);
 </article>
 
 <style>
+  .via-lookup {
+    margin-left: var(--space-2xs);
+    padding: 0 var(--space-2xs);
+    border: 1px dashed var(--c-ink-soft);
+    border-radius: var(--radius-sm);
+    font-size: var(--t-xs);
+  }
+
+  .terms {
+    width: 100%;
+    margin-top: var(--space-xs);
+    border-collapse: collapse;
+    font-size: var(--t-sm);
+  }
+
+  .terms th,
+  .terms td {
+    padding: var(--space-3xs) var(--space-2xs);
+    border-bottom: 1px solid var(--c-line);
+    text-align: left;
+  }
+
+  .terms .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   .trace {
     padding: var(--space-sm);
     background: var(--c-surface);

@@ -1,0 +1,151 @@
+---
+/**
+ * One line of Home's activity: a bank's request or an Alibi alert, who it is
+ * from, when, and its state as a word (never colour alone). A request opens
+ * its page: the trace, the private review and approval.
+ */
+import { day } from '@/lib/format';
+
+import { initials, type ActivityItem } from './home';
+
+interface Props {
+  item: ActivityItem;
+}
+
+const { item } = Astro.props;
+const Tag = item.href ? 'a' : 'div';
+---
+
+<li>
+  <Tag class:list={['act', `act--${item.state}`]} href={item.href ?? undefined}>
+    <span class:list={['mono', item.kind === 'alert' && 'mono--alert']} aria-hidden="true">
+      {item.kind === 'alert' ? '!' : initials(item.from)}
+    </span>
+    <span class="body">
+      <span class="from">
+        {item.from} · {day(item.at)}
+      </span>
+      <span class="title">{item.title}</span>
+      <span class="state">
+        <span class="dot" aria-hidden="true"></span>
+        {item.label}
+      </span>
+    </span>
+    {item.href && (
+      <svg class="go" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 6l6 6-6 6" />
+      </svg>
+    )}
+  </Tag>
+</li>
+
+<style>
+  .act {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding-block: 10px;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a.act:active {
+    opacity: 0.6;
+  }
+
+  .mono {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--a-ink);
+    color: var(--s-paper);
+    font: 600 0.85rem/1 var(--a-display);
+  }
+
+  .mono--alert {
+    background: var(--a-tint);
+    color: var(--a-warn);
+    font-size: 1rem;
+  }
+
+  .body {
+    display: grid;
+    min-width: 0;
+  }
+
+  .from {
+    font-size: var(--t-xs);
+    color: var(--a-faint);
+  }
+
+  .title {
+    font-weight: 500;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-self: start;
+    margin-top: 3px;
+    font-size: var(--t-xs);
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--a-soft);
+  }
+
+  .go {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: var(--a-faint);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+  }
+
+  .act--awaiting .state,
+  .act--open .state {
+    color: var(--a-accent);
+  }
+
+  .act--awaiting .dot,
+  .act--open .dot {
+    background: currentColor;
+  }
+
+  .act--approved .state,
+  .act--sent .state {
+    color: var(--a-ok);
+  }
+
+  .act--approved .dot,
+  .act--sent .dot {
+    background: currentColor;
+  }
+
+  .act--declined .state {
+    color: var(--a-bad);
+  }
+
+  .act--expired .state,
+  .act--resolved .state {
+    color: var(--a-faint);
+  }
+</style>

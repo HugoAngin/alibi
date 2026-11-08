@@ -7,7 +7,10 @@ else to the app, with the prefix stripped, and passes the answer back
 unchanged, so a backend refusal reaches the front end word for word.
 
 It decides nothing: no auth, no rewriting of bodies. Routes the services keep
-loopback-only (reset and similar) are refused here, so they stay internal.
+loopback-only (admin, seed, reset, debug) are refused here, so they stay
+internal. The check is fail-closed: it runs on the path the upstream will
+actually see (prefix stripped, dot segments resolved, percent-encoding decoded
+until stable), before any upstream call (eval, fc86c59).
 
 Run locally: ``uv run --frozen python -m agents.research.deploy.router``.
 """
@@ -16,6 +19,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 import httpx
 from starlette.applications import Starlette
@@ -41,8 +45,8 @@ def upstreams_from_env(env: dict[str, str] | None = None) -> list[Upstream]:
     ]
 
 
-#: Path fragments that must never be reachable from outside the container.
-BLOCKED = ("/reset", "/admin/reset", "/__debug")
+#: Upstream roots that are internal. The ``admin`` segment is internal at every depth.
+BLOCKED_ROOTS = {"seed", "reset", "__debug"}
 
 #: Headers that belong to one hop and must not be forwarded.
 HOP_BY_HOP = {
@@ -67,8 +71,20 @@ def pick(path: str, upstreams: list[Upstream]) -> tuple[Upstream, str]:
     return upstreams[-1], path
 
 
+def _decoded(path: str) -> str:
+    """Percent-decode until nothing changes, so ``%2561dmin`` cannot hide ``admin``."""
+    for _ in range(5):
+        nxt = unquote(path)
+        if nxt == path:
+            return path
+        path = nxt
+    return path
+
+
 def is_blocked(path: str) -> bool:
-    return any(path == b or path.startswith(b + "/") or path.endswith(b) for b in BLOCKED)
+    """True for an internal route. ``path`` is the upstream path (prefix already stripped)."""
+    parts = tuple(p.lower() for p in _decoded(path).split("/") if p)
+    return "admin" in parts or bool(parts and parts[0] in BLOCKED_ROOTS)
 
 
 def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient | None = None) -> Starlette:
@@ -86,11 +102,15 @@ def build_app(upstreams: list[Upstream] | None = None, client: httpx.AsyncClient
         return JSONResponse({"ok": True, "services": status})
 
     async def forward(request: Request) -> Response:
-        path = request.url.path
-        if is_blocked(path):
+        up, upstream_path = pick(request.url.path, ups)
+        try:
+            url = httpx.URL(up.origin + upstream_path + (f"?{request.url.query}" if request.url.query else ""))
+        except httpx.InvalidURL:
+            return JSONResponse({"code": "invalid_path", "reason": "The request path is invalid."}, 400)
+        # Check what the upstream will see: httpx has resolved dot segments, and the raw path is
+        # checked as well as the stripped one, so neither an encoding nor a prefix can hide a route.
+        if is_blocked(url.path) or is_blocked(upstream_path) or is_blocked(request.url.path):
             return JSONResponse({"code": "not_public", "reason": "This route is internal to the backend."}, 404)
-        up, upstream_path = pick(path, ups)
-        url = up.origin + upstream_path + (f"?{request.url.query}" if request.url.query else "")
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_BY_HOP}
         try:
             r = await http.request(request.method, url, headers=headers, content=await request.body())

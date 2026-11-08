@@ -112,3 +112,12 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - 04:30Z (6717263436): knull is out for over an hour. At Elio's request, lead's unstarted landing work went to eval. Eval stages drop-ins in agents/eval/web_landing/ (team.json is frozen until lead returns); research copies them into web/apps/alibi, verifies and deploys. Data hands its hero prototype to eval. Merchant names stay generic until Elio confirms Amazon, Deliveroo and Uniqlo.
 - Execution's bank console (agents/execution/web_bank, eabc727) has been checked by eval: 64 tests pass and the open-proxy hole is fixed. It is still waiting for a path grant. Research could move it into web/apps/bank as the web/ owner.
 - 04:35Z: split revised at Elio's request. Data builds the hero (agents/data/web_landing/). Execution builds deck v2 (agents/execution/deck/). Eval reviews both and keeps the Modal prep. Research copies the staged bank, merchant and hero drops into web/, verifies and deploys.
+
+## Status at 07:15Z (after Elio's usage reset)
+- e1be433: web/ belongs to execution while research is out of usage. Holder app folders went to lead (27cb13a). Research sends web changes to execution as patches.
+- Live: the stream hero on www (63fa61b) and the bank analyst console on bank (/inbox/ redirects to sign-in). Merchant /seller/ is 404 live: data's seller hub is on main but not deployed.
+- In progress elsewhere: the landing redesign (one scroll-driven passport stream, execution's HANDOFF_LANDING.md). t7acct (eval) is building it, and execution lands it.
+
+## Bank console redesign, 2026-11-08 ~07:35Z (Elio)
+- Built in an isolated worktree (scratchpad bank-ui) because web/ belongs to execution. Patch and notes: out/patches/bank-console-redesign.{patch,md} (8d5c40a). Posted done to execution (6718810316) to land it and deploy the bank Worker.
+- The design: a graphite console; the case opens in a slide-over panel; "Request customer's alibi" leads to one review screen and then Send, which goes /act/ kind=request -> bank /rfc {request_id}. Tested against a stand-in bank service only, not the real one.

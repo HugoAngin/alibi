@@ -93,6 +93,31 @@ def test_valid_package_signature_cannot_mask_a_bad_embedded_issuer_signature(exp
     assert json.loads(capsys.readouterr().err)["code"] == "source_signature_invalid"
 
 
+def test_native_unsigned_full_holder_record_remains_lower_trust(exports, capsys):
+    packages, keys = exports
+    path = packages["bank_a"]
+    package = json.loads(path.read_text())
+    package["body"]["attachments"].append({
+        "attachment_id": "att-holder-receipt",
+        "ref": {"ref_type": "record", "ref_id": "holder-receipt", "revision": 1},
+        "form": "full_record", "source_trust": "self_supplied",
+        "content": {"record_id": "holder-receipt", "revision": 1, "description": "Holder's receipt"},
+    })
+    package.pop("signature")
+    package["body_sha256"] = digest(package["body"])
+    package["signature"] = keys.sign(package, kid="alibi_demo", domain=SigningDomain.PACKAGE).to_json_dict()
+    assert api.verify_package(package, registry=keys.registry(), expected_audience="bank_a", now=NOW).accepted
+    path.write_text(json.dumps(package))
+
+    assert verify(path, keys, "bank_a") == 0
+    result = json.loads(capsys.readouterr().out)
+    holder_record = next(row for row in result["attachments"] if row["attachment_id"] == "att-holder-receipt")
+    assert holder_record["trust"] == "self_supplied"
+    assert holder_record["source_signature"] == "absent"
+    assert holder_record["attestation"] == "package_signer"
+    assert not holder_record["redacted"]
+
+
 def test_wrong_key_purpose_and_unverifiable_subject_are_refused(exports, capsys):
     packages, keys = exports
     path = packages["bank_a"]

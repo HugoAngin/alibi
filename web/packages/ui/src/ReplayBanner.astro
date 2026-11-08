@@ -1,0 +1,25 @@
+---
+/**
+ * Shown on every page when the demo runs as a recorded replay (PUBLIC_ALIBI_REPLAY=1, set by
+ * `pnpm demo` with ALIBI_REPLAY=1), so a replay is never mistaken for a live run.
+ */
+const replay = import.meta.env.PUBLIC_ALIBI_REPLAY === '1';
+---
+
+{replay && (
+  <p class="replay-banner" role="note">
+    Recorded replay: this is a saved run, not live. Results and timings come from the recording.
+  </p>
+)}
+
+<style>
+  .replay-banner {
+    margin: 0;
+    padding: var(--space-2xs) var(--gutter);
+    background: #1c1c1a;
+    color: #fff;
+    font-weight: 700;
+    text-align: center;
+    border-bottom: 3px double #fff;
+  }
+</style>

@@ -11,6 +11,8 @@ export default defineConfig({
   integrations: [clerk()],
   site: process.env.ALIBI_ORIGIN ?? 'http://localhost:4321',
   adapter: cloudflare({
+    // No debugger port: the three apps run side by side (pnpm demo / pnpm dev) and would collide on 9229.
+    inspectorPort: false,
     // No image transforms yet, so no Cloudflare Images binding is provisioned.
     imageService: 'passthrough',
   }),
@@ -25,6 +27,14 @@ export default defineConfig({
       // `secret` access makes Astro read it at runtime (the Worker's vars),
       // instead of inlining whatever the build machine had.
       ALIBI_API_ORIGIN: envField.string({ context: 'server', access: 'secret', optional: true }),
+      // Local demo only (`pnpm demo`, src/lib/demoHolder.ts): sign in as Maya without Clerk, on
+      // 127.0.0.1 only. Never set these on the deployed Worker.
+      ALIBI_DEMO_HOLDER: envField.string({ context: 'server', access: 'secret', optional: true }),
+      HOLDER_SESSION_SECRET: envField.string({
+        context: 'server',
+        access: 'secret',
+        optional: true,
+      }),
     },
   },
   // Screens are captured for demos and the deck; keep Astro's dev overlay out of them.

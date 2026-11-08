@@ -9,7 +9,11 @@ export default defineConfig({
   // Absolute URLs (the connect button's return address) are built from this.
   site: process.env.MERCHANT_ORIGIN ?? 'http://localhost:4322',
   output: 'server',
-  adapter: cloudflare({ imageService: 'passthrough' }),
+  adapter: cloudflare({
+    // No debugger port: the three apps run side by side (pnpm demo / pnpm dev) and would collide on 9229.
+    inspectorPort: false,
+    imageService: 'passthrough',
+  }),
   // Sessions are unused; an in-memory driver stops the adapter provisioning KV.
   session: { driver: sessionDrivers.lruCache() },
   build: { format: 'directory' },

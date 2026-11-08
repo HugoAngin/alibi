@@ -187,7 +187,8 @@ export function requestFixture(requestId: string): RequestDetail | null {
             at,
           },
         ],
-        sources: [bank, payout],
+        // The payout reached the passport through the Challenger's scoped lookup (lookup 0 above).
+        sources: [bank, { ...payout, via_lookup: 0 }],
         calculation: null,
         status: 'supported',
         status_reason: `Settled 27 Oct 16:00 UTC, before the credit was booked 28 Oct 06:30 UTC; reference ${PAYOUT.reference} matches the bank row.`,
@@ -209,6 +210,12 @@ export function requestFixture(requestId: string): RequestDetail | null {
           result: GBP(net),
           computed_by: 'code',
           matches: net === CREDIT.minor,
+          terms: (['sale', 'refund', 'fee'] as const).map((kind) => ({
+            label: LABEL[kind] ?? kind,
+            sign: kind === 'sale' ? ('+' as const) : ('-' as const),
+            amount: GBP(sum(kind)),
+            source_ids: covered.filter((r) => r.kind === kind).map((r) => `${r.id} r1`),
+          })),
         },
         status: 'supported',
         status_reason: 'The 18 records the payout covers add up to the credit.',

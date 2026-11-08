@@ -44,3 +44,16 @@ Use container-local storage for the writable passport and bank inbox. A replacem
 - Record the tested Git commit, replay artifact identifier, cold and warm timings, and deployed URL on the Message Board. Label the URL as replay in the deck. Deploy with `modal deploy` after the local checks pass. Stop the optional app with `modal app stop` after review. [Deploying Web Functions](https://modal.com/docs/guide/webhooks) · [App CLI](https://modal.com/docs/cli/latest/app)
 
 The service entry points, replay flag, and exact readiness checks come from the S5 runbook.
+
+The separate public replay stage can now be generated without copying the
+working tree. Keep the manifest beside the stage so it is available for review.
+
+```bash
+stage=$(mktemp -d /tmp/alibi-modal-replay.XXXXXX)
+uv run --frozen python -m agents.eval.deploy.replay_stage dry --dest "$stage" > "$stage.manifest.json"
+```
+
+Dry stage reports missing release files. For release, use `release --candidate
+<full SHA>` with a fresh destination. It requires the tracked S5 runbook and
+public replay inputs before writing a snapshot. Review the manifest and run
+the published service commands from that stage before uploading it.

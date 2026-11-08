@@ -33,17 +33,15 @@ import {
 
 interface Props {
   data: PassportHome;
-  /** The public case 1 preview: never call the backend for transaction details. */
-  offline?: boolean;
 }
 
-const { data, offline = false } = Astro.props;
+const { data } = Astro.props;
 const MERCHANTS_ON_HOME = 3;
 const ACTIVITY_ON_HOME = 4;
 
 const details = new Map<string, TxnDetail>();
 await Promise.all(
-  (offline ? [] : data.transactions).map(async (t) => {
+  data.transactions.map(async (t) => {
     const loaded = await loadContext({
       origin: ALIBI_API_ORIGIN,
       path: ROUTES.txn(t.txn_id),
@@ -65,208 +63,230 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
   `${direction === 'credit' ? '+' : '−'}${money({ ...m, minor: Math.abs(m.minor) })}`;
 ---
 
-<section class="hello">
-  <p class="hi">Hi {data.holder.name}</p>
-  <h1 class="statement">{headline(data)}</h1>
-</section>
+<div class="dash">
+  <section class="hello">
+    <p class="hi">Hi {data.holder.name}</p>
+    <h1 class="statement">{headline(data)}</h1>
+  </section>
 
-<section class="sec" aria-labelledby="activity-title" id="requests">
-  <h2 id="activity-title" class="sec-title">
-    Recent activity
-  </h2>
-  {items.length === 0 && <p class="quiet">No requests or alerts yet.</p>}
-  <ul class="rows">
-    {recent.map((i) => (
-      <ActivityRow item={i} />
-    ))}
-  </ul>
-  {earlier.length > 0 && (
-    <details class="more">
-      <summary>Show {earlier.length} more</summary>
-      <ul class="rows">
-        {earlier.map((i) => (
-          <ActivityRow item={i} />
-        ))}
-      </ul>
-    </details>
-  )}
-</section>
-
-<section class="sec" aria-labelledby="banks-title">
-  <h2 id="banks-title" class="sec-title">
-    Banks <span class="count">{bankList.length}</span>
-  </h2>
-  {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
-  <ul class="banks">
-    {bankList.map((b) => (
-      <li class="bank">
-        <span class="mono mono--lg mono--ink" aria-hidden="true">
-          {initials(b.name)}
-        </span>
-        <span class="bank-name">{b.name}</span>
-        <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
-        <span class="small">
-          {b.awaiting > 0
-            ? `${b.awaiting} awaiting your review`
-            : b.packagesSent > 0
-              ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
-              : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
-        </span>
-      </li>
-    ))}
-  </ul>
-</section>
-
-<section class="sec" aria-labelledby="merchants-title">
-  <div class="sec-head">
-    <h2 id="merchants-title" class="sec-title">
-      Merchants <span class="count">{merchantList.length}</span>
+  <section class="sec sec--activity" aria-labelledby="activity-title" id="requests">
+    <h2 id="activity-title" class="sec-title">
+      Recent activity
     </h2>
-    {merchantList.length > MERCHANTS_ON_HOME && (
-      <a class="see-all" href="/app/merchants/">
-        See all
-      </a>
+    {items.length === 0 && <p class="quiet">No requests or alerts yet.</p>}
+    <ul class="rows">
+      {recent.map((i) => (
+        <ActivityRow item={i} />
+      ))}
+    </ul>
+    {earlier.length > 0 && (
+      <details class="more">
+        <summary>Show {earlier.length} more</summary>
+        <ul class="rows">
+          {earlier.map((i) => (
+            <ActivityRow item={i} />
+          ))}
+        </ul>
+      </details>
     )}
-  </div>
-  {merchantList.length === 0 && <p class="quiet">No merchant is connected yet.</p>}
-  <ul class="rows">
-    {merchantList.slice(0, MERCHANTS_ON_HOME).map((m) => (
-      <li class="row">
-        <span class="mono" aria-hidden="true">
-          {initials(m.name)}
-        </span>
-        <span class="row-body">
-          <span class="row-title">{plainName(m.name)}</span>
-          <span class="small">
-            {m.record_count} records · synced {day(m.last_synced_at)}
-          </span>
-        </span>
-        <span class="trust" title={TRUST_MARK[m.trust].label}>
-          <span aria-hidden="true">{TRUST_MARK[m.trust].mark}</span> {TRUST_MARK[m.trust].label}
-        </span>
-      </li>
-    ))}
-  </ul>
-  {merchantList.length > 0 && (
-    <a class="row-link" href="/app/merchants/">
-      View all merchants and their details
-    </a>
-  )}
-</section>
+  </section>
 
-<section class="sec" aria-labelledby="context-title">
-  <h2 id="context-title" class="sec-title">
-    Financial context
-  </h2>
-  <p class="quiet">
-    Your transactions, joined to the records that explain them and what Alibi could establish.
-    {data.evidence_status.linked} of {data.evidence_status.total} linked · checked{' '}
-    {day(data.evidence_status.last_checked_at)}.
-  </p>
-  {timeline.length === 0 && <p class="quiet">No transactions yet.</p>}
-  {timeline.map((g) => (
-    <div class="month">
-      <h3 class="month-title">{g.month}</h3>
-      <ol class="timeline">
-        {g.entries.map((e) => (
-          <li class:list={['entry', `entry--${e.linkState}`]}>
-            <details>
-              <summary>
-                <span class="entry-date">
-                  <span class="d">{day(e.at).split(' ')[0]}</span>
-                  <span class="m">{day(e.at).split(' ')[1]}</span>
-                </span>
-                <span class="entry-main">
-                  <span class="entry-line">
-                    <span class="entry-title">{describe(e.title).title}</span>
-                    <span class:list={['amount', `amount--${e.direction}`]}>
-                      {signed(e.amount, e.direction)}
-                    </span>
-                  </span>
-                  {describe(e.title).line && (
-                    <span class="entry-line2">{describe(e.title).line}</span>
-                  )}
-                  {e.context && <span class="entry-context">{e.context}</span>}
-                  <span class="entry-tags">
-                    <span class:list={['tag', `tag--${e.linkState}`]}>
-                      <span aria-hidden="true">{LINK_MARK[e.linkState].mark}</span>
-                      {e.linkState === 'linked' && e.linkedCount > 0
-                        ? `Linked to ${e.linkedCount}`
-                        : LINK_MARK[e.linkState].label}
-                    </span>
-                    {e.claims.map((c) => (
-                      <span class:list={['tag', `tag--${c.status}`]}>
-                        <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>
-                        {CLAIM_MARK[c.status].label}
-                        {c.bank && ` for ${c.bank}`}
-                      </span>
-                    ))}
-                    <span class="src-count">
-                      {e.sources.length === 0
-                        ? 'Bank record only'
-                        : `${e.sources.length} related ${e.sources.length === 1 ? 'record' : 'records'}`}
-                    </span>
-                  </span>
-                </span>
-              </summary>
-              <ul class="sources">
-                <li>
-                  <span class="trust">
-                    <span aria-hidden="true">{TRUST_MARK.bank_observed.mark}</span>{' '}
-                    {TRUST_MARK.bank_observed.label}
-                  </span>
-                  <span class="src-who">{e.observedBy}</span>
-                  <code>{e.id}</code>
-                  {e.references.length > 0 && (
-                    <span class="small">Reference {e.references.join(', ')}</span>
-                  )}
-                </li>
-                {e.sources.map((s) => (
-                  <li>
-                    <span class="trust">
-                      <span aria-hidden="true">{TRUST_MARK[s.trust].mark}</span>{' '}
-                      {TRUST_MARK[s.trust].label}
-                      {s.via_lookup && ' · by lookup'}
-                    </span>
-                    <span class="src-who">
-                      {plainName(s.issuer)} · {s.kind.replaceAll('_', ' ')}
-                    </span>
-                    <code>
-                      {s.record_id} r{s.revision}
-                    </code>
-                    <span class="small">
-                      {day(s.occurred_at)} · {money(s.amount)} · {s.status.replaceAll('_', ' ')}
-                    </span>
-                  </li>
-                ))}
-                {e.claims.map((c) => (
-                  <li>
-                    <span class="trust">
-                      <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>{' '}
-                      {CLAIM_MARK[c.status].label}
-                      {c.bank && ` · asked by ${c.bank}`}
-                    </span>
-                    <span class="src-who">{c.question}</span>
-                  </li>
-                ))}
-                {e.calculation && (
-                  <li>
-                    <span class="trust">
-                      {e.calculation.matches ? 'Reconciles' : 'Does not reconcile'}
-                    </span>
-                    <code>{e.calculation.expression}</code>
-                  </li>
-                )}
-              </ul>
-            </details>
+  <div class="side">
+    <section class="sec" aria-labelledby="banks-title">
+      <h2 id="banks-title" class="sec-title">
+        Banks <span class="count">{bankList.length}</span>
+      </h2>
+      {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
+      <ul class="banks">
+        {bankList.map((b) => (
+          <li class="bank">
+            <span class="mono mono--lg mono--ink" aria-hidden="true">
+              {initials(b.name)}
+            </span>
+            <span class="bank-name">{b.name}</span>
+            <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
+            <span class="small">
+              {b.awaiting > 0
+                ? `${b.awaiting} awaiting your review`
+                : b.packagesSent > 0
+                  ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
+                  : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
+            </span>
           </li>
         ))}
-      </ol>
-    </div>
-  ))}
-</section>
+      </ul>
+    </section>
+
+    <section class="sec" aria-labelledby="merchants-title">
+      <div class="sec-head">
+        <h2 id="merchants-title" class="sec-title">
+          Merchants <span class="count">{merchantList.length}</span>
+        </h2>
+        {merchantList.length > MERCHANTS_ON_HOME && (
+          <a class="see-all" href="/app/merchants/">
+            See all
+          </a>
+        )}
+      </div>
+      {merchantList.length === 0 && <p class="quiet">No merchant is connected yet.</p>}
+      <ul class="rows">
+        {merchantList.slice(0, MERCHANTS_ON_HOME).map((m) => (
+          <li class="row">
+            <span class="mono" aria-hidden="true">
+              {initials(m.name)}
+            </span>
+            <span class="row-body">
+              <span class="row-title">{plainName(m.name)}</span>
+              <span class="small">
+                {m.record_count} records · synced {day(m.last_synced_at)}
+              </span>
+            </span>
+            <span class="trust" title={TRUST_MARK[m.trust].label}>
+              <span aria-hidden="true">{TRUST_MARK[m.trust].mark}</span> {TRUST_MARK[m.trust].label}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {merchantList.length > 0 && (
+        <a class="row-link" href="/app/merchants/">
+          View all merchants and their details
+        </a>
+      )}
+    </section>
+  </div>
+
+  <section class="sec sec--context" aria-labelledby="context-title">
+    <h2 id="context-title" class="sec-title">
+      Financial context
+    </h2>
+    <p class="quiet">
+      Your transactions, joined to the records that explain them and what Alibi could establish.
+      {data.evidence_status.linked} of {data.evidence_status.total} linked · checked{' '}
+      {day(data.evidence_status.last_checked_at)}.
+    </p>
+    {timeline.length === 0 && <p class="quiet">No transactions yet.</p>}
+    {timeline.map((g) => (
+      <div class="month">
+        <h3 class="month-title">{g.month}</h3>
+        <ol class="timeline">
+          {g.entries.map((e) => (
+            <li class:list={['entry', `entry--${e.linkState}`]}>
+              <details>
+                <summary>
+                  <span class="entry-date">
+                    <span class="d">{day(e.at).split(' ')[0]}</span>
+                    <span class="m">{day(e.at).split(' ')[1]}</span>
+                  </span>
+                  <span class="entry-main">
+                    <span class="entry-line">
+                      <span class="entry-title">{describe(e.title).title}</span>
+                      <span class:list={['amount', `amount--${e.direction}`]}>
+                        {signed(e.amount, e.direction)}
+                      </span>
+                    </span>
+                    {describe(e.title).line && (
+                      <span class="entry-line2">{describe(e.title).line}</span>
+                    )}
+                    {e.context && <span class="entry-context">{e.context}</span>}
+                    <span class="entry-tags">
+                      <span class:list={['tag', `tag--${e.linkState}`]}>
+                        <span aria-hidden="true">{LINK_MARK[e.linkState].mark}</span>
+                        {e.linkState === 'linked' && e.linkedCount > 0
+                          ? `Linked to ${e.linkedCount}`
+                          : LINK_MARK[e.linkState].label}
+                      </span>
+                      {e.claims.map((c) => (
+                        <span class:list={['tag', `tag--${c.status}`]}>
+                          <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>
+                          {CLAIM_MARK[c.status].label}
+                          {c.bank && ` for ${c.bank}`}
+                        </span>
+                      ))}
+                      <span class="src-count">
+                        {e.sources.length === 0
+                          ? 'Bank record only'
+                          : `${e.sources.length} related ${e.sources.length === 1 ? 'record' : 'records'}`}
+                      </span>
+                    </span>
+                  </span>
+                </summary>
+                <ul class="sources">
+                  <li>
+                    <span class="trust">
+                      <span aria-hidden="true">{TRUST_MARK.bank_observed.mark}</span>{' '}
+                      {TRUST_MARK.bank_observed.label}
+                    </span>
+                    <span class="src-who">{e.observedBy}</span>
+                    <code>{e.id}</code>
+                    {e.references.length > 0 && (
+                      <span class="small">Reference {e.references.join(', ')}</span>
+                    )}
+                  </li>
+                  {e.sources.map((s) => (
+                    <li>
+                      <span class="trust">
+                        <span aria-hidden="true">{TRUST_MARK[s.trust].mark}</span>{' '}
+                        {TRUST_MARK[s.trust].label}
+                        {s.via_lookup && ' · by lookup'}
+                      </span>
+                      <span class="src-who">
+                        {plainName(s.issuer)} · {s.kind.replaceAll('_', ' ')}
+                      </span>
+                      <code>
+                        {s.record_id} r{s.revision}
+                      </code>
+                      <span class="small">
+                        {day(s.occurred_at)} · {money(s.amount)} · {s.status.replaceAll('_', ' ')}
+                      </span>
+                    </li>
+                  ))}
+                  {e.claims.map((c) => (
+                    <li>
+                      <span class="trust">
+                        <span aria-hidden="true">{CLAIM_MARK[c.status].mark}</span>{' '}
+                        {CLAIM_MARK[c.status].label}
+                        {c.bank && ` · asked by ${c.bank}`}
+                      </span>
+                      <span class="src-who">{c.question}</span>
+                    </li>
+                  ))}
+                  {e.calculation && (
+                    <li>
+                      <span class="trust">
+                        {e.calculation.matches ? 'Reconciles' : 'Does not reconcile'}
+                      </span>
+                      <code>{e.calculation.expression}</code>
+                    </li>
+                  )}
+                </ul>
+              </details>
+            </li>
+          ))}
+        </ol>
+      </div>
+    ))}
+  </section>
+</div>
 
 <style>
+  /* Wide screens: activity beside banks and merchants, the financial context below. */
+  @media (min-width: 960px) {
+    .dash {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+      column-gap: 56px;
+      align-items: start;
+    }
+    .hello,
+    .sec--context {
+      grid-column: 1 / -1;
+    }
+    .dash .statement {
+      max-width: 24ch;
+      font-size: 2.5rem;
+    }
+  }
+
   .hello {
     padding-block: 18px 6px;
   }

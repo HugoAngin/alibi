@@ -5,9 +5,8 @@
  * all, so no Clerk key is needed; requests for any non-loopback host are refused, and every holder
  * route needs the signed demo session (sign in at /demo-sign-in/ as Maya).
  *
- * Either way, the public case 1 preview (`/preview/app/...`, framed by /simulate/ and /phone/)
- * stays open: it is built from the fixture only and offers no action. Its links into the app are
- * kept inside the preview (src/lib/preview.ts).
+ * Either way, `/simulate/` stays open: Maya's dashboard for any visitor, read-only (every action
+ * disabled). Its links into the app are kept inside the simulation (src/lib/simulation.ts).
  */
 import { clerkMiddleware } from '@clerk/astro/server';
 import type { AuthFn } from '@clerk/astro/server';
@@ -23,7 +22,7 @@ import {
   isLoopback,
   verifyHolderSession,
 } from '@/lib/demoHolder';
-import { isPreviewRoute, previewLinks } from '@/lib/preview';
+import { isSimulationRoute, simulationLinks } from '@/lib/simulation';
 
 /** The holder app's pages and endpoints (Clerk 4.1 has no createRouteMatcher). */
 function isAppRoute(pathname: string): boolean {
@@ -73,11 +72,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
       ((await clerk(context, next)) as Response);
 
   if (
-    !isPreviewRoute(context.url.pathname) ||
+    !isSimulationRoute(context.url.pathname) ||
     !(response.headers.get('content-type') ?? '').includes('text/html')
   )
     return response;
-  const html = previewLinks(await response.text());
+  const html = simulationLinks(await response.text());
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   return new Response(html, { status: response.status, headers });

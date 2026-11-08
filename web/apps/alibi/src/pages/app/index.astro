@@ -1,8 +1,8 @@
 ---
 /**
- * `/app/`: Maya's passport home, on any device. `/` shows the same screen on a
- * phone, and `/phone/` frames it on a desktop. Rendered per request because it
- * reads the backend.
+ * `/app/`: the signed-in holder's dashboard home, on desktop and phone alike (Join and sign-in
+ * land here). `/simulate/` shows Maya's, read-only. Rendered per request because it reads the
+ * backend.
  */
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import AppFrame from '@/components/app/AppFrame.astro';
@@ -17,12 +17,13 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
 
 <BaseLayout title="Passport" view="app">
   {loaded.source === 'missing' ? (
-    <AppFrame active="home">
+    <AppFrame active="home" wide>
       <p>{loaded.reason}</p>
     </AppFrame>
   ) : (
     <AppFrame
       active="home"
+      wide
       holder={loaded.data.holder.name}
       fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
     >

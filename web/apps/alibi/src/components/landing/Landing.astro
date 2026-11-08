@@ -9,13 +9,6 @@ import { Show } from '@clerk/astro/components';
 import IslandHeader from '@/components/site/IslandHeader.astro';
 import Journey from '@/components/site/Journey.astro';
 import SiteFooter from '@/components/site/SiteFooter.astro';
-
-interface Props {
-  /** The visitor is on a phone but chose the website; offer the way back. */
-  offerApp?: boolean;
-}
-
-const { offerApp = false } = Astro.props;
 ---
 
 <IslandHeader />
@@ -28,15 +21,15 @@ const { offerApp = false } = Astro.props;
       <div>
         <p class="s-eyebrow">Simulate</p>
         <h2 id="simulate-title" class="s-h2">
-          Walk through Maya’s case
+          Open Maya’s dashboard
         </h2>
         <p class="s-lede">
-          A student reseller’s bank asks about a £2,160.00 credit. Watch the passport answer it step
-          by step, on the real app, from the alert to a second bank’s request.
+          See the real dashboard, live: two banks’ requests, the investigation behind each answer,
+          and exactly what Maya chose to share. Read-only, so look around freely.
         </p>
       </div>
       <a class="s-btn s-btn--primary" href="/simulate/">
-        Start the simulation
+        Open Maya’s dashboard
       </a>
     </div>
   </section>
@@ -56,15 +49,10 @@ const { offerApp = false } = Astro.props;
       </Show>
       <Show when="signed-in">
         <a class="s-btn s-btn--primary" href="/app/">
-          Open your passport
+          Open your dashboard
         </a>
       </Show>
     </p>
-    {offerApp && (
-      <p>
-        <a href="/?view=app">Back to the Alibi app</a>
-      </p>
-    )}
   </section>
 </main>
 

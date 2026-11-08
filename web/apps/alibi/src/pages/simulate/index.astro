@@ -1,0 +1,36 @@
+---
+/**
+ * `/simulate/`: Maya's dashboard, live, for any visitor. The same Home screen a signed-in holder
+ * sees at `/app/`, read from the backend (or the built-in case 1 data, labelled, when the backend
+ * is not connected). Read-only: Home itself has no actions, and the request pages it links to
+ * (`/simulate/requests/<id>/`) show every action disabled, so nobody can approve or send for Maya
+ * from here. Links stay inside the simulation (src/lib/simulation.ts, applied by the middleware).
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import PassportHome from '@/components/app/PassportHome.astro';
+import { loadPassport } from '@/lib/passport';
+
+export const prerender = false;
+
+const loaded = await loadPassport();
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<BaseLayout title="Maya’s dashboard" view="app">
+  {loaded.source === 'missing' ? (
+    <AppFrame active="home" wide simulation>
+      <p>{loaded.reason}</p>
+    </AppFrame>
+  ) : (
+    <AppFrame
+      active="home"
+      wide
+      simulation
+      holder={loaded.data.holder.name}
+      fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+    >
+      <PassportHome data={loaded.data} />
+    </AppFrame>
+  )}
+</BaseLayout>

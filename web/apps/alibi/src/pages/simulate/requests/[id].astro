@@ -1,0 +1,55 @@
+---
+/**
+ * `/simulate/requests/<id>/`: one of Maya's bank requests, live, for any visitor: the question,
+ * the investigation trace and her private review. Every action is shown but disabled
+ * (RequestView `live={false}`), so nothing can be approved or sent from the simulation.
+ */
+import { ALIBI_API_ORIGIN } from 'astro:env/server';
+
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import RequestView from '@/components/app/RequestView.astro';
+import { requestFixture } from '@/data/fixtures';
+import { loadContext } from '@alibi/ui/api';
+import { isRequestDetail } from '@/lib/api/guards';
+import { ROUTES, backendHeaders } from '@/lib/screens';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+const loaded = await loadContext({
+  origin: ALIBI_API_ORIGIN,
+  path: ROUTES.request(id),
+  isShape: isRequestDetail,
+  fixture: () => requestFixture(id),
+  headers: backendHeaders(),
+});
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+if (loaded.source === 'missing') Astro.response.status = 404;
+---
+
+<BaseLayout title="Maya’s request" view="app">
+  {loaded.source === 'missing' ? (
+    <AppFrame active="requests" simulation>
+      <h1>Request not found</h1>
+      <p>{loaded.reason}</p>
+      <p>
+        <a href="/simulate/">Back to Maya’s dashboard</a>
+      </p>
+    </AppFrame>
+  ) : (
+    <AppFrame
+      active="requests"
+      simulation
+      fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+    >
+      <RequestView
+        data={loaded.data}
+        flash={null}
+        live={false}
+        offNote="Only Maya can approve and send this, from her own signed-in dashboard."
+      />
+    </AppFrame>
+  )}
+</BaseLayout>

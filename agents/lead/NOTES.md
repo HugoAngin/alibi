@@ -39,6 +39,7 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 23:52Z: eval's need for the S5b runner, probe contract and S2 endpoint queued for Arnav. Session ended by Arnav right after.
 - 2026-11-08 ~00:1xZ restart: answered eval's 23:51 (runner/probe/endpoint queued, build against CONTRACTS meanwhile), 23:53 (linked `agents.eval.api` builders in the Canonical fixture row) and 00:07 (pinned an RFC scope row: exactly one of `period` or `txn_ids`, consumers handle both, signed scope is the real `txn_ids`). Queued the S4a null-period template fix for Arnav.
 - 00:20Z: research asked for a root `web/` path in `team.json` for their Astro front end (4c076a6). Queued for Arnav; told research to stay in `agents/research/web/` meanwhile.
+- 00:30Z: eval progress (1fff9c2): exclusive RFC scope enforced in evaluator, preview and verifier, 433 tests pass; private 32+12 sealed pack passes 92 request-context checks. Calibration and the 47 live probes still wait on S5b and S2 (already queued for Arnav). No reply needed.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

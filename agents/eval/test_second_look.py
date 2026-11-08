@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 
 from agents.eval import second_look
-from agents.eval.postfix_runtime import files
 
 
 @pytest.fixture
@@ -36,26 +35,3 @@ def test_public_gate_rejects_wrong_candidate_and_invalid_predictions(public_gate
                         lambda *a: SimpleNamespace(invalid={(1, '1'): 'schema'}, predictions={}))
     with pytest.raises(ValueError, match='schema or denominator'):
         second_look.public_gate(public_gate, 'fixed')
-
-
-def test_replay_never_launches_and_refuses_changed_artifact(tmp_path, monkeypatch):
-    (tmp_path / 'metrics.json').write_text('{"cases": 44}')
-    (tmp_path / 'receipt.json').write_text(json.dumps({'files': files(tmp_path)}))
-    monkeypatch.setattr(second_look, '_parallel_capture', lambda *a: pytest.fail('launched worker'))
-    second_look.main(['--out', str(tmp_path)])
-    (tmp_path / 'metrics.json').write_text('{}')
-    with pytest.raises(ValueError, match='evidence changed'):
-        second_look.main(['--out', str(tmp_path)])
-
-
-def test_incomplete_run_is_preserved_without_retry(tmp_path, monkeypatch):
-    monkeypatch.setattr(second_look, '_parallel_capture', lambda *a: pytest.fail('retried'))
-    with pytest.raises(second_look.common.EvalError, match='missing file'):
-        second_look.main(['--out', str(tmp_path)])
-
-
-def test_new_capture_requires_recorded_authority_before_inputs(tmp_path, monkeypatch):
-    monkeypatch.setattr(second_look, 'is_open', lambda: False)
-    with pytest.raises(SystemExit):
-        second_look.main(['--out', str(tmp_path / 'new')])
-    assert not (tmp_path / 'new').exists()

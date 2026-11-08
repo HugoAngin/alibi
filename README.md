@@ -1,5 +1,3 @@
-<img width="659" height="604" alt="image" src="https://github.com/user-attachments/assets/f398aaca-8eca-46e8-b82f-d90eae1fda65" /># alibi - Your financial passport
-
 https://youtu.be/CPnbEoRS-OY
 
 Alibi is a financial passport the account holder controls: it links bank payments to the marketplace sales, refunds, fees and payouts that explain them, so when a bank asks about a payment, the holder can answer with checkable evidence and share only what the question needs.

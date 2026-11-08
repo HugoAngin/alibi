@@ -1,7 +1,8 @@
 ---
 /**
  * `/phone/`: the app inside a simulated phone, so it can be seen on a desktop
- * (the landing page's "View on a phone" button). The frame loads `/app/`,
+ * (the landing page's "View on a phone" button). The frame loads the public,
+ * read-only case 1 preview (`/preview/app/`; the real `/app/` needs sign-in),
  * which never sets the view cookie, so leaving this page does not change what
  * `/` shows.
  */
@@ -13,9 +14,9 @@ import PhoneFrame from '@/components/PhoneFrame.astro';
   <main id="main" class="stage">
     <nav class="toolbar" aria-label="Preview">
       <a href="/">← Back to the website</a>
-      <a href="/app/">Open full screen</a>
+      <a href="/preview/app/">Open full screen</a>
     </nav>
-    <PhoneFrame src="/app/" title="The Alibi app, as it looks on a phone" />
+    <PhoneFrame src="/preview/app/" title="The Alibi app, as it looks on a phone" />
     <p class="hint">Simulated phone viewport, 390 × 844</p>
   </main>
 </BaseLayout>

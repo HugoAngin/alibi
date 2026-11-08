@@ -2,8 +2,8 @@
 /**
  * `/simulate/`: Maya's case, step by step, beside the real app in a phone
  * frame. As each step scrolls into view, the phone moves to the screen it
- * describes. The app reads the live backend when one is connected, and
- * otherwise shows the built-in case 1 data and says so.
+ * describes. The frame shows the public, read-only case 1 preview
+ * (`/preview/app/`); the real app at `/app/` needs sign-in.
  */
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import IslandHeader from '@/components/site/IslandHeader.astro';
@@ -12,32 +12,32 @@ import PhoneFrame from '@/components/PhoneFrame.astro';
 
 const steps = [
   {
-    screen: '/app/',
+    screen: '/preview/app/',
     title: 'Maya’s history builds itself',
     body: 'Maya resells clothes on a marketplace. She connected it and her bank once. Every sale, refund, fee and payout has flowed into her passport since, signed by the marketplace.',
   },
   {
-    screen: '/app/',
+    screen: '/preview/app/',
     title: 'An alert, before anyone asks',
     body: 'On 28 Oct a £2,160 credit lands. The marketplace only said the money was “released to her seller balance”, which is not proof it reached her bank. Alibi flags the gap straight away.',
   },
   {
-    screen: '/app/requests/rfc-0001-01/',
+    screen: '/preview/app/requests/rfc-0001-01/',
     title: 'Bank A asks',
     body: 'On 2 Nov Bank A restricts her account and asks two questions: where did the £2,160 come from, and how is it made up? Rent is due.',
   },
   {
-    screen: '/app/requests/rfc-0001-01/#step-sof',
+    screen: '/preview/app/requests/rfc-0001-01/#step-sof',
     title: 'The engine investigates',
     body: 'The Challenger reads the marketplace message, spots withdrawal PO-0001-01 and fetches it: settled 27 Oct, the day before the credit. Code checks the reference, the timing and 240000 − 18000 − 6000 = 216000.',
   },
   {
-    screen: '/app/requests/rfc-0001-01/#review-title',
+    screen: '/preview/app/requests/rfc-0001-01/#review-title',
     title: 'Maya decides what is shared',
     body: 'Twenty records answer the questions. Her rent, two card payments and a purchase stay private. She approves the exact package for Bank A, and only Bank A.',
   },
   {
-    screen: '/app/requests/rfc-0001-02/',
+    screen: '/preview/app/requests/rfc-0001-02/',
     title: 'Bank B asks something else',
     body: 'Two days later Bank B asks for her October sales and refunds. The same passport answers from the same records, with no new upload, and Maya approves this one separately.',
   },
@@ -68,7 +68,7 @@ const steps = [
       <div class="phone" data-sim-phone>
         <PhoneFrame src={steps[0].screen} title="The Alibi app, as Maya sees it on her phone" />
         <p class="hint">
-          <a href="/app/">Open the app full screen</a>
+          <a href="/preview/app/">Open the preview full screen</a>
         </p>
       </div>
     </div>

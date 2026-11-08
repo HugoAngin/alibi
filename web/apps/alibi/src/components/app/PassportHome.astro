@@ -33,15 +33,17 @@ import {
 
 interface Props {
   data: PassportHome;
+  /** The public case 1 preview: never call the backend for transaction details. */
+  offline?: boolean;
 }
 
-const { data } = Astro.props;
+const { data, offline = false } = Astro.props;
 const MERCHANTS_ON_HOME = 3;
 const ACTIVITY_ON_HOME = 4;
 
 const details = new Map<string, TxnDetail>();
 await Promise.all(
-  data.transactions.map(async (t) => {
+  (offline ? [] : data.transactions).map(async (t) => {
     const loaded = await loadContext({
       origin: ALIBI_API_ORIGIN,
       path: ROUTES.txn(t.txn_id),

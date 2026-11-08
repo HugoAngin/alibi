@@ -1,0 +1,34 @@
+---
+/**
+ * `/preview/app/requests/<id>/`: a bank's request in the public case 1 preview. Built only from the
+ * fixture, with every action shown but disabled (RequestView `live={false}`), so nothing can be
+ * approved or sent from here.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import RequestView from '@/components/app/RequestView.astro';
+import { requestFixture } from '@/data/fixtures';
+
+export const prerender = false;
+
+const data = requestFixture(Astro.params.id ?? '');
+if (!data) Astro.response.status = 404;
+---
+
+<BaseLayout title="Request preview" view="app">
+  {data ? (
+    <AppFrame
+      active="requests"
+      fixtureReason="A read-only preview of Maya's case. Sign in to review and approve your own requests."
+    >
+      <RequestView data={data} flash={null} live={false} />
+    </AppFrame>
+  ) : (
+    <AppFrame active="requests">
+      <h1>Request not found</h1>
+      <p>
+        <a href="/preview/app/">Back to the preview</a>
+      </p>
+    </AppFrame>
+  )}
+</BaseLayout>

@@ -10,7 +10,8 @@ Deploy from the repo root, with Modal signed in (``modal setup``):
 
     ALIBI_MODAL_WARM=1 uvx --from modal modal deploy agents/research/deploy/modal_app.py
 
-Two Modal Secrets must exist in the workspace (``SECRETS`` below):
+Two Modal Secrets must exist in the workspace (``SECRETS`` below). The tokens one, and the matching
+Worker secrets, are set in one run by ``uv run --frozen python -m agents.research.deploy.set_secrets``:
 
 * ``alibi-backend``: ``GEMINI_API_KEY`` and ``ALIBI_MASTER_KEY``.
 * ``alibi-backend-tokens``: the credentials the Workers share:

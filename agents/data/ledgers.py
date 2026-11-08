@@ -145,7 +145,9 @@ class Case:
         fields = {"destination": "bank", "payout_reference": ref, "status": status,
                   "settled_at": iso(settled) if settled else None, "covers_record_ids": covers}
         fields.update(extra)
-        received = (settled or at) + timedelta(minutes=5) if channel != "import" else None
+        # A record cannot be served before the time its status describes.
+        as_of = ts_(extra["status_as_of"]) if extra.get("status_as_of") else None
+        received = (settled or as_of or at) + timedelta(minutes=5) if channel != "import" else None
         return self.event("payout", amount, at, channel=channel, received=received, **fields)
 
     def balance_release(self, amount: int, at: datetime, covers: list[str],

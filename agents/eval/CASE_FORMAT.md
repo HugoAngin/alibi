@@ -173,26 +173,94 @@ Rehearse the one-command runner on public data before freezing. `--case` selects
 uv run --frozen python -m agents.eval.run_sealed --dry-run --out "$REHEARSAL_OUTPUT"
 ```
 
-When `alibi.adapter.run_case` lands, check it on public cases before freeze. Run from the clean candidate with the lockbox closed and `GEMINI_API_KEY` in the environment or the local `.env`. In a detached checkout, set `ALIBI_EVAL_ENV_FILE` to the evaluator’s existing credential file. The evaluator reads the run key and denies the worker access to the source file. Before creating its output or lock, a new live capture checks the credential and imports the adapter in the worker sandbox without supplying a case. Choose a new output directory. Start with Cases 1 and 2 to cover the settled and pending examples and both bank recipients. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage.
+### Frozen candidate run order
+
+**1. Pin the published candidate.** After lead posts the exact pushed SHA and tag on the Message Board, set `ALIBI_CANDIDATE_SHA` to that full SHA and `ALIBI_CANDIDATE_CHECKOUT` to a new evaluator worktree path. Run the commands from the default checkout, then stay in the detached worktree through the record and verification.
 
 ```bash
-uv run --frozen python -m agents.eval.run_sealed --public-live --case 1 --case 2 \
+git fetch origin --tags
+test "$(git rev-parse 'sealed-candidate^{commit}')" = "$ALIBI_CANDIDATE_SHA"
+git worktree add --detach "$ALIBI_CANDIDATE_CHECKOUT" "$ALIBI_CANDIDATE_SHA"
+cd "$ALIBI_CANDIDATE_CHECKOUT"
+test -z "$(git status --porcelain --untracked-files=all)"
+git ls-files --error-unmatch alibi/adapter.py alibi/RUNBOOK.md
+uv sync --frozen
+```
+
+Stop on a failed check. Set `ALIBI_EVAL_ENV_FILE` to the evaluator's existing credential file, `ALIBI_FROZEN_PRIVATE_ROOT` to the protected directory covering authoring and release data, and `PUBLIC_LIVE_OUTPUT` to a new path outside both the private root and all Git worktrees. Use the pinned model defaults unless the freeze announcement specifies an override. For the defaults, clear any inherited `ALIBI_LLM_CAP`.
+
+**2. Time one agents-mode public case.** Keep the lockbox closed. This runs the same sandbox, adapter and 90-second case limit as the recorded run. The timer excludes the adapter import preflight. The credential file stays outside the worker sandbox. Check the failure types, coverage and actual packages before proceeding.
+
+```bash
+uv run --frozen python - <<'PY'
+import os
+from pathlib import Path
+from time import perf_counter
+
+from agents.data.api import load_case
+from agents.eval.sealed_worker import REPO, run_case_worker, verify_adapter
+from alibi.llm.client import load_api_key
+from tools.lockbox import is_open
+
+if is_open():
+    raise SystemExit("close the lockbox before timing a public case")
+root = Path(os.environ["ALIBI_FROZEN_PRIVATE_ROOT"]).resolve(strict=True)
+credential = Path(os.environ["ALIBI_EVAL_ENV_FILE"]).resolve(strict=True)
+denied = (root, credential, REPO / "data", REPO / "agents/data/out/cases")
+load_api_key(credential)
+verify_adapter(denied)
+case = load_case(1)
+start = perf_counter()
+rows = run_case_worker(case, "agents", dry_run=False, timeout=90, blocked=denied)
+failures = [row["failure"]["type"] for row in rows if row.get("failure")]
+print(f"{perf_counter() - start:.2f}s, {len(rows)}/{len(case['rfcs'])} RFC rows, "
+      f"{sum(bool(row.get('package')) for row in rows)} packages, failures {failures}")
+if failures or len(rows) != len(case["rfcs"]):
+    raise SystemExit("inspect the public adapter failure before opening the lockbox")
+PY
+```
+
+Then check all three systems on public Cases 1 and 2. Inspect `report.md` and the three prediction files for request coverage, refusals, actual packages and measured usage. Unset the probe input for this check so a path reserved for the later capture does not get read prematurely.
+
+```bash
+env -u ALIBI_FROZEN_PROBES uv run --frozen python -m agents.eval.run_sealed --public-live --case 1 --case 2 \
   --private-root "$ALIBI_FROZEN_PRIVATE_ROOT" --out "$PUBLIC_LIVE_OUTPUT"
 ```
 
-For the recorded run, export `ALIBI_FROZEN_CASES`, `ALIBI_FROZEN_GOLD`, `ALIBI_FROZEN_MANIFEST`, `ALIBI_FROZEN_MODEL_CONFIG`, `ALIBI_FROZEN_PRIVATE_ROOT`, `ALIBI_FROZEN_PROBES`, and `ALIBI_FROZEN_OUT` in the evaluator’s environment. Use the clean frozen candidate checkout. The private root covers authoring and release data. Place the run directory outside that root and every Git worktree. The macOS `sandbox-exec` preflight denies the worker access to the private root, repository data and repository `.env`. The evaluator loads the Gemini run credential and keeps lockbox access in the parent. Each worker receives one allowlisted case over stdin and starts with separate scratch state for that case and system.
+**3. Capture the two-bank check and the probe receipt.** Start a disposable Case 1 stack from the pinned commit using `alibi/RUNBOOK.md`. Set `ALIBI_ROUTED_PROBES` to the routed profile, `ALIBI_PUBLIC_REGISTRY` to the pinned public keys, `ALIBI_FIXTURE_NOW` to the stack's clock, and `ALIBI_CANDIDATE_PROBE_CONFIG` to the full disposable profile. Use separate fresh stacks for mutating probes as described above. Choose a new external path for `ALIBI_FROZEN_PROBES`.
 
 ```bash
-python3 tools/results.py add --split lockbox --variants 1 --timeout 4500 \
+uv run --frozen python -m agents.eval.verify_demo_handoff --config "$ALIBI_ROUTED_PROBES" \
+  --registry "$ALIBI_PUBLIC_REGISTRY" --at "$ALIBI_FIXTURE_NOW"
+uv run --frozen python -m agents.eval.run_probes --config "$ALIBI_CANDIDATE_PROBE_CONFIG" \
+  --candidate-evidence --results "$ALIBI_FROZEN_PROBES"
+```
+
+Inspect the full table. The capture must produce all 47 rows and its adjacent receipt. It requires at least one definite demo refusal and one definite demo control. Record failed checks and unavailable hooks as such. Preserve probe results and the receipt as a pair.
+
+**4. Bind and record the sealed run.** Export `ALIBI_FROZEN_CASES` and `ALIBI_FROZEN_GOLD` from the prepared pack inside the protected root. Export `ALIBI_FROZEN_MANIFEST` and `ALIBI_FROZEN_MODEL_CONFIG` to evaluator-only paths and `ALIBI_FROZEN_OUT` to a new capture directory outside the protected root and every worktree. Write the effective model configuration from the candidate, with model IDs, thinking levels and cap. If the candidate supplies its own model configuration, use and verify it. Keep an already published manifest intact and verify it instead of writing a replacement.
+
+```bash
+uv run --frozen python -m alibi.eval.seal write \
+  --cases "$ALIBI_FROZEN_CASES" --gold "$ALIBI_FROZEN_GOLD" \
+  --candidate "$ALIBI_CANDIDATE_SHA" --model-config "$ALIBI_FROZEN_MODEL_CONFIG" \
+  --frozen-by eval --systems agents one_pass rules --out "$ALIBI_FROZEN_MANIFEST"
+uv run --frozen python -m alibi.eval.seal verify "$ALIBI_FROZEN_MANIFEST" \
+  --cases "$ALIBI_FROZEN_CASES" --gold "$ALIBI_FROZEN_GOLD" \
+  --model-config "$ALIBI_FROZEN_MODEL_CONFIG"
+python3 tools/results.py add --split lockbox --variants 1 --timeout "${ALIBI_RESULTS_TIMEOUT:-4500}" \
   --command 'uv run --frozen python -m agents.eval.run_sealed'
 ```
 
-The runner verifies the seal before and after capture. It checks the probe receipt against the sealed commit and captured outcomes before starting the one allowed run, then retains the receipt with the predictions and probe JSONL. Both live modes deny workers access to that directory so later cases and systems cannot read earlier predictions. Repeating the recorded command checks their digests and scores those same files. An incomplete run stays recorded in the private directory for the evaluator to investigate. The deck table and final metrics distinguish the official scorer from the independent check. When an attachment omits its revision, the independent check uses the active revision at the RFC time, as specified by the official prediction format.
+Use the public timing to set the outer `ALIBI_RESULTS_TIMEOUT` before the one run. Leave room for 44 cases across three systems and scoring. The runner checks the probe receipt against the sealed commit and verifies the seal before and after capture. It retains the receipt with the predictions and probe JSONL. Each gold-blind worker gets one case on stdin and separate scratch state. The parent keeps lockbox authority. Preserve an incomplete run and its lock for investigation.
 
-Render the aggregate deck handoff from the saved scores without launching workers:
+**5. Verify both scorers and hand off the aggregate evidence.** The runner already executes the official scorer and the independent scorer for each system and keeps the adversarial subset separate. Render the deck headline and replay the exact results record using its printed ID. Keep the same evaluator-only environment for replay. The verifier checks the retained capture and rescoring without starting another live capture. An attachment without a revision uses the active revision at RFC time in the independent check.
 
 ```bash
 uv run --frozen python -m agents.eval.headline "$ALIBI_FROZEN_OUT/scores.json"
+python3 tools/results.py verify --id "$ALIBI_RESULTS_ID" --timeout "${ALIBI_RESULTS_TIMEOUT:-4500}"
 ```
 
-This writes `HEADLINE.md` alongside the scores and prints one JSON object. If the frozen set has no `hidden_reference` family, pass `--public-scores` pointing to a public run's `scores.json` to add that separately labelled row. The exact sign test uses family-level net wins and losses. Zero-failure upper bounds use observed trials, with coverage shown separately.
+The headline writes `HEADLINE.md` alongside the scores. If the frozen set has no `hidden_reference` family, pass `--public-scores` pointing to a public run's `scores.json` to add that separately labelled row. The exact sign test uses family-level net wins and losses. Zero-failure upper bounds use observed trials, with coverage shown separately. Give Execution the commit, record ID, aggregate results, coverage and verification verdict for review. Keep case rows, gold, predictions and evaluator credentials in the protected environment. The generic verification tool only opens the lockbox for the eval role.
+
+The public rehearsal used draft `2028e1a` with a local stub adapter and public Cases 1 and 2, renumbered for the scratch record. The seal, both scorers, separate adversarial report and clean-checkout replay passed. The reference bank produced 9 definite probe outcomes out of 47, with 38 unexercised. Native two-bank delivery on the unmodified draft failed at the standalone bank route, so it remains a release gate.

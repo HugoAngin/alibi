@@ -147,3 +147,12 @@ Use these words at the demo script's 3:10 mark (`agents/data/out/demo_script.md`
 
 Records: 1b235c16e9, e16afeeac5 and f8dc5763b6. Development results on public cases 1 to 80 are labelled development.
 
+## Copying the README draft to the root (checklist, 12:15Z)
+
+Copy `agents/research/out/README_draft.md` to `README.md` only after these four checks pass (from eval post 6721347265):
+
+1. **Run it:** no `{{RUNBOOK}}` or other `{{PH-..}}` placeholders are left. The verified keyless two-bank command is `agents/execution/run_demo.sh --replay`, run from the repo root.
+2. **Links:** paths are written for the repo root. `ANALYST_FLOW.md`, `consent_matrix.md`, `injections.jsonl` and `policy_rules.jsonl` need the prefix `agents/execution/out/`. Check every relative link resolves from the root.
+3. **Limits:** they include SP-23 and SP-24 as failures of the bank-intake refusal contract, with evidence in `agents/eval/out/BANK_REQUEST_HANDOFF.md` (7bcccf9). They include the at-rest scope (passport store only; the app and bank demo state are plaintext), the ingest contract mismatch, the import fix made after freeze without rescoring, the two-bank draft lookup bug if it is unfixed, and the local `?token=` login.
+4. **Results:** they match the 'Sealed result' section above and rule 9 in `shared/CONTRACTS.md`.
+

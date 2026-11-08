@@ -13,7 +13,9 @@ from alibi.eval import common, rules_reference
 @pytest.fixture
 def candidate_probes(tmp_path):
     path = tmp_path / "candidate-probes.jsonl"
-    rows = [{"probe_id": probe_id, "outcome": "not_run"} for probe_id in run_sealed.probe_ids()]
+    observed = {"SP-17": "blocked", "SP-32": "not_blocked"}
+    rows = [{"probe_id": probe_id, "outcome": observed.get(probe_id, "not_run")}
+            for probe_id in run_sealed.probe_ids()]
     common.write_jsonl(path, rows)
     common.write_json(probe_receipt_path(path), probe_receipt("candidate", rows))
     return path
@@ -125,6 +127,20 @@ def test_frozen_capture_rejects_unbound_probes_before_lock(tmp_path, candidate_p
         rows[0]["outcome"] = "blocked"
         common.write_jsonl(candidate_probes, rows)
     with pytest.raises(ValueError, match="probe evidence|--candidate-evidence"):
+        run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
+                                 blocked=(), probes=candidate_probes, lock=lock)
+    assert not lock.exists() and not output.exists()
+
+
+def test_frozen_capture_rejects_valid_receipt_with_no_demo_control(tmp_path, candidate_probes):
+    output, lock = tmp_path / "capture", tmp_path / "capture-lock.json"
+    rows = common.read_jsonl(candidate_probes)
+    for row in rows:
+        if row["probe_id"] == "SP-32":
+            row["outcome"] = "error"
+    common.write_jsonl(candidate_probes, rows)
+    common.write_json(probe_receipt_path(candidate_probes), probe_receipt("candidate", rows))
+    with pytest.raises(ValueError, match="definite demo outcomes for control"):
         run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
                                  blocked=(), probes=candidate_probes, lock=lock)
     assert not lock.exists() and not output.exists()

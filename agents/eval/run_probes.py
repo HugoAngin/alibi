@@ -9,7 +9,7 @@ import sys
 from tempfile import TemporaryDirectory
 
 from agents.eval.http_probe_runtime import attempt
-from agents.eval.probe_capture import probe_receipt, probe_receipt_path
+from agents.eval.probe_capture import missing_demo_probe_kinds, probe_receipt, probe_receipt_path
 from alibi.eval import common, seal
 from alibi.eval.probes import Harness, ProbeResult
 
@@ -106,6 +106,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.candidate_evidence and seal.git_commit("HEAD") != (commit, False):
         parser.error("candidate checkout changed during probe capture")
     if args.candidate_evidence:
+        missing = missing_demo_probe_kinds({result.probe_id: result.outcome for result in results})
+        if missing:
+            parser.error(f"candidate evidence needs definite demo outcomes for {', '.join(sorted(missing))}")
         args.results.parent.mkdir(parents=True, exist_ok=True)
         args.results.touch(exist_ok=False)
     harness.write_results(results, args.results)

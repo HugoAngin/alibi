@@ -15,6 +15,14 @@ def probe_receipt(commit: str, rows: list[dict]) -> dict:
     return {"candidate_commit": commit, "outcomes_sha256": canonical_sha256(rows)}
 
 
+def missing_demo_probe_kinds(outcomes: dict[str, str]) -> set[str]:
+    """Find demo probe categories with no definite observation."""
+    demo = [probe for probe in load_probes() if probe["demo"]]
+    observed = {probe["kind"] for probe in demo
+                if outcomes.get(probe["id"]) in {"blocked", "not_blocked"}}
+    return {probe["kind"] for probe in demo} - observed
+
+
 def _step_key(row: dict) -> tuple:
     return row["case_number"], row["request_id"], row["step_id"]
 

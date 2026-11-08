@@ -68,6 +68,16 @@ def test_candidate_capture_records_catalogue_commit_and_digest(tmp_path, monkeyp
         run_probes.main(args[:-1])
 
 
+def test_unconfigured_candidate_capture_writes_no_evidence(tmp_path, monkeypatch, capsys):
+    config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
+    common.write_json(config, {})
+    monkeypatch.setattr(run_probes.seal, "git_commit", lambda _: ("candidate", False))
+    with pytest.raises(SystemExit):
+        run_probes.main(["--config", str(config), "--results", str(path), "--candidate-evidence"])
+    assert "definite demo outcomes for control, refusal" in capsys.readouterr().err
+    assert not path.exists() and not probe_receipt_path(path).exists()
+
+
 def test_candidate_capture_does_not_publish_after_checkout_moves(tmp_path, monkeypatch):
     config, path = tmp_path / "config.json", tmp_path / "probes.jsonl"
     common.write_json(config, {})

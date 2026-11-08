@@ -9,7 +9,7 @@ from pathlib import Path
 
 from agents.data.api import load_case, load_cases
 from agents.eval.freeze_pack import _private_path
-from agents.eval.probe_capture import probe_receipt, probe_receipt_path
+from agents.eval.probe_capture import missing_demo_probe_kinds, probe_receipt, probe_receipt_path
 from agents.eval.score_capture import score_capture
 from agents.eval.sealed_worker import MODES, REPO, case_payload, run_case_worker, verify_adapter, verify_file_isolation
 from agents.execution.api import probe_ids
@@ -67,6 +67,9 @@ def _capture_once(output: Path, cases: list[dict], signature: dict, *, dry: bool
         receipt = common.load_json(probe_receipt_path(probes))
         if receipt != probe_receipt(signature["commit"], probe_rows):
             raise ValueError("probe evidence does not match the frozen candidate or recorded outcomes")
+        missing = missing_demo_probe_kinds({row["probe_id"]: row["outcome"] for row in probe_rows})
+        if missing:
+            raise ValueError(f"candidate evidence needs definite demo outcomes for {', '.join(sorted(missing))}")
     if not dry:
         client.load_api_key()
         verify_adapter(blocked)

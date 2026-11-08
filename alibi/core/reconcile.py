@@ -8,16 +8,22 @@ checked from explicit fields.
 * A calculation never mixes currencies (Alibi does not convert) and never counts the same
   record_id or txn_id twice, even at different revisions.
 * Settlement status uses the exact vocabulary below. A settlement that took effect after the
-  bank credit was booked cannot support that credit. Equal times count as on time. A
-  settlement must also match the credit's currency and amount, and the payout's payment
-  reference.
+  bank credit was booked cannot support that credit, and neither can one that took effect more
+  than ``SETTLEMENT_WINDOW`` (five days) before it: the pinned rule is ``settled_at`` at most
+  five days before ``booked_at`` and never after it. Equal times count as on time, and exactly
+  five days counts. A settlement must also match the credit's currency and amount, and the
+  payout's payment reference.
+* Settlement evidence is a ``settlement`` record, or a ``payout`` record that carries a
+  ``status`` (the team's data model folds the settlement state into the payout:
+  ``status`` settled | pending | failed, with ``effective_at`` when settled). Such a payout
+  is settlement evidence for its own payment reference.
 
 Results are ``schemas.Calculation`` objects, whose validator re-checks the arithmetic.
 Nothing here calls a network or an LLM.
 """
 
 from collections.abc import Iterable, Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import MappingProxyType
 
 from alibi.core.schemas import (
@@ -34,11 +40,14 @@ __all__ = [
     "BANK_CREDIT",
     "BANK_DEBIT",
     "FAILED_STATUSES",
+    "METHOD_DOCUMENTED_TOTALS",
     "METHOD_NET_PAYOUT",
     "METHOD_NET_TOTAL",
     "NET_METHODS",
     "PENDING_STATUSES",
     "SETTLED_STATUSES",
+    "SETTLEMENT_EVIDENCE_KINDS",
+    "SETTLEMENT_WINDOW",
     "SIGN_BY_KIND",
     "DoubleCountError",
     "MissingAmountError",
@@ -48,6 +57,7 @@ __all__ = [
     "check_settlement_timing",
     "compare_to_target",
     "credit_supported",
+    "is_settlement_evidence",
     "reconcile_credit",
     "settlement_effective_time",
     "sum_terms",
@@ -78,10 +88,21 @@ BANK_CREDIT = "bank_credit"       # CalcTerm.kind of a bank credit: +amount
 BANK_DEBIT = "bank_debit"         # CalcTerm.kind of a bank debit: -|amount|
 METHOD_NET_PAYOUT = "net_payout"  # Calculation.method used by reconcile_credit
 METHOD_NET_TOTAL = "net_total"    # Calculation.method of a period total net of refunds and fees
+# Calculation.method of several documented totals answered together (sales and refunds over a
+# period): every record is one signed term by kind, so the total is sales less refunds and
+# fees, and the per-kind totals are read from the terms.
+METHOD_DOCUMENTED_TOTALS = "documented_totals"
 
 # Methods that net several kinds with SIGN_BY_KIND. Every other method totals records of one
 # kind, with one sign for every term (package verification enforces both).
-NET_METHODS = frozenset({METHOD_NET_PAYOUT, METHOD_NET_TOTAL})
+NET_METHODS = frozenset({METHOD_NET_PAYOUT, METHOD_NET_TOTAL, METHOD_DOCUMENTED_TOTALS})
+
+# The pinned settlement window: a settlement supports a credit only when it took effect at most
+# this long before the booking (and never after it).
+SETTLEMENT_WINDOW = timedelta(days=5)
+
+# Record kinds that can carry settlement evidence (see ``is_settlement_evidence``).
+SETTLEMENT_EVIDENCE_KINDS = frozenset({RecordKind.SETTLEMENT, RecordKind.PAYOUT})
 
 
 def allowed_signs(method: str, kind: str) -> frozenset[int]:
@@ -216,54 +237,82 @@ def compare_to_target(calc: Calculation, target: Evidence) -> Calculation:
 # --------------------------------------------------------------------------- settlement timing
 
 
+def is_settlement_evidence(record: EvidenceRecord) -> bool:
+    """Can this record show whether a payout settled? A ``settlement`` record always can; a
+    ``payout`` record can when it carries a ``status`` (the team's payouts fold the settlement
+    state in). Orders, fees, refunds, receipts and messages never can, nor can a payout with
+    no status."""
+    if record.kind == RecordKind.SETTLEMENT:
+        return True
+    return record.kind == RecordKind.PAYOUT and record.status is not None
+
+
 def settlement_effective_time(settlement: EvidenceRecord) -> datetime | None:
     """When the settlement took effect according to its explicit fields, or None.
 
-    Only a settlement record with a settled status has an effective time: ``effective_at``,
-    or else ``occurred_at`` (when that status was observed). Pending, failed, unknown or
-    missing statuses (``released_to_balance`` included) have none, and so does any record
-    that is not a settlement, such as a completed order.
+    Only settlement evidence (``is_settlement_evidence``) with a settled status has an
+    effective time: ``effective_at``, or else ``occurred_at`` (when that status was observed).
+    Pending, failed, unknown or missing statuses (``released_to_balance`` included) have
+    none, and so does any record that is not settlement evidence, such as a completed order.
     """
-    if settlement.kind != RecordKind.SETTLEMENT or settlement.status not in SETTLED_STATUSES:
+    if not is_settlement_evidence(settlement) or settlement.status not in SETTLED_STATUSES:
         return None
     if settlement.effective_at is not None:
         return settlement.effective_at
     return settlement.occurred_at
 
 
-def check_settlement_timing(settlement: EvidenceRecord, credit: BankTxn) -> TimingCheck:
-    """Was the settlement effective by the time the bank credit was booked?
+def check_settlement_timing(settlement: EvidenceRecord, credit: BankTxn, *,
+                            window: timedelta = SETTLEMENT_WINDOW) -> TimingCheck:
+    """Was the settlement effective in time for the bank credit?
 
-    ``ok`` only when ``settlement_effective_time`` is at or before ``credit.booked_at``. A
-    settlement effective after the booking cannot support the credit, and a pending status
-    never can: the reason says whether it was pending at or after booking (not settled at
-    booking) or before booking (no evidence it settled in time).
+    ``ok`` only when ``settlement_effective_time`` is at or before ``credit.booked_at`` and at
+    most ``window`` before it (exactly ``window`` counts). A settlement effective after the
+    booking cannot support the credit, one effective earlier than the window cannot be the
+    transfer that produced it, and a pending status never can: the reason says whether it was
+    pending at or after booking (not settled at booking) or before booking (no evidence it
+    settled in time).
     """
     if not isinstance(settlement, EvidenceRecord):
         raise ReconcileError("settlement evidence must be a merchant record")
     if not isinstance(credit, BankTxn) or not credit.is_credit:
         raise ReconcileError("settlement timing is checked against a bank credit")
+    if not isinstance(window, timedelta) or window < timedelta(0):
+        raise ReconcileError("the settlement window must be a non-negative duration")
     effective = settlement_effective_time(settlement)
-    ok, reason = _timing_verdict(settlement, effective, credit.booked_at)
+    ok, reason = _timing_verdict(settlement, effective, credit.booked_at, window)
     return TimingCheck(settlement_ref=settlement.ref(), credit_ref=credit.ref(),
                        settlement_status=settlement.status, settlement_effective_at=effective,
                        status_observed_at=settlement.occurred_at, booked_at=credit.booked_at,
                        ok=ok, reason=reason)
 
 
+def _window_text(window: timedelta) -> str:
+    if window % timedelta(days=1) == timedelta(0):
+        days = window // timedelta(days=1)
+        return f"{days} day{'s' if days != 1 else ''}"
+    return f"{window.total_seconds() / 3600:g} hours"
+
+
 def _timing_verdict(settlement: EvidenceRecord, effective: datetime | None,
-                    booked: datetime) -> tuple[bool, str]:
+                    booked: datetime, window: timedelta) -> tuple[bool, str]:
     status = settlement.status
-    if settlement.kind != RecordKind.SETTLEMENT:
-        return False, (f"This is a {settlement.kind.value} record, not a settlement record, so "
-                       "it cannot show when the funds reached the bank.")
+    if not is_settlement_evidence(settlement):
+        what = (f"a {settlement.kind.value} record with no status"
+                if settlement.kind == RecordKind.PAYOUT else f"a {settlement.kind.value} record")
+        return False, (f"This is {what}, not a settlement record, so it cannot show when the "
+                       "funds reached the bank.")
     if effective is not None:  # a settled status
         stated = settlement.effective_at is not None
         if effective <= booked:
             when = ("effective" if stated
                     else "observed (no separate effective time given)")
-            return True, (f"Status {status}, {when} at or before the credit's booking time: "
-                          "settled in time to support the credit.")
+            if booked - effective <= window:
+                return True, (f"Status {status}, {when} at or before the credit's booking time: "
+                              "settled in time to support the credit.")
+            return False, (f"Status {status}, {when} more than {_window_text(window)} before the "
+                           "credit's booking time: a settlement that early cannot be the transfer "
+                           "that produced this credit.")
         when = ("effective only after the credit was booked" if stated
                 else "observed only after the credit was booked, with no earlier effective time")
         return False, (f"Status {status}, but {when}: a later settlement cannot support an "
@@ -288,18 +337,20 @@ def _timing_verdict(settlement: EvidenceRecord, effective: datetime | None,
 
 def reconcile_credit(credit: BankTxn, *, components: Iterable[EvidenceRecord],
                      payout: EvidenceRecord | None = None,
-                     settlement: EvidenceRecord | None = None) -> Calculation:
+                     settlement: EvidenceRecord | None = None,
+                     window: timedelta = SETTLEMENT_WINDOW) -> Calculation:
     """Reconcile a bank credit: orders minus refunds minus fees, in code, against its amount.
 
     Components must be orders, refunds and fees. A given payout must be in the same currency
     (else ``MixedCurrencyError``) and its amount must equal the components' total, or the
     result is not balanced. The schema ties ``balanced`` to ``difference_pence == 0``, so
     when the components match the credit but the payout does not, the calculation targets
-    the payout to show that difference. A settlement record is held to the same currency
-    and amount rule and, when a payout is given, must share its payment reference (else
-    ``ReconcileError``). The settlement attaches ``check_settlement_timing``; without one,
-    ``timing`` stays None and ``credit_supported`` is False. ``cited_refs`` lists the
-    components, payout, settlement and credit.
+    the payout to show that difference. Settlement evidence (a settlement record, or a payout
+    carrying a status, which may be the payout itself) is held to the same currency and
+    amount rule and, when a payout is given, must share its payment reference (else
+    ``ReconcileError``). The settlement attaches ``check_settlement_timing`` with ``window``;
+    without one, ``timing`` stays None and ``credit_supported`` is False. ``cited_refs``
+    lists the components, payout, settlement and credit.
     """
     if not isinstance(credit, BankTxn) or not credit.is_credit:
         raise ReconcileError("reconcile_credit needs a bank credit (a positive bank amount)")
@@ -319,10 +370,11 @@ def reconcile_credit(credit: BankTxn, *, components: Iterable[EvidenceRecord],
         cited.append(payout.ref())
     timing = None
     if settlement is not None:
-        timing = check_settlement_timing(settlement, credit)
-        if settlement.kind == RecordKind.SETTLEMENT:  # any other record already fails timing
-            if payout is not None and (payout.payment_ref is None
-                                       or settlement.payment_ref != payout.payment_ref):
+        timing = check_settlement_timing(settlement, credit, window=window)
+        if is_settlement_evidence(settlement):  # any other record already fails timing
+            same = payout is not None and settlement.record_id == payout.record_id
+            if payout is not None and not same and (payout.payment_ref is None
+                                                    or settlement.payment_ref != payout.payment_ref):
                 raise ReconcileError(
                     f"{settlement.ref().token()} and {payout.ref().token()} do not share a "
                     "payment reference, so the settlement cannot show that payout settled")
@@ -332,9 +384,10 @@ def reconcile_credit(credit: BankTxn, *, components: Iterable[EvidenceRecord],
     return _rebuild(calc, timing=timing, cited_refs=_cite(cited))
 
 
-def credit_supported(calc: Calculation) -> bool:
+def credit_supported(calc: Calculation, *, window: timedelta = SETTLEMENT_WINDOW) -> bool:
     """True only when the calculation balances against a bank credit and the settlement
-    timing attached for that same credit is ok.
+    timing attached for that same credit is ok: effective at or before the booking and at
+    most ``window`` before it.
 
     The verdict is re-derived from the explicit fields rather than trusted from the
     ``balanced`` and ``ok`` flags, so a timing check whose own status or times say otherwise
@@ -349,7 +402,8 @@ def credit_supported(calc: Calculation) -> bool:
             and calc.target_pence is not None and calc.target_pence > 0
             and timing.credit_ref == target and timing.ok
             and timing.settlement_status in SETTLED_STATUSES
-            and effective is not None and effective <= timing.booked_at)
+            and effective is not None and effective <= timing.booked_at
+            and timing.booked_at - effective <= window)
 
 
 # --------------------------------------------------------------------------- helpers

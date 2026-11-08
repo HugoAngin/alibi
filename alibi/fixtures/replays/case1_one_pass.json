@@ -1,0 +1,610 @@
+{
+ "schema": "alibi.replay.v1",
+ "case": "case1",
+ "variant": "one_pass",
+ "recorded_at": "2026-11-08T09:03:15Z",
+ "models": [
+  "gemini-3.8-flash"
+ ],
+ "calls": [
+  {
+   "seq": 0,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "245a43bb211a6f1bdab8bbe17c1a5765003fbe2b414b9934d9c4724ad1b516fc",
+   "role": "# One-pass draft",
+   "data": {
+    "claims": [
+     {
+      "question_id": "q.source_of_funds",
+      "statement": "The incoming payment of 216000 GBP booked on 2026-10-28 references withdrawal PO-0001-01, but no settled bank settlement record is present in the material.",
+      "status": "unresolved",
+      "refs": [
+       {
+        "record_id": "txn-0001-004",
+        "revision": 1,
+        "role": "context"
+       },
+       {
+        "record_id": "rec-0001-020",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": [
+       "No settlement record for payout PO-0001-01 is present in the material; balance release message rec-0001-020 does not prove funds settled to the bank account."
+      ]
+     },
+     {
+      "question_id": "q.breakdown",
+      "statement": "The 216000 GBP amount corresponds to eight orders totalling 235000 GBP less two refunds of 18000 GBP and eight fees of 6000 GBP as aggregated under balance release rec-0001-020.",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "rec-0001-001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-002",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-003",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-004",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-005",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-006",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-007",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-008",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-009",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-010",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-011",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-012",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-013",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-014",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-015",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-016",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-017",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-018",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-020",
+        "revision": 1,
+        "role": "context"
+       }
+      ],
+      "gaps": []
+     }
+    ],
+    "disclosures": [
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-002",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-003",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-004",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-005",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "refund component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-006",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-007",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-008",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-009",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-010",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-011",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-012",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "refund component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-013",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-014",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-015",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-016",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-017",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "order component of the breakdown"
+     },
+     {
+      "question_id": "q.breakdown",
+      "record_id": "rec-0001-018",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at"
+      ],
+      "reason": "fee component of the breakdown"
+     }
+    ],
+    "rationale": "Settlement records are empty so the bank settlement connection remains unresolved under candidate rules. The constituent orders, refunds, and fees covering the released balance are fully documented and disclosed as extracts."
+   },
+   "usage": {
+    "prompt_tokens": 9732,
+    "output_tokens": 2788,
+    "thinking_tokens": 0,
+    "total_tokens": 12520
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:03:34Z"
+  },
+  {
+   "seq": 1,
+   "model": "gemini-3.8-flash",
+   "prompt_sha256": "7071cdb2e9c1df20eb5b9f97a4df47e25d0f75ee58b89f99517cc1f6c3406eb4",
+   "role": "# One-pass draft",
+   "data": {
+    "claims": [
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "statement": "Between 01 October 2026 and 31 October 2026, documented sales comprise orders rec-0001-001, rec-0001-003, rec-0001-006, rec-0001-008, rec-0001-010, rec-0001-013, rec-0001-015, and rec-0001-017, and documented refunds comprise rec-0001-005 and rec-0001-012.",
+      "status": "supported",
+      "refs": [
+       {
+        "record_id": "rec-0001-001",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-003",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-005",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-006",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-008",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-010",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-012",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-013",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-015",
+        "revision": 1,
+        "role": "confirms"
+       },
+       {
+        "record_id": "rec-0001-017",
+        "revision": 1,
+        "role": "confirms"
+       }
+      ],
+      "gaps": []
+     }
+    ],
+    "disclosures": [
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-001",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-003",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-005",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "related_record_ids",
+       "status"
+      ],
+      "reason": "documented refund within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-006",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-008",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-010",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-012",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "related_record_ids",
+       "status"
+      ],
+      "reason": "documented refund within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-013",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-015",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     },
+     {
+      "question_id": "q.sales_refunds_in_period",
+      "record_id": "rec-0001-017",
+      "revision": 1,
+      "form": "extract",
+      "fields": [
+       "amount_pence",
+       "currency",
+       "kind",
+       "occurred_at",
+       "status"
+      ],
+      "reason": "documented order within the period"
+     }
+    ],
+    "rationale": "Every verified order and refund occurring within [2026-10-01, 2026-11-01) is cited and disclosed as an extract. Fees, receipts, and message records are excluded to maintain minimal disclosure for the stated question."
+   },
+   "usage": {
+    "prompt_tokens": 9485,
+    "output_tokens": 1585,
+    "thinking_tokens": 0,
+    "total_tokens": 11070
+   },
+   "cached": false,
+   "recorded_at": "2026-11-08T09:03:44Z"
+  }
+ ]
+}

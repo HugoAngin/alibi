@@ -141,7 +141,7 @@ def link(link_id, txn_id, record_id, revision=1):
 
 
 def claim(claim_id, *refs):
-    return Claim(claim_id=claim_id, request_id="rfc_a_001", question_id="q1",
+    return Claim(claim_id=claim_id, request_id="rfc_a_001", audience="bank_a", question_id="q1",
                  statement="The credit is the PO-5001 payout.", status=ClaimStatus.SUPPORTED,
                  rationale="References and amounts agree.", evidence_refs=list(refs), created_at=NOW)
 
@@ -414,7 +414,7 @@ def test_claims_depend_on_their_calculation_terms(store, keystore):
     calc = Calculation(method="net_payout", currency="GBP", terms=terms, total_pence=216000,
                        target_ref=tref("txn_9001"), target_pence=216000, difference_pence=0,
                        balanced=True)
-    net = Claim(claim_id="clm_net", request_id="rfc_a_001", question_id="q1",
+    net = Claim(claim_id="clm_net", request_id="rfc_a_001", audience="bank_a", question_id="q1",
                 statement="Sales less refunds and fees equal the credit.",
                 status=ClaimStatus.SUPPORTED, rationale="Computed in code from cited amounts.",
                 evidence_refs=[tref("txn_9001")], calculation=calc, created_at=NOW)
@@ -983,7 +983,7 @@ ALLOWED_CLEAR_COLUMNS = {
     "claims": {"claim_id", "request_id", "state", "payload"},
     "alerts": {"alert_id", "subject_ref", "state", "payload"},
     "policies": {"policy_id", "version", "subject_ref", "payload"},
-    "requests": {"request_id", "subject_ref", "audience", "payload"},
+    "requests": {"issuer", "request_id", "subject_ref", "audience", "payload"},
     "drafts": {"draft_id", "request_id", "status", "payload"},
     "approvals": {"approval_id", "request_id", "status", "payload"},
     "packages": {"package_id", "approval_id", "request_id", "audience", "payload"},
@@ -1057,3 +1057,67 @@ def test_clear_columns_are_allowlisted_and_hold_no_content(tmp_path, keystore):
         con.close()
     on_disk = b"".join(p.read_bytes() for p in db.parent.iterdir() if p.name.startswith(db.name))
     assert canary.encode() not in on_disk
+
+
+def test_request_ids_are_scoped_to_the_bank(store):
+    """Request ids are the bank's own, so (request_id, audience) is the key. Another bank's use
+    of an id neither conflicts with, replaces nor reveals this bank's request."""
+    from alibi.core.store import AmbiguousRequest
+
+    period = {"from": "2026-10-01T00:00:00Z", "to": "2026-11-01T00:00:00Z"}
+    squat = rfc(issuer="bank_b", audience="bank_b", txn_ids=None, period=period)
+    assert store.save_request(squat) == "inserted"
+    assert store.save_request(rfc()) == "inserted"            # bank_a's genuine request
+    assert store.get_request("rfc_a_001", audience="bank_a") == rfc()
+    assert store.get_request("rfc_a_001", audience="bank_b") == squat
+    # A bare id resolves to the request received first (bank_b squatted first here), so a later
+    # bank never captures the earlier one's drafts and packages; the holder API asks strictly.
+    assert store.get_request("rfc_a_001") == squat
+    with pytest.raises(AmbiguousRequest):
+        store.get_request("rfc_a_001", strict=True)
+    # A conflict is only ever with the same bank's own earlier request.
+    with pytest.raises(IdempotencyConflict):
+        store.save_request(rfc(issuer="bank_b", audience="bank_b", txn_ids=None, period=period,
+                               expires_at="2026-11-12T09:00:00Z"))
+    assert store.save_request(rfc()) == "duplicate"
+    # A bank that never used the id gets the same NotFound as for an id nobody used.
+    with pytest.raises(NotFound) as unused:
+        store.get_request("rfc_a_001", audience="bank_c")
+    with pytest.raises(NotFound) as nobody:
+        store.get_request("rfc_zzz", audience="bank_c")
+    assert (str(unused.value), str(nobody.value)) == ("no request 'rfc_a_001'",
+                                                      "no request 'rfc_zzz'")
+    # The two requests' claims stay apart.
+    mine = claim("clm_a", rref("po_5001"))
+    theirs = Claim.model_validate({**claim("clm_b", rref("po_5001")).to_json_dict(), "audience": "bank_b"})
+    store.save_claim(mine)
+    store.save_claim(theirs)
+    assert store.list_claims(request_id="rfc_a_001", audience="bank_a") == [mine]
+    assert store.list_claims(request_id="rfc_a_001", audience="bank_b") == [theirs]
+
+
+def test_get_request_rejects_a_non_string_audience(store):
+    from alibi.core.store import StoreError
+
+    store.save_request(rfc())
+    with pytest.raises(StoreError, match="audience must be a string"):
+        store.get_request("rfc_a_001", audience=123)
+
+
+def test_a_schema_2_database_is_migrated_on_open(tmp_path):
+    """A pre-fix database keyed requests by request_id alone. It is migrated in place to the
+    per-bank key on open (S5: restarts must keep history), and its requests stay readable."""
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    first = Store(path)
+    first.save_request(rfc())
+    first.close()
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+    again = Store(path)
+    try:
+        assert again.get_request("rfc_a_001", audience="bank_a") == rfc()
+        assert again._q("SELECT value FROM meta WHERE key = 'schema_version'")[0][0] == "3"
+    finally:
+        again.close()

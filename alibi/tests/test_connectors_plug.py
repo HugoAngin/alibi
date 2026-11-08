@@ -18,7 +18,8 @@ from alibi.core.signing import verify
 from alibi.core.store import Store
 from alibi.gateway import Gateway, RejectedResult
 
-TOKENS = {"bank_a": "tok-a", "bank_b": "tok-b", "feed": "tok-feed"}
+TOKENS = {"bank_a": "tok-a", "bank_b": "tok-b", "feed": "tok-feed", "admin": "tok-admin"}
+ADMIN = {"Authorization": "Bearer tok-admin"}
 AS_OF = "2026-11-04T14:00:00Z"      # bank_b's RFC is issued then, so both case RFCs are visible
 SUBJECT, CONNECTION = "maya-001", "conn-maya-001"
 
@@ -31,13 +32,13 @@ class World:
         self.registry = self.keystore.registry()
         self.store = Store(root / "passport.db")
         sink = webhook_sink(self.store, self.registry, subject_ref=SUBJECT) if push else None
-        self.merchant_app = create_merchant_app(sink, keystore=self.keystore)
+        self.merchant_app = create_merchant_app(sink, keystore=self.keystore, admin_token="tok-admin")
         self.bank_app = create_bank_app(keystore=self.keystore, registry=self.registry,
                                         tokens=TOKENS, rfc_sink=rfc_sink(self.store, self.registry))
         self.merchant_client = TestClient(self.merchant_app)
         self.bank_client = TestClient(self.bank_app)
-        self.merchant = MerchantClient(self.merchant_client)
-        self.banks = {name: BankClient(self.bank_client, TOKENS[name], recipient=name)
+        self.merchant = MerchantClient(self.merchant_client, admin_token="tok-admin")
+        self.banks = {name: BankClient(self.bank_client, TOKENS[name], recipient=name, admin_token="tok-admin")
                       for name in ("bank_a", "bank_b")}
         self.feed = FeedClient(HttpFeed("", TOKENS["feed"], client=self.bank_client), self.store,
                                subject_ref=SUBJECT, connection_id=CONNECTION)
@@ -151,29 +152,31 @@ def test_settlement_lookup_returns_the_signed_payout_only(world):
     assert world.merchant.settlement_lookup("PO-9999-99") is None
 
 
-def test_gateway_rejects_the_payout_shaped_settlement_today(world):
-    # alibi/NEEDS.md item 2: the core gateway only accepts kind "settlement". The payout
-    # reference must also be carried by an issuer record's payment_ref, which the balance
-    # release's text is not (NEEDS.md item 3), so the gateway refuses before calling out.
+def test_gateway_accepts_the_payout_shaped_settlement_for_a_text_or_bank_reference(world):
+    # alibi/NEEDS.md items 2 and 3: PO-0001-01 is carried only in the balance release's text
+    # and on the bank credit, and the merchant answers with a payout record carrying a status.
+    # The gateway now allows the reference (bound to the subject's own issuers) and accepts
+    # the payout as settlement evidence for its own payment reference.
     gateway = Gateway(world.store, subject_ref=SUBJECT, run_id="run_plug_gw",
                       registry=world.registry, now=world.clock.as_of,
                       settlement_lookup=world.merchant.settlement_lookup)
-    with pytest.raises(Exception) as info:
-        gateway.lookup_settlement("PO-0001-01")
-    assert gateway.trace[-1].outcome in ("refused", "unavailable")
+    record = gateway.lookup_settlement("PO-0001-01")
+    assert record.record_id == "rec-0001-021" and record.kind == "payout"
+    assert record.status == "settled" and record.payment_ref == "PO-0001-01"
+    assert gateway.trace[-1].outcome == "ok" and gateway.trace[-1].result["found"] is True
     assert "PO-0001-01" in str(gateway.trace[-1].args)
-    assert info.type.__name__ in ("ScopeError", "RejectedResult")
+    with pytest.raises(Exception) as info:
+        gateway.lookup_settlement("PO-9999-99")   # nothing of this subject carries it
+    assert info.type.__name__ == "ScopeError" and gateway.trace[-1].outcome == "refused"
 
 
-@pytest.mark.xfail(strict=True, reason="alibi/NEEDS.md items 2 and 3: the core gateway does not "
-                   "yet accept a case payout as settlement evidence for a reference carried in "
-                   "evidence text; remove this marker when it does")
 def test_gateway_ingests_the_case_payout_as_settlement_evidence(world):
     gateway = Gateway(world.store, subject_ref=SUBJECT, run_id="run_plug_gw2",
                       registry=world.registry, now=world.clock.as_of,
                       settlement_lookup=world.merchant.settlement_lookup)
     record = gateway.lookup_settlement("PO-0001-01")
     assert record is not None and record.record_id == "rec-0001-021"
+    assert record.connector == "merchant_lookup" and record.source_trust == "issuer_verified"
 
 
 def test_txn_refresh_through_the_gateway(world):
@@ -188,15 +191,26 @@ def test_rules_investigation_runs_with_the_real_connectors(world):
     result = api.run_investigation(world.store, "rfc-0001-01", registry=world.registry,
                                    now=world.clock.as_of, **world.connectors())
     assert result.mode == "rules" and len(result.claims) == 2
-    # Case 1 pushes no payout record: the rules engine stays unresolved (NEEDS.md item 2) and
-    # never claims support from the matching amounts.
-    assert {c.status for c in result.claims} == {"unresolved"}
-    tools = {e.tool for e in result.trace if e.step == "tool_call"}
-    assert {"get_txn", "list_candidates"} <= tools
-    # On case 1 the payout is lookup-only (rec-0001-021) and its reference is carried only in
-    # text, so the rules engine never reaches lookup_settlement here (NEEDS.md item 3): the
-    # merchant was not called by this investigation. Case 3 below proves the wiring.
-    assert "lookup_settlement" not in {e.tool for e in result.trace}
+    # Case 1 pushes no payout record: nothing in the passport matches, so the rules engine asks
+    # the merchant for the reference the credit itself carries (PO-0001-01, NEEDS.md item 3),
+    # receives the settled payout rec-0001-021 (NEEDS.md item 2), links the credit to it and
+    # reconciles the covered records: both pinned questions are supported.
+    by_q = {c.question_id: c for c in result.claims}
+    assert by_q["q.source_of_funds"].status == "supported"
+    assert by_q["q.source_of_funds"].facts == {"payout_references": ["PO-0001-01"],
+                                              "settled_at": ["2026-10-27T16:00:00Z"]}
+    assert by_q["q.breakdown"].status == "supported"
+    assert by_q["q.breakdown"].facts == {"breakdown_minor": {"sales": 240000, "refunds": 18000,
+                                                             "fees": 6000, "net": 216000}}
+    tools = [e.tool for e in result.trace if e.step == "tool_call" and e.actor == "gateway"]
+    # The module-scoped world is shared: when an earlier gateway test has already ingested
+    # rec-0001-021 the candidate listing finds the payout and the reference lookup is skipped,
+    # so only the shape that holds either way is asserted, not the exact call sequence.
+    assert tools[:2] == ["get_txn", "list_candidates"]
+    assert "lookup_settlement" in tools or "rec-0001-021" in {
+        r.record_id for r in world.store.list_sources(SUBJECT)}
+    assert tools.count("list_records") >= 2
+    assert world.store.get_source("rec-0001-021").connector == "merchant_lookup"
 
 
 def test_investigation_reaches_the_merchant_on_a_case_with_a_pushed_payout(tmp_path):
@@ -210,24 +224,26 @@ def test_investigation_reaches_the_merchant_on_a_case_with_a_pushed_payout(tmp_p
     registry = keystore.registry()
     with Store(tmp_path / "passport.db") as store:
         merchant_client = TestClient(create_merchant_app(
-            webhook_sink(store, registry, subject_ref=subject), keystore=keystore))
+            webhook_sink(store, registry, subject_ref=subject), keystore=keystore, admin_token="tok-admin"))
         bank_client = TestClient(create_bank_app(keystore=keystore, registry=registry, tokens=TOKENS,
                                                  rfc_sink=rfc_sink(store, registry)))
-        merchant = MerchantClient(merchant_client)
-        banks = {name: BankClient(bank_client, TOKENS[name], recipient=name)
+        merchant = MerchantClient(merchant_client, admin_token="tok-admin")
+        banks = {name: BankClient(bank_client, TOKENS[name], recipient=name, admin_token="tok-admin")
                  for name in ("bank_a", "bank_b")}
         feed = FeedClient(HttpFeed("", TOKENS["feed"], client=bank_client), store,
                           subject_ref=subject, connection_id="conn-case-3")
         summary = bootstrap(store, registry, case=3, merchant=merchant, banks=banks, feed=feed)
         assert summary["rfcs"]["rfc-0003-01"]["status"] == "accepted"
-        assert merchant_client.get("/admin/lookups").json() == {"lookups": []}
+        assert merchant_client.get("/admin/lookups", headers=ADMIN).json() == {"lookups": []}
         clock = CaseClock(case)
         result = api.run_investigation(store, "rfc-0003-01", registry=registry, now=clock.as_of,
                                        **connect(merchant, feed))
         lookups = [e for e in result.trace if e.tool == "lookup_settlement" and e.actor == "gateway"]
         assert lookups and lookups[0].args == {"payment_ref": "PO-0003-01"}
-        assert lookups[0].outcome == "refused"       # NEEDS.md item 2: a payout is not a settlement
-        served = merchant_client.get("/admin/lookups").json()["lookups"]
+        # NEEDS.md item 2: the payout-shaped answer is settlement evidence for its own reference.
+        assert lookups[0].outcome == "ok" and lookups[0].result["put_status"] == "duplicate"
+        assert [c.status for c in result.claims if c.question_id == "q.source_of_funds"] == ["supported"]
+        served = merchant_client.get("/admin/lookups", headers=ADMIN).json()["lookups"]
         assert [(l["route"], l["query"], l["record_ids"]) for l in served] == [
             ("/settlements", {"payout_reference": "PO-0003-01"}, ["rec-0003-013"])]
 
@@ -246,12 +262,12 @@ def test_packages_reach_the_right_inboxes_and_only_those(world):
     pkg_b = world.package_for("rfc-0001-02")
     status, body_b = world.banks["bank_b"].deliver(pkg_b)
     assert status == 200 and body_b["status"] == "verified"
-    # The pinned question asks for sales AND refunds as documented records; the core rules
-    # classifier treats two totals without a net cue as "several totals" and stays unresolved
-    # (alibi/NEEDS.md item 6). The package is still signed, delivered and verified.
+    # The pinned question asks for sales AND refunds as documented records: one supported claim
+    # with one documented total per kind (alibi/NEEDS.md item 6), signed, delivered and verified.
     [claim_b] = body_b["claims"]
     assert claim_b["question_id"] == "q.sales_refunds_in_period"
-    assert claim_b["status"] == "unresolved" and "net" in (claim_b.get("gap") or "")
+    assert claim_b["status"] == "supported" and claim_b.get("gap") is None
+    assert len(claim_b["evidence_refs"]) == 10
 
     # Retry with identical bytes: the same receipt, one inbox entry.
     status, again = world.banks["bank_a"].deliver(pkg_a)
@@ -340,7 +356,7 @@ class _Service:
 
 def _merchant_without_passport(root, sink):
     keystore = keys.connector_keystore(root / "keys", seed="plug-hardening")
-    merchant = MerchantClient(TestClient(create_merchant_app(sink, keystore=keystore)))
+    merchant = MerchantClient(TestClient(create_merchant_app(sink, keystore=keystore, admin_token="tok-admin")), admin_token="tok-admin")
     return keystore, merchant
 
 
@@ -367,7 +383,7 @@ def test_bootstrap_replays_when_the_merchant_pushed_into_another_passport(tmp_pa
     registry = keystore.registry()
     with Store(tmp_path / "a.db") as store_a, Store(tmp_path / "b.db") as store_b:
         merchant = MerchantClient(TestClient(create_merchant_app(
-            webhook_sink(store_a, registry, subject_ref=SUBJECT), keystore=keystore)))
+            webhook_sink(store_a, registry, subject_ref=SUBJECT), keystore=keystore, admin_token="tok-admin")), admin_token="tok-admin")
         summary = bootstrap(store_b, registry, case=1, merchant=merchant, banks={}, as_of=AS_OF)
         assert summary["replayed_from"] == "webhook_log" and set(summary["replayed"]) == {"inserted"}
         assert len(store_b.list_sources(SUBJECT)) == 20 and len(store_a.list_sources(SUBJECT)) == 20
@@ -376,7 +392,7 @@ def test_bootstrap_replays_when_the_merchant_pushed_into_another_passport(tmp_pa
         assert again["replayed_from"] == "pushes"        # B holds every pushed revision already
         assert set(again["replayed"]) == {"duplicate"} and len(store_b.list_sources(SUBJECT)) == 20
         own = MerchantClient(TestClient(create_merchant_app(
-            webhook_sink(store_b, registry, subject_ref=SUBJECT), keystore=keystore)))
+            webhook_sink(store_b, registry, subject_ref=SUBJECT), keystore=keystore, admin_token="tok-admin")), admin_token="tok-admin")
         direct = bootstrap(store_b, registry, case=1, merchant=own, banks={}, as_of=AS_OF)
         assert direct["replayed_from"] == "pushes" and set(direct["replayed"]) == {"duplicate"}
 

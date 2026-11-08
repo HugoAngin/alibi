@@ -1,0 +1,57 @@
+diff --git a/alibi/app/templates/requests/detail.html b/alibi/app/templates/requests/detail.html
+index c7038fc..aed2731 100644
+--- a/alibi/app/templates/requests/detail.html
++++ b/alibi/app/templates/requests/detail.html
+@@ -371,6 +371,12 @@
+       <input type="hidden" name="policy_version" value="{{ approval.policy_version }}">
+       <button type="submit" class="btn btn--primary">Approve for {{ approval.recipient }}</button>
+     </form>
++    {% if approval.status == "approved" %}
++    <form method="post" action="{{ approval.dispatch_action|default('/requests/' ~ request.request_id ~ '/dispatch') }}" class="btn-row" id="send">
++      <button type="submit" class="btn btn--primary">Send to {{ approval.recipient }}</button>
++    </form>
++    <p class="muted small">Sending revalidates this approval against the current body, signs the exact approved bytes and delivers them to {{ approval.recipient }}. A changed body is refused.</p>
++    {% endif %}
+     <p class="muted small">An edit, a different recipient, expiry of the window, or a change to a cited source invalidates a pending approval. The backend checks the digest again at dispatch and refuses if the body differs.</p>
+   </div>
+ </section>
+diff --git a/alibi/app/templates/requests/dispatch.html b/alibi/app/templates/requests/dispatch.html
+index b49a5af..b8b11d6 100644
+--- a/alibi/app/templates/requests/dispatch.html
++++ b/alibi/app/templates/requests/dispatch.html
+@@ -1,7 +1,7 @@
+ {% extends "base.html" %}
+ {#
+   Dispatch result (holder). Context from preview_render.ctx_dispatch:
+-    dispatch  {outcome: "success"|"refused", package_id, request_id, recipient, attempted_at,
++    dispatch  {outcome: "success"|"refused"|"not_attempted", package_id, request_id, recipient, attempted_at,
+                receipt{receipt_id, package_digest, received_at, status, signer_key_id, expires_at}|None,
+                refusal{code, reason, checked_at, expected_digest, actual_digest}|None,
+                retry_action|None, review_href, history_href}
+@@ -47,6 +47,26 @@
+   </div>
+ </div>
+ 
++{% elif dispatch.outcome == "not_attempted" %}
++<div class="result section-anchor" id="not-sent">
++  <h2>Not yet sent</h2>
++  <dl class="kv">
++    <dt>Request ID</dt>
++    <dd><code>{{ dispatch.request_id }}</code></dd>
++    <dt>Recipient</dt>
++    <dd>{{ dispatch.recipient }}</dd>
++  </dl>
++  <p>No dispatch has been attempted for this request. {% if dispatch.retry_action %}An approval is recorded: sending revalidates it against the current body, signs the exact approved bytes and delivers them to {{ dispatch.recipient }}.{% else %}Review and approve the package first.{% endif %}</p>
++  <div class="btn-row">
++    <a class="btn" href="{{ dispatch.review_href }}">Back to the review</a>
++    {% if dispatch.retry_action %}
++    <form method="post" action="{{ dispatch.retry_action }}" class="inline">
++      <button type="submit" class="btn btn--primary">Send to {{ dispatch.recipient }}</button>
++    </form>
++    {% endif %}
++  </div>
++</div>
++
+ {% else %}
+ <div class="result result--refused section-anchor" id="refused">
+   <h2>Dispatch refused</h2>

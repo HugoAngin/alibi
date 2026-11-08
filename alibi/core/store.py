@@ -28,6 +28,11 @@ approvals, packages, deliveries, audit events and traces.
 * Derived results are saved against current evidence: a link, claim, draft or approval that
   cites a revision which is no longer active is stored already invalidated. Terminal states
   (invalidated, packaged drafts, consumed approvals) are never reverted.
+* Requests are keyed by ``(issuer, request_id)``: a bank's externally chosen request id is its
+  own namespace, so two banks may use the same id. ``get_request(request_id)`` without an
+  issuer resolves a shared id to the request received first under it (storage order), so
+  every object that names a bare ``request_id`` (claims, drafts, approvals, packages) keeps
+  its meaning; pass ``issuer`` to reach a later bank's request under the same id.
 """
 
 import base64
@@ -76,14 +81,15 @@ from alibi.core.schemas import (
 
 __all__ = [
     "DEFAULT_DB_PATH", "MASTER_KEY_ENV", "MAX_REVISION", "SELF_SUPPLIED_PREFIX",
-    "IdempotencyConflict", "NamespaceError", "NotFound", "PutResult", "RevisionConflict",
-    "Store", "StoreError", "dependency_refs", "dependency_tokens", "load_master_key",
+    "AmbiguousRequest", "IdempotencyConflict", "NamespaceError", "NotFound", "PutResult",
+    "RevisionConflict", "Store", "StoreError", "dependency_refs", "dependency_tokens",
+    "load_master_key",
 ]
 
 DEFAULT_DB_PATH = Path("data/alibi/passport.db")
 MASTER_KEY_ENV = "ALIBI_MASTER_KEY"
 KEY_FILE_NAME = "master.key"
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"   # 2 -> 3: requests keyed by (issuer, request_id), the bank; migrated on open
 SELF_SUPPLIED_PREFIX = "self_"
 MAX_REVISION = 2**53 - 1
 _KEY_CHECK = b"alibi.store.key-check.v1"
@@ -115,6 +121,13 @@ class NamespaceError(StoreError):
 
 class NotFound(StoreError):
     """No stored object has that id or revision."""
+
+
+class AmbiguousRequest(StoreError):
+    """A bare ``request_id`` names requests from more than one bank; pass ``audience``.
+
+    Request ids are the bank's own, so a request is identified by ``(audience, request_id)``.
+    Only holder-side lookups can be ambiguous: bank-facing code always passes the bank."""
 
 
 def _no_invalidations() -> dict[str, list[str]]:
@@ -406,7 +419,8 @@ _ROW_FIELDS: dict[str, dict[str, str]] = {
     "claims": {"claim_id": "claim_id", "request_id": "request_id", "state": "state"},
     "alerts": {"alert_id": "alert_id", "subject_ref": "subject_ref", "state": "state"},
     "policies": {"policy_id": "policy_id", "version": "version", "subject_ref": "subject_ref"},
-    "requests": {"request_id": "request_id", "subject_ref": "subject_ref", "audience": "audience"},
+    "requests": {"issuer": "issuer", "request_id": "request_id", "subject_ref": "subject_ref",
+                 "audience": "audience"},
     "drafts": {"draft_id": "draft_id", "request_id": "request_id", "status": "status"},
     "approvals": {"approval_id": "approval_id", "request_id": "request_id", "status": "status"},
     "packages": {"package_id": "package_id", "request_id": "body.request_id",
@@ -478,9 +492,11 @@ CREATE TABLE IF NOT EXISTS policies (
     payload BLOB NOT NULL, PRIMARY KEY (policy_id, version)
 );
 CREATE TABLE IF NOT EXISTS requests (
-    request_id TEXT PRIMARY KEY, subject_ref TEXT NOT NULL, audience TEXT NOT NULL,
-    payload BLOB NOT NULL
+    issuer TEXT NOT NULL, request_id TEXT NOT NULL, subject_ref TEXT NOT NULL,
+    audience TEXT NOT NULL, payload BLOB NOT NULL,
+    PRIMARY KEY (issuer, request_id)
 );
+CREATE INDEX IF NOT EXISTS requests_by_id ON requests (request_id);
 CREATE TABLE IF NOT EXISTS drafts (
     draft_id TEXT PRIMARY KEY, request_id TEXT NOT NULL, status TEXT NOT NULL,
     payload BLOB NOT NULL
@@ -572,11 +588,6 @@ class Store:
         with self.transaction():
             meta = {row["key"]: row["value"] for row in self._q("SELECT key, value FROM meta")}
             version = meta.get("schema_version")
-            if version is None:
-                self._q("INSERT INTO meta (key, value) VALUES ('schema_version', ?)",
-                        (SCHEMA_VERSION,))
-            elif version != SCHEMA_VERSION:
-                raise StoreError(f"unsupported passport database schema version {version!r}")
             check = meta.get("key_check")
             if check is None:
                 self._q("INSERT INTO meta (key, value) VALUES ('key_check', ?)",
@@ -588,6 +599,35 @@ class Store:
                     ok = False
                 if not ok:
                     raise StoreError("the master key does not match this database")
+            if version is None:
+                self._q("INSERT INTO meta (key, value) VALUES ('schema_version', ?)",
+                        (SCHEMA_VERSION,))
+            elif version == "2":
+                self._migrate_requests_v2()
+                self._q("UPDATE meta SET value = ? WHERE key = 'schema_version'",
+                        (SCHEMA_VERSION,))
+            elif version != SCHEMA_VERSION:
+                raise StoreError(f"unsupported passport database schema version {version!r}")
+
+    def _migrate_requests_v2(self) -> None:
+        """Schema 2 keyed requests by ``request_id`` alone. Rebuild the table keyed by
+        ``(issuer, request_id)``, filling ``issuer`` from each decrypted request. Runs inside
+        the opening transaction, so a failure leaves the file untouched."""
+        columns = {row["name"] for row in self._q("PRAGMA table_info(requests)")}
+        if "issuer" in columns:
+            return
+        rows = self._q("SELECT * FROM requests ORDER BY rowid")
+        requests = [self._row_obj("requests", RequestForContext, row) for row in rows]
+        self._q("ALTER TABLE requests RENAME TO requests_v2")
+        self._q("CREATE TABLE requests (issuer TEXT NOT NULL, request_id TEXT NOT NULL, "
+                "subject_ref TEXT NOT NULL, audience TEXT NOT NULL, payload BLOB NOT NULL, "
+                "PRIMARY KEY (issuer, request_id))")
+        self._q("CREATE INDEX IF NOT EXISTS requests_by_id ON requests (request_id)")
+        for row, rfc in zip(rows, requests):
+            self._q("INSERT INTO requests (issuer, request_id, subject_ref, audience, payload) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (rfc.issuer, rfc.request_id, rfc.subject_ref, rfc.audience, row["payload"]))
+        self._q("DROP TABLE requests_v2")
 
     def close(self) -> None:
         with self._lock:
@@ -723,10 +763,14 @@ class Store:
                 f"ON CONFLICT ({id_col}) DO UPDATE SET {updates}", values)
 
     def _append_once(self, table: str, id_col: str, obj: M, obj_id: str,
-                     columns: dict[str, Any], blob: bytes, what: str) -> bool:
+                     columns: dict[str, Any], blob: bytes, what: str,
+                     scope: dict[str, Any] | None = None) -> bool:
         """Insert an append-only row. Identical content again is a no-op (False); different
-        content under the same id raises ``IdempotencyConflict``."""
-        rows = self._q(f"SELECT * FROM {table} WHERE {id_col} = ?", (obj_id,))
+        content under the same key (``id_col`` plus the ``scope`` columns, which must also be
+        in ``columns``) raises ``IdempotencyConflict``."""
+        keys = {id_col: obj_id, **(scope or {})}
+        where = " AND ".join(f"{column} = ?" for column in keys)
+        rows = self._q(f"SELECT * FROM {table} WHERE {where}", [_value(v) for v in keys.values()])
         if rows:
             if canon.digest(self._row_obj(table, type(obj), rows[0])) == canon.digest(obj):
                 return False
@@ -763,9 +807,10 @@ class Store:
         ``record.payload_sha256`` must equal ``canon.digest(raw_payload)``. Replaying the
         same ``(connector, issuer_id, event_id)`` with identical bytes returns the existing
         row as ``duplicate``; different bytes raise ``IdempotencyConflict``. The same
-        ``(record_id, revision)`` under another event is a ``duplicate`` when its content is
-        identical, else ``RevisionConflict``. A record id in the wrong namespace raises
-        ``NamespaceError``.
+        ``(record_id, revision)`` under another event with identical content is a
+        ``duplicate`` while that revision is active and ``stale`` once a later revision has
+        superseded it (nothing changes either way); different content is a
+        ``RevisionConflict``. A record id in the wrong namespace raises ``NamespaceError``.
         """
         record = _coerce(EvidenceRecord, record)
         _check_namespace(record)
@@ -798,7 +843,7 @@ class Store:
                         f"record {stored.record_id!r} revision {stored.revision} already exists "
                         "with different content")
                 self._remember_event(stored, fingerprint)
-                return PutResult("duplicate", existing, active)
+                return PutResult("duplicate" if active else "stale", existing, active)
             self._remember_event(stored, fingerprint)
             if current is None:
                 self._insert_source(stored, blob, raw_blob, active=True)
@@ -1082,9 +1127,12 @@ class Store:
             self._set_deps("claim", claim.claim_id, dependency_tokens(claim))
 
     @_locked
-    def list_claims(self, *, request_id: str | None = None,
+    def list_claims(self, *, request_id: str | None = None, audience: str | None = None,
                     state: str | None = "active") -> list[Claim]:
-        return self._select("claims", Claim, {"request_id": request_id, "state": state})
+        """Claims in storage order. A request is ``(request_id, audience)``: pass both to get
+        one bank's request, since another bank may use the same request_id."""
+        claims = self._select("claims", Claim, {"request_id": request_id, "state": state})
+        return claims if audience is None else [c for c in claims if c.audience == audience]
 
     def save_alert(self, alert: Alert) -> None:
         """Insert or replace an alert by ``alert_id``."""
@@ -1154,23 +1202,62 @@ class Store:
     # ----------------------------------------------------------------------- requests
 
     def save_request(self, rfc: RequestForContext) -> Literal["inserted", "duplicate"]:
-        """Store a request. Same ``request_id`` with different content: IdempotencyConflict."""
+        """Store a request, keyed by ``(issuer, request_id)``.
+
+        The same issuer sending the same ``request_id`` with identical content is a no-op
+        (``duplicate``); with different content it raises ``IdempotencyConflict``. Another
+        issuer may use the same ``request_id``: that is a new request, never a conflict, so a
+        refusal can never reveal that some other bank holds the id.
+        """
         rfc, blob = self._seal(_coerce(RequestForContext, rfc))
         with self.transaction():
-            inserted = self._append_once("requests", "request_id", rfc, rfc.request_id,
-                                         {"subject_ref": rfc.subject_ref, "audience": rfc.audience},
-                                         blob, "request")
-        return "inserted" if inserted else "duplicate"
+            rows = self._q("SELECT * FROM requests WHERE issuer = ? AND request_id = ?",
+                           (rfc.issuer, rfc.request_id))
+            if rows:
+                existing = self._row_obj("requests", RequestForContext, rows[0])
+                if canon.digest(existing) == canon.digest(rfc):
+                    return "duplicate"
+                raise IdempotencyConflict(
+                    f"request {rfc.request_id!r} already exists with different content")
+            self._q("INSERT INTO requests (issuer, request_id, subject_ref, audience, payload) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (rfc.issuer, rfc.request_id, rfc.subject_ref, rfc.audience, blob))
+        return "inserted"
 
     @_locked
-    def get_request(self, request_id: str) -> RequestForContext:
-        return self._get("requests", "request_id", request_id, RequestForContext, "request")
+    def get_request(self, request_id: str, *, issuer: str | None = None,
+                    audience: str | None = None, strict: bool = False) -> RequestForContext:
+        """The request ``request_id``. With ``issuer`` (or its alias ``audience``: an RFC's issuer
+        is the bank it is addressed to), that bank's request under the id.
+
+        Without ``issuer`` a bare id resolves to the request received first under it, so an
+        id that only one bank uses (the normal case) is unambiguous, and a later bank reusing
+        the id never captures the drafts, approvals and packages that name the earlier one.
+        With ``strict`` a bare id that several banks used raises ``AmbiguousRequest`` instead
+        (the holder API uses this, so a call never guesses between banks).
+        """
+        if issuer is None:
+            issuer = audience
+        if issuer is not None and not isinstance(issuer, str):
+            raise StoreError("audience must be a string")
+        if issuer is not None:
+            rows = self._q("SELECT * FROM requests WHERE issuer = ? AND request_id = ?",
+                           (issuer, request_id))
+        else:
+            rows = self._q("SELECT * FROM requests WHERE request_id = ? ORDER BY rowid",
+                           (request_id,))
+        if not rows:
+            raise NotFound(f"no request {request_id!r}")
+        if len(rows) > 1 and strict:
+            raise AmbiguousRequest(f"request {request_id!r} was received from more than one "
+                                   "bank; pass audience")
+        return self._row_obj("requests", RequestForContext, rows[0])
 
     @_locked
-    def list_requests(self, *, subject_ref: str | None = None,
-                      audience: str | None = None) -> list[RequestForContext]:
+    def list_requests(self, *, subject_ref: str | None = None, audience: str | None = None,
+                      issuer: str | None = None) -> list[RequestForContext]:
         return self._select("requests", RequestForContext,
-                            {"subject_ref": subject_ref, "audience": audience})
+                            {"subject_ref": subject_ref, "audience": audience, "issuer": issuer})
 
     # ----------------------------------------------------------------------- drafts, approvals
 
@@ -1192,8 +1279,10 @@ class Store:
         return self._get("drafts", "draft_id", draft_id, Draft, "draft")
 
     @_locked
-    def list_drafts(self, *, request_id: str | None = None) -> list[Draft]:
-        return self._select("drafts", Draft, {"request_id": request_id})
+    def list_drafts(self, *, request_id: str | None = None,
+                    audience: str | None = None) -> list[Draft]:
+        drafts = self._select("drafts", Draft, {"request_id": request_id})
+        return drafts if audience is None else [d for d in drafts if d.audience == audience]
 
     def update_draft_status(self, draft_id: str, status: DraftStatus | str,
                             reason: str | None = None) -> Draft:
@@ -1238,9 +1327,11 @@ class Store:
         return self._get("approvals", "approval_id", approval_id, Approval, "approval")
 
     @_locked
-    def list_approvals(self, *, request_id: str | None = None,
+    def list_approvals(self, *, request_id: str | None = None, audience: str | None = None,
                        status: str | None = None) -> list[Approval]:
-        return self._select("approvals", Approval, {"request_id": request_id, "status": status})
+        approvals = self._select("approvals", Approval, {"request_id": request_id,
+                                                         "status": status})
+        return approvals if audience is None else [a for a in approvals if a.audience == audience]
 
     # ----------------------------------------------------------------------- packages, deliveries
 

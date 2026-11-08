@@ -21,7 +21,8 @@ from alibi.core import approval as core_approval
 from alibi.core import canon
 from alibi.core.approval import ApprovalError
 from alibi.core.package import PackageError
-from alibi.core.policy import PolicyError, compile_policy, parse_rule_text
+from alibi.app.policy_chain import parse_rule_text
+from alibi.core.policy import PolicyError, compile_policy
 from alibi.core.schemas import ApprovalStatus, DraftStatus, RequestForContext, format_utc
 from alibi.core.store import NotFound, StoreError
 
@@ -81,23 +82,57 @@ def run_investigation(rt: Runtime, request_id: str) -> dict[str, Any]:
                           f"run refused: request {request_id} was answered by package {answered[-1].package_id}. "
                           "A new disclosure needs a follow-up request from the bank; a rerun is allowed only "
                           "after a correction invalidates the delivered evidence.")
+        mode = rt.settings.mode
         try:
-            result = api.run_investigation(store, rfc.request_id, mode="rules",
+            client = _model_client(rt, mode, request_id) if mode != "rules" else None
+            result = api.run_investigation(store, rfc.request_id, audience=rfc.audience, mode=mode,
                                            settlement_lookup=rt.settlement_lookup,
-                                           registry=rt.registry, now=now)
+                                           registry=rt.registry, now=now, client=client)
             removed = sorted(set(rt.sidecar.get(f"removed:{request_id}") or []))
             draft = api.build_review(store, rfc.request_id, now=now, removed=removed)
         except (PackageError, StoreError, ValueError) as exc:
             rt.sidecar.set(f"run:{request_id}", {"failed": True, "failure_reason": str(exc)[:300],
                                                  "at": rt.now_text()})
             raise Refusal("investigation_failed", str(exc), status=409) from exc
+        stats = _run_stats(result) if mode == "agents" else {}
         rt.sidecar.set(f"run:{request_id}", {"failed": False, "run_id": result.run_id, "at": rt.now_text(),
-                                             "mode": "rules", "calls_used": result.calls_used,
-                                             "draft_id": draft.draft_id})
+                                             "mode": mode, "calls_used": result.calls_used,
+                                             "draft_id": draft.draft_id, "stats": stats,
+                                             "replay": _replay_label(client) if client is not None else None})
         rt.sidecar.set(f"draft:{request_id}", draft.draft_id)
-        return {"run_id": result.run_id, "mode": "rules", "calls_used": result.calls_used,
+        return {"run_id": result.run_id, "mode": mode, "calls_used": result.calls_used, "stats": stats,
                 "claims": {cl.question_id: cl.status.value for cl in result.claims},
                 "draft_id": draft.draft_id, "unavailable": list(result.unavailable)}
+
+
+def _model_client(rt: Runtime, mode: str, request_id: str):
+    """The Gemini client for a model mode: scoped to this case and run (``system`` alibi or
+    one_pass), wrapped by the recorder so ``ALIBI_REPLAY=1`` serves ``alibi/fixtures/replays/
+    case<n>_<mode>.json`` and a live run records there. The key comes from the environment or
+    the repo-root .env (``alibi.llm.client.load_api_key``); it is never logged."""
+    from alibi.agents.replay import make_client
+    from alibi.llm.client import GeminiClient, Scope
+
+    system = "alibi" if mode == "agents" else mode
+    live = GeminiClient(scope=Scope(case_number=rt.settings.case_number, system=system,
+                                    run_id=f"app-{request_id}"))
+    return make_client(f"case{rt.settings.case_number}", mode, live=live)
+
+
+def _run_stats(result) -> dict[str, Any]:
+    try:
+        from alibi.agents.runner import run_stats
+        return dict(run_stats(result))
+    except Exception:  # noqa: BLE001 - stats are display only
+        return {}
+
+
+def _replay_label(client) -> str | None:
+    try:
+        from alibi.agents.replay import replay_label
+        return replay_label(client)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def remove_item(rt: Runtime, request_id: str, ref_type: str, ref_id: str) -> dict[str, Any]:
@@ -304,16 +339,41 @@ def deliver_in_process(rt: Runtime):
     return deliver
 
 
-def deliver_over_http(base_url: str, timeout: float = 10.0, post=None):
-    """A ``deliver`` callable that POSTs the signed package to ``{base_url}/bank/{audience}/receive``.
-    ``post`` defaults to ``httpx.post``; tests pass a TestClient's ``post`` to route in-process."""
+def deliver_over_http(base_url: str, timeout: float = 10.0, post=None, *,
+                      tokens: dict[str, str] | None = None):
+    """A ``deliver`` callable that POSTs the signed package over HTTP.
+
+    With ``tokens`` (recipient -> bearer, the shared tokens file) the target is the mock bank
+    service: ``POST {base_url}/deliver`` with ``Authorization: Bearer <that recipient's token>``,
+    ``content-type: application/json`` and the canonical bytes. Its answer is normalised to the
+    flat receipt ``dispatch`` reads: a 200 ``{status: "verified", receipt: {...}}`` becomes the
+    nested receipt (``receipt_id``, ``package_sha256``, ``received_at``, ``accepted``, ``reasons``);
+    a 422 ``package_rejected`` or 409 ``audience_mismatch`` / ``package_id_reused`` /
+    ``unknown_request`` keeps ``code`` and ``reason`` and the rejection receipt when one came back.
+    Identical bytes resent get the same receipt (the service dedupes by package id and digest).
+
+    Without ``tokens`` the target is another app process's own bank routes,
+    ``POST {base_url}/bank/{audience}/receive`` (no credential: the package is signed), which
+    already answer with the flat receipt.
+
+    ``post`` defaults to ``httpx.post``; tests pass a TestClient's ``post`` to route in-process.
+    An unreachable service is ``503 bank_unreachable``; a non-JSON answer ``bank_bad_response``.
+    """
     send = post or httpx.post
 
     def deliver(audience: str, payload: dict) -> tuple[int, dict]:
+        headers = {"content-type": "application/json", "accept": "application/json"}
+        if tokens is not None:
+            url = f"{base_url}/deliver"
+            token = tokens.get(audience)
+            if not token:
+                return 401, {"code": "recipient_token_missing",
+                             "reason": f"no bearer token is configured for recipient {audience}"}
+            headers["authorization"] = f"Bearer {token}"
+        else:
+            url = f"{base_url}/bank/{audience}/receive"
         try:
-            response = send(f"{base_url}/bank/{audience}/receive",
-                            content=canon.canonical_bytes(payload),
-                            headers={"content-type": "application/json"}, timeout=timeout)
+            response = send(url, content=canon.canonical_bytes(payload), headers=headers, timeout=timeout)
         except httpx.HTTPError as exc:
             return 503, {"code": "bank_unreachable", "reason": f"the bank service at {base_url} could not be "
                                                                f"reached ({type(exc).__name__})"}
@@ -321,8 +381,30 @@ def deliver_over_http(base_url: str, timeout: float = 10.0, post=None):
             body = response.json()
         except ValueError:
             body = {"code": "bank_bad_response", "reason": "the bank service did not answer with JSON"}
+        if not isinstance(body, dict):
+            body = {"code": "bank_bad_response", "reason": "the bank service did not answer with a JSON object"}
+        if tokens is not None:
+            body = _flatten_service_answer(body, response.status_code)
         return response.status_code, body
     return deliver
+
+
+def _flatten_service_answer(body: dict, status_code: int) -> dict:
+    """The bank service's ``/deliver`` answer as the flat receipt ``dispatch`` reads."""
+    receipt = body.get("receipt") if isinstance(body.get("receipt"), dict) else None
+    if 200 <= status_code < 300:
+        if receipt is None:
+            return {"code": "bank_bad_response", "accepted": False,
+                    "reason": "the bank service answered without a receipt"}
+        return {**receipt, "status": body.get("status", "verified")}
+    flat = {"code": body.get("code", "delivery_rejected"), "reason": body.get("reason", "")}
+    if receipt is not None:
+        flat.update({k: v for k, v in receipt.items() if k not in flat})
+    flat["accepted"] = bool(receipt.get("accepted")) if receipt else False
+    rejection = body.get("rejection")
+    if isinstance(rejection, dict) and rejection.get("errors") and not flat.get("reasons"):
+        flat["reasons"] = list(rejection["errors"])
+    return flat
 
 
 # --------------------------------------------------------------------------- rules
@@ -334,7 +416,8 @@ def active_rules(rt: Runtime) -> list[dict[str, Any]]:
         return []
     out = []
     for rule in policy.rules:
-        parsed = parse_rule_text(rule.source_text) if rule.source_text else None
+        # Restate from the deterministic layers only: a page render never spends a model call.
+        parsed = parse_rule_text(rule.source_text, use_gemini=False) if rule.source_text else None
         summary = parsed.interpretation if parsed and parsed.status == "resolved" else _describe(rule)
         out.append({"rule_id": rule.rule_id, "text": rule.source_text or _describe(rule),
                     "kind": rule.type, "summary": summary, "version": policy.version_tag(),
@@ -362,17 +445,28 @@ def held_rules(rt: Runtime) -> list[dict[str, Any]]:
 
 
 def interpret_rule(rt: Runtime, text: str) -> dict[str, Any]:
-    """Parse one plain-English rule. Resolved: a pending interpretation the holder confirms or
-    rejects. Unresolved: held for clarification with the parser's reason."""
-    parsed = parse_rule_text(text)
+    """Parse one plain-English rule through ``alibi.app.policy_chain``: Gemini when this app
+    asks for it (``GEMINI_API_KEY`` exported in the app's environment and replay off), then
+    execution's compiler, then the core parser. Resolved: a pending interpretation the holder
+    confirms or rejects. Unresolved: held for clarification with the parser's reason. The
+    answer carries ``source`` (the layer that answered), ``layers`` (the layers that ran) and
+    ``skipped`` (layer -> why it did not run), so a skipped Gemini layer is never silent."""
+    parsed = parse_rule_text(text, use_gemini=not rt.settings.replay)
     now = rt.now_text()
+    tried = list(getattr(parsed, "tried", []) or [])
+    skipped = dict(getattr(parsed, "skipped", {}) or {})
+    ran = ", ".join(tried) or "core"
+    if skipped:
+        ran += "; skipped " + "; ".join(f"{layer}: {why}" for layer, why in skipped.items())
     if parsed.status != "resolved" or parsed.rule is None:
         rule_id = canon.make_id("held", text.strip(), now)
         rt.sidecar.append("held_rules", {"rule_id": rule_id, "text": text.strip(),
-                                          "reason": parsed.reason or "not understood", "created_at": now})
+                                          "reason": parsed.reason or "not understood", "created_at": now,
+                                          "layers": tried, "skipped": skipped})
         rt.audit(action="interpret_rule", outcome="refused", target_id=rule_id,
-                 detail="rule text held for clarification (1 of 1 unresolved)")
-        return {"status": "held", "rule_id": rule_id, "reason": parsed.reason}
+                 detail=f"rule text held for clarification (1 of 1 unresolved; tried {ran})")
+        return {"status": "held", "rule_id": rule_id, "reason": parsed.reason, "layers": tried,
+                "skipped": skipped}
     rule = parsed.rule.to_json_dict()
     fields = [{"name": k, "value": c.compact(v, 80)} for k, v in rule.items()
               if k not in ("rule_id", "source_text", "type") and v not in ([], None, "")]
@@ -382,11 +476,14 @@ def interpret_rule(rt: Runtime, text: str) -> dict[str, Any]:
               "warnings": ["Rules only restrict sharing. Deny wins over every other rule.",
                            "Confirming re-filters every pending draft; an approved preview must be approved again."],
               "confirm_action": f"/rules/{rule['rule_id']}/confirm",
-              "reject_action": f"/rules/{rule['rule_id']}/reject", "rule": rule}
+              "reject_action": f"/rules/{rule['rule_id']}/reject", "rule": rule,
+              "source": getattr(parsed, "source", "core"), "layers": tried, "skipped": skipped}
     rt.sidecar.update("pending_rules", lambda cur: {**(cur or {}), rule["rule_id"]: interp})
     rt.audit(action="interpret_rule", outcome="ok", target_id=rule["rule_id"],
-             detail=f"resolved as {rule['type']}; awaiting the holder's confirmation")
-    return {"status": "resolved", "rule_id": rule["rule_id"], "interpretation": interp}
+             detail=f"resolved as {rule['type']} by the {interp['source']} parser (tried {ran}); "
+                    f"awaiting the holder's confirmation")
+    return {"status": "resolved", "rule_id": rule["rule_id"], "interpretation": interp,
+            "source": interp["source"], "layers": tried, "skipped": skipped}
 
 
 def pending_interpretation(rt: Runtime, rule_id: str) -> dict[str, Any] | None:

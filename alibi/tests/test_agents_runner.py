@@ -359,11 +359,13 @@ def test_shape_distinct_run_ids_and_replay_note(make):
 
 def test_run_ids_are_deterministic_and_separate_from_rules_runs(make):
     ctx = make("supported")
-    assert runner.next_run_id(ctx.store, RFC_A) == runner.next_run_id(ctx.store, RFC_A)
+    assert runner.next_run_id(ctx.store, RFC_A, audience="bank_a") == runner.next_run_id(ctx.store, RFC_A, audience="bank_a")
     from alibi.core.investigate_rules import next_run_id as rules_next
-    assert runner.next_run_id(ctx.store, RFC_A) != rules_next(ctx.store, RFC_A)
+    assert runner.next_run_id(ctx.store, RFC_A, audience="bank_a") != rules_next(ctx.store, RFC_A, audience="bank_a")
+    # run ids carry the bank: another bank reusing the id never shares a counter
+    assert runner.next_run_id(ctx.store, RFC_A, audience="bank_a") != runner.next_run_id(ctx.store, RFC_A, audience="bank_b")
     result = ctx.run(client_for())
-    assert runner.next_run_id(ctx.store, RFC_A) != result.run_id
+    assert runner.next_run_id(ctx.store, RFC_A, audience="bank_a") != result.run_id
 
 
 def test_request_model_and_explicit_gateway_are_accepted(make):

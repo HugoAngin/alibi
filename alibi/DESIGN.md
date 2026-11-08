@@ -100,16 +100,16 @@ class Store:
 
     # derived results, each stored with dependency tokens ("record:<id>", "txn:<id>")
     def save_link(self, link: Link); def list_links(self, *, txn_id=None, state="active") -> list[Link]
-    def save_claim(self, claim: Claim); def list_claims(self, *, request_id=None, state="active") -> list[Claim]
+    def save_claim(self, claim: Claim); def list_claims(self, *, request_id=None, audience=None, state="active") -> list[Claim]
     def save_alert(self, alert: Alert); def list_alerts(self, subject_ref: str, *, state=None) -> list[Alert]
     def save_policy(self, policy: Policy); def get_policy(self, policy_id: str, version: int | None = None) -> Policy
     def latest_policy(self, subject_ref: str) -> Policy | None
     def save_request(self, rfc: RequestForContext) -> Literal["inserted", "duplicate"]
-    def get_request(self, request_id: str) -> RequestForContext
+    def get_request(self, request_id: str, *, audience: str | None = None) -> RequestForContext  # bare id shared by banks: AmbiguousRequest
     def list_requests(self, *, subject_ref=None, audience=None) -> list[RequestForContext]
-    def save_draft(self, draft: Draft); def get_draft(self, draft_id: str) -> Draft; def list_drafts(self, *, request_id=None) -> list[Draft]
+    def save_draft(self, draft: Draft); def get_draft(self, draft_id: str) -> Draft; def list_drafts(self, *, request_id=None, audience=None) -> list[Draft]
     def save_approval(self, approval: Approval); def get_approval(self, approval_id: str) -> Approval
-    def list_approvals(self, *, request_id=None, status=None) -> list[Approval]
+    def list_approvals(self, *, request_id=None, audience=None, status=None) -> list[Approval]
     def save_package(self, package: ContextPackage, *, approval_id: str) -> Literal["inserted", "duplicate"]
     def get_package(self, package_id: str) -> ContextPackage
     def list_packages(self, *, audience=None, request_id=None) -> list[ContextPackage]
@@ -168,8 +168,11 @@ Behaviour:
 - Dispatch (current revisions -> sign -> save package -> approval consumed -> draft packaged ->
   delivery) must run inside one `with store.transaction():` so it is serialised against
   corrections.
-- Requests: same `request_id` with identical content is a duplicate; different content raises
-  `IdempotencyConflict`. Packages: same rule keyed by `package_id`. Policies: append-only
+- Requests are keyed by `(request_id, audience)`, because request ids are the bank's own and
+  one bank must never block or detect another's (schema version 3). The same key with
+  identical content is a duplicate, and different content raises `IdempotencyConflict`. Claims
+  carry `audience`, and run ids and `case_ref` include it. Packages: same rule keyed by
+  `package_id`. Policies: append-only
   `(policy_id, version)`; same version with different content raises `RevisionConflict`.
 - Encryption at rest: every payload column holds Fernet(canonical JSON). Clear columns hold
   only identifiers, revision numbers, active/status flags, dependency tokens and timestamps

@@ -14,6 +14,8 @@ from alibi.core.approval import (
     check_approval,
     consume,
     current_revisions,
+    refusal_for,
+    refusal_reason,
     require_valid,
 )
 from alibi.core.package import PackageError, build_body, cited_refs, make_draft, sign_package
@@ -258,3 +260,85 @@ def test_current_revisions_follow_the_store_and_catch_a_correction(case, keystor
                           revisions=revisions, now=LATER)
         unknown = EvidenceRef(ref_type="record", ref_id="ord_9999", revision=1)
         assert current_revisions(store, [unknown]) == {"record:ord_9999": None}
+
+
+# --------------------------------------------------------------------------- consent-matrix codes
+
+
+def refusal(case, approval=None, **over):
+    args = {"body": case.body, "audience": "bank_a", "request_id": "rfc_a_001",
+            "policy_version": case.policy_version, "revisions": case.revisions, "now": LATER}
+    args.update(over)
+    return refusal_for(approval or case.approval, **args)
+
+
+def test_refusal_for_follows_the_consent_matrix_order(case):
+    assert refusal(case) is None
+    newer = compile_policy(POLICY.model_copy(update={"version": 2})).policy_version
+    corrected = {**case.revisions, "record:stl_88001": 2}
+    expired = NOW + DEFAULT_APPROVAL_TTL
+    # Request expiry, then the approval window, beat every other failure.
+    assert refusal(case, now=expired, request_expires_at=expired, policy_version=newer) == (
+        "request_expired", "dispatch refused: request rfc_a_001 expired at 2026-11-07T12:15:00Z. "
+        "The bank must send a new request.")
+    assert refusal(case, now=expired, policy_version=newer, revisions=corrected) == (
+        "approval_expired", "dispatch refused: approval expired at 2026-11-07T12:15:00Z. Review "
+        "and approve again.")
+    assert refusal(case, request_id="rfc_b_001", audience="bank_b")[0] == "approval_request_mismatch"
+    assert refusal(case, audience="bank_b", policy_version=newer) == (
+        "approval_audience_mismatch", "dispatch refused: approval is for bank_a; this dispatch is "
+        "addressed to bank_b. Each recipient needs its own approval.")
+    assert refusal(case, policy_version=newer, revisions=corrected) == (
+        "policy_version_changed", "dispatch refused: privacy rules changed after approval "
+        "(pol_maya@v1 to pol_maya@v2). The draft was re-filtered; review and approve it again.")
+    assert refusal(case, revisions=corrected, current_body_sha256="f" * 64) == (
+        "source_revision_changed", "dispatch refused: cited record stl_88001 changed from r1 to r2 "
+        "after approval. The draft is stale; review the updated draft.")
+    assert refusal(case, revisions={**case.revisions, "record:stl_88001": None})[1].startswith(
+        "dispatch refused: cited record stl_88001 changed from r1 to rnone")
+    approved12 = case.approval.body_sha256[:12]
+    assert refusal(case, current_body_sha256="f" * 64, change=" (draft regenerated)") == (
+        "approval_digest_mismatch", f"dispatch refused: approved digest sha256:{approved12} does "
+        f"not match body digest sha256:{'f' * 12}; the body changed after approval (draft "
+        "regenerated). Review and approve the revised body.")
+    data = case.body.to_json_dict()
+    data["claims"][0]["statement"] = "Edited after the holder approved it."
+    code, reason = refusal(case, body=PackageBody.model_validate(data))
+    assert code == "approval_digest_mismatch" and reason.endswith(
+        "the body changed after approval. Review and approve the revised body.")
+    assert refusal(case, approval=case.approval.model_copy(update={"source_revisions": []})) \
+        [0] == "approval_digest_mismatch"
+
+
+def test_refusal_for_fails_closed_on_used_or_invalidated_approvals(case):
+    used = consume(case.approval, package_id="pkg_used")
+    assert refusal(case, approval=used) == (
+        "approval_missing", "dispatch refused: no holder approval recorded for request rfc_a_001.")
+    stale = case.approval.model_copy(update={"status": ApprovalStatus.INVALIDATED,
+                                             "invalidated_reason": "record:stl_88001 superseded"})
+    assert refusal(case, approval=stale)[0] == "approval_missing"
+    assert refusal(case, approval=stale, fail_closed=False) is None
+    # An invalidation reason that is itself a matrix sentence is returned verbatim (C2).
+    sentence = refusal_reason("approval_digest_mismatch", approved12="a" * 12, actual12="b" * 12,
+                              change=" (record:rfd_2001 removed)")
+    c2 = case.approval.model_copy(update={"status": ApprovalStatus.INVALIDATED,
+                                          "invalidated_reason": sentence})
+    assert refusal(case, approval=c2) == ("approval_digest_mismatch", sentence)
+    assert refusal(case, approval=c2, current_body_sha256="b" * 64) == (
+        "approval_digest_mismatch", sentence)
+
+
+def test_require_valid_raises_with_code_and_reason(case):
+    with pytest.raises(ApprovalError) as info:
+        require_valid(case.approval, body=case.body, audience="bank_a", request_id="rfc_a_001",
+                      policy_version=case.policy_version, revisions=case.revisions,
+                      now=NOW + DEFAULT_APPROVAL_TTL)
+    exc = info.value
+    assert exc.problems == ["the approval expired at 2026-11-07T12:15:00Z"]
+    assert exc.refusal == {"code": "approval_expired", "reason": "dispatch refused: approval "
+                           "expired at 2026-11-07T12:15:00Z. Review and approve again."}
+    with pytest.raises(ApprovalError) as info:
+        require_valid(case.approval, body=case.body, audience="bank_a", request_id="rfc_a_001",
+                      policy_version=case.policy_version, revisions=case.revisions,
+                      now=NOW - timedelta(seconds=1))
+    assert info.value.code is None and info.value.reason == info.value.problems[0]

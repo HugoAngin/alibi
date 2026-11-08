@@ -2,14 +2,28 @@
 
 The team's lock file has no `jsonschema` package, so this covers the subset the
 Alibi prompts use: type (including type lists), properties, required,
-additionalProperties, enum, const, items, minItems, maxItems, minimum, maximum,
-minLength, maxLength, anyOf and oneOf. Anything else in a schema is ignored, so
-keep schemas inside this subset. Returns a list of "path: problem" strings.
+additionalProperties (false, or a schema), enum, const, items, minItems, maxItems,
+minimum, maximum, minLength, maxLength, anyOf and oneOf. Anything else in a schema is
+ignored, so keep schemas inside this subset (`unsupported_keywords` lists what a schema
+uses outside it). Returns a list of "path: problem" strings.
+
+Every role schema under alibi/agents/prompts/ sets `additionalProperties: false` on every
+object, so a field the contract does not declare is a violation, not a passenger. A
+non-finite float (NaN, Infinity) is always a violation: JSON has no such number, and a
+confidence threshold cannot order it.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
+
+SUPPORTED_KEYWORDS = frozenset({
+    "type", "properties", "required", "additionalProperties", "enum", "const", "items",
+    "minItems", "maxItems", "minimum", "maximum", "minLength", "maxLength", "anyOf", "oneOf",
+    # annotations, no effect on validation
+    "description", "title", "$schema", "$id", "examples", "default",
+})
 
 _TYPE_CHECKS = {
     "object": lambda v: isinstance(v, dict),
@@ -27,6 +41,10 @@ def validate(instance: Any, schema: dict, path: str = "$") -> list[str]:
     problems: list[str] = []
     if not isinstance(schema, dict):
         return problems
+
+    if isinstance(instance, float) and not math.isfinite(instance):
+        problems.append(f"{path}: non-finite number {instance!r}")
+        return problems  # nothing below can make NaN or Infinity acceptable
 
     if "const" in schema and instance != schema["const"]:
         problems.append(f"{path}: expected const {schema['const']!r}")
@@ -83,3 +101,50 @@ def validate(instance: Any, schema: dict, path: str = "$") -> list[str]:
             problems.append(f"{path}: matches {matches} of oneOf, expected exactly 1")
 
     return problems
+
+
+def unsupported_keywords(schema: Any, path: str = "$") -> list[str]:
+    """Return "path: keyword" for every schema keyword this checker does not enforce.
+
+    Role schemas must come back empty, so a constraint the prompt relies on is never
+    silently skipped at validation time.
+    """
+    found: list[str] = []
+    if not isinstance(schema, dict):
+        return found
+    for keyword, value in schema.items():
+        if keyword not in SUPPORTED_KEYWORDS:
+            found.append(f"{path}: {keyword}")
+        if keyword == "properties" and isinstance(value, dict):
+            for name, sub in value.items():
+                found.extend(unsupported_keywords(sub, f"{path}.{name}"))
+        elif keyword in ("items", "additionalProperties") and isinstance(value, dict):
+            found.extend(unsupported_keywords(value, f"{path}[]" if keyword == "items" else f"{path}.*"))
+        elif keyword in ("anyOf", "oneOf") and isinstance(value, list):
+            for i, sub in enumerate(value):
+                found.extend(unsupported_keywords(sub, f"{path}<{keyword}[{i}]>"))
+    return found
+
+
+def open_objects(schema: Any, path: str = "$") -> list[str]:
+    """Return the path of every object schema that does not set `additionalProperties: false`.
+
+    Empty for every role schema: an undeclared field in model output is a contract violation.
+    """
+    open_paths: list[str] = []
+    if not isinstance(schema, dict):
+        return open_paths
+    types = schema.get("type")
+    types = types if isinstance(types, list) else [types]
+    if "object" in types and schema.get("additionalProperties") is not False:
+        open_paths.append(path)
+    for name, sub in (schema.get("properties") or {}).items():
+        open_paths.extend(open_objects(sub, f"{path}.{name}"))
+    if isinstance(schema.get("items"), dict):
+        open_paths.extend(open_objects(schema["items"], f"{path}[]"))
+    if isinstance(schema.get("additionalProperties"), dict):
+        open_paths.extend(open_objects(schema["additionalProperties"], f"{path}.*"))
+    for keyword in ("anyOf", "oneOf"):
+        for i, sub in enumerate(schema.get(keyword) or []):
+            open_paths.extend(open_objects(sub, f"{path}<{keyword}[{i}]>"))
+    return open_paths

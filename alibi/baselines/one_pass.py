@@ -16,8 +16,10 @@ challenger:
 3. **Code decides.** Statuses are recomputed from explicit fields with
    ``alibi.agents.candidates.settlement_candidates`` and ``alibi.core.reconcile``: supported
    only when one settled candidate in time, carrying a reference the credit names, reconciles;
-   contradicted on an explicit conflict; else unresolved with a team gap code. Period totals
-   are summed in code. The model's status is recorded as ``proposed_status`` in the trace.
+   contradicted on an explicit conflict; else unresolved with a team gap code. The settlement
+   evidence is a separate ``settlement`` record (S1's fixtures) or the payout's own ``status``
+   (the team's cases fold the settlement state into the payout), and the ``settlements`` list
+   the model sees holds both. Period totals are summed in code. The model's status is recorded as ``proposed_status`` in the trace.
    A model statement is kept only when its status equals the code status, it names no id or
    amount outside the material and repeats no message text (the whole message, any sentence
    of three or more words, or any four-word run); otherwise a code statement is used. Message
@@ -157,13 +159,14 @@ class _Outcome:
 # --------------------------------------------------------------------------- public entry points
 
 
-def next_run_id(store: Store, request_id: str) -> str:
-    """``make_id("run", request_id, "single_call", n)`` for the first ``n`` no stored claim or
-    trace of this request uses."""
+def next_run_id(store: Store, request_id: str, *, audience: str | None = None) -> str:
+    """``make_id("run", audience, request_id, "single_call", n)`` (no bank: ``make_id("run",
+    request_id, "single_call", n)``) for the first ``n`` no stored claim or trace of this request
+    uses; request ids are per bank."""
     used = {claim.run_id for claim in store.list_claims(request_id=request_id, state=None)}
     n = 0
     while True:
-        run_id = make_id("run", request_id, MODE, n)
+        run_id = make_id("run", audience, request_id, MODE, n) if audience else make_id("run", request_id, MODE, n)
         if run_id not in used and not store.list_traces(run_id):
             return run_id
         n += 1
@@ -200,13 +203,13 @@ def run_one_pass(store: Store, request: str | RequestForContext, *, client: Any,
         if registry is None and settlement_lookup is not None:
             registry = DemoKeystore(DEFAULT_KEY_DIR).ensure().registry()
         gateway = Gateway(store, subject_ref=rfc.subject_ref,
-                          run_id=next_run_id(store, rfc.request_id), registry=registry,
+                          run_id=next_run_id(store, rfc.request_id, audience=rfc.audience), registry=registry,
                           budget=budget, settlement_lookup=settlement_lookup,
                           txn_refresh=txn_refresh, now=now, request_id=rfc.request_id)
     scope = getattr(gateway, "subject_ref", None)
     if scope is not None and scope != rfc.subject_ref:
         raise ValueError("the gateway is scoped to a different subject than the request")
-    run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id)
+    run_id = getattr(gateway, "run_id", None) or next_run_id(store, rfc.request_id, audience=rfc.audience)
     run = _Run(rfc, store, gateway, client, run_id=run_id, now=at,
                model=model or config.FLASH)
     return run.execute()
@@ -430,7 +433,7 @@ class _Run:
             "rfc": rfc_view(self.rfc),
             "bank": [txn_view(t, material) for t in material.txns()],
             "merchant": [record_view(r, material) for r in records if r.kind != RecordKind.SETTLEMENT],
-            "settlements": [record_view(r, material) for r in records if r.kind == RecordKind.SETTLEMENT],
+            "settlements": [record_view(r, material) for r in material.settlement_evidence()],
             "shareable": [shareable_item(item, material) for item in self.shareable],
             "policy": _policy_summary(self.compiled),
             "candidate_rule": RULE_TEXT,
@@ -503,7 +506,7 @@ class _Run:
                           result={"path": "claims.refs", "record_id": key[0], "revision": key[1]})
         claim = Claim(
             claim_id=make_id("clm", self.run_id, question.question_id),
-            request_id=self.rfc.request_id, question_id=question.question_id,
+            request_id=self.rfc.request_id, audience=self.rfc.audience, question_id=question.question_id,
             statement=_clip(statement), status=outcome.status, rationale=_clip(outcome.rationale),
             evidence_refs=_unique(evidence), calculation=outcome.calculation,
             gap=_clip(outcome.gap) if outcome.gap else None, run_id=self.run_id,
@@ -554,7 +557,7 @@ class _Run:
             return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn_id, txn), gap, gap, gap=gap,
                             evidence=[txn.ref()])
         records = self.material.records()
-        found = settlement_candidates(txn, records)
+        found = settlement_candidates(txn, records, looked_up=self.material.settlement_lookup_refs())
         pool_refs = [p.ref() for c in found.pool for p in c.payouts]
         chosen = found.chosen
         link = Link(link_id=make_id("lnk", self.run_id, txn.txn_id), txn_ref=txn.ref(),
@@ -583,9 +586,18 @@ class _Run:
                             "Link ambiguous.", gap=gap, evidence=[txn.ref(), *pool_refs])
         if found.pool:
             candidate = found.pool[0]
+            payout = candidate.payouts[0] if len(candidate.payouts) == 1 else None
             ref = candidate.payouts[0].payment_ref or candidate.payouts[0].record_id
-            gap = (f"{GAP_SETTLEMENT_NOT_FOUND}: no settlement record for payout {ref} was retrieved; "
-                   "a payout record does not show a bank transfer.")
+            if payout is None:
+                why = "the payout records of the group do not show a bank transfer"
+            elif payout.status is None:
+                why = "a payout record with no status does not show a bank transfer"
+            elif payout.status in PENDING_STATUSES:
+                why = (f"the payout's own status {payout.status}, observed {format_utc(payout.occurred_at)} "
+                       "before the booking, is its initial state and does not show a bank transfer")
+            else:
+                why = f"the payout's own status {payout.status} is not a settlement status and does not show a bank transfer"
+            gap = f"{GAP_SETTLEMENT_NOT_FOUND}: no settlement record for payout {ref} was retrieved; {why}."
             if any(r.kind == RecordKind.MESSAGE for r in records):
                 gap += (f" {GAP_BALANCE_RELEASE}: a 'released to balance' message is a release to the "
                         "platform balance, not a settlement.")
@@ -594,6 +606,8 @@ class _Run:
                             evidence=[txn.ref(), *pool_refs])
         if found.conflicts:
             return self.contradicted(txn, found.conflicts[0], found)
+        if found.coded:
+            return self.undecided(txn, found.coded[0], found)
         if not any(r.kind == RecordKind.PAYOUT for r in records) and self.records_err:
             gap = (f"The merchant records could not be retrieved ({self.records_err}), so no payout could be "
                    "checked against this credit.")
@@ -623,12 +637,14 @@ class _Run:
     def linked(self, txn: BankTxn, chosen: Candidate, found: CandidateResult) -> _Outcome:
         payouts, settlement = chosen.payouts, chosen.settlement
         assert settlement is not None
+        itself = chosen.settles_itself     # the payout's own status is the settlement evidence
+        what = _what(settlement)
         payout = payouts[0] if len(payouts) == 1 else None
         ref = chosen.group_ref or (payout.payment_ref if payout else None) or payouts[0].record_id
         ids = ", ".join(p.record_id for p in payouts)
         statement = (f"Credit {txn.txn_id} of {_money(txn.amount_pence, txn.currency)} is payout {ids} "
                      f"(reference {ref})")
-        evidence = [txn.ref(), *(p.ref() for p in payouts), settlement.ref()]
+        evidence = _unique([txn.ref(), *(p.ref() for p in payouts), settlement.ref()])
         parts = [found.summary()]
         components, problem = self.components_of(payouts)
         calc = None
@@ -643,8 +659,9 @@ class _Run:
             parts.append(_calc_text(calc, components or []))
             self.note("calculation", reason=_clip(parts[-1], 300), refs=calc.cited_refs,
                       result=_calc_summary(calc))
-        parts.append(f"Timing: {reconcile.check_settlement_timing(settlement, txn).reason}")
-        own = [r for r in (*payouts, settlement) if r.source_trust == SourceTrust.SELF_SUPPLIED]
+        parts.append(f"Timing of {what}: {reconcile.check_settlement_timing(settlement, txn).reason}")
+        own = [r for r in (*payouts, *([] if itself else [settlement]))
+               if r.source_trust == SourceTrust.SELF_SUPPLIED]
         if problem:
             parts.append(problem)
             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts), problem,
@@ -677,18 +694,42 @@ class _Run:
             return _Outcome(ClaimStatus.UNRESOLVED, statement + ".", " ".join(parts) + " " + gap,
                             "The reconciliation does not support the credit.", gap=gap,
                             evidence=evidence, calculation=calc)
-        statement += f", settled as {settlement.record_id} before the credit was booked."
-        return _Outcome(ClaimStatus.SUPPORTED, statement, " ".join(parts),
-                        (f"Settlement {settlement.record_id}@{settlement.revision} is {settlement.status} "
-                         f"by the booking, the amounts reconcile and the credit carries {ref}."),
+        if itself:
+            effective = reconcile.settlement_effective_time(settlement)
+            statement += (f", whose own status {settlement.status} took effect at "
+                          f"{format_utc(effective)}, before the credit was booked.")
+            reason = (f"Payout {settlement.record_id}@{settlement.revision} carries status {settlement.status}, "
+                      f"effective by the booking; the amounts reconcile and the credit carries {ref}.")
+        else:
+            statement += f", settled as {settlement.record_id} before the credit was booked."
+            reason = (f"Settlement {settlement.record_id}@{settlement.revision} is {settlement.status} "
+                      f"by the booking, the amounts reconcile and the credit carries {ref}.")
+        return _Outcome(ClaimStatus.SUPPORTED, statement, " ".join(parts), reason,
                         evidence=evidence, calculation=calc)
+
+    def undecided(self, txn: BankTxn, rejection: Rejection, found: CandidateResult) -> _Outcome:
+        """Settlement evidence was retrieved but shows no bank settlement and no explicit
+        conflict (a payout still pending before the booking, a settlement too early or with no
+        settlement status): unresolved, with the rejection's gap code."""
+        settlement = rejection.settlement
+        code = rejection.code or GAP_SETTLEMENT_NOT_FOUND
+        evidence = _unique([txn.ref(), *(p.ref() for p in rejection.payouts),
+                            *([settlement.ref()] if settlement is not None else [])])
+        gap = f"{code}: {rejection.reason}; the source of funds is not established."
+        parts = [found.summary()]
+        if settlement is not None:
+            parts.append(f"Timing of {_what(settlement)}: "
+                         f"{reconcile.check_settlement_timing(settlement, txn).reason}")
+        return _Outcome(ClaimStatus.UNRESOLVED, _unknown_source(txn.txn_id, txn), " ".join(parts),
+                        _clip(f"Settlement evidence does not show bank settlement: {rejection.reason}", 300),
+                        gap=gap, evidence=evidence)
 
     def contradicted(self, txn: BankTxn, rejection: Rejection, found: CandidateResult) -> _Outcome:
         payouts, settlement = rejection.payouts, rejection.settlement
         ids = ", ".join(p.record_id for p in payouts)
         ref = next((p.payment_ref for p in payouts if p.payment_ref), payouts[0].record_id)
         code = _conflict_code(rejection, txn)
-        evidence = [txn.ref(), *(p.ref() for p in payouts), *([settlement.ref()] if settlement else [])]
+        evidence = _unique([txn.ref(), *(p.ref() for p in payouts), *([settlement.ref()] if settlement else [])])
         calc = None
         components, _ = self.components_of(payouts)
         if components:
@@ -925,7 +966,16 @@ def _ngrams(words: list[str], n: int = _NGRAM) -> set[str]:
     return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1)}
 
 
+def _what(settlement: EvidenceRecord) -> str:
+    """``payout <key>`` when the settlement evidence is a payout's own status, else
+    ``settlement <key>``: the trace never calls a payout a settlement record."""
+    label = "payout" if settlement.kind == RecordKind.PAYOUT else "settlement"
+    return f"{label} {settlement.ref().key()}"
+
+
 def _conflict_code(rejection: Rejection, txn: BankTxn) -> str:
+    if rejection.code:
+        return rejection.code
     settlement = rejection.settlement
     if settlement is not None:
         if settlement.status in FAILED_STATUSES:

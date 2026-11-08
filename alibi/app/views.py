@@ -501,7 +501,7 @@ def _trace(rt: Runtime, rfc: RequestForContext) -> tuple[list[dict[str, Any]], d
                                if str(getattr(claim.state, "value", claim.state)) != "active" else "")
                               + (status_ev.reason if status_ev and status_ev.reason else claim.rationale))[:300],
             "state": str(getattr(claim.state, "value", claim.state)),
-            "rationale": claim.rationale, "gap": claim.gap,
+            "rationale": claim.rationale, "gap": c.gap_text(claim),
             "at": c.iso(status_ev.at if status_ev else claim.created_at),
         })
     calls = sum(1 for ev in events if ev.actor == "gateway" and ev.step == "tool_call" and ev.outcome == "ok")
@@ -514,7 +514,9 @@ def _trace(rt: Runtime, rfc: RequestForContext) -> tuple[list[dict[str, Any]], d
 def _approval_view(rt: Runtime, rfc: RequestForContext, draft: Draft | None) -> dict[str, Any]:
     store = rt.store
     view = {"status": "none", "recipient": rt.recipient_name(rfc.audience), "audience": rfc.audience,
-            "action": f"/requests/{rfc.request_id}/approve", "digest": "", "policy_version": "",
+            "action": f"/requests/{rfc.request_id}/approve",
+            "dispatch_action": f"/requests/{rfc.request_id}/dispatch",
+            "digest": "", "policy_version": "",
             "valid_from": c.iso(rfc.issued_at), "valid_until": c.iso(rfc.expires_at),
             "approved_at": None, "invalidated_reason": None, "approval_id": None}
     if draft is None:
@@ -615,10 +617,27 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
         reasons = sorted({cl.invalidated_reason or "newer evidence arrived" for cl in stale})
         flashes = [*(flashes or []), {"kind": "info", "text": "The investigation is out of date: "
                                      + "; ".join(reasons) + ". Run it again before approving."}]
-    roles = [{"name": "rules", "status": "complete" if ran else "not_started",
-              "calls": meta.get("calls_used", 0) if ran else 0, "note": ROLE_NOTE}]
-    roles += [{"name": role, "status": "skipped", "calls": 0,
-               "note": "not wired in this build (rules-only)"} for role in AGENT_ROLES]
+    mode = last_run.get("mode") or rt.settings.mode
+    if mode == "agents":
+        actors = [ev.actor for ev in (meta.get("events") or [])]
+        stats = last_run.get("stats") or {}
+        replay_note = last_run.get("replay") or ""
+        roles = [{"name": role, "status": ("complete" if role in actors else "not_called") if ran else "not_started",
+                  "calls": actors.count(role) if ran else 0,
+                  "note": "Gemini role; the backend validated every reference and computed the verdict in code"}
+                 for role in AGENT_ROLES]
+        roles.append({"name": "code verdict", "status": "complete" if ran else "not_started",
+                      "calls": stats.get("model_calls", 0) if ran else 0,
+                      "note": (f"model calls {stats.get('model_calls', 0)}, lookups {stats.get('lookups', 0)}, "
+                               f"tokens {stats.get('tokens', 0)}" + (f"; {replay_note}" if replay_note else ""))
+                      if ran else ROLE_NOTE})
+        mode_label = "agents (Gemini)" + (" - replay" if "REPLAY" in str(replay_note) else "")
+    else:
+        roles = [{"name": "rules", "status": "complete" if ran else "not_started",
+                  "calls": meta.get("calls_used", 0) if ran else 0, "note": ROLE_NOTE}]
+        roles += [{"name": role, "status": "skipped", "calls": 0,
+                   "note": "not run in this mode (rules-only; start the app with ALIBI_MODE=agents)"} for role in AGENT_ROLES]
+        mode_label = "rules-only" if mode == "rules" else mode
     ctx = _holder_base(rt, f"Request {rfc.request_id}", "requests", flashes)
     ctx.update({
         "request": {"request_id": rfc.request_id, "parent_request_id": rfc.parent_request_id,
@@ -638,7 +657,7 @@ def request_detail(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any]
                           "started_at": meta.get("started_at"), "completed_at": meta.get("completed_at"),
                           "budget": {"calls_used": meta.get("calls_used", 0), "calls_cap": DEFAULT_BUDGET},
                           "roles": roles, "failure_reason": last_run.get("failure_reason"),
-                          "mode": "rules", "mode_label": "rules-only", "run_id": meta.get("run_id")},
+                          "mode": mode, "mode_label": mode_label, "run_id": meta.get("run_id")},
         "trace": steps,
         "review": _review(rt, rfc, draft),
     })
@@ -716,7 +735,7 @@ def export_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] | 
                        "calculation": ({"expression": c.expression_for(cl.calculation),
                                         "result": c.money(cl.calculation.total_pence, cl.calculation.currency)}
                                        if cl.calculation else None),
-                       "gap": cl.gap})
+                       "gap": c.gap_text(cl)})
     flashes = list(flashes or [])
     if not signed:
         flashes.append({"kind": "info", "text": "No signed package exists for this request yet. This is "
@@ -743,6 +762,7 @@ def export_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] | 
         },
         "export": {
             "json_href": f"/requests/{request_id}/export.json",
+            "json_url": absolute_url(rt, f"/requests/{request_id}/export.json"),
             "json_filename": f"{pkg.package_id if signed else 'draft-' + request_id}.json",
             "json_size_bytes": len(raw),
             "verify_hint": (f"uv run --frozen python -m agents.eval.verify_package "
@@ -770,17 +790,39 @@ def dispatch_page(rt: Runtime, request_id: str, flashes=None) -> dict[str, Any] 
     except NotFound:
         return None
     last = rt.sidecar.get(f"dispatch:{request_id}")
+    send_action: str | None = f"/requests/{request_id}/dispatch"
     if not last:
-        last = {"outcome": "refused", "package_id": "none", "request_id": request_id,
-                "attempted_at": rt.now_text(), "receipt": None,
-                "refusal": {"code": "not_dispatched", "reason": "No dispatch has been attempted for this request.",
-                            "checked_at": rt.now_text(), "expected_digest": "—", "actual_digest": "—"}}
+        # Nothing has been attempted: a neutral state, never a refusal. The Send button is offered
+        # only when a usable approval exists; before that the review page is the way forward.
+        approvals = [a for a in rt.store.list_approvals(request_id=request_id)
+                     if ApprovalStatus(a.status) in (ApprovalStatus.PENDING, ApprovalStatus.CONSUMED)]
+        send_action = send_action if approvals else None
+        last = {"outcome": "not_attempted", "package_id": "none", "request_id": request_id,
+                "attempted_at": None, "receipt": None, "refusal": None,
+                "note": ("Not yet sent. No dispatch has been attempted for this request"
+                         + ("; the approved body is ready to send." if approvals
+                            else "; approve the reviewed body first."))}
     ctx = _holder_base(rt, "Dispatch result", "requests", flashes)
     ctx["dispatch"] = {**last, "recipient": rt.recipient_name(rfc.audience), "audience": rfc.audience,
-                       "retry_action": f"/requests/{request_id}/dispatch",
+                       "retry_action": send_action,
                        "review_href": f"/requests/{request_id}#review",
-                       "history_href": "/passport#sharing"}
+                       "history_href": "/passport#sharing",
+                       **dispatch_urls(rt, request_id, rfc.audience, last)}
     return ctx
+
+
+def absolute_url(rt: Runtime, path: str) -> str:
+    """``path`` on this backend's published origin (``ALIBI_API_ORIGIN``), for a server-side
+    front end that follows links the app hands out."""
+    return f"{rt.settings.api_origin.rstrip('/')}{path}"
+
+
+def dispatch_urls(rt: Runtime, request_id: str, audience: str, result: dict) -> dict[str, str | None]:
+    """Absolute links for a dispatch result: the recipient's view of the delivered package and the
+    signed JSON. Both are None until a package was delivered."""
+    delivered = result.get("outcome") == "success" and result.get("package_id") not in (None, "none", "pending")
+    return {"package_url": absolute_url(rt, f"/bank/{audience}/packages/{result['package_id']}") if delivered else None,
+            "export_url": absolute_url(rt, f"/requests/{request_id}/export.json") if delivered else None}
 
 
 # --------------------------------------------------------------------------- audit

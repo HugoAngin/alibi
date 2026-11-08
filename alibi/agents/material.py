@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from alibi.core.policy import RECORD_FIELDS, TXN_FIELDS
+from alibi.core.reconcile import is_settlement_evidence
 from alibi.core.schemas import (
     BankTxn,
     EvidenceRecord,
@@ -167,6 +168,33 @@ class Material:
             items = [r for r in items if r.kind in wanted]
         return sorted(items, key=lambda r: (r.occurred_at, r.record_id, r.revision))
 
+    def settlement_evidence(self) -> list[EvidenceRecord]:
+        """Held records that can show whether a payout settled (highest revision per id, by
+        time): separate ``settlement`` records plus payouts carrying a ``status`` (the team's
+        payouts fold the settlement state in; ``alibi.core.reconcile.is_settlement_evidence``).
+        This is the ``settlements`` list the roles see; the merchant list keeps every record."""
+        return [r for r in self.records() if is_settlement_evidence(r)]
+
+    def settlement_lookup_refs(self) -> frozenset[str]:
+        """Payment references (upper-cased) for which a ``lookup_settlement`` returned a record:
+        the reference asked for, plus the ``payment_ref`` of every record it returned. A payout
+        returned for its own reference is then the merchant's answer about its settlement
+        (``alibi.agents.candidates.own_status_decisive``)."""
+        refs: set[str] = set()
+        for lookup in self.lookups:
+            if lookup.tool != "lookup_settlement" or lookup.outcome != "ok":
+                continue
+            for name in ("payout_reference", "payment_ref"):
+                asked = lookup.args.get(name)
+                if isinstance(asked, str) and asked.strip():
+                    refs.add(asked.strip().upper())
+            for key in lookup.refs:
+                ident, _, revision = str(key).rpartition("@")
+                record = self._records.get((ident, int(revision))) if revision.isdigit() else None
+                if record is not None and record.payment_ref:
+                    refs.add(record.payment_ref.upper())
+        return frozenset(refs)
+
     def txns(self) -> list[BankTxn]:
         latest: dict[str, BankTxn] = {}
         for (tid, _), txn in self._txns.items():
@@ -205,7 +233,19 @@ class Material:
         return refs
 
     def knows_reference(self, value: str) -> bool:
-        return isinstance(value, str) and bool(value.strip()) and value.strip().upper() in self.references()
+        """Is ``value`` a reference the material carries: in a record's reference fields, on a
+        bank transaction, or named as a whole token in the ``text`` of an issuer-verified record
+        (the same scope rule the gateway applies to a settlement lookup; a message such as
+        "Withdrawal PO-0002-01 ... has been requested" carries PO-0002-01)? The text is data:
+        only the exact reference is looked for, nothing in it is interpreted."""
+        if not isinstance(value, str) or not value.strip():
+            return False
+        wanted = value.strip()
+        if wanted.upper() in self.references():
+            return True
+        pattern = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(wanted)}(?![A-Za-z0-9-])", re.IGNORECASE)
+        return any(rec.text and rec.source_trust == SourceTrust.ISSUER_VERIFIED
+                   and pattern.search(rec.text) is not None for rec in self._records.values())
 
 
 # --------------------------------------------------------------------------- views

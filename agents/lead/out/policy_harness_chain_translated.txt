@@ -1,0 +1,17 @@
+chain PR-02  safe_wrong missing [('deny', 'health')] (clarified)
+chain PR-04  safe_wrong missing [('recipient_restrict', 'item')] (clarified)
+chain PR-07  safe_wrong missing [('recipient_restrict', 'synthetic-pharmacy')] (clarified)
+chain PR-08  safe_wrong missing [('deny', 'rent')] (clarified)
+chain PR-10  safe_wrong missing [('generalise', 'counterparty_name')] (clarified)
+chain PR-13  safe_wrong missing [('recipient_restrict', 'sale')] (clarified)
+chain PR-14  safe_wrong over-restrictive or differently shaped
+chain PR-15  safe_wrong over-restrictive or differently shaped
+chain PR-16  safe_wrong missing [('deny', 'synthetic-grocer')] (clarified)
+chain PR-17  safe_wrong missing [('generalise', 'destination')] (clarified)
+chain PR-18  safe_wrong missing [('deny', 'transport')] (clarified)
+chain PR-34  safe_wrong missing [('deny', 'health'), ('recipient_restrict', 'synthetic-pharmacy')] (clarified)
+chain PR-35  safe_wrong missing [('deny', 'item'), ('recipient_restrict', 'item')] (clarified)
+chain PR-36  safe_wrong missing [('age_limit', '')] (clarified)
+chain PR-39  safe_wrong missing [('deny', 'health')] (clarified)
+{"chain": {"status": "ran", "cases": 40, "correct": 25, "compiled": 8, "held": 32, "safe_wrong": 15, "leaks": 0, "invalid": 0, "errors": 0, "leak_ids": []}}
+{"chain_cases": 40, "chain_correct": 25, "chain_compiled": 8, "chain_held": 32, "chain_safe_wrong": 15, "chain_leaks": 0, "chain_invalid": 0, "chain_errors": 0}

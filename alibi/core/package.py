@@ -23,6 +23,12 @@
     Recipient-side checks with three separate results: package authentication, per-source
     trust and claim statuses. It never raises on bad input. A source or answer that appears
     twice, or full records about different subjects, reject the package.
+``case_binding``
+    The body's ``case_ref`` is a recipient-scoped subject binding: sha256 over
+    (``alibi:case:v1``, audience, root request id, subject_ref). Every package about one case
+    for one recipient shares it, it names the subject without disclosing it, and a verifier
+    that knows its own request's subject recomputes it, so a package whose attachments are
+    all redacted extracts (subject withheld) still cannot verify for another subject.
 """
 
 import copy
@@ -92,6 +98,7 @@ __all__ = [
     "WITHHELD",
     "PackageError",
     "build_body",
+    "case_binding",
     "cited_refs",
     "make_draft",
     "package_signing_payload",
@@ -122,6 +129,7 @@ RATIONALE_NOT_SHARED = "The account holder does not share evidence with this rec
 RATIONALE_NO_ANSWER = "No claim was prepared for this question."
 
 _SIGNED_FIELDS = ("schema_version", "package_id", "issued_at", "body", "body_sha256")
+CASE_BINDING_DOMAIN = "alibi:case:v1"   # separates case_ref from every other digest
 # String fields of a source left out of the package that must not resurface in any text.
 _EXCLUDED_RECORD_FIELDS = ("record_id", "event_id", "issuer_id", "payment_ref", "settlement_ref",
                            "text", "correction_reason", "items")
@@ -206,15 +214,19 @@ def _claim_refs(claim: Claim) -> list[EvidenceRef]:
     return merge_refs(claim.evidence_refs, calculation_refs(claim.calculation))
 
 
-def cited_refs(claims: Iterable[Claim], *, request_id: str | None = None) -> list[EvidenceRef]:
+def cited_refs(claims: Iterable[Claim], *, request_id: str | None = None,
+               audience: str | None = None) -> list[EvidenceRef]:
     """Every ref the active claims cite (evidence and calculation refs), sorted by key.
 
-    Pass it to ``make_draft(source_revisions=...)`` so a correction to any cited source, shared
-    or not, invalidates the draft and its approval.
+    ``request_id`` and ``audience`` (both, since request ids are per bank) keep only one
+    request's claims. Pass the result to ``make_draft(source_revisions=...)`` so a correction to
+    any cited source, shared or not, invalidates the draft and its approval.
     """
     refs: list[EvidenceRef] = []
     for claim in claims:
         if request_id is not None and claim.request_id != request_id:
+            continue
+        if audience is not None and claim.audience != audience:
             continue
         if DerivedState(claim.state) == DerivedState.ACTIVE:
             refs += _claim_refs(claim)
@@ -245,7 +257,8 @@ def _pick_claims(request: RequestForContext, claims: Iterable[Claim]) -> dict[st
                 claim = Claim.model_validate(claim)
             except ValidationError as exc:
                 raise PackageError(f"invalid claim ({_summary(exc)})") from exc
-        if (claim.request_id != request.request_id or claim.question_id not in questions
+        if (claim.request_id != request.request_id or claim.audience != request.audience
+                or claim.question_id not in questions
                 or DerivedState(claim.state) != DerivedState.ACTIVE):
             continue
         current = best.get(claim.question_id)
@@ -299,12 +312,21 @@ def _attach(request_id: str, item: Evidence, result: FilterResult) -> Attachment
     return _extract(request_id, item, result)
 
 
+def case_binding(audience: str, root_request_id: str, subject_ref: str) -> str:
+    """The ``case_ref`` of every package about ``root_request_id`` (a request, or the parent
+    of a follow-up) for ``audience``: ``case_`` + sha256 over the domain, audience, request
+    and subject. A recipient recomputes it from its own request to check the subject; it
+    cannot be inverted to the subject by anyone who does not already know it."""
+    return "case_" + canon.digest([CASE_BINDING_DOMAIN, audience, root_request_id, subject_ref])
+
+
 def _body(request: RequestForContext, claims: list[PackageClaim], attachments: list[Attachment],
           expires_at: datetime) -> PackageBody:
     return PackageBody(
         request_id=request.request_id, parent_request_id=request.parent_request_id,
         audience=request.audience,
-        case_ref=canon.make_id("case", request.parent_request_id or request.request_id),
+        case_ref=case_binding(request.audience, request.parent_request_id or request.request_id,
+                              request.subject_ref),
         scope=PackageScope(period=request.period, txn_ids=request.txn_ids),
         questions=list(request.questions), claims=claims, attachments=attachments,
         expires_at=expires_at)
@@ -543,8 +565,10 @@ def _timing_check(timing: TimingCheck, contents: Mapping[str, Any],
         return None  # generalised or malformed: the exact time is not disclosed
     if status is None and timing.settlement_status is not None:
         return None
-    effective = (stated or observed) if kind == "settlement" and status in SETTLED_STATUSES \
-        else None
+    # settlement evidence is a settlement record, or a payout that carries its own settlement
+    # status (the team's payouts fold the settlement state in; reconcile.is_settlement_evidence)
+    settles = kind == "settlement" or (kind == "payout" and status is not None)
+    effective = (stated or observed) if settles and status in SETTLED_STATUSES else None
     credit = contents.get(timing.credit_ref.key())
     if isinstance(credit, Mapping):
         booked = _exact_time(credit.get("booked_at"))
@@ -853,13 +877,14 @@ def build_body(request: RequestForContext, claims: Iterable[Claim],
 
 def make_draft(request: RequestForContext, body: PackageBody, review: Review, *,
                policy_version: str, source_revisions: Iterable[EvidenceRef],
-               now: datetime | None = None) -> Draft:
+               now: datetime | None = None, sequence: int = 0) -> Draft:
     """A pending draft of ``body`` for the holder to review.
 
     ``source_revisions`` is required: pass ``cited_refs(claims)`` so a correction to any
     source the answers depend on, shared or withheld, invalidates the draft and its approval.
     It is merged with every ref the body cites. The draft id is deterministic in the request,
-    body digest, policy and time.
+    body digest, policy and time; ``sequence`` (0 by default) distinguishes a rebuilt draft of
+    the same body from an earlier, since-invalidated one at the same clock.
     """
     if not isinstance(request, RequestForContext) or not isinstance(body, PackageBody) \
             or not isinstance(review, Review):
@@ -876,7 +901,8 @@ def make_draft(request: RequestForContext, body: PackageBody, review: Review, *,
     try:
         return Draft(
             draft_id=canon.make_id("drf", request.request_id, request.audience, body_sha256,
-                                   policy_version, format_utc(now)),
+                                   policy_version, format_utc(now),
+                                   *([sequence] if sequence else [])),
             request_id=request.request_id, audience=request.audience, body=body,
             body_sha256=body_sha256, review=review, policy_version=policy_version,
             source_revisions=merge_refs(source_revisions, body_refs(body)), created_at=now)
@@ -1084,6 +1110,10 @@ def _verify(package: Any, registry, expected_audience: str, now: datetime | None
     if expected_request_id is not None and body.request_id != expected_request_id:
         reasons.append(f"the package answers request {body.request_id}, not "
                        f"{expected_request_id}")
+    if expected_subject is not None and body.case_ref != case_binding(
+            body.audience, body.parent_request_id or body.request_id, expected_subject):
+        reasons.append("the package is not bound to the expected subject: case_ref does not "
+                       "match this recipient, request and subject")
     if now >= body.expires_at:
         reasons.append(f"the package expired at {format_utc(body.expires_at)}")
     if parsed.issued_at > now + CLOCK_SKEW:
@@ -1153,11 +1183,13 @@ def verify_package(package: dict | str | bytes | ContextPackage, registry, *,
     """Verify a received package for ``expected_audience`` against the pinned ``registry``.
 
     ``authentication`` covers schema, body digest, recipient binding (and, when given, the
-    request it must answer), expiry and the Alibi signature. ``sources`` reports each
-    attachment's trust: a claimed issuer signature is checked over the raw content (domain
-    alibi:record:v1, the attachment's issuer) and must match the attachment's reference;
-    unsigned self-supplied, bank and redacted items are reported at lower trust. With
-    ``expected_subject`` (the recipient's own request subject) every signed source must name
+    request it must answer and the subject it must be about), expiry and the Alibi signature.
+    ``sources`` reports each attachment's trust: a claimed issuer signature is checked over
+    the raw content (domain alibi:record:v1, the attachment's issuer) and must match the
+    attachment's reference; unsigned self-supplied, bank and redacted items are reported at
+    lower trust. With ``expected_subject`` (the recipient's own request subject) the body's
+    ``case_ref`` must equal ``case_binding(audience, root request, expected_subject)``, so even
+    a package of redacted extracts is bound to the subject, and every signed source must name
     that subject; without it, sources naming different subjects reject the package. A source
     or an answer that appears twice rejects it too. ``claims`` lists each status with
     ``calculation_valid``. ``accepted`` is true only when authentication is valid and no

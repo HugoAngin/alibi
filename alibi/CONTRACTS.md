@@ -41,9 +41,9 @@ now = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)   # before the fixture R
 store = open_store()                     # data/alibi/passport.db
 keys = default_keystore()                # data/alibi/keys
 fx = load_fixture(store, "supported", keystore=keys, now=now)
-run_investigation(store, "rfc_a_001", settlement_lookup=fx["settlement_lookup"],
-                  registry=keys.registry(), now=now)
-draft = build_review(store, "rfc_a_001", now=now)          # body + private review
+run_investigation(store, "rfc_a_001", audience="bank_a",   # a request is (bank, request_id)
+                  settlement_lookup=fx["settlement_lookup"], registry=keys.registry(), now=now)
+draft = build_review(store, "rfc_a_001", audience="bank_a", now=now)   # body + private review
 approval = approve(store, draft.draft_id, holder_id="holder_maya", now=now)
 package = sign_and_package(store, approval.approval_id, keystore=keys, now=now)
 result = verify_package(package.to_json_dict(), expected_audience="bank_a",
@@ -59,6 +59,15 @@ pass `now=fx["now"]` to every later step.
 The flow can be re-run. Running the quick start again on the same passport with the same `now`
 (after a restart, say) returns the same draft (now `packaged`), the same approval (now
 `consumed`) and the identical package, and records no second delivery.
+
+Request ids are chosen by banks, so a request is identified by `(audience, request_id)`. Two
+banks may use the same id without blocking or seeing each other. Holder calls therefore always
+name the bank: `run_investigation` and `build_review` take `audience` with a request_id.
+`load_fixture` returns the pairs as `fx["requests"]`. A bare request_id still resolves while only
+one bank has used it (the app, the demo cases and teammates' acceptance tests call bare ids);
+once several banks have used it the call raises `AmbiguousRequest`, and the store resolves a bare
+id to the request received first. Asking for `("bank_a", id)` gets `NotFound` when bank_a never
+sent it, never the other bank's request.
 
 ## Conventions
 
@@ -105,8 +114,9 @@ The flow can be re-run. Running the quick start again on the same passport with 
   `sign_and_package`. Refusals are audited too: `IngestError` (by the core), `PolicyError` from
   `record_policy` (counts only, never the rule texts), `PackageError` from `build_review`, and
   `ApprovalError` from `approve` and `sign_and_package`. A retry that returns an existing
-  approval or package is audited as `duplicate`. Argument errors (`ValueError`, `NotFound`,
-  `NotImplementedError`) are raised with no audit event. Read them with `store.list_audit()`.
+  approval or package is audited as `duplicate`. Argument errors (`ValueError`, `TypeError`,
+  `NotFound`, `NotImplementedError`) are raised with no audit event. Read them with
+  `store.list_audit()`.
 
 ## Three separate enums
 
@@ -253,11 +263,12 @@ Every error message is safe to show: it names ids, fields and reasons, never pay
 | `PolicyError` | A rule or policy is malformed. `record_policy` writes a refused audit event. |
 | `RuleClarificationError` (`.interpretations`) | A subclass of `PolicyError`. A plain-English rule could not be resolved, so nothing was saved. The refused audit event holds counts only, never the rule texts. |
 | `PackageError` | A draft cannot be built: no investigation yet, or the latest one is out of date. A refused audit event is written. |
-| `StoreError` | The base store error. Its subclasses are `NotFound` (no such id or revision), `IdempotencyConflict` (same key, different bytes), `RevisionConflict` (same revision, different content) and `NamespaceError` (a record id in the wrong namespace). |
+| `StoreError` | The base store error. Its subclasses are `NotFound` (no such id or revision), `IdempotencyConflict` (same key, different bytes), `RevisionConflict` (same revision, different content), `NamespaceError` (a record id in the wrong namespace) and `AmbiguousRequest` (a bare request_id that several banks used; pass `audience`). A passport created before store schema version 3 is refused with a `StoreError`; load the fixtures again into a new one. |
 | `SignatureError` (`.reason`) | A key, envelope or signature fails a check. |
 | `GatewayError` | A gateway call fails. Its subclasses are `ScopeError`, `BudgetExceeded`, `Unavailable` and `NotFoundError`. The rules investigation turns these into typed unresolved reasons, so they reach callers only when they use a `Gateway` directly. |
 | `NotImplementedError` | `run_investigation` was given a mode that is not built. |
 | `ValueError` | `now` is not a timezone-aware datetime. `verify_package` returns a rejection instead. |
+| `AmbiguousRequest` | A holder call (`run_investigation`, `build_review`) was given a bare request_id that several banks have used. Request ids are per bank, so name the bank with `audience`. |
 
 ## Functions
 
@@ -300,7 +311,9 @@ and go through `receive_rfc` (RFC A names `txn_ids`, so Bank A's account is pass
 `account_refs`). A `connection_id` other than the fixture's is written into each txn's
 provenance, so the feed is delivered by that connection. Lookup-only settlements stay outside the passport until an
 investigation retrieves them with `settlement_lookup`. Replaying is idempotent: every put
-returns `duplicate` and no row is added.
+returns `duplicate` and no row is added. `requests` lists each loaded request as
+`{"request_id", "audience"}`, which is what the holder calls need. `request_ids` lists only the
+ids.
 
 `now` defaults to the fixture clock `2026-11-07T12:00:00Z`, not the wall clock, because the
 fixture RFCs expire (RFC A at `2026-11-11T09:00:00Z`). The result's `now` is the clock used:
@@ -335,6 +348,16 @@ Returns (callables, the gold block and the clock shown as placeholders):
   "request_ids": [
     "rfc_a_001",
     "rfc_b_001"
+  ],
+  "requests": [
+    {
+      "request_id": "rfc_a_001",
+      "audience": "bank_a"
+    },
+    {
+      "request_id": "rfc_b_001",
+      "audience": "bank_b"
+    }
   ],
   "settlement_lookup": "<callable: payment_ref -> signed settlement event, or None>",
   "txn_refresh": "<callable: txn_id -> latest bank txn JSON, or None>",
@@ -518,13 +541,13 @@ arriving after Maya approved a draft:
   "invalidated": {
     "links": [],
     "claims": [
-      "clm_f0066dfa6b93fab4f0899762"
+      "clm_cc8751048e05f4a468325189"
     ],
     "drafts": [
-      "drf_6e9a1a2004b109c04657ba18"
+      "drf_8522ad872123e0d3d32c1743"
     ],
     "approvals": [
-      "apr_3eb197e791325b5f2019323c"
+      "apr_2e338a61dd6525420fb1ff74"
     ]
   }
 }
@@ -664,8 +687,19 @@ is the recipient binding. A signature, when present, must verify in domain `alib
 for that issuer. The request must not have expired, and its subject must be one the passport
 holds. Every `txn_id` must belong to that subject and sit on one of `account_refs`, the bank's
 own accounts. A request naming `txn_ids` without `account_refs` is refused (fail closed). A
-`parent_request_id` must name an earlier request from the same issuer for the same subject.
-The same `request_id` with identical content is idempotent.
+`parent_request_id` must name an earlier request from the same issuer for the same subject,
+and the follow-up must stay inside that parent's scope: the same scope kind (a
+transaction-scoped parent takes no `period`, a period-scoped parent needs one), a `period`
+inside the parent's, and `txn_ids` within the parent's `txn_ids` (or, for a period-scoped
+parent, booked inside its period). A wider follow-up is refused with a reason that starts
+`scope_wider_than_parent:`. Request ids are the issuer's own namespace: the same bank
+resending a `request_id` with identical content is idempotent and with different content is
+refused, while another bank may use the same id for its own request without conflict (the
+store keys requests by `(issuer, request_id)`; `store.get_request(request_id, issuer=...)`
+tells them apart and the bare id resolves to the request received first under it). Another bank's use of that id neither conflicts nor shows: a parent is
+looked up among this bank's own requests only, and naming another bank's request is refused
+exactly like naming none. Holder calls (`run_investigation`, `build_review`) pass `audience`
+when several banks used an id; a bare id that several banks used raises `AmbiguousRequest`.
 
 RFC A, signed by `bank_a`:
 
@@ -709,14 +743,21 @@ Raises `IngestError`.
 ### `run_investigation`
 
 ```python
-run_investigation(store, request, *, mode="rules", gateway=None, settlement_lookup=None,
-                  txn_refresh=None, budget=12, registry=None, now=None) -> InvestigationResult
+run_investigation(store, request, *, mode="rules", audience=None, gateway=None,
+                  settlement_lookup=None, txn_refresh=None, budget=12, registry=None,
+                  now=None) -> InvestigationResult
 ```
 
-Investigates a stored request and saves its links, claims and trace. `request` is a request_id
-or the stored `RequestForContext` (a different model under the same id raises
-`IdempotencyConflict`). Without `gateway`, a `Gateway` is built for the request's subject and
-the next run id, with the given connector callables, budget and registry (the registry
+Investigates a stored request and saves its links, claims and trace. `request` is either a
+request_id together with `audience`, the bank that sent it, or the stored `RequestForContext`,
+whose own audience is used.
+- A bare request_id that several banks used raises `AmbiguousRequest`; pass `audience`.
+- An `audience` that contradicts the model raises `StoreError`.
+- A different model under the same key raises `IdempotencyConflict`.
+
+Each claim carries `audience`. Run ids are `make_id("run", audience, request_id, "rules", n)`, so another
+bank's runs never share them. Without `gateway`, a `Gateway` is built for the request's subject
+and the next run id, with the given connector callables, budget and registry (the registry
 verifies settlement lookups). The rules engine matches by reference, then by amount and date.
 It always retrieves the matched payout's settlement, reconciles the amounts in code and takes
 each claim status from explicit fields only. Matching amounts alone never support a claim.
@@ -725,14 +766,14 @@ The result for RFC A (excerpt):
 
 ```json
 {
-  "run_id": "run_99f69070716e4148b0b3a0fa",
+  "run_id": "run_17444153fb44e6825f5e2924",
   "request_id": "rfc_a_001",
   "mode": "rules",
   "calls_used": 5,
   "unavailable": [],
   "links": [
     {
-      "link_id": "lnk_ad97e1e5d88250728ee89bff",
+      "link_id": "lnk_fdf12250f382e5af8ba0198d",
       "txn_ref": "txn:txn_9001@1",
       "link_state": "linked",
       "record_ref": "record:po_5001@1",
@@ -745,7 +786,8 @@ The result for RFC A (excerpt):
   ],
   "claims": [
     {
-      "claim_id": "clm_f0066dfa6b93fab4f0899762",
+      "claim_id": "clm_cc8751048e05f4a468325189",
+      "audience": "bank_a",
       "question_id": "q1",
       "status": "supported",
       "statement": "Credit txn_9001 of 216000 pence GBP is payout po_5001 (reference PO-5001), settled as stl_88001 before the credit was booked.",
@@ -829,8 +871,8 @@ statuses, never amounts or text:
 
 ```json
 {
-  "trace_id": "trc_f036517f7beb9f6c0789bbb7",
-  "run_id": "run_99f69070716e4148b0b3a0fa",
+  "trace_id": "trc_79943a7ef2b5153b301546d6",
+  "run_id": "run_17444153fb44e6825f5e2924",
   "seq": 4,
   "at": "2026-11-07T12:00:00Z",
   "actor": "gateway",
@@ -979,10 +1021,14 @@ belongs to another subject. A `PolicyError` writes a refused audit event targeti
 ### `build_review`
 
 ```python
-build_review(store, request_id, *, now=None, removed=()) -> Draft
+build_review(store, request_id, *, audience, now=None, removed=()) -> Draft
 ```
 
-Builds and saves the draft the holder reviews. It uses the claims of the request's latest
+Builds and saves the draft the holder reviews for the request `(audience, request_id)`.
+`audience` names the bank that sent the request; a bare id works while one bank alone used it and
+raises `AmbiguousRequest` once several have.
+Only that bank's claims are used, and the body's `case_ref` is derived from the bank and the
+request. It uses the claims of the request's latest
 investigation run, meaning the run recorded last, whatever clock it ran on (all its claims must
 still be active), every source and txn those claims cite (the
 cited revisions, which are the active ones while the claims are active), and the subject's
@@ -998,12 +1044,12 @@ The draft for RFC A with no policy (excerpt):
 
 ```json
 {
-  "draft_id": "drf_6e9a1a2004b109c04657ba18",
+  "draft_id": "drf_8522ad872123e0d3d32c1743",
   "request_id": "rfc_a_001",
   "audience": "bank_a",
   "status": "pending",
   "policy_version": "policy_cf1cbb66a638b4860a516671",
-  "body_sha256": "00d642b36aa81af05732b3fc6ebbaaef4b874ebde608806aa6fa84dc4a5fd50c",
+  "body_sha256": "b8b3861868c2e66128f876e599b4742fbd0c3d5b30ced8b41b52677556acf78a",
   "created_at": "2026-11-07T12:00:00Z",
   "source_revisions": [
     "record:fee_3001@1",
@@ -1019,7 +1065,7 @@ The draft for RFC A with no policy (excerpt):
   "body": {
     "request_id": "rfc_a_001",
     "audience": "bank_a",
-    "case_ref": "case_8f4e75517bfc12b4583a4bf6",
+    "case_ref": "case_ac1d4904e078bd5b42bc73d5769db6364633ccc8cc51e6e7ace5065197ef1c7c",
     "scope": {
       "txn_ids": [
         "txn_9001"
@@ -1213,13 +1259,13 @@ invalidated by newer evidence (run the investigation again), and writes a refuse
 
 ```json
 {
-  "audit_id": "aud_24066acf368abcb0f77da51e",
+  "audit_id": "aud_2a05c3d1964fe7dab20e6b9b",
   "at": "2026-11-07T12:00:00Z",
   "actor": "alibi",
   "action": "build_review",
   "target_id": "rfc_a_001",
   "outcome": "refused",
-  "detail": "refused: request rfc_a_001 has no investigation results yet; call run_investigation first"
+  "detail": "refused for bank_a: request rfc_a_001 has no investigation results yet; call run_investigation first"
 }
 ```
 
@@ -1239,10 +1285,10 @@ a fresh approval.
 
 ```json
 {
-  "approval_id": "apr_3eb197e791325b5f2019323c",
+  "approval_id": "apr_2e338a61dd6525420fb1ff74",
   "request_id": "rfc_a_001",
   "audience": "bank_a",
-  "body_sha256": "00d642b36aa81af05732b3fc6ebbaaef4b874ebde608806aa6fa84dc4a5fd50c",
+  "body_sha256": "b8b3861868c2e66128f876e599b4742fbd0c3d5b30ced8b41b52677556acf78a",
   "policy_version": "policy_cf1cbb66a638b4860a516671",
   "source_revisions": [
     "record:fee_3001@1",
@@ -1256,7 +1302,7 @@ a fresh approval.
     "txn:txn_9001@1"
   ],
   "holder_id": "holder_maya",
-  "draft_id": "drf_6e9a1a2004b109c04657ba18",
+  "draft_id": "drf_8522ad872123e0d3d32c1743",
   "approved_at": "2026-11-07T12:00:00Z",
   "expires_at": "2026-11-07T12:15:00Z",
   "status": "pending"
@@ -1272,13 +1318,13 @@ audit event:
 
 ```json
 {
-  "audit_id": "aud_716cc0e8a95f687c39a519d2",
+  "audit_id": "aud_6074703b8a1bdc035aa79464",
   "at": "2026-11-07T12:00:00Z",
   "actor": "holder_maya",
   "action": "approve",
-  "target_id": "apr_3eb197e791325b5f2019323c",
+  "target_id": "apr_2e338a61dd6525420fb1ff74",
   "outcome": "duplicate",
-  "detail": "retry for draft drf_6e9a1a2004b109c04657ba18: returned the existing pending approval"
+  "detail": "retry for draft drf_8522ad872123e0d3d32c1743: returned the existing pending approval"
 }
 ```
 
@@ -1312,13 +1358,13 @@ txn extract are shown):
 ```json
 {
   "schema_version": "alibi.package.v1",
-  "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+  "package_id": "pkg_20ca710b85c4221443fd54c6",
   "issued_at": "2026-11-07T12:00:00Z",
   "body": {
     "schema_version": "alibi.package_body.v1",
     "request_id": "rfc_a_001",
     "audience": "bank_a",
-    "case_ref": "case_8f4e75517bfc12b4583a4bf6",
+    "case_ref": "case_ac1d4904e078bd5b42bc73d5769db6364633ccc8cc51e6e7ace5065197ef1c7c",
     "scope": {
       "txn_ids": [
         "txn_9001"
@@ -1400,12 +1446,12 @@ txn extract are shown):
     ],
     "expires_at": "2026-11-14T12:00:00Z"
   },
-  "body_sha256": "00d642b36aa81af05732b3fc6ebbaaef4b874ebde608806aa6fa84dc4a5fd50c",
+  "body_sha256": "b8b3861868c2e66128f876e599b4742fbd0c3d5b30ced8b41b52677556acf78a",
   "signature": {
     "alg": "Ed25519",
     "kid": "alibi_demo",
     "domain": "alibi:package:v1",
-    "sig": "4baf5a993e16423cc421d73ead9d3172f3b07db79942355733caa5ec94f65acb1783fcd7cca5f91f85ed00c0cff0dfc8fc6026ba3025344500c84029099b2502"
+    "sig": "ae567933906fa7ac018258b3bdb1a9d90152c3492744a84308d5bc8fb174a5983459a037c13b6d6a53993b1518fb2a98b22956201237f804d8b7df54f15ea80b"
   }
 }
 ```
@@ -1414,11 +1460,11 @@ The delivery record:
 
 ```json
 {
-  "delivery_id": "dlv_e3e32c273f312aa5f0145bbf",
-  "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+  "delivery_id": "dlv_b5a24bc70b21ddb4b85bd855",
+  "package_id": "pkg_20ca710b85c4221443fd54c6",
   "request_id": "rfc_a_001",
   "audience": "bank_a",
-  "package_sha256": "7cb31b053790aee5ec98d110c20f073ff06bfb645e2fefd403f614197ee6b138",
+  "package_sha256": "b87ac3c90dfdd7a596d90eb362d391e2ee4ff022019e1a14a8ac5bf34c6aaf3f",
   "delivered_at": "2026-11-07T12:00:00Z",
   "status": "sent"
 }
@@ -1435,11 +1481,11 @@ approved draft's body gives:
 
 ```json
 {
-  "audit_id": "aud_2aa4f3eb6558f08a13ca2d02",
+  "audit_id": "aud_061a48ded410a323a7de3ed5",
   "at": "2026-11-07T12:00:00Z",
   "actor": "alibi",
   "action": "sign_and_package",
-  "target_id": "apr_3eb197e791325b5f2019323c",
+  "target_id": "apr_2e338a61dd6525420fb1ff74",
   "outcome": "refused",
   "detail": "refused: the package body changed after it was approved"
 }
@@ -1459,7 +1505,8 @@ A correction after approval (the `pending_correction` example above) gives:
 
 ```python
 verify_package(package, *, expected_audience, registry=None, now=None,
-               expected_subject=None, expected_request_id=None) -> VerificationResult
+               expected_subject=None, expected_request_id=None,
+               store=None) -> VerificationResult
 ```
 
 The recipient-side check against the pinned registry. It never raises and never writes:
@@ -1488,8 +1535,8 @@ package:
 It gives three separate answers:
 
 - `authentication`: the schema, body digest, recipient binding to `expected_audience` (and,
-  when given, `expected_request_id`), expiry and the Alibi package signature. It says nothing
-  about whether the claims are true.
+  when given, `expected_request_id` and `expected_subject`), expiry and the Alibi package
+  signature. It says nothing about whether the claims are true.
 - `sources`: trust per attachment. A claimed issuer signature is checked against the registry
   in domain `alibi:record:v1` for the attachment's issuer, and its content must match the
   attachment's ref. A failed claimed signature rejects the package. Self-supplied items, bank
@@ -1497,16 +1544,36 @@ It gives three separate answers:
 - `claims`: the status per question, with `calculation_valid` recomputed from the disclosed
   amounts.
 
-`accepted` is true only when authentication is valid and no source check failed. Bank A
-verifying the package above (excerpt: 2 of 9 sources shown):
+`accepted` is true only when authentication is valid and no source check failed.
+
+**Subject binding.** The body's `case_ref` is
+`alibi.core.package.case_binding(audience, parent_request_id or request_id, subject_ref)`:
+`case_` + sha256 over (`alibi:case:v1`, audience, root request id, subject). It is the same for
+every package of one case to one recipient, it does not disclose the subject, and a recipient
+that knows its own request's subject recomputes it. With `expected_subject`, a `case_ref` that
+does not match is an authentication failure (`the package is not bound to the expected
+subject: ...`), so a package whose attachments are all redacted extracts with `subject_ref`
+withheld still cannot verify for another subject. Signed sources must also name that subject.
+
+**Defaults from the stored RFC.** With `store` (the passport store, read only), and when the
+caller leaves `expected_subject` or `expected_request_id` unset, both default from the stored
+request the package names for `expected_audience` (`store.get_request(body.request_id,
+issuer=expected_audience)`): `subject_ref` and `request_id`. An explicit argument always wins.
+When the store does not hold that request the defaults stay empty and the package verifies as
+without a store, so an unknown request is not a rejection. Bank-side callers that open the
+passport store should pass it; callers that cannot must pass both values themselves.
+
+Bank A verifying the package above (excerpt: 2 of 9 sources shown; the digests and `case_ref`
+values in these examples predate the subject binding, so they do not recompute from the
+fixture today):
 
 ```json
 {
   "accepted": true,
-  "package_sha256": "7cb31b053790aee5ec98d110c20f073ff06bfb645e2fefd403f614197ee6b138",
+  "package_sha256": "b87ac3c90dfdd7a596d90eb362d391e2ee4ff022019e1a14a8ac5bf34c6aaf3f",
   "authentication": {
     "valid": true,
-    "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+    "package_id": "pkg_20ca710b85c4221443fd54c6",
     "audience": "bank_a",
     "kid": "alibi_demo",
     "reasons": []
@@ -1561,7 +1628,7 @@ Bank B verifying Bank A's package:
   "accepted": false,
   "authentication": {
     "valid": false,
-    "package_id": "pkg_ff59ce923ce18b9b01e982f7",
+    "package_id": "pkg_20ca710b85c4221443fd54c6",
     "audience": "bank_a",
     "kid": "alibi_demo",
     "reasons": [
@@ -1589,13 +1656,17 @@ and make no network or LLM calls. The conftest fixtures `keystore`, `registry` a
 
 ## Known issues
 
-- Request ids are unique across all banks, not per bank. A bank that sends a `request_id` another
-  bank already used is refused, and the refusal shows that the id exists. Use unique ids, as the
-  fixtures do.
-- `verify_package` binds a package to a subject and a request only when the caller passes
-  `expected_subject` and `expected_request_id`. Without them it still rejects attachments that
-  name more than one subject. The package body does not carry the subject yet, so bank-side
-  callers should always pass both.
+- Request ids are per bank (`(issuer, request_id)`), so two banks may reuse an id. Everything
+  that names a bare `request_id` (claims, drafts, approvals, packages, `run_investigation`,
+  `build_review`) resolves a shared id to the request received first under it at the store level, while
+  the holder API (`run_investigation`, `build_review`) refuses a bare id that several banks
+  used with `AmbiguousRequest` and takes `audience=` to name the bank. Fixtures use distinct ids.
+- `verify_package` binds the subject through `case_ref` only when it is given
+  `expected_subject`, or `store` and the request is held. Without either it still rejects
+  attachments that name more than one subject. Packages signed before the binding landed carry
+  the old `case_ref` and fail a subject-bound verification.
+- Request `case_ref` groups a follow-up with its direct parent, not with the root of a longer
+  chain (`parent_request_id or request_id`), as before.
 - The rules investigation catches double counting only within one run. Two RFCs that each ask
   about a credit backed by the same payout can each get `supported`.
 - Calculation signs (not an issue, a rule): `net_payout` and `net_total` net kinds with
@@ -1613,7 +1684,7 @@ The code's public behaviour wins. These API functions take arguments DESIGN.md d
   accounts.
 - `build_review` takes `removed`, which is passed to `build_body`.
 - `verify_package` takes `expected_subject` and `expected_request_id`, which are passed to the
-  core.
+  core, and `store`, which defaults them from the stored request.
 - `load_fixture` also returns `statuses`, `expected` and `now`. Its clock defaults to the
   fixture clock `2026-11-07T12:00:00Z`, not the wall clock.
 - `Gateway` also takes `request_id`, which `run_investigation` sets.
@@ -1621,3 +1692,133 @@ The code's public behaviour wins. These API functions take arguments DESIGN.md d
   `approved` or `packaged`, so the whole flow can be re-run.
 - `verify_package(registry=None)` reads the pinned `trust_registry.json` instead of opening the
   demo keystore, so verifying never creates keys.
+- A request is identified by `(audience, request_id)`, not by `request_id` alone. Store schema
+  version 3 keys the requests table by both columns.
+  - `store.get_request` takes `audience` (alias `issuer`). It is the internal lookup; a bare id
+    resolves to the request received first, and `strict=True` (what the public API uses) raises
+    `AmbiguousRequest` once several banks used it.
+  - `list_claims`, `list_drafts` and `list_approvals` take `audience`.
+  - `Claim` carries `audience`.
+  - `next_run_id(store, request_id, *, audience)` derives run ids from the bank as well.
+  - `case_ref` is `make_id("case", audience, parent_request_id or request_id)`.
+  - The public API resolves a bare request_id only while one bank alone has used it;
+    `run_investigation` and `build_review` take `audience` and raise `AmbiguousRequest` for a
+    shared bare id, and `load_fixture` returns the `{"request_id", "audience"}` pairs as
+    `requests`. The `build_review` refusal audit names the bank.
+
+## Adapter (`alibi.adapter`)
+
+The adapter is the system-under-test harness: it runs one team case through the simulated
+services into a fresh passport and emits one prediction per RFC in the shape of
+`alibi/eval/predictions.md` (`alibi/eval/schemas/prediction.schema.json`). Every emitted object
+is validated with `alibi.eval.jsonschema_lite` before it is returned.
+
+```python
+from alibi.adapter import run_case
+predictions = run_case(1, "rules")                       # one dict per RFC of case 1
+predictions = run_case(case_dict, "agents", client=fake) # a case dict (gold is stripped), a test client
+```
+
+`run_case(case, mode, as_of=None, *, client=None, run_id=None, replay=None, root=None)`:
+
+- `case` is a case number (`agents.data.api.load_case`; the lockbox hides sealed numbers) or a
+  case dict in the data schema. Cases are loaded only through `agents.data.api`
+  (`load_case`, `without_gold`, `lookup` behind the mock merchant); gold is removed either way.
+- `mode` is `rules` (the core engine, `alibi.core.investigate_rules`), `one_pass` (the single-call
+  Gemini baseline, `alibi.baselines.one_pass`; alias `single_call`) or `agents` (the Gemini roles
+  pipeline, `alibi.agents.runner`; alias `alibi`). `alibi.api.run_investigation(mode=...)`
+  dispatches the same way and takes `client` for the model modes.
+- `as_of` answers every RFC issued by that moment at that moment. Without it each RFC is
+  answered at its own `issued_at` (below).
+- `client` is the model client for the model modes (anything with the `GeminiClient.generate`
+  signature, e.g. `alibi.llm.fake.FakeClient`). Without one the adapter builds
+  `GeminiClient.for_run(mode, run_id)` (a fresh log under `data/alibi/llm_logs/`, every row
+  scoped to the case through `client.scoped(case_number=n)`) and wraps it with
+  `alibi.agents.replay.make_client(case=f"case{n}", variant=mode, live=client)`, so
+  `ALIBI_REPLAY=1` serves the recording in `alibi/fixtures/replays/case<n>_<mode>.json` and a
+  live run records it. The process cap is `ALIBI_LLM_CAP` and the response cache stays on.
+  `replay=True` wraps a given client in the recorder too (tests leave it off).
+- `root` moves the per-case store folder; the default is
+  `data/alibi/adapter/<mode>/case_<n>/`, emptied before each run.
+
+What one run does, through the real paths only:
+
+1. A fresh `Store`, `keys.connector_keystore(<root>/keys)` and its registry (passed to every
+   passport call; the default keystore would drop the merchant and app issuer keys).
+2. The mock merchant (`alibi.connectors.merchant.create_merchant_app`) with a
+   `plug.webhook_sink` over the store and the mock bank (`alibi.bank.service.create_bank_app`)
+   with a `plug.rfc_sink`, both as in-process `TestClient`s with fresh bearer tokens for
+   `bank_a`, `bank_b`, `feed` and `admin` (never written or printed). The services load the
+   case through a loader bound to this case only, so a sealed case given as a dict works.
+3. `connectors.clients.bootstrap(store, registry, case=n, merchant=MerchantClient(...),
+   banks={bank_a, bank_b}, feed=FeedClient(HttpFeed over the bank client, feed token),
+   clock=CaseClock(case, first issued_at))`: the merchant pushes its visible signed webhooks,
+   the bank is seeded and the feed synced with its cursor, the visible holder imports go
+   through the self-supplied import, and each bank issues its visible RFCs into `receive_rfc`.
+   A holder policy on the case (`holder_policy` or `policy`) is recorded with `record_policy`;
+   otherwise the subject has no policy.
+4. **The clock.** RFCs are answered in `issued_at` order, each with `now=issued_at`. When the
+   next RFC is issued later than the clock, the adapter advances the merchant and bank clocks
+   (`POST /admin/advance`), which pushes the newly visible deliveries, syncs the feed, imports
+   what became visible and issues the newly visible RFCs, and only then answers it. The first
+   RFC is always answered before the clock moves.
+5. Per RFC: `run_investigation(store, request_id, audience=rfc.audience, mode=mode,
+   registry=registry, now=issued_at, **connect(merchant, feed))` (the one-pass mode calls
+   `one_pass.run_one_pass` directly so the pre-policy proposal is available, and the adapter
+   then writes the same `run_investigation` audit row, actor `one_pass`, that
+   `api.run_investigation(mode="one_pass")` writes, so every mode's run is in the passport's
+   audit), then `build_review(store, request_id, audience=..., now=issued_at)` for the
+   policy-filtered draft.
+
+No lookahead: an RFC is answered with what the services had delivered or made available by its
+`issued_at` and nothing later. No development case has data arriving between its RFCs, so the
+clock-advance path is pinned by `alibi/tests/test_adapter.py::
+test_an_rfc_is_answered_before_later_data_lands_and_the_next_one_sees_it` on a synthetic copy of
+case 1 whose lookup-only settlement and one extra order arrive between the two RFCs: Bank A's
+answer is `unresolved settlement_not_found` after one empty lookup and never mentions either
+record; Bank B, answered after the advance, observes the extra order. Every prediction's refs
+are also checked against `agents.data.api.known_at(case, issued_at, include_lookup=True)`.
+
+The prediction object:
+
+| Field | Source |
+| --- | --- |
+| `links` | The active link in the store for the case `holder_claim.txn_id`: `state`, `payout_record_ids` (the linked payout plus every payout record the supported source-of-funds claim cites, so a settlement batch lists all of them), `candidate_record_ids`, `method`. |
+| `claims` | The stored `Claim` of the run per question: `status`; `gap` is the pinned code at the head of `Claim.gap` for an unresolved answer (null otherwise, as gold); `facts` is `Claim.facts`; `evidence_refs` are the claim refs plus the calculation terms in gold syntax (`bank:<txn_id>`, `merchant:<record_id>` for issuer-verified records whether pushed or looked up, `import:<record_id>` for self-supplied records with the `self_` namespace stripped); `statement`, `rationale`, `calculation`. |
+| `package_claims` | Extra (ignored by the scorer): the draft body claim per question with the `claim_changes` reason from the review, so a downgrade by the policy gate is visible. |
+| `package` | The draft body: `{request_id, audience, empty, attachments[{ref, form, fields (extracts: the disclosed field names), content, source_trust}]}`. |
+| `exclusions` | The `excluded` entries of the draft review plus every active record and bank entry of the subject that is neither attached nor cited (`not needed to answer the questions`). Never part of the package. |
+| `proposed_package` | The pre-policy proposal, same shape with `claims`: rules, the unfiltered cited set; one_pass, the model `disclosures` and claims from `OnePassRun.proposal`; agents, the Curator kept set from the trace notes (the cited set of the claims when the Curator gave no answer). |
+| `cost` | `model_calls`, `tokens` (agents: `runner.run_stats`; one_pass: `OnePassRun`; rules: 0), `tool_calls` (gateway calls), `latency_ms` (investigation plus review), `cost_usd_estimate` 0 (no price list is pinned; `cost_note` says so). |
+| `retrieval` | `lookups`, `observed_inputs` (agents and one_pass from their counters; rules: gateway `lookup_settlement` calls and the active records plus bank entries of the subject after the run) and the predeclared `strategy` (`alibi.adapter.STRATEGIES`). |
+| `failure` | `null`, or typed: an engine exception (`error`), a gateway or model budget refusal (`budget_exceeded`), an outage or missing key (`unavailable`), a schema failure (`invalid_output`). In the model modes a failed role or model call is read from the result (`unavailable` entries, the one-pass `generate` note) and reported here; the engines never raise for it. |
+| `system`, `issued_at` | The mode label and the clock the request was answered at. |
+
+Retrieval strategy per mode (`retrieval.strategy`): **rules**: deterministic; list the records
+and bank entries of the subject, and when no stored payout settles the credit, look up the
+settlement for the payout reference the credit carries or the subject records name, one call
+per reference. **one_pass**: `FIXED_RETRIEVAL`, look up any payout reference named in a
+`balance_release` message, then one model call. **agents**: adaptive; the Detective proposes
+checks and the Challenger requests at most one lookup per round (settlement by reference,
+payouts by covered record or date) within an action budget of 3 per question and 3 rounds.
+
+CLI:
+
+```
+uv run --frozen python -m alibi.adapter --mode rules --cases 1-80 --out data/alibi/predictions
+uv run --frozen python -m alibi.adapter --modes rules,one_pass,agents --cases 1,2 --families demo
+uv run --frozen python -m alibi.adapter --mode rules --cases 1-80 --as-of 2026-11-04T14:00:00Z
+```
+
+It writes one `<out>/<mode>.jsonl` per mode, first line `{"system": {"name", "model",
+"commit"}}`, then one prediction per request; `--out` must be under `data/alibi`
+(`ALIBI_DATA_DIR` moves it; exit code 2 otherwise, and 2 when no visible case matches). It
+prints one progress line per case and, last, one JSON summary per mode: `{mode, cases,
+requests, failures, lookups, observed_inputs, model_calls, tokens, out}`. A case whose seeding
+raises is written as one typed `error` failure per RFC, so the file stays complete. The same
+runs from Python: `run_cases(cases, mode, out=Path, as_of=None, run_id=None, client=None,
+log=None, root=None)` returns the summary; `root` is `run_case`'s store folder. Score with
+`uv run --frozen python -m alibi.eval.scorer --predictions data/alibi/predictions/rules.jsonl --by-family`.
+
+Tests: `alibi/tests/test_adapter.py` (no Gemini: `FakeClient` for the model modes; stores under
+the test `tmp_path`, the CLI under a `tmp_path` `ALIBI_DATA_DIR`).

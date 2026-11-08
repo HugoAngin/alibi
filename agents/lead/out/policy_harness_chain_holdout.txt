@@ -1,0 +1,9 @@
+rules HO-01  leak       missing [('deny', 'purchase')]
+rules HO-02  safe_wrong missing [('deny', 'health')] (clarified)
+rules HO-04  safe_wrong missing [('recipient_restrict', 'refund')] (clarified)
+rules HO-05  safe_wrong missing [('recipient_restrict', 'rent')] (clarified)
+rules HO-06  safe_wrong missing [('generalise', 'item')] (clarified)
+rules HO-09  safe_wrong missing [('deny', 'groceries')] (clarified)
+rules HO-11  safe_wrong missing [('deny', 'payment_reference')] (clarified)
+{"rules": {"status": "ran", "cases": 12, "correct": 5, "compiled": 2, "held": 10, "safe_wrong": 6, "leaks": 1, "invalid": 0, "errors": 0, "leak_ids": ["HO-01"]}}
+{"rules_available": 1, "rules_cases": 12, "rules_correct": 5, "rules_compiled": 2, "rules_held": 10, "rules_safe_wrong": 6, "rules_leaks": 1, "rules_invalid": 0, "rules_errors": 0}

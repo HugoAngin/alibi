@@ -16,6 +16,10 @@ from alibi.core.store import Store
 
 RFC_A_TIME = "2026-11-02T09:00:00Z"
 PO_VISIBLE = "2026-10-27T16:05:00Z"
+# The admin routes take the shared admin bearer (SERVICES.md conventions); ``_client`` gives
+# every app this token and the admin calls below send it.
+ADMIN_TOKEN = "tok-admin-merchant-tests"
+ADMIN = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 # gold.ingest outcome -> the sink statuses the merchant may report for it. The core store
 # answers ``duplicate`` (not ``stale``) when a lower revision is redelivered with content
@@ -40,6 +44,7 @@ def store(tmp_path):
 
 
 def _client(mkeys, sink=None, **kwargs) -> TestClient:
+    kwargs.setdefault("admin_token", ADMIN_TOKEN)
     return TestClient(create_merchant_app(sink, keystore=mkeys, **kwargs))
 
 
@@ -50,7 +55,7 @@ def _seeded(mkeys, store, case_number, as_of=None):
     params = {"case": case_number}
     if as_of is not None:
         params["as_of"] = as_of
-    response = client.post("/admin/seed", params=params)
+    response = client.post("/admin/seed", headers=ADMIN, params=params)
     assert response.status_code == 200, response.json()
     return client, response.json()
 
@@ -71,7 +76,7 @@ def test_identity_before_and_after_seed(mkeys):
                                       "kid": "merchant_mock", "case_number": None, "as_of": None}
     assert client.get("/records/rec-0001-001").status_code == 404
     assert client.get("/records/rec-0001-001").json()["code"] == "unknown_case"
-    client.post("/admin/seed")
+    client.post("/admin/seed", headers=ADMIN)
     body = client.get("/").json()
     assert body["case_number"] == 1 and body["as_of"] == RFC_A_TIME
 
@@ -88,7 +93,7 @@ def test_seed_case_1_pushes_twenty_deliveries_into_the_passport(mkeys, store):
     assert len(records) == 20
     assert all(r.source_trust == "issuer_verified" for r in records)
     assert "rec-0001-021" not in {r.record_id for r in records}
-    state = client.get("/admin/state").json()
+    state = client.get("/admin/state", headers=ADMIN).json()
     assert state["case_number"] == 1 and len(state["pushed"]) == 20
     assert state["corrections"] == [] and state["lookups_served"] == 0
 
@@ -115,7 +120,7 @@ def test_pushes_follow_list_order_not_received_at_order(mkeys):
     assert times != sorted(times)                    # the case really is out of time order
     seen = []
     client = _client(mkeys, _recording_sink(seen))
-    seeded = client.post("/admin/seed", params={"case": 4, "as_of": max(times)}).json()
+    seeded = client.post("/admin/seed", headers=ADMIN, params={"case": 4, "as_of": max(times)}).json()
     want = [d["event"]["event_id"] for d in case["merchant_deliveries"]]
     assert [p["event_id"] for p in seeded["pushed"]] == want
     assert [payload["event"]["event_id"] for payload, _ in seen] == want
@@ -147,7 +152,7 @@ def test_case_23_stale_revision_does_not_displace_the_correction(mkeys, store):
 
 def test_admin_correct_pushes_a_new_signed_revision(mkeys, store):
     client, _ = _seeded(mkeys, store, 1)
-    response = client.post("/admin/correct", json={
+    response = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-005", "changes": {"status": "pending"},
         "correction_reason": "refund reopened by the platform"})
     assert response.status_code == 200, response.json()
@@ -164,7 +169,7 @@ def test_admin_correct_pushes_a_new_signed_revision(mkeys, store):
     assert [r.revision for r in history] == [1, 2] and history[0].status == "completed"
     listed = client.get("/records/rec-0001-005").json()
     assert [r["event"]["revision"] for r in listed["records"]] == [1, 2]
-    state = client.get("/admin/state").json()
+    state = client.get("/admin/state", headers=ADMIN).json()
     assert state["corrections"][0]["record_id"] == "rec-0001-005"
     assert state["corrections"][0]["revision"] == 2 and len(state["pushed"]) == 21
 
@@ -172,18 +177,18 @@ def test_admin_correct_pushes_a_new_signed_revision(mkeys, store):
 def test_admin_correct_refuses_identity_changes_and_unknown_records(mkeys, store):
     client, _ = _seeded(mkeys, store, 1)
     for field in ("record_id", "issuer_id", "subject_ref", "kind", "event_id"):
-        response = client.post("/admin/correct", json={
+        response = client.post("/admin/correct", headers=ADMIN, json={
             "record_id": "rec-0001-005", "changes": {field: "other"}, "correction_reason": "x"})
         assert response.status_code == 400
         assert response.json()["code"] == "invalid_correction"
         assert field in response.json()["reason"]
-    missing = client.post("/admin/correct", json={
+    missing = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-999", "changes": {"status": "pending"}, "correction_reason": "x"})
     assert missing.status_code == 404 and missing.json()["code"] == "unknown_record"
-    no_reason = client.post("/admin/correct", json={
+    no_reason = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-005", "changes": {"status": "pending"}, "correction_reason": ""})
     assert no_reason.status_code == 400 and no_reason.json()["code"] == "invalid_correction"
-    bad_value = client.post("/admin/correct", json={
+    bad_value = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-005", "changes": {"amount_minor": 12.5}, "correction_reason": "x"})
     assert bad_value.status_code == 400 and bad_value.json()["code"] == "invalid_correction"
     assert store.get_source("rec-0001-005").revision == 1
@@ -192,20 +197,20 @@ def test_admin_correct_refuses_identity_changes_and_unknown_records(mkeys, store
 def test_admin_correct_refuses_a_scalar_covers_record_ids(mkeys, store):
     client, _ = _seeded(mkeys, store, 1)
     for value in (5, True, 1.5):
-        response = client.post("/admin/correct", json={
+        response = client.post("/admin/correct", headers=ADMIN, json={
             "record_id": "rec-0001-021", "changes": {"covers_record_ids": value},
             "correction_reason": "x"})
         assert response.status_code == 400, response.text
         assert response.json()["code"] == "invalid_correction"
         assert "rec-0001-021" in response.json()["reason"]
         assert "5" not in response.json()["reason"].replace("rec-0001-021", "")
-    assert client.get("/admin/state").json()["corrections"] == []
+    assert client.get("/admin/state", headers=ADMIN).json()["corrections"] == []
     assert len(client.get("/records/rec-0001-021").json()["records"]) == 1
 
 
 def test_correction_of_a_payout_can_unsettle_it(mkeys, store):
     client, _ = _seeded(mkeys, store, 1)
-    response = client.post("/admin/correct", json={
+    response = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-021", "changes": {"status": "pending", "settled_at": None},
         "correction_reason": "settlement reversed"})
     assert response.status_code == 200, response.json()
@@ -235,7 +240,7 @@ def test_lookup_of_po_0001_01_appears_at_its_availability(mkeys, store):
     assert client.get("/records/rec-0001-021").status_code == 404
     assert client.get("/records/rec-0001-021").json()["code"] == "not_found"
 
-    advanced = client.post("/admin/advance", params={"as_of": RFC_A_TIME})
+    advanced = client.post("/admin/advance", headers=ADMIN, params={"as_of": RFC_A_TIME})
     assert advanced.status_code == 200 and advanced.json()["pushed"] == []
     found = client.get("/settlements", params={"payout_reference": "PO-0001-01"}).json()
     assert found["as_of"] == RFC_A_TIME and found["query"] == {"payout_reference": "PO-0001-01"}
@@ -269,7 +274,7 @@ def test_lookup_of_po_0001_01_appears_at_its_availability(mkeys, store):
 def test_case_2_pending_payout_appears_five_minutes_after_status_as_of(mkeys, store):
     client, _ = _seeded(mkeys, store, 2, as_of="2026-10-29T06:34:59Z")
     assert client.get("/settlements", params={"payout_reference": "PO-0002-01"}).json()["records"] == []
-    client.post("/admin/advance", params={"as_of": "2026-10-29T06:35:00Z"})
+    client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-29T06:35:00Z"})
     [envelope] = client.get("/settlements", params={"payout_reference": "PO-0002-01"}).json()["records"]
     assert envelope["event"]["record_id"] == "rec-0002-021"
     assert envelope["event"]["status"] == "pending"
@@ -283,7 +288,7 @@ def test_lookup_results_are_deduplicated_by_event_id(mkeys, store):
     client, _ = _seeded(mkeys, store, 27, as_of="2026-12-31T00:00:00Z")
     found = client.get("/records/rec-0027-001").json()
     assert len(found["records"]) == 1
-    assert client.get("/admin/state").json()["pushed"][13]["outcome"] == "duplicate"
+    assert client.get("/admin/state", headers=ADMIN).json()["pushed"][13]["outcome"] == "duplicate"
 
 
 def test_payout_query_validation(mkeys, store):
@@ -314,7 +319,7 @@ def test_payout_query_empty_keys_are_refused_not_crashed(mkeys, store):
         assert response.status_code == 400, (params, response.text)
         assert response.json()["code"] == "invalid_query", params
         assert "must not be empty" in response.json()["reason"]
-    assert client.get("/admin/state").json()["lookups_served"] == 0
+    assert client.get("/admin/state", headers=ADMIN).json()["lookups_served"] == 0
 
 
 def test_payout_date_in_any_iso_spelling_matches_the_same_day(mkeys, store):
@@ -336,20 +341,20 @@ def test_payout_range_at_the_end_of_the_calendar_is_empty_not_an_error(mkeys, st
 
 def test_admin_lookups_records_every_served_query(mkeys, store):
     client, _ = _seeded(mkeys, store, 1)
-    assert client.get("/admin/lookups").json() == {"lookups": []}
+    assert client.get("/admin/lookups", headers=ADMIN).json() == {"lookups": []}
     client.get("/settlements", params={"payout_reference": "PO-0001-01"})
     client.get("/payouts", params={"covers": "rec-0001-001"})
     client.get("/records/rec-0001-001")
     client.get("/records/rec-0001-999")                     # a miss is not a served lookup
     client.get("/payouts", params={"covers": "rec-0001-001", "payout_date": "x"})   # refused
-    lookups = client.get("/admin/lookups").json()["lookups"]
+    lookups = client.get("/admin/lookups", headers=ADMIN).json()["lookups"]
     assert [(l["route"], l["query"], l["record_ids"]) for l in lookups] == [
         ("/settlements", {"payout_reference": "PO-0001-01"}, ["rec-0001-021"]),
         ("/payouts", {"covers": "rec-0001-001"}, ["rec-0001-021"]),
         ("/records/{record_id}", {"record_id": "rec-0001-001"}, ["rec-0001-001"]),
     ]
     assert all(l["at"] == RFC_A_TIME for l in lookups)
-    assert client.get("/admin/state").json()["lookups_served"] == 3
+    assert client.get("/admin/state", headers=ADMIN).json()["lookups_served"] == 3
 
 
 # --------------------------------------------------------------------------- retry and clock
@@ -358,35 +363,35 @@ def test_admin_lookups_records_every_served_query(mkeys, store):
 def test_retry_resends_identical_bytes_and_the_passport_reports_duplicate(mkeys, store):
     client, seeded = _seeded(mkeys, store, 1)
     original = seeded["pushed"][0]
-    response = client.post("/admin/retry", json={"event_id": original["event_id"]})
+    response = client.post("/admin/retry", headers=ADMIN, json={"event_id": original["event_id"]})
     assert response.status_code == 200, response.json()
     body = response.json()
     assert body["event_id"] == "evt-0001-001" and body["same_bytes"] is True
     assert body["payload_sha256"] == original["payload_sha256"]
     assert body["outcome"] == "duplicate"
     assert len(store.list_sources("maya-001")) == 20
-    state = client.get("/admin/state").json()
+    state = client.get("/admin/state", headers=ADMIN).json()
     assert state["pushed"][-1]["seq"] == 21 and state["pushed"][-1]["outcome"] == "duplicate"
-    unknown = client.post("/admin/retry", json={"event_id": "evt-0001-999"})
+    unknown = client.post("/admin/retry", headers=ADMIN, json={"event_id": "evt-0001-999"})
     assert unknown.status_code == 404 and unknown.json()["code"] == "unknown_event"
-    assert client.post("/admin/retry", json={}).json()["code"] == "invalid_request"
-    assert client.post("/admin/retry", json=[1]).status_code == 400
+    assert client.post("/admin/retry", headers=ADMIN, json={}).json()["code"] == "invalid_request"
+    assert client.post("/admin/retry", headers=ADMIN, json=[1]).status_code == 400
 
 
 def test_advance_pushes_only_newly_visible_deliveries(mkeys, store):
     client, seeded = _seeded(mkeys, store, 1, as_of="2026-10-26T08:04:59Z")
     assert len(seeded["pushed"]) == 19
     assert len(store.list_sources("maya-001")) == 19
-    advanced = client.post("/admin/advance", params={"as_of": "2026-10-28T00:00:00Z"})
+    advanced = client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-28T00:00:00Z"})
     assert advanced.status_code == 200, advanced.json()
     body = advanced.json()
     assert body["as_of"] == "2026-10-28T00:00:00Z"
     assert [p["record_id"] for p in body["pushed"]] == ["rec-0001-020"]
     assert body["pushed"][0]["seq"] == 20 and body["pushed"][0]["outcome"] == "inserted"
     assert len(store.list_sources("maya-001")) == 20
-    again = client.post("/admin/advance", params={"as_of": "2026-10-28T00:00:00Z"})
+    again = client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-28T00:00:00Z"})
     assert again.status_code == 200 and again.json()["pushed"] == []
-    back = client.post("/admin/advance", params={"as_of": "2026-10-27T00:00:00Z"})
+    back = client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-27T00:00:00Z"})
     assert back.status_code == 409 and back.json()["code"] == "clock_backwards"
     assert client.get("/").json()["as_of"] == "2026-10-28T00:00:00Z"
 
@@ -400,47 +405,47 @@ def test_fractional_second_clock_is_floored_so_pushes_and_lookups_agree(mkeys, s
     assert client.get("/records/rec-0001-020").status_code == 200
     assert client.get("/").json()["as_of"] == "2026-10-26T08:05:00Z"
 
-    advanced = client.post("/admin/advance", params={"as_of": "2026-10-27T16:05:00.500Z"})
+    advanced = client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-27T16:05:00.500Z"})
     assert advanced.status_code == 200, advanced.json()
     assert advanced.json()["as_of"] == PO_VISIBLE
     found = client.get("/settlements", params={"payout_reference": "PO-0001-01"}).json()
     assert [r["event"]["record_id"] for r in found["records"]] == ["rec-0001-021"]
     assert found["as_of"] == PO_VISIBLE
     # Within the same second the clock does not move, so this is a no-op, not clock_backwards.
-    same = client.post("/admin/advance", params={"as_of": "2026-10-27T16:05:00.250Z"})
+    same = client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-27T16:05:00.250Z"})
     assert same.status_code == 200 and same.json()["as_of"] == PO_VISIBLE
-    back = client.post("/admin/advance", params={"as_of": "2026-10-27T16:04:59.999Z"})
+    back = client.post("/admin/advance", headers=ADMIN, params={"as_of": "2026-10-27T16:04:59.999Z"})
     assert back.status_code == 409 and back.json()["code"] == "clock_backwards"
     assert back.json()["reason"].endswith("2026-10-27T16:04:59Z")
 
 
 def test_seed_and_advance_refusals(mkeys):
     client = _client(mkeys)
-    unknown = client.post("/admin/seed", params={"case": 1000})
+    unknown = client.post("/admin/seed", headers=ADMIN, params={"case": 1000})
     assert unknown.status_code == 404 and unknown.json()["code"] == "unknown_case"
-    assert client.post("/admin/seed", params={"case": 999999}).json()["code"] == "unknown_case"
-    bad = client.post("/admin/seed", params={"case": 1, "as_of": "yesterday"})
+    assert client.post("/admin/seed", headers=ADMIN, params={"case": 999999}).json()["code"] == "unknown_case"
+    bad = client.post("/admin/seed", headers=ADMIN, params={"case": 1, "as_of": "yesterday"})
     assert bad.status_code == 400 and bad.json()["code"] == "invalid_time"
-    naive = client.post("/admin/seed", params={"case": 1, "as_of": "2026-11-02T09:00:00"})
+    naive = client.post("/admin/seed", headers=ADMIN, params={"case": 1, "as_of": "2026-11-02T09:00:00"})
     assert naive.status_code == 400 and naive.json()["code"] == "invalid_time"
     assert client.get("/").json()["case_number"] is None
-    assert client.post("/admin/advance", params={"as_of": RFC_A_TIME}).json()["code"] == "unknown_case"
-    assert client.post("/admin/seed", params={"case": "one"}).json()["code"] == "invalid_request"
-    client.post("/admin/seed")
-    bad_advance = client.post("/admin/advance", params={"as_of": "soon"})
+    assert client.post("/admin/advance", headers=ADMIN, params={"as_of": RFC_A_TIME}).json()["code"] == "unknown_case"
+    assert client.post("/admin/seed", headers=ADMIN, params={"case": "one"}).json()["code"] == "invalid_request"
+    client.post("/admin/seed", headers=ADMIN)
+    bad_advance = client.post("/admin/advance", headers=ADMIN, params={"as_of": "soon"})
     assert bad_advance.status_code == 400 and bad_advance.json()["code"] == "invalid_time"
-    assert client.post("/admin/advance").json()["code"] == "invalid_request"
+    assert client.post("/admin/advance", headers=ADMIN).json()["code"] == "invalid_request"
 
 
 def test_reseeding_resets_state(mkeys, store):
     client, _ = _seeded(mkeys, store, 1)
     client.get("/records/rec-0001-001")
-    reseeded = client.post("/admin/seed", params={"case": 2}).json()
+    reseeded = client.post("/admin/seed", headers=ADMIN, params={"case": 2}).json()
     assert reseeded["case_number"] == 2 and len(reseeded["pushed"]) == 20
-    state = client.get("/admin/state").json()
+    state = client.get("/admin/state", headers=ADMIN).json()
     assert state["case_number"] == 2 and len(state["pushed"]) == 20
     assert state["lookups_served"] == 0
-    assert client.post("/admin/retry", json={"event_id": "evt-0001-001"}).status_code == 404
+    assert client.post("/admin/retry", headers=ADMIN, json={"event_id": "evt-0001-001"}).status_code == 404
 
 
 # --------------------------------------------------------------------------- sinks
@@ -448,21 +453,21 @@ def test_reseeding_resets_state(mkeys, store):
 
 def test_without_a_sink_pushes_are_not_delivered_and_lookups_still_work(mkeys):
     client = _client(mkeys)
-    seeded = client.post("/admin/seed", params={"case": 1}).json()
+    seeded = client.post("/admin/seed", headers=ADMIN, params={"case": 1}).json()
     assert len(seeded["pushed"]) == 20
     assert all(p["outcome"] == "not_delivered" and p["reason"] is None for p in seeded["pushed"])
     assert seeded["counts"]["not_delivered"] == 20 and seeded["counts"]["inserted"] == 0
     found = client.get("/settlements", params={"payout_reference": "PO-0001-01"}).json()
     assert [r["event"]["record_id"] for r in found["records"]] == ["rec-0001-021"]
     assert len(client.get("/records/rec-0001-001").json()["records"]) == 1
-    retried = client.post("/admin/retry", json={"event_id": "evt-0001-001"}).json()
+    retried = client.post("/admin/retry", headers=ADMIN, json={"event_id": "evt-0001-001"}).json()
     assert retried["outcome"] == "not_delivered" and retried["same_bytes"] is True
 
 
 def test_pushed_payloads_are_bare_signed_events(mkeys):
     seen = []
     client = _client(mkeys, _recording_sink(seen))
-    seeded = client.post("/admin/seed", params={"case": 1}).json()
+    seeded = client.post("/admin/seed", headers=ADMIN, params={"case": 1}).json()
     assert len(seen) == 20 and seeded["counts"]["inserted"] == 20
     for (payload, received_at), entry in zip(seen, seeded["pushed"]):
         assert set(payload) == {"event", "signature"}
@@ -481,11 +486,11 @@ def test_a_sink_that_raises_or_misbehaves_is_reported_as_error(mkeys):
         raise RuntimeError("secret detail that must not leak")
 
     client = _client(mkeys, broken)
-    seeded = client.post("/admin/seed", params={"case": 1}).json()
+    seeded = client.post("/admin/seed", headers=ADMIN, params={"case": 1}).json()
     assert seeded["counts"]["error"] == 20
     assert seeded["pushed"][0]["reason"] == "sink raised RuntimeError"
     client = _client(mkeys, lambda payload, received_at: {"status": "whatever"})
-    seeded = client.post("/admin/seed", params={"case": 1}).json()
+    seeded = client.post("/admin/seed", headers=ADMIN, params={"case": 1}).json()
     assert seeded["counts"]["error"] == 20
 
 
@@ -537,7 +542,7 @@ def test_an_http_sink_carries_each_delivery_time_and_passport_url_wires_one(mkey
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
     client = _client(mkeys, http_sink("http://passport.test/webhooks/merchant", client=http))
-    seeded = client.post("/admin/seed", params={"case": 1}).json()
+    seeded = client.post("/admin/seed", headers=ADMIN, params={"case": 1}).json()
     assert seeded["counts"]["inserted"] == 20
     assert calls == [p["received_at"] for p in seeded["pushed"]]
     app = create_merchant_app(keystore=mkeys, passport_url="http://127.0.0.1:1/webhooks/merchant")
@@ -559,7 +564,7 @@ def test_correction_values_of_the_wrong_shape_never_reach_the_pool(mkeys, store)
                     {"occurred_at": "2026-10-26T09:00:00"}, {"covers_record_ids": [1, 2]},
                     {"covers_record_ids": {"a": 1}}, {"payout_reference": 12}, {"status": ["x"]},
                     {"amount_minor": True}, {"amount_minor": "216000"}):
-        response = client.post("/admin/correct", json={
+        response = client.post("/admin/correct", headers=ADMIN, json={
             "record_id": "rec-0001-021", "changes": changes, "correction_reason": "r"})
         assert response.status_code == 400, (changes, response.text)
         assert response.json()["code"] == "invalid_correction", changes
@@ -569,9 +574,9 @@ def test_correction_values_of_the_wrong_shape_never_reach_the_pool(mkeys, store)
         response = client.get("/payouts", params=params)
         assert response.status_code == 200, (params, response.text)
         assert [r["event"]["record_id"] for r in response.json()["records"]] == ["rec-0001-021"]
-    assert client.get("/admin/state").json()["corrections"] == []
+    assert client.get("/admin/state", headers=ADMIN).json()["corrections"] == []
     # An offset time is accepted and stored as UTC in the signed body and in the pool alike.
-    moved = client.post("/admin/correct", json={
+    moved = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-021", "changes": {"occurred_at": "2026-10-28T01:30:00+02:00"},
         "correction_reason": "initiated later than first reported"})
     assert moved.status_code == 200, moved.text
@@ -588,7 +593,7 @@ def test_a_moved_payout_reference_leaves_the_old_reference_empty(mkeys, store):
     record (its current revision does not carry it), while ``/records/{id}`` still shows every
     revision and a correction that keeps the reference keeps every matching revision."""
     client, _ = _seeded(mkeys, store, 1, as_of=RFC_A_TIME)
-    corrected = client.post("/admin/correct", json={
+    corrected = client.post("/admin/correct", headers=ADMIN, json={
         "record_id": "rec-0001-021", "changes": {"payout_reference": "PO-0001-99"},
         "correction_reason": "reference was wrong"})
     assert corrected.status_code == 200, corrected.text
@@ -603,6 +608,6 @@ def test_a_moved_payout_reference_leaves_the_old_reference_empty(mkeys, store):
     by_date = client.get("/payouts", params={"payout_date": "2026-10-26"}).json()["records"]
     assert sorted(r["event"]["revision"] for r in by_date) == [1, 2]
     # Empty results are still logged as served lookups.
-    served = client.get("/admin/lookups").json()["lookups"]
+    served = client.get("/admin/lookups", headers=ADMIN).json()["lookups"]
     assert {"route": "/settlements", "query": {"payout_reference": "PO-0001-01"},
             "record_ids": []} == {k: served[0][k] for k in ("route", "query", "record_ids")}

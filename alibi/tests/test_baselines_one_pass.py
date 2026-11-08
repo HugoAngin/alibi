@@ -169,10 +169,12 @@ def test_message_naming_the_payout_triggers_exactly_one_lookup_and_supports(ctx)
     assert out.observed_inputs >= 10   # 4 orders, refund, fee, message, payout, credit, settlement
     (link,) = out.result.links
     assert link.link_state == LinkState.LINKED and link.record_ref.ref_id == "po_5001"
-    # The model saw the settlement the fixed retrieval fetched, marked as a lookup result.
+    # The model saw the settlement the fixed retrieval fetched, marked as a lookup result. The
+    # settlements list holds every record that can show settlement: the payout carries a status
+    # (the team's payouts fold the settlement state in), so it is listed beside the settlement.
     sent = json.loads(client.calls[0].user)
-    assert [s["record_id"] for s in sent["settlements"]] == ["stl_88001"]
-    assert sent["settlements"][0]["via_lookup"] == 0
+    assert [s["record_id"] for s in sent["settlements"]] == ["po_5001", "stl_88001"]
+    assert sent["settlements"][0]["via_lookup"] is None and sent["settlements"][1]["via_lookup"] == 0
     assert sent["candidate_rule"] and sent["fixed_retrieval"] == FIXED_RETRIEVAL
     assert "msg_7001" in {r["record_id"] for r in sent["merchant"]}
     assert "msg_7001" not in {s["record_id"] for s in sent["shareable"]}

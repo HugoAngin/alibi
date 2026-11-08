@@ -19,12 +19,17 @@
                 "revision": {"type": "integer", "minimum": 1},
                 "role": {"type": "string", "enum": ["confirms", "conflicts", "context"]}
               },
-              "required": ["record_id", "revision", "role"]
+              "required": ["record_id", "revision", "role"],
+              "additionalProperties": false
             }
           },
-          "gaps": {"type": "array", "items": {"type": "string", "maxLength": 300}}
+          "gaps": {
+            "type": "array",
+            "items": {"type": "string", "maxLength": 300}
+          }
         },
-        "required": ["question_id", "statement", "status", "refs", "gaps"]
+        "required": ["question_id", "statement", "status", "refs", "gaps"],
+        "additionalProperties": false
       }
     },
     "disclosures": {
@@ -40,13 +45,18 @@
             "enum": ["full", "extract", "generalised"],
             "description": "full = whole record; extract = only the fields named in 'fields'; generalised = a category or total without identifying detail."
           },
-          "fields": {"type": "array", "items": {"type": "string"}},
+          "fields": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
           "reason": {"type": "string", "maxLength": 200}
         },
-        "required": ["question_id", "record_id", "revision", "form", "fields", "reason"]
+        "required": ["question_id", "record_id", "revision", "form", "fields", "reason"],
+        "additionalProperties": false
       }
     },
     "rationale": {"type": "string", "maxLength": 600}
   },
-  "required": ["claims", "disclosures", "rationale"]
+  "required": ["claims", "disclosures", "rationale"],
+  "additionalProperties": false
 }

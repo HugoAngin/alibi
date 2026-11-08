@@ -8,8 +8,8 @@ Verification pins to a ``TrustRegistry`` (kid -> public key, purpose, issuer). A
 verifies in the domain its purpose allows, and, when the caller names an issuer, only for
 that issuer.
 
-``DemoKeystore`` holds the four demo keys (merchant_demo, alibi_demo, bank_a, bank_b) as
-PKCS#8 PEM files with mode 0600 under ``data/alibi/keys/`` by default. Keys are generated
+``DemoKeystore`` holds the five demo keys (merchant_demo, merchant_mock, alibi_demo, bank_a,
+bank_b) as PKCS#8 PEM files with mode 0600 under ``data/alibi/keys/`` by default. Keys are generated
 randomly on first use. A ``seed`` derives them deterministically instead: tests only, since
 anyone who knows the seed can sign. On Windows, 0600 is best effort (only the read-only
 bit is honoured by ``os.chmod``).
@@ -37,7 +37,8 @@ DOMAIN_PURPOSE: dict[SigningDomain, KeyPurpose] = {
 
 # kid -> (purpose, issuer_id the key speaks for)
 DEMO_KEYS: dict[str, tuple[KeyPurpose, str]] = {
-    "merchant_demo": (KeyPurpose.RECORD_SIGNING, "threadline"),
+    "merchant_demo": (KeyPurpose.RECORD_SIGNING, "threadline"),       # the S1 fixture issuer
+    "merchant_mock": (KeyPurpose.RECORD_SIGNING, "mock-marketplace"),  # the team's case issuer
     "alibi_demo": (KeyPurpose.PACKAGE_SIGNING, "alibi"),
     "bank_a": (KeyPurpose.REQUEST_SIGNING, "bank_a"),
     "bank_b": (KeyPurpose.REQUEST_SIGNING, "bank_b"),

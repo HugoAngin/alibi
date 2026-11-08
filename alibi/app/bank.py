@@ -1,12 +1,23 @@
-"""The mock bank service and analyst console state for the two recipients.
+"""The analyst console for the two recipients: over this process's own mock bank, or over the
+running bank service.
 
-One service, two credentials, two inboxes. The recipient comes from the bearer token (or the
-session cookie it sets); the URL never grants access. A delivered package is verified with
-``alibi.api.verify_package`` against the pinned registry, bound to the request the bank issued,
-and kept with its verification result. A rejected package keeps only the rejection.
+One console, two credentials, two inboxes. The recipient comes from the bearer token (or the
+session cookie it sets); the URL never grants access.
 
-Bank-side state lives in the app sidecar (``data/alibi/app/case_<n>.state.json``), never in the
-holder's passport: received packages, receipts, dispositions and the follow-up requests issued.
+* ``ALIBI_BANK_URL`` unset (the single-process app and most tests): this module *is* the bank.
+  A delivered package is verified with ``alibi.api.verify_package`` against the pinned registry,
+  bound to the request the bank issued, and kept with its verification result. A rejected
+  package keeps only the rejection. Bank-side state lives in the app sidecar
+  (``data/alibi/app/case_<n>.state.json``), never in the holder's passport: received packages,
+  receipts, dispositions and the follow-up requests issued.
+* ``ALIBI_BANK_URL`` set: the inbox, the package view, dispositions and the follow-up read from
+  and write to the mock bank service (``alibi.bank.service``) with the recipient's bearer, and
+  its JSON is converted into the same template contexts (``panel--auth`` from
+  ``authentication``, ``panel--trust`` from ``sources``, ``panel--claims`` from ``claims``;
+  timing and reconciliation are computed here from the package body plus ``/attachments``).
+  The follow-up is the service's ``POST /packages/{id}/disposition`` with decision
+  ``request_more`` (there is no follow-up route on the service); the follow-up request comes
+  back to the passport through ``POST /connect/bank/rfc``.
 """
 
 from __future__ import annotations
@@ -14,6 +25,8 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 from typing import Any
+
+import httpx
 
 from alibi import api
 from alibi.app import cases
@@ -53,7 +66,113 @@ def authenticate(rt: Runtime, recipient: str, *, bearer: str | None, cookie: str
     return who, (query_token if query_token and query_token == token else None)
 
 
-# --------------------------------------------------------------------------- state
+# --------------------------------------------------------------------------- the bank service
+
+
+def remote(rt: Runtime) -> bool:
+    """True when the console works over the running bank service (``ALIBI_BANK_URL``)."""
+    return bool(rt.settings.bank_url)
+
+
+def _service(rt: Runtime, recipient: str):
+    from alibi.connectors.clients import BankClient
+    return BankClient(rt.service_client(rt.settings.bank_url or ""), rt.settings.tokens[recipient],
+                      recipient=recipient)
+
+
+def _refusal_from(exc: Exception, what: str) -> Refusal:
+    """A service refusal as this app's ``Refusal``: the service's code and sentence verbatim and
+    its 4xx status; an unreachable or broken service is 503 ``bank_unreachable``."""
+    from alibi.connectors.clients import ClientError
+    if isinstance(exc, ClientError):
+        status = exc.status if 400 <= exc.status < 500 else 502
+        return Refusal(exc.code or "bank_service_error", exc.reason or f"the bank service refused {what}",
+                       status=status)
+    return Refusal("bank_unreachable", f"the bank service could not be reached for {what} "
+                                       f"({type(exc).__name__})", status=503)
+
+
+def _call(what: str, fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except Refusal:
+        raise
+    except (httpx.HTTPError, Exception) as exc:  # noqa: BLE001 - every service failure is a refusal
+        raise _refusal_from(exc, what) from exc
+
+
+def _remote_rfc(rt: Runtime, recipient: str, request_id: str | None) -> dict | None:
+    """The core request body the service holds for one of this recipient's requests."""
+    if not request_id or not _IDENT.fullmatch(request_id):
+        return None
+    from alibi.connectors.clients import ClientError
+    service = _service(rt, recipient)
+    try:
+        found = service.client.get(f"/rfc/{request_id}", headers=service.headers)
+    except httpx.HTTPError as exc:
+        raise _refusal_from(exc, f"request {request_id}") from exc
+    if found.status_code == 404:
+        return None
+    if found.status_code >= 400:
+        raise _refusal_from(ClientError(found.status_code, None, None), f"request {request_id}")
+    body = found.json()
+    rfc = (body.get("rfc") or {}).get("request") if isinstance(body, dict) else None
+    return rfc if isinstance(rfc, dict) else None
+
+
+def _remote_record(rt: Runtime, recipient: str, package_id: str) -> tuple[dict | None, list[dict]]:
+    """One inbox entry from the service as the ``record`` dict the views read, plus its
+    dispositions. ``(None, [])`` when the recipient has no such package."""
+    from alibi.connectors.clients import ClientError
+    service = _service(rt, recipient)
+    try:
+        view = service.package(package_id)
+    except ClientError as exc:
+        if exc.status == 404:
+            return None, []
+        raise _refusal_from(exc, f"package {package_id}") from exc
+    except httpx.HTTPError as exc:
+        raise _refusal_from(exc, f"package {package_id}") from exc
+    receipt = view.get("receipt") or {}
+    if view.get("status") != "verified":
+        reasons = list((view.get("rejection") or {}).get("reasons") or receipt.get("reasons") or [])
+        record = {"package_id": package_id, "request_id": receipt.get("request_id"), "raw": None,
+                  "package_sha256": receipt.get("package_sha256", ""), "received_at": receipt.get("received_at", "—"),
+                  "accepted": False, "verification": {"authentication": {}, "errors": reasons},
+                  "receipt": {**receipt, "reasons": reasons}}
+        return record, []
+    package = view.get("package") or {}
+    body = dict(package.get("body") or {})
+    attachments = _call(f"attachments of {package_id}", service.attachments, package_id)
+    body["attachments"] = list(attachments.get("attachments") or [])
+    raw = {**package, "body": body}
+    record = {"package_id": package_id, "request_id": body.get("request_id"), "raw": raw,
+              "package_sha256": receipt.get("package_sha256", ""), "received_at": receipt.get("received_at", "—"),
+              "accepted": True,
+              "verification": {"authentication": view.get("authentication") or {},
+                               "sources": view.get("sources") or [], "claims": view.get("claims") or [],
+                               "errors": []},
+              "receipt": receipt}
+    rows = [_disposition_row(d) for d in view.get("dispositions") or []]
+    # The service keeps the follow-up ids on the inbox entry, in issue order; the n-th request_more
+    # disposition issued the n-th follow-up.
+    follow_ups = [f for f in view.get("follow_ups") or [] if isinstance(f, str)]
+    for row in (r for r in rows if r.get("decision") == "request_more"):
+        if follow_ups and row.get("followup_request_id") is None:
+            row["followup_request_id"] = follow_ups.pop(0)
+    return record, rows
+
+
+def _disposition_row(disp: dict) -> dict:
+    """A service disposition in the shape the templates read (``package_digest`` prefixed)."""
+    digest = disp.get("package_digest") or ""
+    return {**disp, "package_digest": digest if digest.startswith("sha256:") else f"sha256:{digest}",
+            "question_ids": list(disp.get("question_ids") or []),
+            "requested_evidence": list(disp.get("requested_evidence") or []),
+            "followup_request_id": disp.get("followup_request_id")}
+
+
+# --------------------------------------------------------------------------- state (in-process bank)
 
 
 def _packages(rt: Runtime, recipient: str) -> dict[str, dict]:
@@ -73,17 +192,43 @@ def _dispositions(rt: Runtime, recipient: str) -> list[dict]:
 
 
 def issued_requests(rt: Runtime, recipient: str) -> list[dict]:
-    """Every request this recipient issued: the case's RFCs plus follow-ups made here."""
+    """Every request this recipient issued: the case's RFCs plus follow-ups made here, or, over
+    the bank service, what ``GET /rfc`` lists (each fetched as its signed request body)."""
+    if remote(rt):
+        service = _service(rt, recipient)
+        out = []
+        for summary in _call("requests sent", service.requests_sent):
+            rfc = _remote_rfc(rt, recipient, summary.get("request_id"))
+            if rfc is not None:
+                out.append({**rfc, "answered_by": list(summary.get("answered_by") or [])})
+        return out
     out = [cases.to_rfc(r) for r in rt.case.get("rfcs", []) if r["audience"] == recipient]
     out += [f["request"] for f in _followups(rt, recipient)]
     return out
 
 
 def _request_for(rt: Runtime, recipient: str, request_id: str) -> dict | None:
+    if remote(rt):
+        return _remote_rfc(rt, recipient, request_id)
     return next((r for r in issued_requests(rt, recipient) if r["request_id"] == request_id), None)
 
 
-# --------------------------------------------------------------------------- receive
+def audit_entries(rt: Runtime, recipient: str) -> list[dict]:
+    """The recipient's audit trail. Over the bank service it is the service's ``GET /audit``
+    (receipts, dispositions, issued requests; ``source: "bank_service"``) merged with the entries
+    this app wrote for the recipient in its own sidecar (``source: "passport"``: the SP-21 role
+    gate's ``access.refused``, ``/connect/bank/rfc`` refusals), in ``at`` order, so a refusal the
+    app made is visible on this route whichever bank holds the console. Unset, the entries this
+    process's bank kept in the sidecar."""
+    if remote(rt):
+        service = _call("audit", _service(rt, recipient).audit)
+        merged = [{**e, "source": "bank_service"} for e in service if isinstance(e, dict)]
+        merged.extend({**e, "source": "passport"} for e in rt.bank_audit_entries(recipient))
+        return sorted(merged, key=lambda e: str(e.get("at") or ""))
+    return rt.bank_audit_entries(recipient)
+
+
+# --------------------------------------------------------------------------- receive (in-process bank)
 
 
 def receive_package(rt: Runtime, recipient: str, raw: bytes) -> tuple[int, dict[str, Any]]:
@@ -206,8 +351,38 @@ def _latest_disposition(rt: Runtime, recipient: str, package_id: str) -> dict | 
     return rows[-1] if rows else None
 
 
-def inbox(rt: Runtime, recipient: str, flashes=None) -> dict[str, Any]:
-    spec = RECIPIENTS[recipient]
+def _inbox_rows(rt: Runtime, recipient: str) -> tuple[list[dict], list[dict]]:
+    """``(packages, requests_sent)`` for the inbox, from the service or from this process."""
+    if remote(rt):
+        listing = _call("inbox", _service(rt, recipient).inbox)
+        packages = []
+        for item in listing.get("packages") or []:
+            pid = item.get("package_id")
+            verified = item.get("status") == "verified"
+            record, dispositions = (_remote_record(rt, recipient, pid) if verified and pid else (None, []))
+            rfc = _remote_rfc(rt, recipient, item.get("request_id")) if verified else None
+            disposition = item.get("disposition") or (dispositions[-1]["decision"] if dispositions else None)
+            packages.append({
+                "package_id": pid, "request_id": item.get("request_id") or "unknown",
+                "received_at": item.get("received_at"), "expires_at": item.get("expires_at") or "—",
+                "subject_ref_masked": c.mask_subject(rfc["subject_ref"]) if rfc else "—",
+                "authentication": "valid" if verified else _auth_status(
+                    {"errors": list(item.get("reasons") or [])}, False),
+                "claim_counts": (_claim_counts(record) if record else
+                                 {"supported": 0, "contradicted": 0, "unresolved": 0}),
+                "disposition": disposition, "href": f"/bank/{recipient}/packages/{pid}",
+            })
+        requests_sent = []
+        for summary in listing.get("requests_sent") or []:
+            scope = summary.get("scope") or {}
+            requests_sent.append({"request_id": summary.get("request_id"),
+                                  "parent_request_id": summary.get("parent_request_id"),
+                                  "sent_at": summary.get("issued_at"),
+                                  "status": "answered" if summary.get("answered_by") else "awaiting_consent",
+                                  "question_count": len(summary.get("question_ids") or []),
+                                  "scope": "txn_ids" if scope.get("txn_ids") else "period",
+                                  "txn_ids": list(scope.get("txn_ids") or []), "period": scope.get("period")})
+        return packages, requests_sent
     packages = []
     for record in sorted(_packages(rt, recipient).values(), key=lambda r: r["received_at"]):
         accepted = record["accepted"]
@@ -234,6 +409,12 @@ def inbox(rt: Runtime, recipient: str, flashes=None) -> dict[str, Any]:
                               "question_count": len(rfc["questions"]),
                               "scope": ("txn_ids" if rfc.get("txn_ids") else "period"),
                               "txn_ids": list(rfc.get("txn_ids") or []), "period": rfc.get("period")})
+    return packages, requests_sent
+
+
+def inbox(rt: Runtime, recipient: str, flashes=None) -> dict[str, Any]:
+    spec = RECIPIENTS[recipient]
+    packages, requests_sent = _inbox_rows(rt, recipient)
     ctx = _base(rt, recipient, f"{spec['name']} inbox", "inbox", flashes)
     ctx.update({"recipient": {"id": recipient, "name": spec["name"], "analyst_name": spec["analyst"]},
                 "packages": packages, "requests_sent": requests_sent})
@@ -314,18 +495,28 @@ def _reconcile(body: dict, recipient_name: str) -> dict[str, Any]:
 
 def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id: str | None = None,
                  flashes=None) -> dict[str, Any] | None:
-    record = _packages(rt, recipient).get(package_id)
+    if remote(rt):
+        record, dispositions = _remote_record(rt, recipient, package_id)
+    else:
+        record = _packages(rt, recipient).get(package_id)
+        dispositions = [d for d in _dispositions(rt, recipient) if d["package_id"] == package_id]
     if record is None:
         rt.bank_audit(recipient, action="access.refused", outcome="refused", target_id=package_id,
                       detail="no such package for this recipient")
         return None
+    rfc = _request_for(rt, recipient, record.get("request_id") or "")
+    return _package_context(rt, recipient, package_id, record, rfc, dispositions,
+                            disposition_id=disposition_id, flashes=flashes)
+
+
+def _package_context(rt: Runtime, recipient: str, package_id: str, record: dict, rfc: dict | None,
+                     dispositions: list[dict], *, disposition_id: str | None, flashes) -> dict[str, Any]:
     spec = RECIPIENTS[recipient]
     verification = record["verification"]
     auth = verification.get("authentication", {})
     accepted = record["accepted"]
     raw = (record.get("raw") or {}) if accepted else {}        # a rejected package shows nothing of its body
     body = raw.get("body") or {}
-    rfc = _request_for(rt, recipient, record.get("request_id") or "")
     ctx = _base(rt, recipient, f"Package {package_id}", "inbox", flashes)
     extra = [] if rfc else [f"request {record.get('request_id')} was not issued by {recipient}"]
     period = body.get("scope", {}).get("period") if body else None
@@ -350,8 +541,8 @@ def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id
     if not accepted:
         ctx.update({"source_trust": [], "claim_status": [], "evidence_by_question": [],
                     "reconciliation": _reconcile({}, spec["name"]), "contradictions": [], "gaps": [],
-                    "disposition_form": _disposition_form(rt, recipient, record, rfc, final=True),
-                    "followup_form": _followup_form(rt, recipient, record, rfc, None)})
+                    "disposition_form": _disposition_form(recipient, record, rfc, dispositions, final=True),
+                    "followup_form": _followup_form(recipient, record, rfc, dispositions, None)})
         return ctx
     atts = _attachment_index(body)
     trust_rows = []
@@ -399,22 +590,24 @@ def package_view(rt: Runtime, recipient: str, package_id: str, *, disposition_id
                          "verifier_check": ("pass" if valid else "not checked" if valid is None else "fail")}
         evidence_by_question.append({"question_id": qid, "question": questions.get(qid, qid),
                                      "claim": {"status": cl["status"], "rationale": cl["rationale"]},
-                                     "evidence": evidence, "calculation": calc_view, "gap": cl.get("gap"),
+                                     "evidence": evidence, "calculation": calc_view,
+                                     "gap": cl.get("gap_detail") or cl.get("gap"),
                                      "timing": _timing(body, qid, {f"{r['ref_type']}:{r['ref_id']}"
                                                                    for r in cl.get("evidence_refs", [])})})
         if cl["status"] == "contradicted":
             contradictions.append({"claim_id": f"claim-{qid}", "question_id": qid,
-                                   "description": cl.get("gap") or cl["rationale"],
+                                   "description": cl.get("gap_detail") or cl.get("gap") or cl["rationale"],
                                    "sources": [{"record_id": e["record_id"], "revision": e["revision"], "trust": e["trust"]}
                                                for e in evidence]})
         if cl.get("gap"):
-            gaps.append({"question_id": qid, "description": cl["gap"], "reason_code": c.gap_code(cl["gap"])})
+            gaps.append({"question_id": qid, "description": cl.get("gap_detail") or cl["gap"],
+                         "reason_code": c.gap_code(cl["gap"])})
     ctx.update({
         "source_trust": trust_rows, "claim_status": claim_status, "evidence_by_question": evidence_by_question,
         "reconciliation": {**_reconcile(body, spec["name"]), "computed_at": rt.now_text()},
         "contradictions": contradictions, "gaps": gaps,
-        "disposition_form": _disposition_form(rt, recipient, record, rfc),
-        "followup_form": _followup_form(rt, recipient, record, rfc, disposition_id),
+        "disposition_form": _disposition_form(recipient, record, rfc, dispositions),
+        "followup_form": _followup_form(recipient, record, rfc, dispositions, disposition_id),
     })
     return ctx
 
@@ -431,9 +624,9 @@ def _calc_expression(calc: dict) -> str:
     return f"{' '.join(parts) or '0'} = {calc.get('total_pence')}"
 
 
-def _disposition_form(rt: Runtime, recipient: str, record: dict, rfc: dict | None, *, final: bool = False) -> dict:
+def _disposition_form(recipient: str, record: dict, rfc: dict | None, rows: list[dict], *,
+                      final: bool = False) -> dict:
     spec = RECIPIENTS[recipient]
-    rows = [d for d in _dispositions(rt, recipient) if d["package_id"] == record["package_id"]]
     current = rows[-1] if rows else None
     questions = [{"question_id": q["question_id"], "text": q["text"]} for q in (rfc or {}).get("questions", [])]
     return {"action": f"/bank/{recipient}/packages/{record['package_id']}/disposition",
@@ -444,11 +637,12 @@ def _disposition_form(rt: Runtime, recipient: str, record: dict, rfc: dict | Non
             "final": final or bool(current and current["decision"] in TERMINAL)}
 
 
-def _followup_form(rt: Runtime, recipient: str, record: dict, rfc: dict | None, disposition_id: str | None) -> dict:
+def _followup_form(recipient: str, record: dict, rfc: dict | None, rows: list[dict],
+                   disposition_id: str | None) -> dict:
     parent = rfc or {}
     disposition = None
     if disposition_id:
-        disposition = next((d for d in _dispositions(rt, recipient) if d["disposition_id"] == disposition_id), None)
+        disposition = next((d for d in rows if d["disposition_id"] == disposition_id), None)
     prefill = ""
     if disposition and disposition.get("requested_evidence"):
         prefill = "Please provide: " + "; ".join(disposition["requested_evidence"]) + "."
@@ -468,15 +662,19 @@ def _followup_form(rt: Runtime, recipient: str, record: dict, rfc: dict | None, 
 def record_disposition(rt: Runtime, recipient: str, package_id: str, *, decision: str, reason: str,
                        question_ids: list[str], requested_evidence: list[str]) -> dict[str, Any]:
     spec = RECIPIENTS[recipient]
+    if decision not in ("clear", "escalate", "request_more"):
+        raise Refusal("bad_decision", f"decision must be clear, escalate or request_more, not {decision!r}", status=400)
+    if not reason.strip():
+        raise Refusal("reason_required", "a short reason is required for every disposition", status=400)
+    if remote(rt):
+        return _remote_disposition(rt, recipient, package_id, decision=decision, reason=reason,
+                                   question_ids=[q for q in question_ids if q],
+                                   requested_evidence=[e for e in requested_evidence if e])
     record = _packages(rt, recipient).get(package_id)
     if record is None:
         raise Refusal("package_not_found", f"no package {package_id} for {recipient}", status=404)
     if not record["accepted"]:
         raise Refusal("package_rejected", "a rejected package cannot receive a disposition; it was never evidence")
-    if decision not in ("clear", "escalate", "request_more"):
-        raise Refusal("bad_decision", f"decision must be clear, escalate or request_more, not {decision!r}", status=400)
-    if not reason.strip():
-        raise Refusal("reason_required", "a short reason is required for every disposition", status=400)
     with rt.lock:
         previous = _latest_disposition(rt, recipient, package_id)
         if previous and previous["decision"] in TERMINAL:
@@ -493,6 +691,36 @@ def record_disposition(rt: Runtime, recipient: str, package_id: str, *, decision
         rt.sidecar.append(f"bank:{recipient}:dispositions", disp)
         rt.bank_audit(recipient, action="disposition.recorded", outcome="ok", target_id=package_id,
                       detail=f"{decision} by {spec['analyst']} on {record.get('request_id')}", actor=spec["analyst"])
+    return disp
+
+
+def _remote_disposition(rt: Runtime, recipient: str, package_id: str, *, decision: str, reason: str,
+                        question_ids: list[str], requested_evidence: list[str],
+                        extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    """``POST /packages/{id}/disposition`` on the bank service. A ``request_more`` makes the
+    service issue the follow-up request at once (from ``requested_evidence`` or ``questions``)
+    and forward it to this passport, so the answer carries ``followup_request_id``."""
+    from alibi.connectors.clients import ClientError
+    fields: dict[str, Any] = {"question_ids": question_ids, "requested_evidence": requested_evidence,
+                              **(extra or {})}
+    if not fields["requested_evidence"] and "questions" not in fields:
+        fields.pop("requested_evidence")
+    if not fields["question_ids"]:
+        fields.pop("question_ids")
+    try:
+        answer = _service(rt, recipient).disposition(package_id, decision, reason.strip()[:300], **fields)
+    except ClientError as exc:
+        if exc.status == 404:
+            raise Refusal("package_not_found", f"no package {package_id} for {recipient}", status=404) from exc
+        raise _refusal_from(exc, f"disposition on {package_id}") from exc
+    except httpx.HTTPError as exc:
+        raise _refusal_from(exc, f"disposition on {package_id}") from exc
+    disp = _disposition_row(answer.get("disposition") or {})
+    follow_up = answer.get("follow_up") or None
+    if follow_up:
+        disp["followup_request_id"] = follow_up.get("request_id")
+        disp["follow_up"] = {"request_id": follow_up.get("request_id"),
+                             "forwarded": follow_up.get("forwarded")}
     return disp
 
 
@@ -517,11 +745,15 @@ def create_followup(rt: Runtime, recipient: str, *, parent_request_id: str, scop
                     disposition_id: str | None = None) -> dict[str, Any]:
     """Issue a follow-up RFC through the bank connection. Scope defaults to the parent's and may
     not widen it; the holder's passport receives it through ``receive_rfc`` like any request."""
+    if not question.strip():
+        raise Refusal("question_required", "a follow-up needs a question", status=400)
+    if remote(rt):
+        return _remote_followup(rt, recipient, parent_request_id=parent_request_id, scope=scope,
+                                txn_ids=txn_ids, period_from=period_from, period_to=period_to,
+                                question=question)
     parent = _request_for(rt, recipient, parent_request_id)
     if parent is None:
         raise Refusal("parent_not_found", f"{recipient} did not issue request {parent_request_id}", status=404)
-    if not question.strip():
-        raise Refusal("question_required", "a follow-up needs a question", status=400)
     parent_kind = "txn_ids" if parent.get("txn_ids") else "period"
     kind = scope or parent_kind
     body: dict[str, Any] = {}
@@ -564,8 +796,7 @@ def create_followup(rt: Runtime, recipient: str, *, parent_request_id: str, scop
             raise Refusal("rfc_refused", f"the holder's passport refused the follow-up: {exc.reason}") from exc
         rt.sidecar.append(f"bank:{recipient}:requests", {"request": rfc, "sent_at": format_utc(now),
                                                         "disposition_id": disposition_id})
-        rt.sidecar.update("rfc_signatures", lambda cur: {**(cur or {}),
-                                                         request_id: {"verified": True, "key_id": recipient}})
+        rt.record_rfc_signature(request_id, recipient)
         if disposition_id:
             def link(cur):
                 return [{**d, "followup_request_id": request_id} if d["disposition_id"] == disposition_id else d
@@ -576,3 +807,60 @@ def create_followup(rt: Runtime, recipient: str, *, parent_request_id: str, scop
     return {"request_id": stored.request_id, "parent_request_id": parent_request_id, "audience": recipient,
             "scope": kind, "txn_ids": body.get("txn_ids", []), "period": body.get("period"),
             "issued_at": rfc["issued_at"], "expires_at": rfc["expires_at"]}
+
+
+def _remote_followup(rt: Runtime, recipient: str, *, parent_request_id: str, scope: str | None,
+                     txn_ids: list[str], period_from: str | None, period_to: str | None,
+                     question: str) -> dict[str, Any]:
+    """The follow-up over the bank service: a ``request_more`` disposition on the latest verified
+    package that answered the parent, carrying the question and any narrowed scope. The service
+    checks the scope against the parent (``scope_wider_than_parent``), signs the follow-up and
+    forwards it to this passport's ``POST /connect/bank/rfc``."""
+    parent = _request_for(rt, recipient, parent_request_id)
+    if parent is None:
+        raise Refusal("parent_not_found", f"{recipient} did not issue request {parent_request_id}", status=404)
+    listing = _call("inbox", _service(rt, recipient).inbox)
+    answers = [p for p in listing.get("packages") or []
+               if p.get("request_id") == parent_request_id and p.get("status") == "verified"]
+    if not answers:
+        raise Refusal("parent_not_answered", f"request {parent_request_id} has no verified package to follow up "
+                                             "on; a follow-up is a disposition on the package that answered it",
+                      status=409)
+    package_id = answers[-1]["package_id"]
+    parent_kind = "txn_ids" if parent.get("txn_ids") else "period"
+    kind = scope or parent_kind
+    extra: dict[str, Any] = {}
+    if kind == "txn_ids":
+        wanted = [t.strip() for t in txn_ids if t.strip()]
+        if parent_kind != "txn_ids":
+            raise Refusal("scope_wider_than_parent", f"follow-up scope must stay within {parent_request_id}; send a "
+                                                     "new request to ask about a wider scope.")
+        if wanted:
+            extra["txn_ids"] = wanted
+    else:
+        p_from, p_to = (period_from or "").strip(), (period_to or "").strip()
+        if parent_kind != "period":
+            raise Refusal("scope_wider_than_parent", f"follow-up scope must stay within {parent_request_id}; send a "
+                                                     "new request to ask about a wider scope.")
+        if p_from or p_to:
+            try:
+                Period.model_validate({"from": p_from, "to": p_to})
+            except Exception as exc:  # noqa: BLE001 - a malformed period is a 400
+                raise Refusal("bad_period", "period must be two UTC ISO-8601 times with a timezone, such as "
+                                            "2026-10-01T00:00:00Z, with from before to", status=400) from exc
+            extra["period"] = {"from": p_from, "to": p_to}
+    n = len([r for r in _call("requests sent", _service(rt, recipient).requests_sent)
+             if r.get("parent_request_id") == parent_request_id]) + 1
+    extra["questions"] = [{"question_id": f"q.follow_up_{n}", "text": question.strip()[:1000]}]
+    disp = _remote_disposition(rt, recipient, package_id, decision="request_more", reason=question,
+                               question_ids=[], requested_evidence=[], extra=extra)
+    follow_up = disp.get("follow_up") or {}
+    rfc = _remote_rfc(rt, recipient, follow_up.get("request_id")) or {}
+    forwarded = follow_up.get("forwarded") or {}
+    if forwarded.get("status") not in (None, "accepted"):
+        raise Refusal("rfc_refused", "the holder's passport refused the follow-up: "
+                                     f"{forwarded.get('reason') or forwarded.get('status')}")
+    return {"request_id": follow_up.get("request_id"), "parent_request_id": parent_request_id,
+            "audience": recipient, "scope": kind, "txn_ids": list(rfc.get("txn_ids") or []),
+            "period": rfc.get("period"), "issued_at": rfc.get("issued_at"), "expires_at": rfc.get("expires_at"),
+            "disposition_id": disp.get("disposition_id")}

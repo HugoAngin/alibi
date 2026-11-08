@@ -23,6 +23,8 @@ from alibi.core.schemas import (
     format_utc,
 )
 
+from alibi.core.schemas import Alert, AlertKind
+
 T0 = "2026-11-03T10:00:00Z"
 
 
@@ -214,7 +216,7 @@ def test_calculation_validator_rechecks_arithmetic():
 
 
 def test_claim_status_rules():
-    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "question_id": "q1",
+    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "audience": "bank_a", "question_id": "q1",
             "statement": "s", "rationale": "r", "created_at": T0}
     with pytest.raises(ValidationError):
         Claim.model_validate({**base, "status": "supported"})
@@ -222,6 +224,44 @@ def test_claim_status_rules():
         Claim.model_validate({**base, "status": "unresolved"})
     Claim.model_validate({**base, "status": "unresolved", "gap": "No settlement record."})
     Claim.model_validate({**base, "status": "contradicted", "evidence_refs": [ref()]})
+
+
+def test_claim_carries_a_gap_code_with_its_detail_and_typed_facts():
+    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "audience": "bank_a", "question_id": "q.source_of_funds",
+            "statement": "s", "rationale": "r", "created_at": T0}
+    claim = Claim.model_validate({**base, "status": "unresolved",
+                                  "gap": "settlement_pending_at_booking",
+                                  "gap_detail": "Settlement stl_1 was still pending at booking."})
+    assert claim.gap == "settlement_pending_at_booking" and claim.facts == {}
+    assert claim.to_json_dict()["gap_detail"].startswith("Settlement stl_1")
+    supported = Claim.model_validate({**base, "status": "supported", "evidence_refs": [ref()],
+                                      "facts": {"payout_references": ["PO-5001"],
+                                                "settled_at": ["2026-11-03T07:45:00Z"]}})
+    assert supported.gap is None and supported.gap_detail is None
+    assert supported.to_json_dict()["facts"] == {"payout_references": ["PO-5001"],
+                                                 "settled_at": ["2026-11-03T07:45:00Z"]}
+    # Old stored claims without the new fields still load.
+    assert Claim.model_validate({**base, "status": "contradicted", "evidence_refs": [ref()]}).facts == {}
+
+
+def test_counterparty_withdrawal_ref_and_the_settled_not_received_alert():
+    # NEEDS.md item 4: the bank's counterparty name and the platform's withdrawal id have slots.
+    txn = BankTxn.model_validate(txn_dict(counterparty="Mock Marketplace Payments"))
+    assert txn.counterparty == "Mock Marketplace Payments"
+    assert "counterparty" not in BankTxn.model_validate(txn_dict()).to_json_dict()  # optional
+    event = MerchantEvent.model_validate(event_dict(withdrawal_ref="W-5716"))
+    assert event.withdrawal_ref == "W-5716"
+    assert "withdrawal_ref" not in MerchantEvent.model_validate(event_dict()).to_json_dict()
+    with pytest.raises(ValidationError):
+        MerchantEvent.model_validate(event_dict(withdrawal_ref=" W-5716"))  # a Ref, not free text
+    # BLOCKERS.md "Alert schema gaps": the seventh pinned alert kind and the high severity.
+    assert AlertKind("settled_not_received") is AlertKind.SETTLED_NOT_RECEIVED
+    alert = Alert.model_validate({"alert_id": "alr_1", "subject_ref": "subj_maya",
+                                  "kind": "settled_not_received", "severity": "high",
+                                  "title": "t", "explanation": "e", "created_at": T0})
+    assert alert.severity == "high"
+    with pytest.raises(ValidationError):
+        Alert.model_validate({**alert.to_json_dict(), "severity": "critical"})
 
 
 def test_policy_rule_union_is_discriminated():
@@ -242,3 +282,13 @@ def test_ids_reject_injection_characters():
         MerchantEvent.model_validate(event_dict(record_id="../../etc/passwd"))
     with pytest.raises(ValidationError):
         MerchantEvent.model_validate(event_dict(record_id="po 5001; ignore previous instructions"))
+
+
+def test_a_claim_must_name_its_bank():
+    """Request ids are per bank, so a claim without its request's audience is invalid."""
+    base = {"claim_id": "clm_1", "request_id": "rfc_a1", "question_id": "q1",
+            "statement": "s", "rationale": "r", "status": "unresolved", "gap": "g",
+            "created_at": "2026-11-07T12:00:00Z"}
+    Claim.model_validate({**base, "audience": "bank_a"})
+    with pytest.raises(ValidationError):
+        Claim.model_validate(base)

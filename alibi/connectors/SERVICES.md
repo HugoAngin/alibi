@@ -20,6 +20,21 @@ Conventions for every service:
 - Tests use FastAPI's `TestClient`, `tmp_path`, `connector_keystore(tmp_path / "keys", seed=...)`,
   and never touch `data/alibi/`, the network or Gemini.
 - Generated files (tokens, state) go under `data/alibi/` (git-ignored) and are never logged.
+- Admin routes (`/admin/*` on both services) are local demo controls behind one shared
+  credential: `Authorization: Bearer <admin token>`, compared with `secrets.compare_digest`. The
+  factory (`alibi.connectors.http.resolve_admin_token`) takes the explicit `admin_token=` keyword,
+  else `tokens["admin"]`, else generates a random token; whichever wins is kept as
+  `app.state.admin_token`, so the routes are never open. The `admin` entry comes from the one
+  tokens file `data/alibi/bank_tokens.json` when the caller used `alibi.connectors.http.load_tokens`
+  (shared by the bank, the merchant and the demo runner), where `ALIBI_ADMIN_TOKEN` from the
+  environment wins over the file; a caller that builds its own `tokens` dict is not read from the
+  environment or the file. Missing or wrong token: `401
+  unauthenticated`. The client must also be a loopback address (`127.0.0.0/8`, `::1`, their
+  IPv4-mapped forms, or FastAPI's `testclient`): any other client host, even with the right token,
+  is `403 forbidden`, so a seed through a public proxy fails. Both refusals use the contract shape
+  and name no credential. The guard is `alibi.connectors.http.admin_guard(app)` as a FastAPI
+  dependency on every admin route. `GET /` and the merchant lookup routes are open (review F4,
+  documented, not changed).
 
 ## Record envelope
 
@@ -35,7 +50,11 @@ is stripped before anything enters the passport. Webhook pushes carry only `even
 
 ## Mock merchant (`alibi/connectors/merchant.py`, port 8101)
 
-`create_merchant_app(sink=None, *, keystore, passport_url=None, case_loader=load_case_without_gold) -> FastAPI`
+`create_merchant_app(sink=None, *, keystore, passport_url=None, admin_token=None, tokens=None, case_loader=load_case_without_gold) -> FastAPI`
+
+Admin credential: `admin_token`, else `tokens["admin"]` (the dict `http.load_tokens` returns),
+else a random token kept as `app.state.admin_token`. Every `/admin/*` route below takes it as a
+bearer from a loopback client (conventions above); the lookup routes and `GET /` take no token.
 
 Sink: `alibi.connectors.plug.Sink`, `sink(payload, received_at) -> {"status": inserted | duplicate |
 corrected | stale | refused | error, "reason"?, "record_id"?, "revision"?}`. With `passport_url`
@@ -87,19 +106,23 @@ Merchant details settled during the build:
   a list of ids, `amount_minor` an integer, text fields strings; anything else is
   `400 invalid_correction` before the pool is touched.
 
-Admin routes are unauthenticated local demo controls. Lookup routes are open: the passport's
-gateway binds lookups to the subject's own issuers.
+Admin routes are local demo controls behind the shared admin bearer and the loopback rule
+(`401 unauthenticated` / `403 forbidden`, conventions above). Lookup routes are open: the
+passport's gateway binds lookups to the subject's own issuers.
 
 ## Mock bank (`alibi/bank/service.py`, port 8102)
 
-`create_bank_app(*, keystore, registry, tokens=None, state_path=None, rfc_sink=None, case_loader=load_case_without_gold) -> FastAPI`
+`create_bank_app(*, keystore, registry, tokens=None, admin_token=None, state_path=None, rfc_sink=None, case_loader=load_case_without_gold) -> FastAPI`
 
 Identities: `bank_a` (analyst `analyst_a1`) and `bank_b` (analyst `analyst_b1`), plus the holder's
-feed connection. Tokens: `tokens` dict `{"bank_a", "bank_b", "feed"}`, else environment
-`ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_FEED_TOKEN`, else `data/alibi/bank_tokens.json`
-(created with random tokens, mode 0600; `load_tokens(path)`). Auth is `Authorization: Bearer <token>`;
-missing or wrong gives `401 unauthenticated`. The recipient and analyst come from the token only;
-posted `recipient`, `analyst` or `analyst_name` fields are ignored.
+feed connection. Tokens: `tokens` dict `{"bank_a", "bank_b", "feed"}` (optionally `"admin"`), else
+environment `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_FEED_TOKEN`, `ALIBI_ADMIN_TOKEN`, else
+`data/alibi/bank_tokens.json` (created with random tokens, mode 0600;
+`alibi.connectors.http.load_tokens(path)`, re-exported by `alibi.bank.service`). The admin
+credential is `admin_token`, else `tokens["admin"]`, else random, kept as `app.state.admin_token`
+and never an identity. Auth is `Authorization: Bearer <token>`; missing or wrong gives
+`401 unauthenticated`. The recipient and analyst come from the token only; posted `recipient`,
+`analyst` or `analyst_name` fields are ignored.
 
 State (`alibi/bank/state.py`, `BankState`): in memory, or persisted as JSON at `state_path`
 (atomic replace on every write). Per recipient: requests sent, inbox entries, dispositions,
@@ -111,8 +134,8 @@ The `rfc_sink` is `alibi.connectors.plug.RfcSink`: `sink(signed_request, recipie
 
 | Route | Auth | Does | Response |
 | --- | --- | --- | --- |
-| `POST /admin/seed?case=N&as_of=` | none | Load the case: subject, account_ref, bank rows (feed), RFCs. Reset all recipient state. Set the clock. | `{case_number, subject_ref, account_ref, as_of, recipients: ["bank_a", "bank_b"]}` |
-| `POST /admin/advance?as_of=` | none | Clock forward only. | `{as_of}`; `409 clock_backwards` |
+| `POST /admin/seed?case=N&as_of=` | admin, loopback | Load the case: subject, account_ref, bank rows (feed), RFCs. Reset all recipient state. Set the clock. | `{case_number, subject_ref, account_ref, as_of, recipients: ["bank_a", "bank_b"]}`; `401 unauthenticated`, `403 forbidden` |
+| `POST /admin/advance?as_of=` | admin, loopback | Clock forward only. | `{as_of}`; `409 clock_backwards` |
 | `GET /whoami` | recipient | | `{recipient, analyst}` |
 | `POST /rfc` body `{}` or `{"request_id"}` or `{"request": {...}}` | recipient | Issue a Request for Context. `{}`: the case's first unissued RFC whose audience is this recipient. `request_id`: that case RFC (must have this audience, else `404 unknown_request`, same reason as a missing id). `request`: a custom request body; `issuer` and `audience` are forced to this recipient, `subject_ref` must be the case subject, scope rule applies. Mapped with `map_rfc`, signed with this bank's key (request domain). Refused with `409 request_expired` when the clock is at or past `expires_at`. Re-issuing an issued id returns the stored bytes (200). Forwarded to the `rfc_sink` when configured. | `201 {recipient, request_id, rfc: {request, signature}, account_refs: [account_ref], forwarded}` |
 | `GET /rfc` | recipient | Requests this recipient sent. | `{requests: [{request_id, parent_request_id, issued_at, expires_at, scope: {txn_ids} or {period}, question_ids, source: case | follow_up | custom, answered_by: [package_id]}]}` |
@@ -130,7 +153,8 @@ The `rfc_sink` is `alibi.connectors.plug.RfcSink`: `sink(signed_request, recipie
 
 Bank details settled during the build:
 
-- Before a seed every recipient route (audit included) is `404 not_found`; admin routes work.
+- Before a seed every recipient route (audit included) is `404 not_found`; admin routes work
+  (with the admin bearer from loopback).
 - `POST /rfc` only issues case RFCs whose `issued_at <= as_of` (`404 unknown_request` otherwise), and
   refuses a custom request whose `issued_at` is after the clock (`400 invalid_request`). So at the
   default clock (2026-11-02T09:00Z) `bank_b`'s `rfc-0001-02` (issued 2026-11-04T14:00Z) needs
@@ -189,15 +213,18 @@ Bank details settled during the build:
 - `plug.webhook_sink(store, registry, *, subject_ref)` and `plug.rfc_sink(store, registry)`: the
   passport's merchant webhook and RFC intake as in-process callables (`{"status": inserted |
   duplicate | corrected | stale | refused | error}` and `{"status": accepted | refused | error}`).
-- `clients.MerchantClient(client)` (an `httpx.Client` with `base_url`, or a `TestClient`):
-  `settlement_lookup(payment_ref) -> {event, signature} | None` (the gateway's `SettlementLookup`,
-  the highest visible revision, `extra` stripped), `lookup(gateway=None, question_id=None,
-  **one_key) -> [envelope]` (with a gateway, one `tool_call` trace event by actor `connector`,
-  tool `merchant_lookup`, with the query and a summary of ids, revisions, kinds and statuses),
-  `seed`, `advance`, `retry`, `correct`, `deliveries`, `state`.
-- `clients.BankClient(client, token, recipient=)`: `issue_rfc`, `requests_sent`, `deliver(package) ->
-  (status, body)` (never raises on a rejection), `inbox`, `package`, `attachments`, `disposition`,
-  `audit`, `seed`, `advance`. Refusals raise `ClientError(status, code, reason)`.
+- `clients.MerchantClient(client, headers=None, admin_token=None)` (an `httpx.Client` with
+  `base_url`, or a `TestClient`): `settlement_lookup(payment_ref) -> {event, signature} | None`
+  (the gateway's `SettlementLookup`, the highest visible revision, `extra` stripped),
+  `lookup(gateway=None, question_id=None, **one_key) -> [envelope]` (with a gateway, one
+  `tool_call` trace event by actor `connector`, tool `merchant_lookup`, with the query and a
+  summary of ids, revisions, kinds and statuses), `seed`, `advance`, `retry`, `correct`,
+  `deliveries`, `state`. The admin calls send `admin_token` as the bearer; lookups and `identity`
+  never do.
+- `clients.BankClient(client, token, recipient=, admin_token=None)`: `issue_rfc`, `requests_sent`,
+  `deliver(package) -> (status, body)` (never raises on a rejection), `inbox`, `package`,
+  `attachments`, `disposition`, `audit` with the recipient token; `seed`, `advance` with
+  `admin_token`. Refusals raise `ClientError(status, code, reason)`.
 - `clients.connect(merchant, feed) -> {"settlement_lookup", "txn_refresh"}` to splat into
   `alibi.api.run_investigation(store, request_id, registry=registry, now=now, **connect(m, f))`.
 - `clients.bootstrap(store, registry, *, case, merchant, banks, feed=None, as_of=None, sink=None)`
@@ -219,8 +246,11 @@ Bank details settled during the build:
 ## Demo runner (`alibi/demo_services.py`)
 
 `uv run --frozen python -m alibi.demo_services --case 1 --as-of <utc> --timeout 10 [--merchant-port 8101] [--bank-port 8102] [--passport-url URL] [--keys DIR] [--state DIR]`
-starts both apps with one keystore, seeds both with the case at `as_of`, prints the URL line (with
-the bound ports) only once both servers listen, plus the tokens file path (never the tokens), serves
+starts both apps with one keystore, loads the one tokens file (`--tokens`, default
+`data/alibi/bank_tokens.json`: `bank_a`, `bank_b`, `feed`, `admin`; `ALIBI_*_TOKEN` environment
+variables win), gives both apps its `admin` token, seeds both with the case at `as_of` through
+that token, prints the URL line (with the bound ports) only once both servers listen, plus the
+tokens file path (never the tokens), serves
 until `--timeout` seconds pass or Ctrl-C (checked every 0.5 s), exits 0. A server that cannot bind is
 reported within 15 s as `{"error": "server did not start", "servers": [...]}` then
 `{"stopped": true, "failed": [...]}` with exit 1. A bad `--as-of` or case exits with a one-line
@@ -228,7 +258,8 @@ message before any key or token file is created.
 
 ## Refusal codes used (to pin in `shared/CONTRACTS.md`)
 
-`unauthenticated`, `not_found`, `unknown_case`, `unknown_event`, `unknown_record`, `unknown_request`,
+`unauthenticated`, `forbidden` (403: an admin call from a non-loopback client), `not_found`,
+`unknown_case`, `unknown_event`, `unknown_record`, `unknown_request`,
 `invalid_request`, `invalid_time`, `invalid_query`, `invalid_correction`, `invalid_disposition`,
 `invalid_package`, `method_not_allowed`, `clock_backwards`, `request_expired`, `audience_mismatch`,
 `package_id_reused`, `package_rejected`, `disposition_final`, `scope_wider_than_parent`,

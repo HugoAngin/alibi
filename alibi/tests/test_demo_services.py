@@ -21,7 +21,7 @@ def _args(tmp_path, *extra):
 
 
 def test_build_apps_seeds_both_services(tmp_path, monkeypatch):
-    for name in ("ALIBI_BANK_A_TOKEN", "ALIBI_BANK_B_TOKEN", "ALIBI_FEED_TOKEN"):
+    for name in ("ALIBI_BANK_A_TOKEN", "ALIBI_BANK_B_TOKEN", "ALIBI_FEED_TOKEN", "ALIBI_ADMIN_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     built = demo_services.build_apps(_args(tmp_path, "--case", "1", "--as-of", "2026-11-04T14:00:00Z"))
     merchant_seed, bank_seed = built["seeds"]["merchant"], built["seeds"]["bank"]
@@ -32,7 +32,11 @@ def test_build_apps_seeds_both_services(tmp_path, monkeypatch):
     assert MERCHANT_KID in built["keystore"].registry().kids()
     assert (tmp_path / "tokens.json").exists() and built["tokens_path"] == str(tmp_path / "tokens.json")
     tokens = json.loads((tmp_path / "tokens.json").read_text())
-    assert set(tokens) == {"bank_a", "bank_b", "feed"}
+    assert set(tokens) == {"bank_a", "bank_b", "feed", "admin"}
+    # Both services were given the file's admin token, and the seeds went through it.
+    assert built["merchant"].state.admin_token == tokens["admin"]
+    assert built["bank"].state.admin_token == tokens["admin"]
+    assert tokens["admin"] not in json.dumps(built["seeds"])
 
 
 def test_default_clock_is_the_first_rfc_time(tmp_path):
@@ -155,9 +159,14 @@ def test_live_http_round_trip_through_both_services(tmp_path):
         with httpx.Client(base_url=f"http://127.0.0.1:{ports[0]}", timeout=10) as mc, \
                 httpx.Client(base_url=f"http://127.0.0.1:{ports[1]}", timeout=10) as bc, \
                 Store(tmp_path / "passport.db") as store:
-            merchant = MerchantClient(mc)
+            merchant = MerchantClient(mc, admin_token=tokens["admin"])
             assert merchant.identity()["issuer_id"] == "mock-marketplace"
-            banks = {name: BankClient(bc, tokens[name], recipient=name) for name in ("bank_a", "bank_b")}
+            banks = {name: BankClient(bc, tokens[name], recipient=name, admin_token=tokens["admin"])
+                     for name in ("bank_a", "bank_b")}
+            # Over real sockets the client is 127.0.0.1: admin calls need the token, then work.
+            unauth_seed = mc.post("/admin/seed", params={"case": 1})
+            assert unauth_seed.status_code == 401 and unauth_seed.json()["code"] == "unauthenticated"
+            assert bc.post("/admin/advance", params={"as_of": "2026-11-04T14:00:00Z"}).status_code == 401
             feed = FeedClient(HttpFeed("", tokens["feed"], client=bc), store,
                               subject_ref="maya-001", connection_id="conn-maya-001")
             summary = bootstrap(store, registry, case=1, merchant=merchant, banks=banks, feed=feed,

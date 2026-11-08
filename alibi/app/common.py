@@ -206,9 +206,28 @@ def calculation_view(calc, *, computed_at: datetime | None = None) -> dict[str, 
     }
 
 
+PINNED_GAP_CODES = frozenset({
+    "settlement_not_found", "balance_release_not_settlement", "settlement_after_credit",
+    "settlement_pending_at_booking", "settlement_failed", "ambiguous_candidates", "amount_mismatch",
+    "missing_cited_record", "no_merchant_records",
+    # engine codes outside the pinned nine
+    "question_not_mapped", "evidence_unavailable", "not_a_credit", "payout_already_linked",
+})
+
+
+def gap_text(claim: Any) -> str | None:
+    """The gap as a sentence for a screen: ``gap_detail`` when the claim carries one, else the
+    code (``Claim.gap`` is the pinned code since S5; older rows and packages carry prose)."""
+    detail = getattr(claim, "gap_detail", None) if not isinstance(claim, dict) else claim.get("gap_detail")
+    gap = getattr(claim, "gap", None) if not isinstance(claim, dict) else claim.get("gap")
+    return detail or gap
+
+
 def gap_code(text: str | None) -> str:
     if not text:
         return "none"
+    if text in PINNED_GAP_CODES:
+        return text
     low = text.lower()
     if "withheld" in low:
         return "withheld_by_holder"

@@ -27,7 +27,8 @@ from alibi.core.schemas import format_utc, parse_utc
 from alibi.core.signing import verify
 from alibi.core.store import Store
 
-TOKENS = {"bank_a": "tok-a", "bank_b": "tok-b", "feed": "tok-feed"}
+# ``admin`` is the shared demo control credential; ``create_bank_app`` takes it from the dict.
+TOKENS = {"bank_a": "tok-a", "bank_b": "tok-b", "feed": "tok-feed", "admin": "tok-admin"}
 DEFAULT_AS_OF = "2026-11-02T09:00:00Z"      # the clock's default: the first RFC's issued_at
 RFC_B_ISSUED_AT = "2026-11-04T14:00:00Z"    # bank_b's case RFC becomes visible here
 AS_OF = RFC_B_ISSUED_AT                     # tests seed here so both case RFCs are issuable
@@ -68,7 +69,7 @@ def built(tmp_path_factory):
     assert clock.as_of_text == DEFAULT_AS_OF
     app = create_bank_app(keystore=keystore, registry=registry, tokens=TOKENS)
     client = TestClient(app)
-    assert client.post("/admin/seed", params={"case": 1, "as_of": AS_OF}).status_code == 200
+    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": AS_OF}).status_code == 200
     packages = {}
     with Store(root / "passport.db") as store:
         sink = webhook_sink(store, registry, subject_ref=SUBJECT)
@@ -100,7 +101,7 @@ def make_app(built, *, state_path=None, sink=None, seed=True):
                           state_path=state_path, rfc_sink=sink)
     client = TestClient(app)
     if seed:
-        seeded = client.post("/admin/seed", params={"case": 1, "as_of": AS_OF})
+        seeded = client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": AS_OF})
         assert seeded.status_code == 200, seeded.json()
         assert seeded.json() == {"case_number": 1, "subject_ref": SUBJECT, "account_ref": ACCOUNT,
                                  "as_of": AS_OF, "recipients": ["bank_a", "bank_b"]}
@@ -123,16 +124,21 @@ def client(built):
 # --------------------------------------------------------------------------- authentication
 
 
-def test_recipient_routes_need_a_valid_token_and_admin_routes_do_not(client, built):
+def test_recipient_routes_need_a_valid_token_and_admin_routes_the_admin_token(client, built):
     for method, path, body in (("get", "/inbox", None), ("get", "/rfc", None),
                                ("post", "/rfc", {}), ("post", "/deliver", built.p1)):
         for headers in ({}, {"Authorization": "Bearer nope"}, {"Authorization": "Basic tok-a"},
-                        auth("feed")):
+                        auth("feed"), auth("admin")):
             response = client.request(method, path, json=body, headers=headers)
             assert response.status_code == 401, (path, headers)
             assert response.json()["code"] == "unauthenticated"
             assert "tok-" not in json.dumps(response.json())
-    assert client.post("/admin/advance", params={"as_of": AS_OF}).status_code == 200
+    for headers in ({}, {"Authorization": "Bearer nope"}, auth("bank_a"), auth("feed")):
+        refused = client.post("/admin/advance", params={"as_of": AS_OF}, headers=headers)
+        assert refused.status_code == 401 and refused.json()["code"] == "unauthenticated", headers
+        assert "tok-" not in json.dumps(refused.json())
+    assert client.post("/admin/advance", headers=auth("admin"), params={"as_of": AS_OF}).status_code == 200
+    assert client.app.state.admin_token == TOKENS["admin"]
     assert client.get("/").json()["service"] == "mock-bank"
 
 
@@ -213,7 +219,7 @@ def test_issue_case_requests_signed_by_the_recipient(built):
 def test_case_requests_are_issuable_only_once_their_issued_at_has_passed(built):
     sink = SinkStub()
     client = make_app(built, sink=sink, seed=False)
-    early = client.post("/admin/seed", params={"case": 1, "as_of": "2026-10-01T00:00:00Z"})
+    early = client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": "2026-10-01T00:00:00Z"})
     assert early.status_code == 200 and early.json()["as_of"] == "2026-10-01T00:00:00Z"
     for recipient in ("bank_a", "bank_b"):
         nothing = client.post("/rfc", json={}, headers=auth(recipient))
@@ -224,7 +230,7 @@ def test_case_requests_are_issuable_only_once_their_issued_at_has_passed(built):
     assert by_id.json()["reason"] == missing.json()["reason"].replace("rfc-0001-99", RFC_A)
     assert client.get("/rfc", headers=auth("bank_a")).json()["requests"] == []
 
-    assert client.post("/admin/seed", params={"case": 1}).json()["as_of"] == DEFAULT_AS_OF
+    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 1}).json()["as_of"] == DEFAULT_AS_OF
     first = client.post("/rfc", json={}, headers=auth("bank_a"))
     assert first.status_code == 201 and first.json()["request_id"] == RFC_A
     assert first.json()["rfc"]["request"]["issued_at"] == DEFAULT_AS_OF
@@ -243,7 +249,7 @@ def test_case_requests_are_issuable_only_once_their_issued_at_has_passed(built):
     for call in sink.calls:
         assert call["signed"]["request"]["issued_at"] <= call["now"]
 
-    assert client.post("/admin/advance", params={"as_of": RFC_B_ISSUED_AT}).status_code == 200
+    assert client.post("/admin/advance", headers=auth("admin"), params={"as_of": RFC_B_ISSUED_AT}).status_code == 200
     now_visible = client.post("/rfc", json={}, headers=auth("bank_b"))
     assert now_visible.status_code == 201 and now_visible.json()["request_id"] == RFC_B
     assert now_visible.json()["rfc"]["request"]["issued_at"] == RFC_B_ISSUED_AT
@@ -254,11 +260,11 @@ def test_case_requests_are_issuable_only_once_their_issued_at_has_passed(built):
 
 def test_expired_request_is_refused_and_an_expired_package_is_rejected(client, built):
     issue_both(client)
-    backwards = client.post("/admin/advance", params={"as_of": "2026-10-01T00:00:00Z"})
+    backwards = client.post("/admin/advance", headers=auth("admin"), params={"as_of": "2026-10-01T00:00:00Z"})
     assert backwards.status_code == 409 and backwards.json()["code"] == "clock_backwards"
-    bad_time = client.post("/admin/advance", params={"as_of": "yesterday"})
+    bad_time = client.post("/admin/advance", headers=auth("admin"), params={"as_of": "yesterday"})
     assert bad_time.status_code == 400 and bad_time.json()["code"] == "invalid_time"
-    assert client.post("/admin/advance", params={"as_of": EXPIRED_AT}).json() == {"as_of": EXPIRED_AT}
+    assert client.post("/admin/advance", headers=auth("admin"), params={"as_of": EXPIRED_AT}).json() == {"as_of": EXPIRED_AT}
     expired = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
     assert expired.status_code == 409 and expired.json()["code"] == "request_expired"
     late = client.post("/deliver", json=built.p1, headers=auth("bank_a"))
@@ -485,7 +491,7 @@ def test_custom_request_scope_of_the_wrong_shape_is_a_refusal(built):
     a string it was silently coerced into its keys or characters and issued."""
     client = TestClient(create_bank_app(keystore=built.keystore, registry=built.registry,
                                         tokens=TOKENS), raise_server_exceptions=False)
-    assert client.post("/admin/seed", params={"case": 1, "as_of": AS_OF}).status_code == 200
+    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": AS_OF}).status_code == 200
     base = {"subject_ref": SUBJECT, "issued_at": AS_OF, "expires_at": EXPIRED_AT,
             "questions": [{"question_id": "q.x", "text": "why"}]}
     cases = [({"txn_ids": 1}, "txn_ids"), ({"txn_ids": True}, "txn_ids"),
@@ -843,11 +849,11 @@ def test_unseeded_app_refuses_until_seeded(built):
         unseeded = client.get(path, headers=auth("bank_a"))
         assert unseeded.status_code == 404 and unseeded.json()["code"] == "not_found", path
         assert unseeded.json()["reason"] == response.json()["reason"]
-    unknown_case = client.post("/admin/seed", params={"case": 1000})
+    unknown_case = client.post("/admin/seed", headers=auth("admin"), params={"case": 1000})
     assert unknown_case.status_code == 404 and unknown_case.json()["code"] == "unknown_case"
-    bad_as_of = client.post("/admin/seed", params={"case": 1, "as_of": "2026-11-02T09:00:00"})
+    bad_as_of = client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": "2026-11-02T09:00:00"})
     assert bad_as_of.status_code == 400 and bad_as_of.json()["code"] == "invalid_time"
-    assert client.post("/admin/seed", params={"case": 2}).json()["subject_ref"] == SUBJECT
+    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 2}).json()["subject_ref"] == SUBJECT
     second = client.post("/rfc", json={}, headers=auth("bank_a")).json()
     assert second["request_id"] == "rfc-0002-01" and second["rfc"]["request"]["txn_ids"] == ["txn-0002-004"]
 
@@ -856,12 +862,12 @@ def test_unseeded_app_refuses_until_seeded(built):
 
 
 def test_load_tokens_creates_a_private_file_and_env_overrides(tmp_path, monkeypatch):
-    for var in ("ALIBI_BANK_A_TOKEN", "ALIBI_BANK_B_TOKEN", "ALIBI_FEED_TOKEN"):
+    for var in ("ALIBI_BANK_A_TOKEN", "ALIBI_BANK_B_TOKEN", "ALIBI_FEED_TOKEN", "ALIBI_ADMIN_TOKEN"):
         monkeypatch.delenv(var, raising=False)
     path = tmp_path / "tokens.json"
     created = load_tokens(path)
-    assert set(created) == {"bank_a", "bank_b", "feed"}
-    assert len(set(created.values())) == 3 and all(len(v) >= 32 for v in created.values())
+    assert set(created) == {"bank_a", "bank_b", "feed", "admin"}
+    assert len(set(created.values())) == 4 and all(len(v) >= 32 for v in created.values())
     assert path.exists()
     if os.name != "nt":
         assert (path.stat().st_mode & 0o777) == 0o600
@@ -871,16 +877,23 @@ def test_load_tokens_creates_a_private_file_and_env_overrides(tmp_path, monkeypa
     overridden = load_tokens(path)
     assert overridden["bank_a"] == "env-a"
     assert overridden["bank_b"] == created["bank_b"] and overridden["feed"] == created["feed"]
+    assert overridden["admin"] == created["admin"]
     monkeypatch.setenv("ALIBI_BANK_B_TOKEN", "env-b")
     monkeypatch.setenv("ALIBI_FEED_TOKEN", "env-feed")
+    monkeypatch.setenv("ALIBI_ADMIN_TOKEN", "env-admin")
     assert load_tokens(tmp_path / "never-created.json") == {"bank_a": "env-a", "bank_b": "env-b",
-                                                           "feed": "env-feed"}
+                                                           "feed": "env-feed", "admin": "env-admin"}
     assert not (tmp_path / "never-created.json").exists()
 
 
 def test_app_refuses_incomplete_tokens(built):
     with pytest.raises(ValueError):
         create_bank_app(keystore=built.keystore, registry=built.registry, tokens={"bank_a": "x"})
+    # ``admin`` is not a required identity: without it the app makes its own admin token.
+    app = create_bank_app(keystore=built.keystore, registry=built.registry,
+                          tokens={"bank_a": "x", "bank_b": "y", "feed": "z"})
+    assert app.state.admin_token and app.state.admin_token not in ("x", "y", "z")
+    assert TestClient(app).post("/admin/seed", params={"case": 1}).status_code == 401
 
 
 # --------------------------------------------------------------------------- feed
@@ -923,3 +936,66 @@ def test_feed_routes_report_an_absent_feed_module(client, monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
     response = client.get("/feed/transactions", headers=auth("feed"))
     assert response.status_code == 503 and response.json()["code"] == "sink_unavailable"
+
+
+# --------------------------------------------------------------------------- rfc_url forwarder (S5 app track)
+
+
+def test_rfc_url_forwards_issued_requests_over_http_with_the_recipient_bearer(built):
+    """``create_bank_app(rfc_url=...)`` POSTs every issued request (case RFC and follow-up) to the
+    passport app's ``/connect/bank/rfc`` as ``{rfc, recipient, account_refs, now}`` with the
+    recipient's own token; the answer is recorded as ``forwarded`` exactly like the sink path."""
+    import httpx
+    calls = []
+
+    class Passport:
+        def __init__(self):
+            self.status, self.body, self.raise_error = 200, None, False
+
+        def post(self, url, *, json, headers):
+            if self.raise_error:
+                raise httpx.ConnectError("down")
+            calls.append({"url": url, "json": json, "headers": headers})
+            body = self.body if self.body is not None else {"status": "accepted",
+                                                            "request_id": json["rfc"]["request"]["request_id"]}
+            return httpx.Response(self.status, json=body)
+
+    passport = Passport()
+    app = create_bank_app(keystore=built.keystore, registry=built.registry, tokens=TOKENS,
+                          rfc_url="http://app.test/connect/bank/rfc", http_client=passport)
+    client = TestClient(app)
+    assert client.post("/admin/seed", headers=auth("admin"), params={"case": 1, "as_of": AS_OF}).status_code == 200
+    issued = client.post("/rfc", json={"request_id": RFC_A}, headers=auth("bank_a"))
+    assert issued.status_code == 201, issued.json()
+    assert issued.json()["forwarded"] == {"status": "accepted", "request_id": RFC_A}
+    assert len(calls) == 1 and calls[0]["url"] == "http://app.test/connect/bank/rfc"
+    sent = calls[0]["json"]
+    assert sent["recipient"] == "bank_a" and sent["account_refs"] == [ACCOUNT] and sent["now"] == AS_OF
+    assert sent["rfc"]["request"]["request_id"] == RFC_A and "signature" in sent["rfc"]
+    assert calls[0]["headers"]["Authorization"] == f"Bearer {TOKENS['bank_a']}"
+    # the follow-up a request_more creates goes the same way, with bank_a's own token again
+    delivered = client.post("/deliver", json=built.p1, headers=auth("bank_a"))
+    assert delivered.status_code == 200, delivered.json()
+    disp = client.post(f"/packages/{built.p1['package_id']}/disposition", headers=auth("bank_a"),
+                       json={"decision": "request_more", "reason": "more", "requested_evidence": ["the settlement"]})
+    assert disp.status_code == 200, disp.json()
+    assert disp.json()["follow_up"]["forwarded"]["status"] == "accepted"
+    assert calls[-1]["json"]["rfc"]["request"]["parent_request_id"] == RFC_A
+    assert calls[-1]["headers"]["Authorization"] == f"Bearer {TOKENS['bank_a']}"
+    audit = client.get("/audit", headers=auth("bank_a")).json()["entries"]
+    assert any("forwarded accepted" in e["detail"] for e in audit)
+    # a refusing passport is ``refused`` with its code and reason; an unreachable one is ``error``
+    passport.status, passport.body = 409, {"code": "rfc_refused", "reason": "no", "status": "refused"}
+    issued_b = client.post("/rfc", json={"request_id": RFC_B}, headers=auth("bank_b"))
+    assert issued_b.status_code == 201
+    assert issued_b.json()["forwarded"] == {"status": "refused", "reason": "no", "code": "rfc_refused"}
+    assert calls[-1]["headers"]["Authorization"] == f"Bearer {TOKENS['bank_b']}"
+    passport.raise_error = True
+    custom = client.post("/rfc", headers=auth("bank_b"),
+                         json={"request": {"request_id": "rfc-custom-1", "subject_ref": SUBJECT,
+                                           "questions": [{"question_id": "q.x", "text": "x"}],
+                                           "issued_at": AS_OF, "expires_at": "2026-11-20T00:00:00Z",
+                                           "period": OCTOBER}})
+    assert custom.status_code == 201, custom.json()
+    assert custom.json()["forwarded"] == {"status": "error", "reason": "passport unreachable: ConnectError"}
+    assert TOKENS["bank_a"] not in json.dumps(custom.json()) and TOKENS["bank_b"] not in json.dumps(custom.json())

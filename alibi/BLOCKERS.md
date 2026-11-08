@@ -56,3 +56,21 @@ a new code is a `need` to `lead`. The app needed codes the matrix lacks (`not_au
 `delivery_rejected`, `not_dispatched`, `approval_invalid`, `unknown_recipient`). This session may
 not edit `shared/` or post to the board, so the full list with meanings is in `alibi/app/UI.md`
 ("Routes, JSON and credentials") for lead to pin or for execution to add to the matrix.
+
+## S5: the S4 template bindings still cannot be committed (ownership)
+
+Recorded by the S5 integration session (lead), 2026-11-08. `alibi/app/templates/` is owned by
+research in `team.json`, so the pre-commit hook refuses lead's commit of the ten edited templates
+and `partials/when.html` from `agents/lead/out/s4_templates.patch` (the S4 bindings for a null
+`period`, `txn_ids`, `via_lookup`, `timing`, the `when()` macro and the stylesheet hooks). The
+patch is applied in this worktree, uncommitted, so `uv run --frozen python -m pytest alibi -q`
+is green here. On a checkout without it, `alibi/tests/test_app_routes.py` (21 tests) and
+`alibi/tests/test_ui_preview.py` (9 tests) fail with `'None' has no attribute 'from'` from
+`requests/detail.html`. Command that shows it: `git stash push -u -m s5-templates -- alibi/app/templates && uv run --frozen python -m pytest alibi/tests/test_ui_preview.py -q`
+(then `git stash pop`). Fix: research commits the patch (`git apply agents/lead/out/s4_templates.patch`
+from the repo root) or `team.json` adds `alibi/app/templates/` to lead. No override was used.
+
+Update 2026-11-08 ~10:00Z: research applied the S4 patch on `main` (a5dcaa9), so the S4 bindings
+are committed. The remaining uncommitted delta is `agents/lead/out/s5_templates.patch` (57 lines):
+the Send button after approval in `requests/detail.html` (QA P0 3) and the `not_attempted` branch
+of `requests/dispatch.html` (QA P0 4). Research applies it with `git apply agents/lead/out/s5_templates.patch`.

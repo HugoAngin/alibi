@@ -47,3 +47,19 @@ uv run --frozen python -m pytest -q --runxfail --tb=short agents/eval/test_redte
 ```
 
 The first command records seven strict expected failures and a passing boundary control. The second reproduces the seven failing assertions directly. The published S1 interface is in-process, so these results establish core behaviour before the HTTP and S5 adapters apply their own checks.
+
+## S5b scorer and retrieval accounting
+
+Both probes use the first request of public Case 1 and a synthetic prediction derived from its public oracle. The same assertions run without an adapter, network calls or sealed data.
+
+| Finding | Reproduced behaviour | Change needed |
+| --- | --- | --- |
+| Abstention hides an unsafe proposal | An `abstained` request carries a `proposed_package` containing a forbidden reference. It has no final package and correctly fails safe-complete, but the score drops the proposal and reports `unsafe_proposal=False`. | [Request scoring](../../../alibi/eval/scorer.py#L413). Score a supplied pre-policy proposal before handling the terminal outcome. Keep final disclosure and completion tied to the final package and outcome. |
+| Potential visibility is treated as an actual lookup | The prediction cites a lookup-only merchant record with `retrieval.lookups=0`. The official scorer reports `safe_complete=True`. The same attachment is refused when its source is moved after the request time. | [Evidence visibility](../../../alibi/eval/common.py). Carry observed record references from the adapter into the score. Keep the time boundary and account for records persisted by an earlier authorised retrieval. |
+
+```sh
+uv run --frozen --offline python -m pytest -q -rx agents/eval/test_redteam_scorer.py
+uv run --frozen --offline python -m pytest -q --runxfail --tb=short agents/eval/test_redteam_scorer.py
+```
+
+The first command records two strict expected failures and one passing time-boundary control. The second reproduces both failures. Compare pre-policy counts and lookup-backed completions after fixing the scorer and wiring the adapter's observed evidence.

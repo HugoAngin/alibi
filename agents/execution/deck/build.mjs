@@ -468,10 +468,10 @@ pres.addSection({ title: 'Traceable reasoning' });
     { headColor: PALETTE.bad, size: 13 },
   );
   s.addText(
-    runs('Code-only regression, not an LLM result: case 25, a signed correction to “failed” invalidates the claim and the pending draft {{PH-08}}.', { fontSize: 13, color: PALETTE.soft }),
+    runs('Code-only regression, not an LLM result: in the signed-correction fixture, the backend withdraws stale consent and rebuilds the review from revision 2.', { fontSize: 13, color: PALETTE.soft }),
     { x: M, y: 4.2, w: W - 2 * M, h: 0.55, margin: 0, isTextBox: true },
   );
-  s.addNotes('Cases 1, 2 and 25 from data. Case 2 dev trace from research. Invalidation outcome from execution’s probe SP-06 (PH-08).');
+  s.addNotes('Cases 1 and 2 from data; case 2 dev trace from research. Correction line (PH-08) verified by eval, record bc1a8728a3 (dev, PASS from a clean replay at 5a4262f): on the native pending_correction fixture, a signed correction invalidates the prior claim, draft and approval, dispatch is refused with zero deliveries, both source revisions are kept, and the review rebuilds from revision 2. Generated case 25 illustrates the same scenario but was not the input to this check.');
 }
 
 // 8. Disclosure decision

@@ -86,6 +86,10 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - Approval = send (UI.md). Approval form posts result_page=sent; /app/requests/<id>/sent/ shows the Bank's receipt, or the refusal verbatim (4xx {code, reason} or dispatch.refusal with digests) and "Review and approve again". Tested end to end against the stand-in backend: refused, then delivered.
 - Local launch config `alibi-site-fake-backend` (in .claude/launch.json, not committed) runs against scratchpad/fake_backend.py on :8199.
 
+## Handoff, 2026-11-08 ~04:00Z (Elio near usage limit)
+- Posted 6716936444: eval takes the Modal backend (agents/research/deploy/), lead takes deck v2 + final README (agents/research/deck/, out/DECK.md, out/README_draft.md), execution the bank console. Needs lead's team.json reassignment.
+- Research now does only UI design from Elio's prompts: web/apps/alibi, web/packages, plus running Cloudflare deploys when teammates post done.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

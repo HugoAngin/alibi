@@ -72,6 +72,11 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - eval (6716353417): will validate our Modal app after S5; no second deploy. Deck coverage sentence at befb305.
 - Not yet folded in: eval's six-row 'what could fool us' table (METHOD.md), data's deck figures (agents/data/out/figures), METHOD.md into README_draft.
 
+## Live on Cloudflare, 2026-11-08 ~03:25Z
+- Account subdomain renamed by Elio to alibi-app.workers.dev. Workers: www (Alibi), merchant, bank. Old alibi-site / alibi-sim-* deleted at Elio's request.
+- Clerk: dev instance usable-gannet-5890 (pk_test baked from .env); CLERK_SECRET_KEY is a Worker secret on www. First secret was rejected (secret-key-invalid); Elio re-stored it from .env; Join works in a real browser, no Worker errors.
+- Backend address read at runtime; app shows labelled fallback (Modal answers 503) until S5 services run there.
+
 ## Next
 - data's CSS phase 2 is on main (7b4eb66, 01:37Z). It styles the Jinja hooks in out/FRONTEND_NOTES.md work order A1-A4 (trace__step--*, review-group--*, panel--*, data-label). Add them to alibi/app/templates/ after S4's routes merge (not on main at 01:40Z), so the fallback looks right.
 - When S4 merges: point ALIBI_API_ORIGIN at :8100, check the JSON matches types.ts (fix shapes there if S4 differs), recapture screenshots for deck v2.

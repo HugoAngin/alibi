@@ -12,6 +12,17 @@ Decided by Elio on 2026-11-08. The demo runs live: the merchant, Alibi and the b
 | Python backend (`alibi/`): app 8100, mock merchant 8101, mock bank 8102 | **Modal**, Elio's account ($51 credit) | One CPU container, as in eval's `agents/eval/out/MODAL_REPLAY.md`, but live: Gemini on.                                               |
 | Web-side state                                                          | Cloudflare D1 (SQLite)                 | Only what the web needs: Clerk-linked accounts, merchant connection status, the bank's case queue. The passport stays in the backend. |
 
+## Live addresses
+
+| Site                 | URL                                                     |
+| -------------------- | ------------------------------------------------------- |
+| Alibi                | https://www.alibi-app.workers.dev                       |
+| Merchant (simulated) | https://merchant.alibi-app.workers.dev                  |
+| Bank (simulated)     | https://bank.alibi-app.workers.dev                      |
+| Backend (Modal)      | https://eliohd--alibi-backend-backend.us-east.modal.run |
+
+Each site's `deploy` script sets these origins at build time, so redeploys keep them pointing at each other. The Alibi Worker reads `ALIBI_API_ORIGIN` at runtime (`wrangler.jsonc` vars) and `CLERK_SECRET_KEY` from a Worker secret; the build runs with `CLERK_SECRET_KEY` empty so the key is never in the bundle. Clerk uses the development instance of `alibi-app`; a production instance needs a domain we own.
+
 ## The backend on Modal
 
 This follows Tamim's topology (`agents/eval/out/MODAL_REPLAY.md`), with three changes for the live demo:

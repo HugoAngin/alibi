@@ -6,7 +6,9 @@
       "role": "lead",
       "github": "knull",
       "paths": [
-        "agents/lead/"
+        "agents/lead/",
+        "web/apps/alibi/src/components/app/",
+        "web/apps/alibi/src/pages/app/"
       ]
     },
     {

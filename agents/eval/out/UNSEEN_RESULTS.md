@@ -26,6 +26,8 @@ Limits remained agents 180 seconds, one-pass 90 seconds and rules 30 seconds. Le
 
 Full-run usage and cost are unknown. These partial totals use retained completed calls and repository pricing assumptions; they are not a provider invoice. Unknown or unlogged original attempts are not free. Timing is qualified by the operator pause.
 
+All-zero family-bootstrap intervals in the machine-readable output collapse to zero for this sample; they do not establish zero population uncertainty or a general performance bound. With all main cases failing operationally, this run cannot isolate reasoning accuracy.
+
 Both scorers returned zero safe-complete main cases. They share the same capture, so agreement is not independent validation. The second scorer requires the exact per-question citation set; the official scorer accepts an alternative sufficient set. The public rehearsal exposed that distinction. Headline scoring concerns top-level investigation/draft-evidence claims, not final recipient correctness.
 
 Package-claim comparison is unavailable for all 92 RFCs per system. The recorded zero divergences must not be presented as agreement. Retrieval differs between the frozen baselines, and this synthetic held-out pack received rules calibration during authoring. No prompt, gold, input or candidate was changed after opening.
@@ -33,3 +35,5 @@ Package-claim comparison is unavailable for all 92 RFCs per system. The recorded
 Public security evidence is separate: 19/47 probes were exercised, 28 were not run, SP-23 and SP-24 failed, and both acceptance controls passed. The configured passport-store result does not cover the separately observed plaintext bank delivery state. Frozen local query-token logging is a stated limit; the hosted fix is separate.
 
 Replay verification: interrupted record `1b235c16e9` PASS; continuation `e16afeeac5` PASS. Aggregate export record `f8dc5763b6` is separately verified. Replay verifies retained hashes and saved metrics without new model calls. For commands and provenance see `results.jsonl`, `verified.jsonl`, `UNSEEN_AGGREGATES.json`, `PERMISSION_FIX.md` and `PERMISSION_FIX_PROOF.json`. The raw sealed evidence remains private.
+
+Public-only follow-up used the original worker with stderr retention and no pause: all 80 development rules cases and four Case 1 identity/number variants returned without worker failures. This did not reproduce the sealed child exits or justify any further retry. See `PUBLIC_CHILD_EXIT_DIAGNOSTIC.json`.

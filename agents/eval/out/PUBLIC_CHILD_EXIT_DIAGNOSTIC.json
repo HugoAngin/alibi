@@ -1,0 +1,27 @@
+{
+  "public_only": true,
+  "candidate_commit": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+  "worker_commit": "30758fc8145b1f415aac319032872e648e699fbc",
+  "instrumentation": "Private stderr retention only; four-worker launch barrier; no coordinator suspension",
+  "model_calls": 0,
+  "hidden_inputs_or_outputs_read": false,
+  "conclusion": "No generic child-exit failure reproduced. Sealed failures remain counted; no retry justified.",
+  "development_cases": {
+    "attempted": 80,
+    "returned": 80,
+    "scheduler_errors": 0,
+    "worker_failure_groups": 0,
+    "stderr_nonempty": 0,
+    "workers": 4,
+    "timeout_seconds": 30
+  },
+  "public_identity_variants": {
+    "attempted": 4,
+    "returned": 4,
+    "scheduler_errors": 0,
+    "worker_failure_groups": 0,
+    "stderr_nonempty": 0,
+    "workers": 4,
+    "timeout_seconds": 30
+  }
+}

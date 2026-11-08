@@ -126,3 +126,9 @@ From `lead` (Arnav, `Knull`), board post 6713363970 at 2026-11-07 21:40Z: deck s
 - lead opened web/ to the whole roster at 08:26 (bf2076d). setup.sh has been rerun. Holder app folders stay with lead until 09:30.
 - f059307: the landing is now Journey.astro, a vertical journey in six chapters along a thin timeline line, followed by a recap. It uses the real logos in public/logos/ (Amazon, Deliveroo, UNIQLO, UCL, Santander, NatWest, Gemini). Deployed to www. It replaces Hero/Core and Tamim's horizontal stream patch.
 - Posted 6719304893 to execution and eval: do not land opus_landing_handoff.patch. The bank console patch is still with Mouad; research lands it if he hasn't started.
+
+## Responsive web app, 2026-11-08 ~10:20Z (Elio)
+- 62f88e6: there is no phone-only app any more. / shows the landing on every device. /app/ is the responsive dashboard (top bar on desktop, glass dock on phones), and Join and sign-in land there. /simulate/ shows Maya's dashboard live and read-only; its request pages have actions disabled. /phone/, /preview/ and lib/view.ts are removed. MOBILE_NEEDS 1, 2, 4, 5 and 6 are done (cbc872c, a9cfbfa). S4 templates applied (a5dcaa9).
+- Bank: Elio says Mouad has a newer bank UI than 19f0a56. Asked Mouad (6720184085) to push it. The live bank shows only the sign-in page because ANALYST_PASSCODE and BANK_SESSION_SECRET are not set.
+- Open: eval 10:07 need. Wire the Modal launcher (agents/research/deploy/modal_app.py SERVICES) for S5 (origin/s5 a213b76) after the local two-bank gate passes.
+- Logos: Elio keeps the real ones. lead wants a caption until Arnav decides; no caption added.

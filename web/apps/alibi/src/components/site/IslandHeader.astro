@@ -2,7 +2,7 @@
 /**
  * The floating island header: a small liquid-glass capsule centred at the
  * top, not a full-width bar. The wordmark on the left, then Core, Simulate
- * and Join. Signed-in visitors see "Open app" and their account instead of Join.
+ * and Join. Signed-in visitors see "Dashboard" and their account instead of Join.
  */
 import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
 import { Show, UserButton } from '@clerk/astro/components';
@@ -47,7 +47,7 @@ const demo =
           demo.signedIn ? (
             <>
               <a class="join" href="/app/">
-                Open app
+                Dashboard
               </a>
               <form class="account" method="post" action="/demo-session/?out=1">
                 <button type="submit">Sign out</button>
@@ -71,7 +71,7 @@ const demo =
             </Show>
             <Show when="signed-in">
               <a class="join" href="/app/">
-                Open app
+                Dashboard
               </a>
               <span class="account">
                 <UserButton />

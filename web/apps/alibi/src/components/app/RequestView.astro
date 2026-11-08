@@ -14,11 +14,18 @@ import TraceStep from './TraceStep.astro';
 interface Props {
   data: RequestDetail;
   flash: Flash | null;
-  /** False when showing fixture data: actions are shown but cannot be sent. */
+  /** False when showing fixture data or the simulation: actions are shown but cannot be sent. */
   live: boolean;
+  /** Why actions are off, when `live` is false. */
+  offNote?: string;
 }
 
-const { data, flash, live } = Astro.props;
+const {
+  data,
+  flash,
+  live,
+  offNote = 'Approval needs the backend: it binds your decision to the package’s digest.',
+} = Astro.props;
 const { request: rq, investigation: inv, trace, review } = data;
 const approval = review.approval;
 const questionText = new Map(rq.questions.map((q) => [q.question_id, q.text]));
@@ -238,11 +245,7 @@ const SHOW = 3;
         </button>
       </form>
     )}
-    {!live && (
-      <p class="meta">
-        Approval needs the backend: it binds your decision to the package’s digest.
-      </p>
-    )}
+    {!live && <p class="meta">{offNote}</p>}
     <details>
       <summary>Approval details</summary>
       <dl class="kv">

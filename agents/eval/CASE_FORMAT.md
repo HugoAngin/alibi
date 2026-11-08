@@ -229,7 +229,13 @@ env -u ALIBI_FROZEN_PROBES uv run --frozen python -m agents.eval.run_sealed --pu
 
 **3. Capture the two-bank check and the probe receipt.** Start a disposable Case 1 stack from the pinned commit using `alibi/RUNBOOK.md`. Set `ALIBI_ROUTED_PROBES` to the routed profile, `ALIBI_PUBLIC_REGISTRY` to the pinned public keys, `ALIBI_FIXTURE_NOW` to the stack's clock, and `ALIBI_CANDIDATE_PROBE_CONFIG` to the full disposable profile. Use separate fresh stacks for mutating probes as described above. Choose a new external path for `ALIBI_FROZEN_PROBES`.
 
+The S5 launcher seeds the connectors and feed without issuing any RFCs. Start it with `ALIBI_NOW="$ALIBI_FIXTURE_NOW"` and `--as-of "$ALIBI_FIXTURE_NOW"` so that the passport and bank verify at the same instant. Then issue both Case 1 RFCs through the direct loopback services. Set `ALIBI_APP_URL` and `ALIBI_BANK_URL` to those direct origins and `ALIBI_TOKENS_FILE` to the shared token file.
+
 ```bash
+uv run --frozen python -m alibi.demo rfc bank_a \
+  --app-url "$ALIBI_APP_URL" --bank-url "$ALIBI_BANK_URL" --tokens "$ALIBI_TOKENS_FILE"
+uv run --frozen python -m alibi.demo rfc bank_b \
+  --app-url "$ALIBI_APP_URL" --bank-url "$ALIBI_BANK_URL" --tokens "$ALIBI_TOKENS_FILE"
 uv run --frozen python -m agents.eval.verify_demo_handoff --config "$ALIBI_ROUTED_PROBES" \
   --registry "$ALIBI_PUBLIC_REGISTRY" --at "$ALIBI_FIXTURE_NOW"
 uv run --frozen python -m agents.eval.run_probes --config "$ALIBI_CANDIDATE_PROBE_CONFIG" \
@@ -263,4 +269,4 @@ python3 tools/results.py verify --id "$ALIBI_RESULTS_ID" --timeout "${ALIBI_RESU
 
 The headline writes `HEADLINE.md` alongside the scores. If the frozen set has no `hidden_reference` family, pass `--public-scores` pointing to a public run's `scores.json` to add that separately labelled row. The exact sign test uses family-level net wins and losses. Zero-failure upper bounds use observed trials, with coverage shown separately. Give Execution the commit, record ID, aggregate results, coverage and verification verdict for review. Keep case rows, gold, predictions and evaluator credentials in the protected environment. The generic verification tool only opens the lockbox for the eval role.
 
-The public rehearsal used draft `2028e1a` with a local stub adapter and public Cases 1 and 2, renumbered for the scratch record. The seal, both scorers, separate adversarial report and clean-checkout replay passed. The reference bank produced 9 definite probe outcomes out of 47, with 38 unexercised. Native two-bank delivery on the unmodified draft failed at the standalone bank route, so it remains a release gate.
+The public scorer rehearsal used draft `2028e1a` with a local stub adapter and public Cases 1 and 2, renumbered for the scratch record. The seal, both scorers, separate adversarial report and clean-checkout replay passed. The reference bank produced 9 definite probe outcomes out of 47, with 38 unexercised. A separate connector-backed, rules-mode rehearsal on the newer S5 branch at `a213b76` passed native routed delivery and independent signature verification for both banks. Repeat the release gates on the declared candidate.

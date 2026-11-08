@@ -1,9 +1,10 @@
 ---
 /**
- * The phone app's frame: a light header, a one-line notice when the screen is
- * not showing live backend data, the screen, and a floating liquid-glass dock
- * with the app's two tabs, Home and Account. On a desktop it stays
- * phone-width and centred; `/phone/` shows it inside a simulated phone.
+ * The dashboard's frame: one responsive web app for desktop and phone. On a desktop a top bar
+ * carries the wordmark, the two sections (Home, Account) and the account avatar; on a phone the
+ * sections move to a floating liquid-glass dock at the bottom. A one-line notice says when the
+ * screen is not showing live backend data, and `/simulate/` adds a bar saying the visitor is
+ * looking at Maya's dashboard, read-only, with a way to start their own.
  */
 import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
 
@@ -13,25 +14,57 @@ interface Props {
   fixtureReason?: string;
   /** `passport` and `requests` are Home; `settings` is Account (older callers). */
   active: 'home' | 'account' | 'passport' | 'requests' | 'settings';
+  /** Home uses the full width; other screens keep a readable column. */
+  wide?: boolean;
+  /** `/simulate/`: Maya's dashboard shown to a visitor, read-only. */
+  simulation?: boolean;
 }
 
-const { holder = 'Maya', fixtureReason, active } = Astro.props;
+const { holder = 'Maya', fixtureReason, active, wide = false, simulation = false } = Astro.props;
 const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
+const sections = [
+  {
+    id: 'home',
+    href: '/app/',
+    label: 'Home',
+    icon: 'M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z',
+  },
+  { id: 'account', href: '/app/account/', label: 'Account', icon: '' },
+] as const;
 ---
 
-<div class="app">
+<div class="app" class:list={{ wide }}>
+  {simulation && (
+    <div class="sim-bar">
+      <p>
+        <span class="sim-dot" aria-hidden="true"></span>
+        You’re viewing Maya’s dashboard, live and read-only
+      </p>
+      <a href="/sign-up/">Start your own</a>
+    </div>
+  )}
+
   <header class="app-header">
-    <a href="/app/" class="mark">
-      alibi
-    </a>
-    <a
-      href="/app/account/"
-      class="avatar"
-      aria-label={`${holder}’s account`}
-      aria-current={tab === 'account' ? 'page' : undefined}
-    >
-      {holder.slice(0, 1).toUpperCase()}
-    </a>
+    <div class="bar">
+      <a href="/app/" class="mark">
+        alibi
+      </a>
+      <nav class="tabs" aria-label="Dashboard">
+        {sections.map((s) => (
+          <a href={s.href} aria-current={tab === s.id ? 'page' : undefined}>
+            {s.label}
+          </a>
+        ))}
+      </nav>
+      <a
+        href="/app/account/"
+        class="avatar"
+        aria-label={`${holder}’s account`}
+        aria-current={tab === 'account' ? 'page' : undefined}
+      >
+        {holder.slice(0, 1).toUpperCase()}
+      </a>
+    </div>
   </header>
 
   {fixtureReason && (
@@ -62,7 +95,7 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
       <div class="dock-items">
         <a href="/app/" aria-current={tab === 'home' ? 'page' : undefined}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z" />
+            <path d={sections[0].icon} />
           </svg>
           <span>Home</span>
         </a>
@@ -94,10 +127,11 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
     --a-display: var(--s-font-display);
     --a-body: var(--s-font-body);
     --a-mono: var(--s-font-mono);
+    /* Page gutter and content width: phone first, wider on larger screens. */
+    --a-gutter: var(--gutter);
+    --a-max: 46rem;
 
-    max-width: var(--app-max);
     min-height: 100dvh;
-    margin-inline: auto;
     display: flex;
     flex-direction: column;
     background: var(--s-paper);
@@ -105,11 +139,64 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
     font-family: var(--a-body);
   }
 
-  .app-header {
+  .app.wide {
+    --a-max: 76rem;
+  }
+
+  .sim-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px var(--gutter) 4px;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 10px var(--a-gutter);
+    background: var(--a-ink);
+    color: var(--s-paper);
+    font-size: 0.875rem;
+  }
+
+  .sim-bar p {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .sim-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6fd39b;
+    box-shadow: 0 0 0 3px rgb(111 211 155 / 0.25);
+  }
+
+  .sim-bar a {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--s-paper);
+    color: var(--a-ink);
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .app-header {
+    border-bottom: 1px solid transparent;
+  }
+
+  .bar,
+  .screen,
+  .fixture-note {
+    width: 100%;
+    max-width: calc(var(--a-max) + 2 * var(--a-gutter));
+    margin-inline: auto;
+    padding-inline: var(--a-gutter);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding-block: 14px 4px;
   }
 
   .mark {
@@ -119,9 +206,37 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
     text-decoration: none;
   }
 
+  /* Desktop sections: hidden on a phone, where the dock carries them. */
+  .tabs {
+    display: none;
+    gap: 4px;
+  }
+
+  .tabs a {
+    padding: 8px 14px;
+    border-radius: 10px;
+    color: var(--a-soft);
+    font-weight: 500;
+    font-size: 0.9375rem;
+    text-decoration: none;
+    transition:
+      background-color 160ms var(--s-ease),
+      color 160ms var(--s-ease);
+  }
+
+  .tabs a:hover {
+    background: var(--a-tint);
+  }
+
+  .tabs a[aria-current='page'] {
+    background: var(--a-tint);
+    color: var(--a-ink);
+  }
+
   .avatar {
     width: 34px;
     height: 34px;
+    margin-left: auto;
     display: grid;
     place-items: center;
     border-radius: 50%;
@@ -132,7 +247,7 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
   }
 
   .fixture-note {
-    margin: 6px var(--gutter) 0;
+    margin-top: 6px;
     font-size: var(--t-xs);
     color: var(--a-faint);
   }
@@ -159,7 +274,8 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
 
   .screen {
     flex: 1;
-    padding: var(--space-sm) var(--gutter) calc(120px + env(safe-area-inset-bottom));
+    padding-top: var(--space-sm);
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
   }
 
   .dock-wrap {
@@ -238,5 +354,28 @@ const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
   .dock-items a[aria-current='page'] svg path:last-child,
   .dock-items a[aria-current='page'] svg circle {
     fill: var(--a-ink);
+  }
+
+  /* Desktop and tablet: sections in the top bar, no dock. */
+  @media (min-width: 768px) {
+    .app {
+      --a-gutter: clamp(24px, 4vw, 40px);
+    }
+    .app-header {
+      border-bottom-color: var(--a-line);
+    }
+    .bar {
+      padding-block: 16px;
+    }
+    .tabs {
+      display: flex;
+    }
+    .screen {
+      padding-top: 32px;
+      padding-bottom: 80px;
+    }
+    .dock-wrap {
+      display: none;
+    }
   }
 </style>

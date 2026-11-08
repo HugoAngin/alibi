@@ -651,7 +651,7 @@ Served by `alibi/app/main.py` (`uv run --frozen python -m alibi.app [--port 8100
 | `GET /sources/{record_id}/{revision}` | inline | JSON `{record, fields, revisions}`; a minimal HTML page without a template |
 | `GET /alerts` | `passport/alerts.html` | |
 | `POST /alerts/lookup` (`query`) | `passport/alerts.html` | mock registry check via `agents.data.api.merchant_lookup`; unknown is `unverified` |
-| `POST /tick` | redirect `/alerts` | re-runs the monitor; JSON `{raised, resolved, kept, at}` |
+| `POST /tick` | redirect `/alerts` | re-runs the monitor; JSON `{raised, resolved, kept, at}`. The monitor also runs on every start, so alerts exist before anyone asks; the alerts page carries a "Re-run checks now" form bound to `tick_action` |
 | `GET /rules[?interp=<rule_id>&prefill=<text>]` | `passport/rules.html` | |
 | `POST /rules/interpret` (`text`) | redirect | resolved: `/rules?interp=<rule_id>`; unresolved: held for clarification |
 | `POST /rules/{rule_id}/confirm` · `/reject` · `/retire` | redirect `/rules` | confirm and retire save a new policy version through `record_policy` |
@@ -679,6 +679,6 @@ Recipient credentials: `Authorization: Bearer <token>` (`ALIBI_BANK_A_TOKEN`, `A
 
 Refusal codes used: `approval_missing`, `approval_digest_mismatch`, `approval_digest_not_current`, `approval_audience_mismatch`, `approval_expired`, `request_expired`, `policy_version_changed`, `source_revision_changed`, `approval_request_mismatch`, `package_id_reused`, `package_rejected`, `scope_wider_than_parent`, `disposition_final`, `not_authenticated`, `recipient_mismatch`, `draft_missing`, `reason_required`, `bad_decision`, `bad_period`, `question_required`, `parent_not_found`, `package_not_found`, `rule_not_pending`, `rule_not_active`, `investigation_failed`, `review_failed`, `not_dispatched` (dispatch page before any attempt).
 
-Environment: `ALIBI_CASE` (1), `ALIBI_DATA_DIR` (`data/alibi/app`), `ALIBI_KEY_DIR` (`data/alibi/keys`), `ALIBI_NOW` (fixed UTC clock; the RFCs expire 2026-11-09T09:00Z and 2026-11-11T14:00Z), `ALIBI_REPLAY=1` (banner), `ALIBI_BANK_URL`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_HOLDER_NAME`, `ALIBI_MASTER_KEY` (store encryption; never printed). Reset the demo by deleting `data/alibi/app/case_<n>.db`, `case_<n>.state.json` and `master.key` next to them.
+Environment: `ALIBI_CASE` (1), `ALIBI_DATA_DIR` (`data/alibi/app`), `ALIBI_KEY_DIR` (`data/alibi/keys`), `ALIBI_NOW` (fixed UTC clock; the RFCs expire 2026-11-09T09:00Z and 2026-11-11T14:00Z), `ALIBI_REPLAY=1` (banner), `ALIBI_BANK_URL`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_HOLDER_NAME`, `ALIBI_MASTER_KEY` (store encryption; never printed). Reset one case by deleting `data/alibi/app/case_<n>.db` and `case_<n>.state.json`; `master.key` beside them encrypts every case database there, so delete it only together with all of them. `ALIBI_NOW` accepts a date alone (midnight UTC).
 
 Investigation mode: `rules` only. The investigation card shows the badge `rules-only`; the four Gemini roles are listed as `skipped` and nothing is presented as an agent result.

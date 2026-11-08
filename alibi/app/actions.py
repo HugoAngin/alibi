@@ -69,6 +69,18 @@ def run_investigation(rt: Runtime, request_id: str) -> dict[str, Any]:
     with rt.lock:
         rfc = store.get_request(request_id)
         now = rt.clock()
+        if now >= rfc.expires_at:
+            raise Refusal("request_expired", f"run refused: request {request_id} expired at "
+                                             f"{format_utc(rfc.expires_at)}. The bank must send a new request.")
+        answered = [d for p in store.list_packages(request_id=request_id)
+                    for d in store.list_deliveries(package_id=p.package_id) if d.status == "acknowledged"]
+        stale = [cl for cl in c.latest_run_claims(store, request_id)
+                 if str(getattr(cl.state, "value", cl.state)) != "active"]
+        if answered and not stale:
+            raise Refusal("request_already_answered",
+                          f"run refused: request {request_id} was answered by package {answered[-1].package_id}. "
+                          "A new disclosure needs a follow-up request from the bank; a rerun is allowed only "
+                          "after a correction invalidates the delivered evidence.")
         try:
             result = api.run_investigation(store, rfc.request_id, mode="rules",
                                            settlement_lookup=rt.settlement_lookup,
@@ -95,6 +107,11 @@ def remove_item(rt: Runtime, request_id: str, ref_type: str, ref_id: str) -> dic
     with rt.lock:
         removed: set[str] = set(rt.sidecar.get(f"removed:{request_id}") or [])
         token = f"{ref_type}:{ref_id}"
+        current = c.current_draft(rt, request_id)
+        in_draft = current is not None and any(
+            e.ref.ref_type == ref_type and e.ref.ref_id == ref_id for e in current.review.included)
+        if not in_draft:
+            raise Refusal("item_not_in_draft", f"{token} is not an included item of the current draft", status=404)
         removed.add(token)
         rt.sidecar.set(f"removed:{request_id}", sorted(removed))
         try:
@@ -145,6 +162,9 @@ def approve(rt: Runtime, request_id: str, *, digest: str, audience: str, policy_
     store = rt.store
     with rt.lock:
         rfc = store.get_request(request_id)
+        if rt.clock() >= rfc.expires_at:
+            raise Refusal("request_expired", f"approval refused: request {request_id} expired at "
+                                             f"{format_utc(rfc.expires_at)}. The bank must send a new request.")
         draft = c.current_draft(rt, request_id)
         if draft is None:
             raise Refusal("draft_missing", f"approval refused: request {request_id} has no draft to approve; "

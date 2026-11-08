@@ -90,6 +90,14 @@ def settings_from_env(env: dict[str, str] | None = None, **overrides) -> Setting
     """Build settings from ``env`` (default ``os.environ``); keyword overrides win."""
     env = dict(os.environ if env is None else env)
     fixed = env.get("ALIBI_NOW", "").strip()
+    if fixed and len(fixed) == 10:
+        fixed += "T00:00:00Z"            # a date alone means midnight UTC
+    if fixed:
+        try:
+            parse_utc(fixed)
+        except ValueError as exc:
+            raise ValueError(f"ALIBI_NOW must be a UTC ISO-8601 time such as 2026-11-05T12:00:00Z "
+                             f"(got {fixed!r})") from exc
     tokens = {rid: env.get(spec["token_env"], "").strip() or spec["default_token"]
               for rid, spec in RECIPIENTS.items()}
     values = {

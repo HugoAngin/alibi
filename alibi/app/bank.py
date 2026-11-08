@@ -130,7 +130,13 @@ def receive_package(rt: Runtime, recipient: str, raw: bytes) -> tuple[int, dict[
             result = api.verify_package(raw, expected_audience=recipient, registry=rt.registry, now=rt.clock(),
                                         expected_subject=rfc["subject_ref"], expected_request_id=rfc["request_id"])
             reasons, accepted = list(result.errors), bool(result.accepted)
-        pid = package_id or canon.make_id("pkg_unparsed", digest)
+        if not accepted and not (result.authentication.package_id and package_id):
+            # Not a package by schema: refuse without keeping a row, so an unauthenticated client
+            # cannot fill the inbox with noise. Well-formed but invalid packages are kept as rejected.
+            rt.bank_audit(recipient, action="dispatch.refused", outcome="refused", target_id=package_id,
+                          detail="not a package: " + "; ".join(reasons)[:200])
+            return 400, {"code": "not_a_package", "reason": "; ".join(reasons) or "the delivery is not a package"}
+        pid = package_id
         receipt = {"receipt_id": canon.make_id("rcpt", recipient, pid, digest), "package_id": pid,
                    "package_sha256": digest, "recipient": recipient, "received_at": now,
                    "accepted": accepted, "reasons": [r[:300] for r in reasons]}
@@ -535,8 +541,8 @@ def create_followup(rt: Runtime, recipient: str, *, parent_request_id: str, scop
             period = Period.model_validate({"from": p_from, "to": p_to})
             parent_period = Period.model_validate(parent["period"])
         except Exception as exc:  # noqa: BLE001 - a malformed period is a 400
-            raise Refusal("bad_period", f"period must be two UTC ISO-8601 times with from before to ({exc})",
-                          status=400) from exc
+            raise Refusal("bad_period", "period must be two UTC ISO-8601 times with a timezone, such as "
+                                        "2026-10-01T00:00:00Z, with from before to", status=400) from exc
         if period.from_ < parent_period.from_ or period.to > parent_period.to:
             raise Refusal("scope_wider_than_parent", f"follow-up scope must stay within {parent_request_id}; send a "
                                                      "new request to ask about a wider scope.")

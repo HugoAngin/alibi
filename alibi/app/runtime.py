@@ -54,6 +54,8 @@ class Runtime:
         sidecar = Sidecar(settings.sidecar_path if settings.data_dir is not None else None)
         rt = cls(settings, store, keystore, case, sidecar)
         rt.load_case()
+        from alibi.app import monitor
+        monitor.tick(rt)             # proactive checks run on every start, before any request
         return rt
 
     def load_case(self) -> dict[str, Any]:

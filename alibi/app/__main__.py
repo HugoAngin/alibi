@@ -21,7 +21,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=None,
                         help="stop after this many seconds (smoke tests)")
     args = parser.parse_args(argv)
-    application = create_app()
+    try:
+        application = create_app()
+    except ValueError as exc:
+        print(f"configuration error: {exc}", flush=True)
+        return 2
     config = uvicorn.Config(application, host=args.host, port=args.port, log_level="info")
     server = uvicorn.Server(config)
     if args.timeout:

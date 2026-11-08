@@ -16,6 +16,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +54,11 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     app = FastAPI(title="Alibi", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runtime = rt
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.exception_handler(RequestValidationError)
+    async def bad_request(request: Request, exc: RequestValidationError) -> Response:
+        reason = "; ".join(f"{'.'.join(str(p) for p in e.get('loc', []))}: {e.get('msg')}" for e in exc.errors())
+        return JSONResponse({"version": UI_VERSION, "code": "bad_request", "reason": reason[:300]}, status_code=400)
 
     @app.middleware("http")
     async def same_origin_posts(request: Request, call_next):

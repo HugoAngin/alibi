@@ -470,7 +470,7 @@ def test_second_recipient_reuses_the_passport_with_a_fresh_approval(client):
 
 def test_alerts_tick_and_merchant_lookup(client):
     r = client.post("/tick", headers=JSON).json()
-    assert len(r["raised"]) == 1
+    assert r["raised"] == [] and len(r["kept"]) == 1       # the start-up tick already raised it
     alerts = client.get("/alerts", headers=JSON).json()["alerts"]
     alert = alerts[0]
     assert alert["kind"] == "unexplained_credit" and alert["status"] == "open" and alert["created_at"] == "2026-10-29T07:30:00Z"
@@ -740,3 +740,60 @@ def test_source_page_and_404_escape_markup(client):
     held = client.post("/rules/interpret", data={"text": "share everything & more with everyone"}, headers=JSON).json()
     clarify = client.post(f"/rules/held/{held['rule_id']}/clarify", follow_redirects=False)
     assert clarify.status_code == 303 and "%26" in clarify.headers["location"]
+
+
+def test_alerts_exist_at_start_and_the_page_has_a_tick_form(client):
+    data = client.get("/alerts", headers=JSON).json()
+    assert data["alerts"] and data["alerts"][0]["kind"] == "unexplained_credit"
+    assert client.get("/passport", headers=JSON).json()["alerts"]
+    html = client.get("/alerts").text
+    assert 'action="/tick"' in html and "Re-run checks now" in html
+
+
+def test_sent_request_cannot_be_rerun_or_reapproved_without_a_correction(client):
+    run_approve(client, client.rid)
+    dispatch_ok(client, client.rid)
+    detail = client.get(f"/requests/{client.rid}", headers=JSON).json()
+    assert detail["investigation"]["can_run"] is False and detail["request"]["status"] == "sent"
+    r = client.post(f"/requests/{client.rid}/run", headers=JSON)
+    assert r.status_code == 409 and r.json()["code"] == "request_already_answered"
+    assert len(client.get("/passport", headers=JSON).json()["sharing_history"]) == 1
+
+
+def test_expired_request_is_refused_server_side(tmp_path):
+    late = datetime(2026, 11, 12, 0, 0, tzinfo=timezone.utc)
+    cl = make_client(tmp_path, 1, fixed_now=late)
+    try:
+        passport = cl.get("/passport", headers=JSON).json()
+        assert {r["request_id"]: r["status"] for r in passport["requests"]}["rfc-0001-01"] == "expired"
+        r = cl.post("/requests/rfc-0001-01/run", headers=JSON)
+        assert r.status_code == 409 and r.json()["code"] == "request_expired"
+        a = cl.post("/requests/rfc-0001-01/approve", headers=JSON,
+                    data={"digest": "sha256:" + "0" * 64, "audience": "bank_a", "policy_version": "x"})
+        assert a.status_code == 409 and a.json()["code"] == "request_expired"
+        assert cl.get("/requests/rfc-0001-01").status_code == 200
+    finally:
+        cl.app.state.runtime.close()
+
+
+def test_remove_unknown_item_and_bad_inputs_answer_with_code_and_reason(client):
+    client.post(f"/requests/{client.rid}/run", headers=JSON)
+    r = client.post(f"/requests/{client.rid}/remove/record/nope", headers=JSON)
+    assert r.status_code == 404 and r.json()["code"] == "item_not_in_draft"
+    bad = client.get("/sources/rec-0001-001/abc", headers=JSON)
+    assert bad.status_code == 400 and bad.json()["code"] == "bad_request"
+    run_approve(client, client.rid)
+    dispatch_ok(client, client.rid)
+    period = client.post("/bank/bank_a/requests", headers={**JSON, **TOKEN_A},
+                         data={"parent_request_id": client.rid_b, "scope": "period", "period_from": "2026-10-10",
+                               "period_to": "2026-10-20", "question": "x"})
+    assert period.status_code in (400, 404, 409)
+    if period.status_code == 400:
+        assert "validation error" not in period.json()["reason"]
+
+
+def test_date_only_alibi_now_is_accepted_and_bad_values_fail_clearly():
+    from alibi.app.config import settings_from_env
+    assert settings_from_env({"ALIBI_NOW": "2026-11-05"}).fixed_now == datetime(2026, 11, 5, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="ALIBI_NOW must be"):
+        settings_from_env({"ALIBI_NOW": "yesterday"})

@@ -33,7 +33,7 @@ REPORT_HEADINGS = {
     "public_rehearsal": "Public rehearsal, stubbed model and drafts only",
     "public_live": "Public live adapter check",
     "frozen": "Frozen comparison",
-    "post_fix_second_look": "Post-fix second look on reused held-out cases",
+    "post_fix_second_look": "Post-fix second look on reused cases",
 }
 SP47_SCOPE = (
     "SP-47 covers the passport store only. In the S4/S2 rehearsal, the app's "

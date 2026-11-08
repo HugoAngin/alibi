@@ -21,7 +21,8 @@ html = make_env().get_template("passport/home.html").render(**context)
 ## Conventions
 
 - **Money** is always `{"minor": int, "currency": "GBP"}`. Templates format it with the `money` macro (`£2,160.00`) and show the integer with `money_raw` (`216000 GBP`) where arithmetic matters. Negative minor units render with a leading minus.
-- **Times** are UTC ISO-8601 strings and are printed as given. Periods are half-open and printed as `[from, to)`.
+- **Times** are UTC ISO-8601 strings and are printed as given. On the holder screens (`passport/*`, `requests/detail.html`) every rendered timestamp goes through the `when(ts)` macro, which wraps it in `<time class="when" datetime="...">`; a falsy value prints `—`. Periods are half-open and printed as `[from, to)`.
+- **Scope** of a request or package is exactly one of `period` (`{from, to}`) or `txn_ids` (non-empty list). `period` may therefore be `None`; templates never dereference `period.from` without checking, and print "transaction-scoped: <txn_ids>" instead.
 - **Three separate vocabularies**, never conflated:
   - link state: `unmatched | ambiguous | linked` (macro `link_badge`)
   - source trust: `issuer_verified | bank_observed | self_supplied` (macro `trust_badge`)
@@ -52,6 +53,7 @@ Blocks a child template may override: `title`, `head`, `header_extra`, `content`
 - `partials/badges.html` exports `trust_badge(trust)`, `claim_badge(status)`, `link_badge(state, count=None)`, `status_badge(value, label=None)`.
 - `partials/money.html` exports `money(amount, show_sign=False)` and `money_raw(amount)`.
 - `partials/replay_banner.html` reads `replay` (see common context). Included by `base.html`; do not include it again.
+- `partials/when.html` exports `when(ts)`. Import with `{% from "partials/when.html" import when %}`. A truthy `ts` (UTC ISO-8601 string) renders `<time class="when" datetime="{{ ts }}">{{ ts }}</time>`; a falsy one (`None`, `""`) renders `<span class="muted">—</span>`. Used for every rendered timestamp on `passport/home.html`, `passport/transaction.html`, `passport/alerts.html`, `passport/rules.html` and `requests/detail.html`. The analyst, export, dispatch and audit pages still print timestamps raw.
 
 ## Grayscale-safe badges
 
@@ -69,11 +71,24 @@ Each trust badge and each claim badge has a text mark and a distinct border, so 
 | ambiguous | ~ | dotted |
 | unmatched | – | dashed |
 
+## Hooks for the stylesheet
+
+`alibi/app/static/alibi.css` styles these class names (phase 2, "legibility for the judged screens"); the templates carry them so the stylesheet no longer depends on ids or `:nth-child`. Keep them when editing the templates.
+
+| Hook | Where | Meaning |
+| --- | --- | --- |
+| `li.trace__step.trace__step--question`, `--claim`, `--sources`, `--lookups`, `--calculation`, `--status` | `requests/detail.html`, the six inner `<li>` of each `ol.trace__steps`, in that order | One class per sub-step so the chain can be styled by role, not position |
+| `section.review-group.review-group--included`, `--excluded`, `--generalised`, `--gaps` | `requests/detail.html`, private review card | Wraps each group's `h3` (ids `included`, `excluded`, `generalised`, `gaps`), its optional `p` and its `ul.review-list`; `h3` and `ul` are direct children of the section |
+| `section.panel.panel--auth#authentication`, `.panel--trust#source-trust`, `.panel--claims#claim-status` | `analyst/package.html`, verification grid | The three independent questions. Each `h3.panel__title` is followed by one `p.muted.small.panel__question` holding the role question |
+| `table.stack` plus `td[data-label="<column header>"]` | every data table: `passport/home.html` (transactions, requests, sharing history), `passport/transaction.html` (reconciliation, diff), `passport/alerts.html` (facts), `requests/detail.html` (roles, calculation terms), `requests/export.html` (attachments), `analyst/inbox.html` (both), `analyst/package.html` (checks, evidence, reconciliation), `audit/list.html` (entries) | Below 600px the table stacks one row per card and each cell prints its `data-label` above the value. The label text equals the column's `<th>` text (e.g. `Booked`, `Description`, `Amount`, `Link state`); the reconciliation sign column is labelled `Sign` |
+| `time.when[datetime]` | holder screens, via the `when()` partial | Every rendered timestamp |
+| `span.badge.badge--status.badge--status-via_lookup` | `requests/detail.html` trace sources (`via lookup n`), `passport/transaction.html` sources (`retrieved by lookup`) | A source that came from a scoped tool lookup rather than the connected feed |
+
 ## Templates
 
 ### alibi/app/templates/passport/home.html
 
-Preview name `passport_home`, context from `ctx_passport_home()`. Extends `base.html` and reads the common context through it (`page_title`, `area`, `nav_items`, `actor`, `replay_mode`, `replay`, `flashes`, `static_prefix`, `now_utc`). Imports `trust_badge`, `claim_badge`, `link_badge`, `status_badge` and `money`, `money_raw` (`claim_badge` and `money_raw` are imported but not called on this page). Sections in order, each a `section.card.section-anchor` with an id and an `aria-labelledby` heading (`<id>-title`): `#holder`, `#connections`, `#transactions`, `#evidence`, `#alerts`, `#rules` (also `card--private`), `#requests`, `#sharing`. Every list section renders one `p.empty` line when its list is empty; `#holder` and `#evidence` are always rendered. No forms, no POST actions.
+Preview name `passport_home`, context from `ctx_passport_home()`. Extends `base.html` and reads the common context through it (`page_title`, `area`, `nav_items`, `actor`, `replay_mode`, `replay`, `flashes`, `static_prefix`, `now_utc`). Imports `trust_badge`, `claim_badge`, `link_badge`, `status_badge`, `money`, `money_raw` and `when` (`claim_badge` and `money_raw` are imported but not called on this page). Every timestamp below is rendered with `when()`. The three tables are `table.table.stack` and every `td` carries `data-label` equal to its column header. Sections in order (S4: alerts and open requests first, history, connections last), each a `section.card.section-anchor` with an id and an `aria-labelledby` heading (`<id>-title`): `#holder`, `#alerts`, `#requests`, `#transactions`, `#evidence`, `#sharing`, `#rules` (also `card--private`), `#connections`. Every list section renders one `p.empty` line when its list is empty; `#holder` and `#evidence` are always rendered. No forms, no POST actions.
 
 - `holder` — dict (kv list)
   - `name` str
@@ -84,13 +99,13 @@ Preview name `passport_home`, context from `ctx_passport_home()`. Extends `base.
   - `kind` str, one of `merchant` | `bank` | `import` (printed raw)
   - `status` str, one of `connected` | `syncing` | `error` | `disconnected` (rendered with `status_badge`)
   - `trust` str, one of `issuer_verified` | `bank_observed` | `self_supplied` (rendered with `trust_badge`)
-  - `last_synced_at` str, UTC ISO-8601, printed raw
+  - `last_synced_at` str, UTC ISO-8601 (`when()`)
   - `record_count` int (pluralised "record"/"records")
   - `href` str
-- `transactions` — list of dict (`table.table` in `div.table-wrap`; each `tr` gets `id="<txn_id>"`)
+- `transactions` — list of dict (`table.table.stack` in `div.table-wrap`; columns Booked / Description / Amount / Link state; each `tr` gets `id="<txn_id>"`)
   - `txn_id` str
   - `revision` int (printed as `r<revision>`)
-  - `booked_at` str, UTC ISO-8601
+  - `booked_at` str, UTC ISO-8601 (`when()`)
   - `description` str (links to `href`)
   - `amount` dict `{minor: int, currency: str}` (rendered with `money`, wrapped in `span.item__amount.amount--<direction>`)
   - `direction` str, one of `credit` | `debit` (printed raw and used as the amount class suffix)
@@ -102,14 +117,14 @@ Preview name `passport_home`, context from `ctx_passport_home()`. Extends `base.
   - `ambiguous` int
   - `unmatched` int
   - `total` int
-  - `last_checked_at` str, UTC ISO-8601 (card header, "Last checked <value>")
+  - `last_checked_at` str, UTC ISO-8601 (card header, "Last checked <value>", `when()`)
   - `superseded_sources` int (pluralised sentence "<n> source record(s) superseded by a newer revision")
 - `alerts` — list of dict (`ul.items`; each `li` gets `id="<alert_id>"` and class `alert alert--severity-<severity>`)
   - `alert_id` str
   - `kind` str (printed with `_` replaced by spaces)
   - `severity` str, one of `info` | `warning` | `high` (rendered with `status_badge`; all three have colour rules in alibi.css)
   - `title` str (links to `href`)
-  - `created_at` str, UTC ISO-8601
+  - `created_at` str, UTC ISO-8601 (`when()`)
   - `status` str, one of `open` | `resolved` (rendered with `status_badge`)
   - `href` str
 - `rules` — list of dict (`ul.items` inside the `card--private` card; each `li` gets `id="<rule_id>"`)
@@ -118,20 +133,20 @@ Preview name `passport_home`, context from `ctx_passport_home()`. Extends `base.
   - `status` str, one of `active` | `held` | `rejected` (rendered with `status_badge`)
   - `summary` str
   - `href` str
-- `requests` — list of dict (`table.table` in `div.table-wrap`; each `tr` gets `id="<request_id>"`)
+- `requests` — list of dict (`table.table.stack` in `div.table-wrap`; columns Request / From / Questions / Received / Expires / Status; each `tr` gets `id="<request_id>"`)
   - `request_id` str (in `<code>`, links to `href`)
   - `recipient` str
   - `question_count` int
-  - `received_at` str, UTC ISO-8601
-  - `expires_at` str, UTC ISO-8601
+  - `received_at` str, UTC ISO-8601 (`when()`)
+  - `expires_at` str, UTC ISO-8601 (`when()`)
   - `status` str, one of `new` | `investigating` | `draft` | `approved` | `sent` | `refused` | `expired` (rendered with `status_badge`)
   - `href` str
-- `sharing_history` — list of dict (`table.table` in `div.table-wrap`; each `tr` gets `id="<package_id>"`)
+- `sharing_history` — list of dict (`table.table.stack` in `div.table-wrap`; columns Package / Recipient / Sent / Expires / Items / Status; each `tr` gets `id="<package_id>"`)
   - `package_id` str (in `<code>`, links to `href`)
   - `request_id` str (shown under the package id as "for <request_id>")
   - `recipient` str
-  - `sent_at` str, UTC ISO-8601
-  - `expires_at` str, UTC ISO-8601
+  - `sent_at` str, UTC ISO-8601 (`when()`)
+  - `expires_at` str, UTC ISO-8601 (`when()`)
   - `item_count` int
   - `status` str, one of `delivered` | `acknowledged` | `superseded` | `expired` (rendered with `status_badge`)
   - `href` str
@@ -140,12 +155,12 @@ Hard-coded links in this template (section header links, matching `holder_nav`):
 
 ### alibi/app/templates/passport/transaction.html
 
-Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Extends `base.html` (common context as above). Imports the four badge macros and `money`, `money_raw`. Sections in order, each a `section.card.section-anchor` with an id and `aria-labelledby` heading: `#summary`, `#sources`, `#reconciliation`, `#claims`, `#changes`. `sources`, `claims` and `changes` render one `p.empty` line when empty; `#summary` and `#reconciliation` are always rendered. No forms, no POST actions.
+Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Extends `base.html` (common context as above). Imports the four badge macros, `money`, `money_raw` and `when`. Every timestamp is rendered with `when()`; the reconciliation table is `table.recon.stack` and each diff table is `table.table.table--compact.stack`, both with `data-label` on every `td`. Sections in order, each a `section.card.section-anchor` with an id and `aria-labelledby` heading: `#summary`, `#sources`, `#reconciliation`, `#claims`, `#changes`. `sources`, `claims` and `changes` render one `p.empty` line when empty; `#summary` and `#reconciliation` are always rendered. No forms, no POST actions.
 
 - `txn` — dict (page title "Transaction <txn_id>", lede = description, then `dl.kv`)
   - `txn_id` str
   - `revision` int (printed as `r<revision>`)
-  - `booked_at` str, UTC ISO-8601
+  - `booked_at` str, UTC ISO-8601 (`when()`)
   - `description` str (lede and kv row)
   - `amount` dict `{minor: int, currency: str}` (rendered with `money` in `span.item__amount.amount--<direction>`, followed by "stored as" `money_raw`)
   - `direction` str, one of `credit` | `debit` (printed raw and used as the amount class suffix)
@@ -157,7 +172,7 @@ Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Exte
   - `references` list of str (each in `<code>`, comma separated; empty list renders "No payment references on this transaction.")
   - `provenance` dict (one kv row: "Connection <connection_id>, retrieved <retrieved_at>, source version <source_version>")
     - `connection_id` str
-    - `retrieved_at` str, UTC ISO-8601
+    - `retrieved_at` str, UTC ISO-8601 (`when()`)
     - `source_version` str
   - `trust` str, one of `issuer_verified` | `bank_observed` | `self_supplied` (rendered with `trust_badge` in the card header; `bank_observed` in the sample)
 - `sources` — list of dict (`ul.items`; each `li` gets `id="<record_id>-r<revision>"`; header shows the list length)
@@ -166,7 +181,8 @@ Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Exte
   - `kind` str, e.g. `order` | `refund` | `fee` | `payout` | `settlement` | `receipt` (printed raw)
   - `issuer` str
   - `trust` str, one of `issuer_verified` | `bank_observed` | `self_supplied` (rendered with `trust_badge`)
-  - `occurred_at` str, UTC ISO-8601
+  - `via_lookup` bool (True adds `status_badge("via_lookup", "retrieved by lookup")` after the trust badge: the record came from a scoped tool lookup, not the connected feed; `stl_9001` in the sample)
+  - `occurred_at` str, UTC ISO-8601 (`when()`)
   - `amount` dict `{minor: int, currency: str}` (rendered with `money` in the item head and `money_raw` in the meta line)
   - `status` str, free-form record status, e.g. `completed` | `charged` | `settled` | `released_to_balance` | `imported` (rendered with `status_badge`; `completed`, `settled`, `charged`, `released_to_balance` and `imported` have colour rules in alibi.css, other values use the neutral `.badge--status` style)
   - `summary` str
@@ -176,7 +192,7 @@ Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Exte
     - `key_id` str or None (printed in `<code>` when `present`)
     - `verified` bool or None (when `present`: True renders "verified", False renders "not verified")
   - `superseded` bool (True adds `span.badge.badge--status.badge--superseded` "superseded" after the title and the note "superseded by a newer revision; shown for history" in the meta line)
-- `reconciliation` — dict (`table.recon` in `div.table-wrap`; columns: sign, line, sources, amount via `money`, minor units via `money_raw`)
+- `reconciliation` — dict (`table.recon.stack` in `div.table-wrap`; columns: sign, line, sources, amount via `money`, minor units via `money_raw`; `data-label` values `Sign`, `Line`, `Sources`, `Amount`, `Minor units`)
   - `title` str (card header)
   - `lines` list of dict (one `tr` each)
     - `label` str
@@ -192,7 +208,7 @@ Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Exte
   - `matches` bool (True renders "matches" and `status_badge("ok", "Matches")`; False renders "does not match" and `status_badge("fail", "Does not match")`)
   - `expression` str, printed verbatim in `p.recon__expression` (e.g. `240000 - 18000 - 6000 = 216000`)
   - `computed_by` str (e.g. `code`)
-  - `computed_at` str, UTC ISO-8601 (rendered as "Computed by <computed_by> at <computed_at>.")
+  - `computed_at` str, UTC ISO-8601 (rendered as "Computed by <computed_by> at <computed_at>.", `when()`)
 - `claims` — list of dict (`ul.items`; each `li` gets `id="<claim_id>"`)
   - `claim_id` str (in `<code>`)
   - `question_id` str (in `<code>`, "question <question_id>")
@@ -202,28 +218,28 @@ Preview name `transaction_detail`, context from `ctx_transaction_detail()`. Exte
   - `href` str (link text "View trace")
 - `changes` — list of dict (`ul.items`; each `li` gets `id="<change_id>"`)
   - `change_id` str
-  - `received_at` str, UTC ISO-8601 ("Received <value>")
+  - `received_at` str, UTC ISO-8601 ("Received <value>", `when()`)
   - `record_id` str (in `<code>`; item title "<record_id> r<older.revision> to r<newer.revision> · <kind>")
   - `kind` str
   - `effect` str
-  - `diff` list of dict (`table.table.table--compact` in `div.table-wrap`; headers "Field", "Before (r<older.revision>)", "After (r<newer.revision>)")
+  - `diff` list of dict (`table.table.table--compact.stack` in `div.table-wrap`; headers "Field", "Before (r<older.revision>)", "After (r<newer.revision>)", repeated as each cell's `data-label`)
     - `field` str (in `<code>`)
     - `before` str (in `span.diff-before`)
     - `after` str (in `span.diff-after`)
   - `older` dict (inside `details.disclosure` with summary "View older revision r<revision>", left cell of `div.revision-compare` as `div.revision.revision--older`, titled "Revision r<n>" with a `badge--superseded` "superseded" mark)
     - `revision` int (also used in the item title, the diff headers and the summary label)
-    - `received_at` str, UTC ISO-8601 (first `dl.kv` row "Received")
+    - `received_at` str, UTC ISO-8601 (first `dl.kv` row "Received", `when()`)
     - `href` str (link "Open revision r<revision>")
     - `fields` list of dict `{name: str, value: str}` (remaining `dl.kv` rows, `name` in `<code>`)
   - `newer` dict (right cell of `div.revision-compare` as `div.revision`, titled "Revision r<n> (active)")
     - `revision` int (also used in the item title and the diff headers)
-    - `received_at` str, UTC ISO-8601
+    - `received_at` str, UTC ISO-8601 (`when()`)
     - `href` str (link "Open revision r<revision>")
     - `fields` list of dict `{name: str, value: str}` (rendered as a `dl.kv`)
 
 ### alibi/app/templates/passport/alerts.html
 
-Preview names: `alerts` (merchant_lookup.result is None), `alerts_lookup_unverified` (result set, status "unverified"). Context builder: `ctx_alerts(with_lookup_result)`. Inherits every base.html variable (page_title, area, nav_items, actor, replay_mode, replay, flashes, static_prefix, now_utc). Imports all four badge macros and both money macros; only `status_badge` is used (no trust, claim-status, link-state or money values exist in this context).
+Preview names: `alerts` (merchant_lookup.result is None), `alerts_lookup_unverified` (result set, status "unverified"). Context builder: `ctx_alerts(with_lookup_result)`. Inherits every base.html variable (page_title, area, nav_items, actor, replay_mode, replay, flashes, static_prefix, now_utc). Imports all four badge macros, both money macros and `when`; only `status_badge` and `when` are used (no trust, claim-status, link-state or money values exist in this context).
 
 - `alerts` — list of dict, rendered in order; an empty list shows one `.empty` paragraph instead of the list. Each alert becomes `<article class="card alert alert--severity-<severity> section-anchor" id="<alert_id>">`
   - `alert_id` — str, used as the element id (deep link `/alerts#alrt_001`) and printed in `<code>`
@@ -231,10 +247,10 @@ Preview names: `alerts` (merchant_lookup.result is None), `alerts_lookup_unverif
   - `severity` — enum `info | warning | high`; drives the card border class `alert--severity-<severity>` and is printed as plain text ("Severity: warning")
   - `title` — str, the card heading (h3)
   - `explanation` — str, one paragraph
-  - `created_at` — str, UTC ISO-8601, printed raw ("Raised <created_at>")
+  - `created_at` — str, UTC ISO-8601 ("Raised <created_at>", `when()`)
   - `status` — enum `open | resolved`, via `status_badge(status)` in the card head
   - `txn_href` — str, href of the "Open the transaction" link
-  - `facts` — list of dict, rendered under the h4 "Facts behind this alert" as `table.table.table--compact` inside `.table-wrap` with columns Fact / Value / Source; an empty list replaces the table with a `.empty` paragraph ("No facts recorded for this alert.")
+  - `facts` — list of dict, rendered under the h4 "Facts behind this alert" as `table.table.table--compact.stack` inside `.table-wrap` with columns Fact / Value / Source (also the cells' `data-label`); an empty list replaces the table with a `.empty` paragraph ("No facts recorded for this alert.")
     - `label` — str
     - `value` — str, already formatted; the template prints it verbatim and does not apply money()
     - `source_id` — str, printed in `<code>` inside the source link
@@ -249,14 +265,14 @@ Preview names: `alerts` (merchant_lookup.result is None), `alerts_lookup_unverif
     - `status` — enum `verified | unverified`, via `status_badge(status, status|capitalize)` so it prints "Verified" / "Unverified"
     - `name` — str or `None`; None prints "no match" in `.muted`, a str prints verbatim ("Registry name" row)
     - `registry` — str
-    - `checked_at` — str, UTC ISO-8601, printed raw
+    - `checked_at` — str, UTC ISO-8601 (`when()`)
     - `notes` — str (the sample explains that unverified means unknown to the registry, not fraudulent)
 
 Section ids: `alerts`, one `<alert_id>` per card, `merchant-lookup`, `lookup-result` (only when result is set). Heading ids also present: `alerts-heading`, `lookup-heading`. Keep alert ids distinct from these.
 
 ### alibi/app/templates/passport/rules.html
 
-Preview names: `rules` (interpretation None, rule_form.text ""), `rules_interpretation` (interpretation set). Context builder: `ctx_rules(with_interpretation)`. Inherits every base.html variable. Only `status_badge` is used from the imported macros; money macros are imported but unused.
+Preview names: `rules` (interpretation None, rule_form.text ""), `rules_interpretation` (interpretation set). Context builder: `ctx_rules(with_interpretation)`. Inherits every base.html variable. Only `status_badge` and `when` are used from the imported macros; money macros are imported but unused.
 
 - `rule_form` — dict, rendered as `<section id="add-rule" class="card">` titled "Add a rule in plain English"
   - `action` — str, POST target of the form; textarea named `text`, submit button "Interpret" (`btn btn--primary`)
@@ -280,13 +296,13 @@ Preview names: `rules` (interpretation None, rule_form.text ""), `rules_interpre
   - `summary` — str, one paragraph
   - `version` — str, printed as "Policy version <version>"
   - `status` — str, via `status_badge(status)` in the item head (sample: `active`)
-  - `confirmed_at` — str, UTC ISO-8601, printed as "Confirmed <confirmed_at>"
+  - `confirmed_at` — str, UTC ISO-8601, printed as "Confirmed <confirmed_at>" (`when()`)
   - `retire_action` — str, POST target of the inline form with button `btn btn--small` "Retire"
 - `held_rules` — list of dict, rendered in `<section id="held-rules" class="card">` titled "Held for review" as `ul.items`; an empty list shows a `.empty` line ("No rules are held for review."). Each entry is `<li id="<rule_id>" class="section-anchor">` and carries a fixed `status_badge("held")` because the shape has no status key
   - `rule_id` — str, element id and `<code>` label
   - `text` — str, item title
   - `reason` — str, why the rule is held, one paragraph
-  - `created_at` — str, UTC ISO-8601, printed as "Held since <created_at>"
+  - `created_at` — str, UTC ISO-8601, printed as "Held since <created_at>" (`when()`)
   - `clarify_action` — str, POST target of the inline form with button `btn btn--small` "Clarify"
   - `discard_action` — str, POST target of the inline form with button `btn btn--small` "Discard". Both forms sit in one `.btn-row`
 
@@ -301,7 +317,7 @@ Preview names: `audit` (replay_mode False), `audit_replay` (replay_mode True; th
   - `query` — str, prefills the text input named `q` (may be "")
   - `actor` — str, the currently selected actor. The select named `actor` has a first option "All actors" with `value=""`, selected when `filter.actor` is falsy; otherwise the option whose value equals `filter.actor` exactly is selected
   - `actors` — list of str, one `<option>` each with value and label identical
-- `entries` — list of dict, rendered in `<section id="entries">` as `table.table.table--compact` inside `.table-wrap` with columns At (UTC) / Actor / Action / Request / event / Outcome / Detail; an empty list replaces the table with a `.empty` line ("No entries match this filter."). Each entry is `<tr id="<entry_id>" class="section-anchor">`
+- `entries` — list of dict, rendered in `<section id="entries">` as `table.table.table--compact.stack` inside `.table-wrap` with columns At (UTC) / Actor / Action / Request / event / Outcome / Detail (each cell's `data-label` is its header text, e.g. `At (UTC)`, `Request / event`); an empty list replaces the table with a `.empty` line ("No entries match this filter."). Each entry is `<tr id="<entry_id>" class="section-anchor">`
   - `entry_id` — str, row id
   - `at` — str, UTC ISO-8601, printed raw in a `.nowrap` cell
   - `actor` — str
@@ -322,7 +338,7 @@ Section ids: `filter`, `entries`, `pagination`, plus `<entry_id>` on each row. H
 
 ### alibi/app/templates/requests/detail.html
 
-Preview name `request_detail`, context `ctx_request_detail()`. Inherits the common base context from base.html (`page_title`, `area`, `nav_items`, `actor`, `replay_mode`, `replay`, `flashes`, `static_prefix`, `now_utc`). Sections, each a `section.card` with an id: `#rfc` (with `#rfc-questions`), `#investigation`, `#trace`, `#review` (class `card card--private`, with `#review-claims`, `#included`, `#excluded`, `#generalised`, `#gaps`, and the approval box `div.approval#approval`). Deep-link ids inside: each question `<li id="<question_id>">`; each trace step `<li id="<step_id>">`; each review claim `<li id="review-<claim_id>">`; each included, excluded and generalised item `<li id="<item_id>">`. Gaps have no id.
+Preview name `request_detail`, context `ctx_request_detail()`. Inherits the common base context from base.html (`page_title`, `area`, `nav_items`, `actor`, `replay_mode`, `replay`, `flashes`, `static_prefix`, `now_utc`). Imports the four badge macros, `money`, `money_raw` and `when`; every timestamp is rendered with `when()`. Sections, each a `section.card` with an id: `#rfc` (with `#rfc-questions`), `#investigation`, `#trace`, `#review` (class `card card--private`, with `#review-claims`, then four `section.review-group.review-group--<included|excluded|generalised|gaps>` wrapping the headings `#included`, `#excluded`, `#generalised`, `#gaps` and their lists, and the approval box `div.approval#approval`). Inside each trace step the six sub-steps are `li.trace__step.trace__step--question`, `--claim`, `--sources`, `--lookups`, `--calculation`, `--status`, in that order. Deep-link ids inside: each question `<li id="<question_id>">`; each trace step `<li id="<step_id>">`; each review claim `<li id="review-<claim_id>">`; each included, excluded and generalised item `<li id="<item_id>">`. Gaps have no id.
 
 - `request` (dict)
   - `request_id` str
@@ -330,34 +346,35 @@ Preview name `request_detail`, context `ctx_request_detail()`. Inherits the comm
   - `issuer` str (bank display name; also used in the page lede "From <issuer>")
   - `audience` str (recipient id, e.g. `bank_a`)
   - `subject_ref` str
-  - `received_at` str, UTC ISO
-  - `expires_at` str, UTC ISO
-  - `period` {`from`: str UTC ISO, `to`: str UTC ISO} (printed half-open as `[from, to)`)
-  - `txn_ids` list[str] (empty prints "none listed; period scope only")
+  - `received_at` str, UTC ISO (`when()`)
+  - `expires_at` str, UTC ISO (`when()`)
+  - `period` {`from`: str UTC ISO, `to`: str UTC ISO} | None. When set the Period row prints half-open `[from, to)`; when None it prints "transaction-scoped: " followed by each `txn_ids` entry in `<code>`. `period.from` is never dereferenced when `period` is None.
+  - `txn_ids` list[str] (the Transactions row; empty prints "none listed; period scope only". Exactly one of `period` / `txn_ids` is the real scope)
   - `questions` list of {`question_id`: str, `text`: str} (ordered list)
   - `status` str, enum `new | investigating | draft | approved | sent | refused | expired` (status_badge, shown in the card head and in the kv Status row)
   - `signature` {`verified`: bool (true prints status_badge("verified"), false prints status_badge("invalid", "not verified")), `key_id`: str}
   - `href` str (present in the context, not rendered)
 - `investigation` (dict)
   - `status` str, enum `not_started | running | complete | failed` (status_badge; also printed with underscores as spaces in the "Not available while the investigation is …" note when `can_run` is false)
+  - `mode_label` str, e.g. `rules-only` (rendered as `status_badge(mode_label)` beside the status badge in the card head; neutral badge style unless the CSS names the value)
   - `can_run` bool (false adds `disabled` to the "Run investigation" button and the muted note)
   - `run_action` str, POST URL (form has no fields)
-  - `started_at` str UTC ISO | None (None prints "not started")
-  - `completed_at` str UTC ISO | None (None prints "not completed")
+  - `started_at` str UTC ISO | None (None prints "not started", otherwise `when()`)
+  - `completed_at` str UTC ISO | None (None prints "not completed", otherwise `when()`)
   - `budget` {`calls_used`: int, `calls_cap`: int} (printed "<calls_used> of <calls_cap> Gemini calls")
-  - `roles` list of {`name`: str, `status`: str (status_badge; sample values `skipped`, `complete`; preview_render.py pins no enum, any other value renders as a neutral badge), `calls`: int, `note`: str} (empty prints the table row "No roles have run yet.")
+  - `roles` list of {`name`: str, `status`: str (status_badge; sample values `skipped`, `complete`; preview_render.py pins no enum, any other value renders as a neutral badge), `calls`: int, `note`: str} (`table.table.table--compact.stack`, columns Role / Status / Calls / Note as `data-label`; empty prints the table row "No roles have run yet.")
   - `failure_reason` str | None (kv row "Failure" only when truthy)
 - `trace` list of step dicts (empty prints "No trace yet. Run the investigation to produce one.")
   - `step_id` str (`<li id>`)
   - `question_id` str
   - `question` str
   - `claim` {`claim_id`: str, `text`: str, `status`: str enum `supported | contradicted | unresolved` (claim_badge)}
-  - `sources` list of {`record_id`: str, `revision`: int, `trust`: str enum `issuer_verified | bank_observed | self_supplied` (trust_badge), `href`: str (link text "<record_id> r<revision>")} (empty prints "no sources")
-  - `lookups` list of {`tool`: str, `args_summary`: str, `result_summary`: str, `at`: str UTC ISO} (empty prints "no scoped lookups")
-  - `calculation` {`expression`: str, `result`: {`minor`: int, `currency`: str} (money and money_raw), `computed_by`: str (printed "computed by <computed_by>"), `matches`: bool (true "matches the cited amounts", false "does not match the cited amounts")} | None (None prints "no calculation")
+  - `sources` list of {`record_id`: str, `revision`: int, `trust`: str enum `issuer_verified | bank_observed | self_supplied` (trust_badge), `href`: str (link text "<record_id> r<revision>"), `via_lookup`: int | None (index into this step's `lookups`; when not None renders `<span class="badge badge--status badge--status-via_lookup">via lookup <via_lookup + 1></span>` after the trust badge, so lookup index 0 prints "via lookup 1")} (empty prints "no sources")
+  - `lookups` list of {`tool`: str, `args_summary`: str, `result_summary`: str, `at`: str UTC ISO (`when()`)} (empty prints "no scoped lookups")
+  - `calculation` {`expression`: str, `result`: {`minor`: int, `currency`: str} (money and money_raw), `computed_by`: str (printed "computed by <computed_by>"), `matches`: bool (true "matches the cited amounts", false "does not match the cited amounts"), `terms`: list of {`label`: str, `sign`: `"+"` | `"-"`, `amount`: {`minor`, `currency`}, `source_ids`: list[str]}} | None (None prints "no calculation"). When `terms` is non-empty a `table.table.table--compact.stack` is rendered under the expression line with columns Sign / Line / Sources / Amount (`money`) / Minor units (`money_raw`), each `td` carrying that header as `data-label`; an empty `terms` renders no table.
   - `status` str enum `supported | contradicted | unresolved` (claim_badge, shown in the step head and in the Status sub-step)
   - `status_reason` str
-  - `at` str UTC ISO
+  - `at` str UTC ISO (`when()`)
 - `review` (dict, private card)
   - `claims` list of {`claim_id`: str (`<li id="review-<claim_id>">`), `question_id`: str, `question`: str, `status`: claim enum (claim_badge), `rationale`: str, `href`: str (link "Open trace")} (empty prints "No claims yet.")
   - `included` list of {`item_id`: str, `question_id`: str, `label`: str, `kind`: str, `record_id`: str, `revision`: int, `trust`: trust enum (trust_badge), `reason`: str, `removable`: bool, `remove_action`: str | None} (Remove form, POST `remove_action`, no fields, rendered only when `removable` and `remove_action` are both truthy; otherwise muted "required for the claim"; empty list prints "Nothing is included.")
@@ -372,9 +389,9 @@ Preview name `request_detail`, context `ctx_request_detail()`. Inherits the comm
     - `action` str, POST URL
     - `digest` str (`.digest`; hidden input `digest`)
     - `policy_version` str (hidden input `policy_version`)
-    - `valid_from` str UTC ISO (`.approval__window`, "<valid_from> to <valid_until>")
+    - `valid_from` str UTC ISO (`.approval__window`, "<valid_from> to <valid_until>", both `when()`)
     - `valid_until` str UTC ISO
-    - `approved_at` str UTC ISO | None (kv row "Approved at" only when truthy)
+    - `approved_at` str UTC ISO | None (kv row "Approved at" only when truthy, `when()`)
     - `invalidated_reason` str | None (kv row "Invalidated" only when truthy)
   - `preview_href` str (link "Preview the package as the bank will see it")
 
@@ -382,7 +399,7 @@ Forms: POST `investigation.run_action` (no fields, button "Run investigation", `
 
 ### alibi/app/templates/requests/export.html
 
-Preview name `export`, context `ctx_export()`. Inherits the common base context. Sections: `div.banner.banner--info.no-print#authoritative` (download link, muted print note, verify hint, print button), `section.card#package`, `section.card#approval`, `section#claims` (one `article.card` with `id="claim-<question_id>"` per claim), `section.card#attachments` (each `<tr id="<attachment_id>">`), then `div.print-only.print-footer`. The only inline script is the print button `onclick="window.print()"`.
+Preview name `export`, context `ctx_export()`. Inherits the common base context. Sections: `div.banner.banner--info.no-print#authoritative` (download link, muted print note, verify hint, print button), `section.card#package`, `section.card#approval`, `section#claims` (one `article.card` with `id="claim-<question_id>"` per claim), `section.card#attachments` (`table.table.table--compact.stack`, each `<tr id="<attachment_id>">`, every `td` with its header as `data-label`), then `div.print-only.print-footer`. Timestamps on this page are printed raw (no `when()`), so the print matches the signed JSON byte for byte. The only inline script is the print button `onclick="window.print()"`.
 
 - `package` (dict)
   - `package_id` str (page title "Package <package_id>", kv row, print footer)
@@ -392,7 +409,8 @@ Preview name `export`, context `ctx_export()`. Inherits the common base context.
   - `recipient` str (display name; page lede and kv row)
   - `case_id` str
   - `subject_ref_masked` str
-  - `period` {`from`: str UTC ISO, `to`: str UTC ISO} (printed `[from, to)`)
+  - `period` {`from`: str UTC ISO, `to`: str UTC ISO} | None (kv row "Scope": when set prints `[from, to)`; when None prints "transaction-scoped: " plus each `txn_ids` entry in `<code>`; `period.from` is never dereferenced when None)
+  - `txn_ids` list[str] (read only when `period` is None)
   - `issued_at` str UTC ISO
   - `expires_at` str UTC ISO
   - `digest` str (`.digest` kv row and the print footer)
@@ -412,15 +430,15 @@ Preview name `export`, context `ctx_export()`. Inherits the common base context.
     - `revision` int
     - `issuer` str
     - `trust` trust enum (trust_badge)
-    - `attestation` str enum `issuer_signature | package_signer | none` (status_badge)
-    - `redacted` bool (prints "yes" / "no")
+    - `attestation` str enum `issuer_signature | package_signer | none` (status_badge in the Attestation cell; when `redacted` is true the text "Redacted extract, attested by Alibi" follows the badge in the same cell)
+    - `redacted` bool (the Redacted column prints "yes" / "no"; true also adds the attestation text above)
     - `summary` str
 - `export` (dict)
   - `json_href` str (download link; `download` attribute set to `json_filename`)
   - `json_filename` str (link text "Download <json_filename>")
   - `json_size_bytes` int (printed "(<n> bytes)")
   - `verify_hint` str (printed in `<code>` after "Verify with")
-  - `approval` dict, same shape as `review.approval` on the detail page: {`status`: str enum `none | pending | approved | invalidated` (status_badge, card head and kv row), `recipient`: str, `audience`: str, `action`: str, `digest`: str, `policy_version`: str, `valid_from`: str, `valid_until`: str, `approved_at`: str UTC ISO | None (None prints "not approved"), `invalidated_reason`: str | None (kv row "Invalidated" only when truthy)}. Only `status`, `recipient`, `approved_at`, `policy_version` and `invalidated_reason` are rendered; `audience`, `action`, `digest`, `valid_from`, `valid_until` are read from the same dict but not shown on this page.
+  - `approval` dict, same shape as `review.approval` on the detail page: {`status`: str enum `none | pending | approved | invalidated` (status_badge, card head and kv row), `recipient`: str, `audience`: str, `action`: str, `digest`: str, `policy_version`: str, `valid_from`: str, `valid_until`: str, `approved_at`: str UTC ISO | None (None prints "not approved"), `invalidated_reason`: str | None (kv row "Invalidated" only when truthy)}. The template dereferences only `status`, `recipient`, `approved_at`, `policy_version` and `invalidated_reason`; `audience`, `action`, `digest`, `valid_from` and `valid_until` are never touched by this template, so under `StrictUndefined` the wiring session may omit them here (they are listed for parity with the detail page).
 
 No forms. Print footer text: "This PDF is the browser's print of this page. It is a readable rendering of package <package_id>. The signed JSON (digest <digest>) is the authoritative artefact for verification."
 
@@ -442,7 +460,7 @@ Preview names `dispatch_success` and `dispatch_refused`, context `ctx_dispatch(o
     - `signer_key_id` str
     - `expires_at` str UTC ISO
   - `refusal` dict | None (None on success; the refused branch renders the code/digest rows and the reason block only when truthy)
-    - `code` str, e.g. `approval_digest_mismatch` (status_badge; underscores shown as spaces; no colour rule in the CSS, falls back to the neutral `.badge--status`)
+    - `code` str, e.g. `approval_digest_mismatch` (status_badge; underscores shown as spaces; `approval_digest_mismatch` has a red "bad" colour rule in alibi.css alongside `refused`, `invalid` and `rejected`; other codes fall back to the neutral `.badge--status`)
     - `reason` str, printed verbatim inside `<pre class="result__reason">` under `h3#reason` "Reason from the backend (verbatim)"
     - `checked_at` str UTC ISO
     - `expected_digest` str (`.digest`)
@@ -455,7 +473,7 @@ Forms: POST `dispatch.retry_action` (no fields, button "Retry dispatch", `btn`),
 
 ### alibi/app/templates/analyst/inbox.html
 
-Preview name `analyst_inbox`, context `ctx_analyst_inbox()`. Extends `base.html` (needs the common context: `page_title`, `area="analyst"`, `nav_items`, `actor`, `replay_mode`, `replay`, `flashes`, `static_prefix`, `now_utc`). Imports `trust_badge`, `claim_badge`, `link_badge`, `status_badge`, `money`, `money_raw` (only `claim_badge` and `status_badge` are called). Sections: `#packages`, `#requests-sent`. Rows get ids `pkg-<package_id>` and `req-<request_id>`. No forms.
+Preview name `analyst_inbox`, context `ctx_analyst_inbox()`. Extends `base.html` (needs the common context: `page_title`, `area="analyst"`, `nav_items`, `actor`, `replay_mode`, `replay`, `flashes`, `static_prefix`, `now_utc`). Imports `trust_badge`, `claim_badge`, `link_badge`, `status_badge`, `money`, `money_raw` (only `claim_badge` and `status_badge` are called). Sections: `#packages`, `#requests-sent`. Both tables are `table.table.stack` and every `td` carries `data-label` equal to its header (Package / Request / Received / Expires / Subject / Authentication / Claims / Disposition; Request / Parent request / Sent / Status / Questions). Rows get ids `pkg-<package_id>` and `req-<request_id>`. No forms. Timestamps are printed raw.
 
 - `recipient` dict
   - `id` str, e.g. `"bank_a"` (shown in `<code>` in the lede and in the "only packages bound to" sentence)
@@ -483,7 +501,11 @@ Preview name `analyst_inbox`, context `ctx_analyst_inbox()`. Extends `base.html`
 
 ### alibi/app/templates/analyst/package.html
 
-Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.html` (same common context as above). Imports the same macros (`link_badge` is imported but not called). Section ids in order: `#summary`, `#checks` (contains panels `#authentication`, `#source-trust` with items `#trust-<attachment_id>`, `#claim-status` with items `#claim-status-<question_id>`), `#evidence` (cards `#evidence-<question_id>`), `#reconciliation`, `#contradictions` (items `#contradiction-<claim_id>`), `#gaps` (items `#gap-<question_id>`), `#disposition`, `#followup`. Form control ids: `disposition-analyst-name`, `disposition-note`, `followup-period-from`, `followup-period-to`, `followup-question`.
+Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.html` (same common context as above). Imports the same macros (`link_badge` is imported but not called) and defines a local macro `disposition_record(rec)` that renders one disposition as a `dl.kv`. Timestamps on this page are printed raw.
+
+Section ids in order: `#summary`, `#checks` (contains the panels `section.panel.panel--auth#authentication`, `section.panel.panel--trust#source-trust` with items `#trust-<attachment_id>`, `section.panel.panel--claims#claim-status` with items `#claim-status-<question_id>`; each `h3.panel__title` is followed by one `p.muted.small.panel__question`: "Did this package arrive from Alibi, unaltered, addressed to this recipient?", "Who stands behind each attached record, and how was it attested?", "What does the cited evidence establish for each question?"), `#evidence` (cards `#evidence-<question_id>`), `#reconciliation`, `#contradictions` (items `#contradiction-<claim_id>`), `#gaps` (items `#gap-<question_id>`), `#disposition`, `#followup`. Form control ids: `disposition-reason`, `disposition-requested-evidence`, `followup-txn-ids`, `followup-period-from`, `followup-period-to`, `followup-question`. Tables (`table.table.table--compact.stack` for checks and evidence, `table.recon.stack` for reconciliation) carry `data-label` on every `td`.
+
+**Rejected packages.** The whole page after `#summary` sits in one `{% if rejected %} … {% else %} … {% endif %}`. When `rejected` is true the template renders only the `#summary` card (Request, Recipient, Received, Subject; no Scope, Issued or Expires rows) and the `#authentication` panel with `status_badge(authentication.status)`, the Received and Digest rows (from `rejection` when present, else from `authentication`), an `h3` "Rejected" over a `<ul>` of `rejection.reasons`, and the paragraph "The package was rejected by verification. Its contents are not shown as evidence." Nothing else from the package is rendered: no source trust, claim status, evidence, reconciliation, contradictions, gaps, disposition form or follow-up form. The other context keys must still be passed (StrictUndefined), but they are not read.
 
 - `recipient` dict
   - `id` str
@@ -494,20 +516,26 @@ Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.h
   - `request_id` str
   - `recipient` str, display name
   - `subject_ref_masked` str
-  - `period` dict
+  - `period` dict | None (summary row "Scope": when set prints "<from> to <to> (from inclusive, to exclusive)"; when None prints "transaction-scoped: " plus each `txn_ids` entry in `<code>`; `period.from` is never dereferenced when None)
     - `from` str, UTC ISO-8601 (inclusive)
     - `to` str, UTC ISO-8601 (exclusive)
+  - `txn_ids` list[str] (read only when `period` is None)
   - `issued_at` str, UTC ISO-8601
   - `expires_at` str, UTC ISO-8601
+- `rejected` bool (see above)
+- `rejection` `None` or dict (read only when `rejected` is true; None there prints the authentication values and "No reason recorded.")
+  - `reasons` list of str (one `<li>` each)
+  - `received_at` str, UTC ISO-8601
+  - `package_digest` str (`.digest`)
 - `authentication` dict
   - `status` str, enum `valid | invalid | expired | wrong_audience | replayed` (`status_badge`)
   - `received_at` str, UTC ISO-8601 (also used as "Received" in the summary kv, since `package` has no `received_at`)
   - `verified_at` str, UTC ISO-8601
   - `package_digest` str, e.g. `"sha256:..."` (rendered in `.digest`)
   - `signer_key_id` str
-  - `checks` list of dict (empty list renders "No checks recorded.")
+  - `checks` list of dict (`table.table.table--compact.stack`, columns Check / Result / Detail; empty list renders "No checks recorded.")
     - `name` str
-    - `result` str, `pass | fail` (`status_badge`; any value accepted)
+    - `result` str, `"pass"` | `"fail"` — always a string, never a bool (`status_badge(check.result)`; the auth panel's CSS colours `fail` red and keeps `pass` a neutral outline)
     - `detail` str
   - `note` str, printed verbatim under the checks table
 - `source_trust` list of dict (empty list renders "No attachments in this package.")
@@ -516,6 +544,8 @@ Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.h
   - `revision` int (printed as `<record_id> r<revision>`)
   - `issuer` str
   - `trust` str, enum `issuer_verified | bank_observed | self_supplied` (`trust_badge`)
+  - `attestation` str, enum `issuer_signature | package_signer | none` (`status_badge`, rendered after the trust badge)
+  - `redacted` bool (true appends the text "Redacted extract, attested by Alibi" beside the issuer line)
   - `signature_check` str, e.g. `pass | fail | none` (`status_badge`)
   - `detail` str
 - `claim_status` list of dict (empty list renders "No claims in this package.")
@@ -528,11 +558,13 @@ Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.h
   - `claim` dict
     - `status` str, enum `supported | contradicted | unresolved` (`claim_badge`)
     - `rationale` str
-  - `evidence` list of dict (empty list renders "No evidence attached.")
+  - `evidence` list of dict (`table.table.table--compact.stack`, columns Attachment / Record / Trust / Attestation / Summary; empty list renders "No evidence attached.")
     - `attachment_id` str (linked to `href`)
     - `record_id` str
     - `revision` int
     - `trust` str, enum `issuer_verified | bank_observed | self_supplied` (`trust_badge`)
+    - `attestation` str, enum `issuer_signature | package_signer | none` (`status_badge` in the Attestation column)
+    - `redacted` bool (true adds "Redacted extract, attested by Alibi" after the attestation badge)
     - `summary` str
     - `href` str
   - `calculation` `None` or dict (None renders nothing)
@@ -540,8 +572,14 @@ Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.h
     - `result` money dict `{minor: int, currency: str}` (shown with `money` and `money_raw`)
     - `computed_by` str, e.g. `"verifier"` ("Recomputed by <computed_by>.")
     - `matches` bool (true -> `status_badge("pass", "matches")`, false -> `status_badge("fail", "does not match")`)
+  - `timing` `None` or dict (None renders nothing; a dict renders an `h4` "Settlement timing" and a `dl.kv`)
+    - `payout_ref` str (row "Payout reference", in `<code>`)
+    - `released_to_balance_at` str | None (row "Released to platform balance": the value or "—", always followed by "(not a bank settlement)")
+    - `bank_settled_at` str | None (row "Bank settlement": the value or "— not settled")
+    - `credit_booked_at` str (row "Credit booked")
+    - `settled_before_booking` bool | None (row "Settled before booking": true "yes", false "no", None "unknown"; a Python bool is never printed)
   - `gap` `None` or str (None renders nothing; empty string also renders nothing)
-- `reconciliation` dict (always rendered; no empty state)
+- `reconciliation` dict (always rendered; `table.recon.stack` with `data-label` values Sign / Line / Sources / Amount / Minor units; no empty state)
   - `title` str
   - `lines` list of dict
     - `label` str
@@ -571,23 +609,78 @@ Preview name `analyst_package`, context `ctx_analyst_package()`. Extends `base.h
   - `description` str
   - `reason_code` str, e.g. `evidence_unavailable` (`status_badge`, underscores shown as spaces)
 - `disposition_form` dict
-  - `action` str, POST target; form fields sent: `disposition` (radio, required), `analyst_name` (text, required), `note` (textarea, optional)
+  - `action` str, POST target. Form fields sent: `decision` (radio, required, one per `options[]`), `reason` (textarea, required), `question_ids` (one checkbox per `questions[]`, `name="question_ids"`, value `question_id`, none preselected), `requested_evidence` (textarea, optional, one item per line). There is no `analyst_name` input: the route takes the analyst from the authenticated session.
   - `options` list of dict (one radio each; none preselected)
     - `value` str, enum `clear | escalate | request_more`
     - `label` str
-  - `analyst_name` str, prefill for the text input
-  - `current` `None` or dict (None prints "No disposition recorded yet.")
-    - `disposition` str, enum `clear | escalate | request_more` (`status_badge`)
-    - `analyst_name` str
-    - `recorded_at` str, UTC ISO-8601
-    - `note` str (empty string prints muted "none")
+  - `analyst` str, the signed-in analyst, shown read-only as a `dl.kv` row "Analyst" inside the form (not submitted)
+  - `questions` list of `{question_id: str, text: str}` (one checkbox each; empty prints "No questions in this package.")
+  - `current` `None` or dict (None prints "No disposition recorded yet."; a dict renders `h3` "Current disposition" and `disposition_record(current)`)
+    - `decision` str, enum `clear | escalate | request_more` (`status_badge`)
+    - `analyst` str
+    - `decided_at` str, UTC ISO-8601
+    - `reason` str (empty string prints muted "none")
+    - `question_ids` list[str] (each in `<code>`; empty prints muted "none")
+    - `requested_evidence` list[str] (bulleted; empty prints muted "none")
+  - `history` list of dicts with the same shape as `current` (rendered as a compact `ul.items` under `h3` "Earlier dispositions" only when non-empty: decision badge, analyst, decided_at, reason, question ids and requested evidence joined by "; ")
+  - `final` bool (true suppresses the form and prints `<p class="muted small">This package has a final disposition.</p>`; false renders the form, preceded by an `<hr>` when `current` is set)
 - `followup_form` dict
-  - `action` str, POST target; form fields sent: `parent_request_id` (hidden), `period_from` (text, required), `period_to` (text, required), `question` (textarea, required)
+  - `action` str, POST target. Form fields sent: `parent_request_id` (hidden), `disposition_id` (hidden; empty string when `followup_form.disposition_id` is None), `scope` (radio, `txn_ids` | `period`, the one equal to `followup_form.scope` is checked), `txn_ids` (text, comma-separated, not required), `period_from` and `period_to` (text, not required), `question` (textarea, required). The route validates that the chosen scope's fields are filled; the template does not.
   - `parent_request_id` str (hidden field and shown in the kv)
+  - `disposition_id` str | None (hidden field; None posts "")
   - `subject_ref_masked` str, displayed read-only (not submitted)
-  - `period` dict
+  - `scope` str, `"txn_ids"` | `"period"` (which radio is checked; a follow-up inherits the parent's scope kind)
+  - `txn_ids` list[str] (prefill for the `txn_ids` input, joined by ", "; may be empty)
+  - `period` dict | None (None prefills both period inputs with ""; `period.from` is never dereferenced when None)
     - `from` str, UTC ISO-8601, prefill for `period_from`
     - `to` str, UTC ISO-8601, prefill for `period_to`
   - `question_prefill` str (may be empty)
   - `consent_note` str, shown in a `banner banner--info` above the form
 
+Forms: POST `disposition_form.action` with `decision`, `reason`, `question_ids[]`, `requested_evidence` (button "Record disposition", `btn btn--primary`; omitted when `final`); POST `followup_form.action` with `parent_request_id`, `disposition_id`, `scope`, `txn_ids`, `period_from`, `period_to`, `question` (button "Send follow-up through the bank connection", `btn btn--primary`). Neither form renders when `rejected` is true.
+
+## Routes, JSON and credentials (S4 wiring)
+
+Served by `alibi/app/main.py` (`uv run --frozen python -m alibi.app [--port 8100] [--timeout S]`). Every holder and analyst route renders its template context as HTML, or as JSON (the same dict plus `version: "alibi-ui/1"` and `template`) when the request's first `Accept` media type is `application/json`. Form posts redirect (303) in HTML mode and answer `{"version", "ok": true, "location", ...result}` in JSON mode. Refusals answer with a 4xx status and `{"code": <snake_case>, "reason": <the backend's sentence>}`; the HTML path shows the same sentence verbatim (a flash banner, or the dispatch result page).
+
+| Method and path | Template | Notes |
+| --- | --- | --- |
+| `GET /health` | JSON | `status`, `case`, `mode` (`rules-only`), `replay`, `now`, `db`, `bank_url` |
+| `GET /passport` (and `/`) | `passport/home.html` | |
+| `GET /txn/{txn_id}` | `passport/transaction.html` | |
+| `GET /sources/{record_id}/{revision}` | inline | JSON `{record, fields, revisions}`; a minimal HTML page without a template |
+| `GET /alerts` | `passport/alerts.html` | |
+| `POST /alerts/lookup` (`query`) | `passport/alerts.html` | mock registry check via `agents.data.api.merchant_lookup`; unknown is `unverified` |
+| `POST /tick` | redirect `/alerts` | re-runs the monitor; JSON `{raised, resolved, kept, at}`. The monitor also runs on every start, so alerts exist before anyone asks; the alerts page carries a "Re-run checks now" form bound to `tick_action` |
+| `GET /rules[?interp=<rule_id>&prefill=<text>]` | `passport/rules.html` | |
+| `POST /rules/interpret` (`text`) | redirect | resolved: `/rules?interp=<rule_id>`; unresolved: held for clarification |
+| `POST /rules/{rule_id}/confirm` · `/reject` · `/retire` | redirect `/rules` | confirm and retire save a new policy version through `record_policy` |
+| `POST /rules/held/{rule_id}/clarify` · `/discard` | redirect `/rules` | clarify prefills the form with the held text |
+| `GET /requests` | JSON list | HTML redirects to `/passport#requests` |
+| `GET /requests/{request_id}` | `requests/detail.html` | |
+| `POST /requests/{request_id}/run` | redirect `#trace` | `run_investigation(mode="rules")` then `build_review`; JSON `{run_id, mode, calls_used, claims, draft_id}` |
+| `POST /requests/{request_id}/remove/{ref_type}/{ref_id}` | redirect `#review` | rebuilds the draft with the source removed; an earlier approval no longer matches |
+| `POST /requests/{request_id}/restore` | redirect `#review` | clears the removals |
+| `POST /requests/{request_id}/approve` (`digest`, `audience`, `policy_version`) | redirect `#approval` | refuses `approval_digest_not_current`, `approval_audience_mismatch`, `policy_version_changed` before calling `approve` |
+| `GET /requests/{request_id}/dispatch` | `requests/dispatch.html` | the last dispatch result for the request |
+| `POST /requests/{request_id}/dispatch` | `requests/dispatch.html` | revalidates the approval against the current draft, signs (`sign_and_package`), delivers to `ALIBI_BANK_URL` (`POST {url}/bank/{audience}/receive`) or to this process's bank service when unset; a refusal renders with the refusal's status |
+| `GET /requests/{request_id}/export` | `requests/export.html` | the signed package, or the unsigned current draft before dispatch |
+| `GET /requests/{request_id}/export.json` | file | the signed package as canonical JSON (404 before dispatch) |
+| `GET /audit[?q=&actor=&page=]` | `audit/list.html` | passport audit plus the bank-side entries |
+| `POST /bank/{recipient}/receive` | JSON | the bank connection's delivery endpoint; verifies with `verify_package` bound to the request the bank issued; 200 receipt, 422 `package_rejected`, 409 `package_id_reused` |
+| `GET /bank/{recipient}/inbox[?token=]` | `analyst/inbox.html` | credential required (below) |
+| `GET /bank/{recipient}/requests` | JSON | the requests this recipient issued (case RFCs and follow-ups) |
+| `GET /bank/{recipient}/audit` | JSON | the recipient's own audit entries (receipts, dispositions, refused access); the holder's `/audit` never shows them |
+| `GET /bank/{recipient}/packages/{package_id}[?disposition=<id>]` | `analyst/package.html` | 404 for another recipient's package |
+| `POST /bank/{recipient}/packages/{package_id}/disposition` (`decision`, `reason`, `question_ids[]`, `requested_evidence`) | redirect | `analyst` comes from the credential; `request_more` redirects to the follow-up form; a second decision after `clear`/`escalate` is `disposition_final` |
+| `POST /bank/{recipient}/requests` (`parent_request_id`, `disposition_id`, `scope`, `txn_ids`, `period_from`, `period_to`, `question`) | redirect `#requests-sent` | issues a signed follow-up RFC through `receive_rfc`; scope defaults to the parent's and may not widen (`scope_wider_than_parent`) |
+
+Recipient credentials: `Authorization: Bearer <token>` (`ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`; demo defaults `demo-token-bank-a`, `demo-token-bank-b`), or the `alibi_bank` session cookie. The inbox alone accepts `?token=<credential>` once as the demo login: it sets the cookie and redirects (303) to the bare inbox URL so the credential leaves the address bar; no other route reads the query string. State-changing POSTs from another origin (`Origin`/`Sec-Fetch-Site` cross-site) are refused with 403 `cross_site_post`; the delivery endpoint is exempt. No credential is 401 `not_authenticated`; a credential for the other recipient is 403 `recipient_mismatch` (audited as `access.refused`). The URL never grants access.
+
+Refusal codes used: `approval_missing`, `approval_digest_mismatch`, `approval_digest_not_current`, `approval_audience_mismatch`, `approval_expired`, `request_expired`, `policy_version_changed`, `source_revision_changed`, `approval_request_mismatch`, `package_id_reused`, `package_rejected`, `scope_wider_than_parent`, `disposition_final`, `not_authenticated`, `recipient_mismatch`, `draft_missing`, `reason_required`, `bad_decision`, `bad_period`, `question_required`, `parent_not_found`, `package_not_found`, `rule_not_pending`, `rule_not_active`, `investigation_failed`, `review_failed`, `not_dispatched` (dispatch page before any attempt).
+
+Environment: `ALIBI_CASE` (1), `ALIBI_DATA_DIR` (`data/alibi/app`), `ALIBI_KEY_DIR` (`data/alibi/keys`), `ALIBI_NOW` (fixed UTC clock; the RFCs expire 2026-11-09T09:00Z and 2026-11-11T14:00Z), `ALIBI_REPLAY=1` (banner), `ALIBI_BANK_URL`, `ALIBI_BANK_A_TOKEN`, `ALIBI_BANK_B_TOKEN`, `ALIBI_HOLDER_NAME`, `ALIBI_MASTER_KEY` (store encryption; never printed). Reset one case by deleting `data/alibi/app/case_<n>.db` and `case_<n>.state.json`; `master.key` beside them encrypts every case database there, so delete it only together with all of them. `ALIBI_NOW` accepts a date alone (midnight UTC).
+
+Attestation values: the core verifier (`alibi.core.package.verify_package`) emits `issuer_signature` for an attachment carrying a verified issuer signature and `package_signer` for everything else it accepts (redacted extracts, bank transactions, self-supplied imports), so the app shows those two; `none` from the Trust row is reserved and never produced here. The RFC signature badge on the request page records the outcome of `receive_rfc` at ingest time (every case RFC and follow-up is signed by the issuing bank's demo key), not a re-check.
+
+Investigation mode: `rules` only. The investigation card shows the badge `rules-only`; the four Gemini roles are listed as `skipped` and nothing is presented as an agent result.

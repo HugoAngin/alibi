@@ -136,6 +136,22 @@ def _clip(text: Any, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
+def _check_scope_shapes(request: dict[str, Any]) -> None:
+    """A custom request's ``txn_ids`` must be absent, null or a list of strings and ``period``
+    absent, null or an object, before ``map_rfc`` sees them: ``list()`` of a string or a dict
+    would otherwise coerce characters or keys into transaction ids, and an int would be a 500."""
+    txn_ids = request.get("txn_ids")
+    if txn_ids is not None and (not isinstance(txn_ids, list)
+                                or not all(isinstance(t, str) for t in txn_ids)):
+        raise Refusal("invalid_request", "request.txn_ids must be a list of transaction ids")
+    period = request.get("period")
+    if period is not None and not isinstance(period, dict):
+        raise Refusal("invalid_request", "request.period must be an object with from and to")
+    questions = request.get("questions")
+    if questions is not None and not isinstance(questions, list):
+        raise Refusal("invalid_request", "request.questions must be a list")
+
+
 def _scope_of(request_body: dict[str, Any]) -> dict[str, Any]:
     """``{"txn_ids": [...]}`` or ``{"period": {...}}`` from a core request body."""
     if request_body.get("txn_ids"):
@@ -387,6 +403,7 @@ class BankService:
                 case_rfc = {**custom, "issuer": recipient, "audience": recipient}
                 if case_rfc.get("subject_ref") != self.state.subject_ref:
                     raise Refusal("invalid_request", "request.subject_ref must be the case subject")
+                _check_scope_shapes(case_rfc)
                 self._check_chosen_id(recipient, case_rfc.get("request_id"), "invalid_request")
                 parent_id = case_rfc.get("parent_request_id")
                 if parent_id is not None:

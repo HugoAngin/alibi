@@ -63,6 +63,14 @@ OUTCOMES = ("inserted", "duplicate", "corrected", "stale", "refused", "error", "
 CORRECTION_IDENTITY_FIELDS = frozenset({"record_id", "issuer_id", "subject_ref", "kind",
                                         "event_id", "revision"})
 MAX_RANGE_DAYS = 31
+# Case fields the shared pool and ``agents.data.api.lookup`` read as text, lists or integers.
+# ``map_merchant_event`` validates the *core* body, where pydantic would coerce ``1`` into a
+# datetime, so a correction checks these case-side shapes itself before touching the pool.
+CORRECTION_TIME_FIELDS = ("occurred_at", "settled_at", "status_as_of", "available_from")
+CORRECTION_LIST_FIELDS = ("covers_record_ids",)
+CORRECTION_TEXT_FIELDS = ("payout_reference", "release_reference", "settlement_batch_id",
+                          "withdrawal_id", "related_record_id", "currency", "status",
+                          "destination", "note", "message", "text", "item", "category")
 
 CaseLoader = Callable[[int], dict[str, Any]]
 
@@ -241,7 +249,7 @@ class MerchantState:
         clock = self.require_clock()
         latest = self.latest_visible(record_id)
         event = copy.deepcopy(latest)
-        event.update(copy.deepcopy(changes))
+        event.update(_checked_changes(record_id, changes))
         revision = int(latest["revision"]) + 1
         event["revision"] = revision
         event["event_id"] = f"{latest['event_id']}-r{revision}"
@@ -270,6 +278,25 @@ class MerchantState:
         mapped = map_merchant_event(case_event)
         signed = keys.sign_merchant_event(mapped.body, self.keystore)
         return {**signed, "extra": mapped.extra}
+
+    def current(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Drop every revision of a record whose latest visible revision is not among
+        ``events``: after a correction moves a payout's reference, the old reference no longer
+        finds the record (``agents.data.api.lookup`` matches each revision on its own). A
+        record whose latest revision still matches keeps all its matching revisions."""
+        clock = self.require_clock()
+        matched = {event["event_id"] for event in events}
+        latest_ok: dict[str, bool] = {}
+        out = []
+        for event in events:
+            record_id = event["record_id"]
+            if record_id not in latest_ok:
+                revisions = clock.lookup(record_id=record_id)
+                latest = max(revisions, key=lambda ev: (ev.get("revision") or 0), default=None)
+                latest_ok[record_id] = latest is None or latest["event_id"] in matched
+            if latest_ok[record_id]:
+                out.append(event)
+        return out
 
     def serve(self, route: str, query: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
         """Envelope the events, log the lookup, and shape the response."""
@@ -329,6 +356,41 @@ def _as_of(value: str | None, name: str = "as_of") -> str | None:
     except MappingError as exc:
         raise Refusal("invalid_time", f"{name}: {exc}") from None
     return format_utc(moment.replace(microsecond=0))
+
+
+def _checked_changes(record_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+    """The correction's case fields with their case-side shapes checked and times normalised
+    to whole UTC seconds (``400 invalid_correction`` otherwise). The pool is shared with
+    ``agents.data.api.lookup``, which slices time strings and tests list membership, so a value
+    of the wrong shape there would turn every later date query into a server error."""
+    out = copy.deepcopy(changes)
+    for name in CORRECTION_TIME_FIELDS:
+        if name not in out or out[name] is None:
+            if name == "occurred_at" and name in out:
+                raise Refusal("invalid_correction", f"record {record_id}: occurred_at is required")
+            continue
+        if not isinstance(out[name], str):
+            raise Refusal("invalid_correction",
+                          f"record {record_id}: {name} must be a UTC ISO-8601 timestamp")
+        try:
+            out[name] = format_utc(parse_time(out[name], name).replace(microsecond=0))
+        except MappingError:
+            raise Refusal("invalid_correction",
+                          f"record {record_id}: {name} must be a UTC ISO-8601 timestamp") from None
+    for name in CORRECTION_LIST_FIELDS:
+        if name in out and out[name] is not None:
+            value = out[name]
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise Refusal("invalid_correction",
+                              f"record {record_id}: {name} must be a list of record ids")
+    for name in CORRECTION_TEXT_FIELDS:
+        if name in out and out[name] is not None and not isinstance(out[name], str):
+            raise Refusal("invalid_correction", f"record {record_id}: {name} must be a string")
+    if "amount_minor" in out and out["amount_minor"] is not None:
+        if isinstance(out["amount_minor"], bool) or not isinstance(out["amount_minor"], int):
+            raise Refusal("invalid_correction",
+                          f"record {record_id}: amount_minor must be an integer of minor units")
+    return out
 
 
 def _date(value: str, name: str) -> date:
@@ -473,7 +535,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
         clock = state.require_clock()
         if not payout_reference:
             raise Refusal("invalid_query", "payout_reference is required")
-        found = clock.lookup(payout_reference=payout_reference)
+        found = state.current(clock.lookup(payout_reference=payout_reference))
         return state.serve("/settlements", {"payout_reference": payout_reference}, found)
 
     @app.get("/payouts")
@@ -511,7 +573,7 @@ def create_merchant_app(sink: Sink | None = None, *, keystore: DemoKeystore,
             if (end - start).days + 1 > MAX_RANGE_DAYS:
                 raise Refusal("invalid_query", f"from and to span at most {MAX_RANGE_DAYS} days")
             found = state.payouts_between(start, end)
-        return state.serve("/payouts", given, found)
+        return state.serve("/payouts", given, state.current(found))
 
     @app.get("/admin/lookups")
     def lookups() -> dict[str, Any]:

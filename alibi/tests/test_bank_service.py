@@ -480,6 +480,32 @@ def test_unknown_routes_and_methods_keep_the_refusal_shape(client):
     assert set(wrong_method.json()) == {"code", "reason"}
 
 
+def test_custom_request_scope_of_the_wrong_shape_is_a_refusal(built):
+    """``txn_ids`` as an int was a text/plain 500 (TypeError in map_rfc's list()); as a dict or
+    a string it was silently coerced into its keys or characters and issued."""
+    client = TestClient(create_bank_app(keystore=built.keystore, registry=built.registry,
+                                        tokens=TOKENS), raise_server_exceptions=False)
+    assert client.post("/admin/seed", params={"case": 1, "as_of": AS_OF}).status_code == 200
+    base = {"subject_ref": SUBJECT, "issued_at": AS_OF, "expires_at": EXPIRED_AT,
+            "questions": [{"question_id": "q.x", "text": "why"}]}
+    cases = [({"txn_ids": 1}, "txn_ids"), ({"txn_ids": True}, "txn_ids"),
+             ({"txn_ids": {"a": 1}}, "txn_ids"), ({"txn_ids": "txn-0001-004"}, "txn_ids"),
+             ({"txn_ids": [1]}, "txn_ids"), ({"txn_ids": "abc"}, "txn_ids"),
+             ({"period": [OCTOBER]}, "period"), ({"period": "october"}, "period"),
+             ({"txn_ids": ["txn-0001-004"], "questions": "why"}, "questions")]
+    for n, (scope, field) in enumerate(cases):
+        request = {**base, "request_id": f"cust-{n}", **scope}
+        response = client.post("/rfc", json={"request": request}, headers=auth("bank_a"))
+        assert response.status_code == 400, (scope, response.text)
+        assert response.headers["content-type"].startswith("application/json")
+        assert response.json()["code"] == "invalid_request" and field in response.json()["reason"]
+    assert client.get("/rfc", headers=auth("bank_a")).json()["requests"] == []
+    good = client.post("/rfc", json={"request": {**base, "request_id": "cust-ok",
+                                                 "txn_ids": ["txn-0001-004"]}},
+                       headers=auth("bank_a"))
+    assert good.status_code == 201 and good.json()["rfc"]["request"]["txn_ids"] == ["txn-0001-004"]
+
+
 # --------------------------------------------------------------------------- isolation
 
 

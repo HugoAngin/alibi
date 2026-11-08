@@ -76,6 +76,16 @@ Merchant details settled during the build:
   appended) first, then lookup-only records. Consumers must not rely on revision order.
 - A sink that raises or returns an unknown status is logged as outcome `error` with the exception
   type only; the route never fails.
+- Lookup-only records appear at their `available_from`, not at `status_as_of`: case 2's pending
+  payout `PO-0002-01` is served from 2026-10-29T06:35:00Z, five minutes after its `status_as_of`
+  06:30:00Z. That is the data layer's rule (`agents.data.api.lookup`).
+- `/settlements` and `/payouts` serve a revision only while the record's latest visible revision
+  also matches the query: after a correction moves `payout_reference`, the old reference returns
+  an empty list and the new one the latest revision. `/records/{id}` still lists every revision.
+- `/admin/correct` value shapes: `occurred_at`, `settled_at`, `status_as_of` must be UTC ISO-8601
+  strings (normalised to whole seconds in the pool and the signed body alike), `covers_record_ids`
+  a list of ids, `amount_minor` an integer, text fields strings; anything else is
+  `400 invalid_correction` before the pool is touched.
 
 Admin routes are unauthenticated local demo controls. Lookup routes are open: the passport's
 gateway binds lookups to the subject's own issuers.
@@ -138,6 +148,8 @@ Bank details settled during the build:
 - Non-JCS numbers or deeply nested JSON on `/deliver` are `400 invalid_package`.
 - The disposition's `package_digest` is the bare SHA-256 hex of the canonical package (the same
   value as the receipt's `package_sha256`).
+- A custom `POST /rfc` request body is shape-checked before mapping: `txn_ids` a list of strings,
+  `period` an object, `questions` a list (`400 invalid_request`).
 
 ## Bank feed client (`alibi/connectors/bank_feed.py`)
 
@@ -193,12 +205,26 @@ Bank details settled during the build:
   into the sink when the merchant has none), bank seeds, feed sync, visible imports, and each
   bank's visible RFCs issued and received. Idempotent.
 - `plug` re-exports the client names lazily, so `from alibi.connectors.plug import connect` works.
+- Client rules: lookup key values must match the core `Ident` pattern (`ValueError` otherwise);
+  `lookup(record_id=)` returns `[]` only on a `404 not_found`, any other 404 (an unseeded merchant's
+  `unknown_case`) raises; a 2xx answer that is not the contract shape raises
+  `ClientError(status, "malformed_response", reason)` (a client-side code, not an HTTP refusal).
+  Through the gateway these surface as `Unavailable`, never a crash.
+- `bootstrap` replays `GET /admin/deliveries` into the sink when any push reports an outcome other
+  than `inserted`, `duplicate`, `corrected`, `stale` or `refused`, or when a pushed revision is
+  missing from this store (the merchant pushed into another passport); the summary carries
+  `replayed_from: pushes | webhook_log`. With no `as_of` it keeps the merchant's current clock when
+  the merchant already serves the case; an explicit `as_of` always wins.
 
 ## Demo runner (`alibi/demo_services.py`)
 
 `uv run --frozen python -m alibi.demo_services --case 1 --as-of <utc> --timeout 10 [--merchant-port 8101] [--bank-port 8102] [--passport-url URL] [--keys DIR] [--state DIR]`
-starts both apps with one keystore, seeds both with the case at `as_of`, prints the URLs and the
-tokens file path (never the tokens), serves until `--timeout` seconds pass or Ctrl-C, exits 0.
+starts both apps with one keystore, seeds both with the case at `as_of`, prints the URL line (with
+the bound ports) only once both servers listen, plus the tokens file path (never the tokens), serves
+until `--timeout` seconds pass or Ctrl-C (checked every 0.5 s), exits 0. A server that cannot bind is
+reported within 15 s as `{"error": "server did not start", "servers": [...]}` then
+`{"stopped": true, "failed": [...]}` with exit 1. A bad `--as-of` or case exits with a one-line
+message before any key or token file is created.
 
 ## Refusal codes used (to pin in `shared/CONTRACTS.md`)
 
@@ -207,5 +233,5 @@ tokens file path (never the tokens), serves until `--timeout` seconds pass or Ct
 `invalid_package`, `method_not_allowed`, `clock_backwards`, `request_expired`, `audience_mismatch`,
 `package_id_reused`, `package_rejected`, `disposition_final`, `scope_wider_than_parent`,
 `sink_unavailable`. Unknown paths are `404 not_found` ("no such route"), wrong methods
-`405 method_not_allowed`, and a route's plain `ValueError` is `400 invalid_request` naming only the
-exception type.
+`405 method_not_allowed`, and a route's plain `ValueError` or `TypeError` is `400 invalid_request`
+naming only the exception type.

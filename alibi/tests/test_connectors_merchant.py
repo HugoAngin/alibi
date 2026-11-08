@@ -542,3 +542,67 @@ def test_an_http_sink_carries_each_delivery_time_and_passport_url_wires_one(mkey
     assert calls == [p["received_at"] for p in seeded["pushed"]]
     app = create_merchant_app(keystore=mkeys, passport_url="http://127.0.0.1:1/webhooks/merchant")
     assert app.state.merchant.sink is not None
+
+
+# --------------------------------------------------------------------------- correction shapes
+
+
+def test_correction_values_of_the_wrong_shape_never_reach_the_pool(mkeys, store):
+    """pydantic would coerce ``1`` into a datetime in the signed body while the raw ``1`` went
+    into the shared pool, where the date lookups slice strings: every later date query would be
+    a 500. Such changes are refused, and a timezone offset is normalised to Z in both places."""
+    client, _ = _seeded(mkeys, store, 1, as_of=RFC_A_TIME)
+    before = client.get("/payouts", params={"payout_date": "2026-10-26"}).json()["records"]
+    assert [r["event"]["record_id"] for r in before] == ["rec-0001-021"]
+    for changes in ({"occurred_at": 1}, {"settled_at": 5}, {"occurred_at": None},
+                    {"status_as_of": True}, {"occurred_at": "yesterday"},
+                    {"occurred_at": "2026-10-26T09:00:00"}, {"covers_record_ids": [1, 2]},
+                    {"covers_record_ids": {"a": 1}}, {"payout_reference": 12}, {"status": ["x"]},
+                    {"amount_minor": True}, {"amount_minor": "216000"}):
+        response = client.post("/admin/correct", json={
+            "record_id": "rec-0001-021", "changes": changes, "correction_reason": "r"})
+        assert response.status_code == 400, (changes, response.text)
+        assert response.json()["code"] == "invalid_correction", changes
+        assert "rec-0001-021" in response.json()["reason"]
+    for params in ({"payout_date": "2026-10-26"}, {"from": "2026-10-01", "to": "2026-10-31"},
+                   {"covers": "rec-0001-001"}, {"payout_reference": "PO-0001-01"}):
+        response = client.get("/payouts", params=params)
+        assert response.status_code == 200, (params, response.text)
+        assert [r["event"]["record_id"] for r in response.json()["records"]] == ["rec-0001-021"]
+    assert client.get("/admin/state").json()["corrections"] == []
+    # An offset time is accepted and stored as UTC in the signed body and in the pool alike.
+    moved = client.post("/admin/correct", json={
+        "record_id": "rec-0001-021", "changes": {"occurred_at": "2026-10-28T01:30:00+02:00"},
+        "correction_reason": "initiated later than first reported"})
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["record"]["event"]["occurred_at"] == "2026-10-27T23:30:00Z"
+    pool_event = [r["event"] for r in client.get("/records/rec-0001-021").json()["records"]
+                  if r["event"]["revision"] == 2]
+    assert pool_event and pool_event[0]["occurred_at"] == "2026-10-27T23:30:00Z"
+    on_the_27th = client.get("/payouts", params={"payout_date": "2026-10-27"}).json()["records"]
+    assert sorted(r["event"]["revision"] for r in on_the_27th) == [1, 2]   # settled 27th; initiated 27th UTC
+
+
+def test_a_moved_payout_reference_leaves_the_old_reference_empty(mkeys, store):
+    """After a correction changes ``payout_reference``, the old reference no longer finds the
+    record (its current revision does not carry it), while ``/records/{id}`` still shows every
+    revision and a correction that keeps the reference keeps every matching revision."""
+    client, _ = _seeded(mkeys, store, 1, as_of=RFC_A_TIME)
+    corrected = client.post("/admin/correct", json={
+        "record_id": "rec-0001-021", "changes": {"payout_reference": "PO-0001-99"},
+        "correction_reason": "reference was wrong"})
+    assert corrected.status_code == 200, corrected.text
+    old = client.get("/settlements", params={"payout_reference": "PO-0001-01"}).json()
+    assert old["records"] == []
+    assert client.get("/payouts", params={"payout_reference": "PO-0001-01"}).json()["records"] == []
+    new = client.get("/settlements", params={"payout_reference": "PO-0001-99"}).json()["records"]
+    assert [(r["event"]["revision"], r["event"]["payment_ref"]) for r in new] == [(2, "PO-0001-99")]
+    history = client.get("/records/rec-0001-021").json()["records"]
+    assert sorted(r["event"]["revision"] for r in history) == [1, 2]   # pushed first, then lookup-only
+    # The date and covers keys still match both revisions (unchanged fields): both are served.
+    by_date = client.get("/payouts", params={"payout_date": "2026-10-26"}).json()["records"]
+    assert sorted(r["event"]["revision"] for r in by_date) == [1, 2]
+    # Empty results are still logged as served lookups.
+    served = client.get("/admin/lookups").json()["lookups"]
+    assert {"route": "/settlements", "query": {"payout_reference": "PO-0001-01"},
+            "record_ids": []} == {k: served[0][k] for k in ("route", "query", "record_ids")}

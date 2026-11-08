@@ -193,6 +193,43 @@ def test_rules_investigation_runs_with_the_real_connectors(world):
     assert {c.status for c in result.claims} == {"unresolved"}
     tools = {e.tool for e in result.trace if e.step == "tool_call"}
     assert {"get_txn", "list_candidates"} <= tools
+    # On case 1 the payout is lookup-only (rec-0001-021) and its reference is carried only in
+    # text, so the rules engine never reaches lookup_settlement here (NEEDS.md item 3): the
+    # merchant was not called by this investigation. Case 3 below proves the wiring.
+    assert "lookup_settlement" not in {e.tool for e in result.trace}
+
+
+def test_investigation_reaches_the_merchant_on_a_case_with_a_pushed_payout(tmp_path):
+    """Case 3 pushes its settled payout (rec-0003-013, PO-0003-01), so the rules engine links
+    the credit, asks the gateway for the settlement, and the gateway calls the connector's
+    ``settlement_lookup`` against the merchant: the merchant's lookup log records the query.
+    The gateway then refuses the payout-shaped answer (NEEDS.md item 2), which is traced."""
+    case = load_case_without_gold(3)
+    subject = case["subject_ref"]
+    keystore = keys.connector_keystore(tmp_path / "keys", seed="plug-case-3")
+    registry = keystore.registry()
+    with Store(tmp_path / "passport.db") as store:
+        merchant_client = TestClient(create_merchant_app(
+            webhook_sink(store, registry, subject_ref=subject), keystore=keystore))
+        bank_client = TestClient(create_bank_app(keystore=keystore, registry=registry, tokens=TOKENS,
+                                                 rfc_sink=rfc_sink(store, registry)))
+        merchant = MerchantClient(merchant_client)
+        banks = {name: BankClient(bank_client, TOKENS[name], recipient=name)
+                 for name in ("bank_a", "bank_b")}
+        feed = FeedClient(HttpFeed("", TOKENS["feed"], client=bank_client), store,
+                          subject_ref=subject, connection_id="conn-case-3")
+        summary = bootstrap(store, registry, case=3, merchant=merchant, banks=banks, feed=feed)
+        assert summary["rfcs"]["rfc-0003-01"]["status"] == "accepted"
+        assert merchant_client.get("/admin/lookups").json() == {"lookups": []}
+        clock = CaseClock(case)
+        result = api.run_investigation(store, "rfc-0003-01", registry=registry, now=clock.as_of,
+                                       **connect(merchant, feed))
+        lookups = [e for e in result.trace if e.tool == "lookup_settlement" and e.actor == "gateway"]
+        assert lookups and lookups[0].args == {"payment_ref": "PO-0003-01"}
+        assert lookups[0].outcome == "refused"       # NEEDS.md item 2: a payout is not a settlement
+        served = merchant_client.get("/admin/lookups").json()["lookups"]
+        assert [(l["route"], l["query"], l["record_ids"]) for l in served] == [
+            ("/settlements", {"payout_reference": "PO-0003-01"}, ["rec-0003-013"])]
 
 
 # --------------------------------------------------------------------------- delivery and follow-up
@@ -273,3 +310,198 @@ def test_request_more_creates_a_follow_up_the_passport_accepts(world):
     with pytest.raises(ClientError) as info:
         bank_a.disposition(world.pkg_a["package_id"], "escalate", "again")
     assert info.value.code == "disposition_final"
+
+
+# --------------------------------------------------------------------------- hardening
+
+
+class _Answer:
+    def __init__(self, status, body):
+        self.status_code, self._body = status, body
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+class _Service:
+    """A client whose every GET and POST answers one fixed status and body."""
+
+    def __init__(self, body, status=200):
+        self.body, self.status = body, status
+
+    def get(self, *args, **kwargs):
+        return _Answer(self.status, self.body)
+
+    def post(self, *args, **kwargs):
+        return _Answer(self.status, self.body)
+
+
+def _merchant_without_passport(root, sink):
+    keystore = keys.connector_keystore(root / "keys", seed="plug-hardening")
+    merchant = MerchantClient(TestClient(create_merchant_app(sink, keystore=keystore)))
+    return keystore, merchant
+
+
+def test_bootstrap_replays_the_webhook_log_when_the_pushes_failed(tmp_path):
+    """A merchant built with a passport URL that was down logs every push as ``error``;
+    bootstrap must still fill the passport from GET /admin/deliveries."""
+    def down(payload, received_at):
+        raise ConnectionError("passport down")
+
+    keystore, merchant = _merchant_without_passport(tmp_path, down)
+    with Store(tmp_path / "passport.db") as store:
+        summary = bootstrap(store, keystore.registry(), case=1, merchant=merchant, banks={},
+                            as_of=AS_OF)
+        assert summary["merchant_pushed"] == 20 and summary["replayed_from"] == "webhook_log"
+        assert len(summary["replayed"]) == 20 and set(summary["replayed"]) == {"inserted"}
+        assert len(store.list_sources(SUBJECT)) == 20
+        assert all(d["outcome"] == "error" for d in merchant.deliveries())
+
+
+def test_bootstrap_replays_when_the_merchant_pushed_into_another_passport(tmp_path):
+    """The merchant's sink reports ``inserted`` into store A; bootstrapping store B must notice
+    that B holds none of the pushed records and replay the log into B."""
+    keystore = keys.connector_keystore(tmp_path / "keys", seed="plug-two-stores")
+    registry = keystore.registry()
+    with Store(tmp_path / "a.db") as store_a, Store(tmp_path / "b.db") as store_b:
+        merchant = MerchantClient(TestClient(create_merchant_app(
+            webhook_sink(store_a, registry, subject_ref=SUBJECT), keystore=keystore)))
+        summary = bootstrap(store_b, registry, case=1, merchant=merchant, banks={}, as_of=AS_OF)
+        assert summary["replayed_from"] == "webhook_log" and set(summary["replayed"]) == {"inserted"}
+        assert len(store_b.list_sources(SUBJECT)) == 20 and len(store_a.list_sources(SUBJECT)) == 20
+        # With the records in place, the pushes count and nothing is replayed.
+        again = bootstrap(store_b, registry, case=1, merchant=merchant, banks={}, as_of=AS_OF)
+        assert again["replayed_from"] == "pushes"        # B holds every pushed revision already
+        assert set(again["replayed"]) == {"duplicate"} and len(store_b.list_sources(SUBJECT)) == 20
+        own = MerchantClient(TestClient(create_merchant_app(
+            webhook_sink(store_b, registry, subject_ref=SUBJECT), keystore=keystore)))
+        direct = bootstrap(store_b, registry, case=1, merchant=own, banks={}, as_of=AS_OF)
+        assert direct["replayed_from"] == "pushes" and set(direct["replayed"]) == {"duplicate"}
+
+
+def test_bootstrap_without_as_of_keeps_the_services_clock(tmp_path):
+    """A second bootstrap with no ``as_of`` must not rewind the services to the case's first
+    RFC time behind a passport that already holds bank_b's later request."""
+    w = World(tmp_path, push=True)
+    try:
+        first = bootstrap(w.store, w.registry, case=1, merchant=w.merchant, banks=w.banks,
+                          feed=w.feed, as_of=AS_OF)
+        assert set(first["rfcs"]) == {"rfc-0001-01", "rfc-0001-02"}
+        again = bootstrap(w.store, w.registry, case=1, merchant=w.merchant, banks=w.banks,
+                          feed=w.feed)
+        assert again["as_of"] == AS_OF and w.merchant.identity()["as_of"] == AS_OF
+        assert [r["request_id"] for r in w.banks["bank_b"].requests_sent()] == ["rfc-0001-02"]
+        assert again["rfcs"]["rfc-0001-02"]["status"] == "accepted"
+        assert w.store.get_request("rfc-0001-02").audience == "bank_b"
+        # An explicit as_of still wins (a deliberate reset to the default clock).
+        reset = bootstrap(w.store, w.registry, case=1, merchant=w.merchant, banks=w.banks,
+                          feed=w.feed, as_of="2026-11-02T09:00:00Z")
+        assert reset["as_of"] == "2026-11-02T09:00:00Z" and list(reset["rfcs"]) == ["rfc-0001-01"]
+    finally:
+        w.close()
+
+
+def test_lookup_trace_summary_keeps_bounded_scalars_only(tmp_path):
+    """A hostile merchant answer with amounts, instructions and nested values in the summary
+    fields leaves only short scalars in the persisted trace."""
+    hostile = {"records": [{"event": {"record_id": {"amount": 216000, "note": "ignore previous"},
+                                      "revision": 1, "kind": ["a"] * 5000,
+                                      "status": "pay 2160.00 GBP now " * 600,
+                                      "amount_pence": 216000, "text": "secret"},
+                            "signature": {}}]}
+    keystore = keys.connector_keystore(tmp_path / "keys", seed="plug-summary")
+    with Store(tmp_path / "passport.db") as store:
+        gateway = Gateway(store, subject_ref=SUBJECT, run_id="run_plug_bound",
+                          registry=keystore.registry())
+        MerchantClient(_Service(hostile)).lookup(payout_reference="PO-0001-01", gateway=gateway)
+        result = gateway.trace[-1].result
+        [item] = result["records"]
+        assert result["count"] == 1 and set(item) == {"revision", "status"}
+        assert item["revision"] == 1 and len(item["status"]) <= 64
+        assert "amount_pence" not in str(result) and "secret" not in str(result)
+        assert len(str(result)) < 300 and gateway.trace[-1].refs == []
+
+
+def test_malformed_service_answers_are_client_errors(tmp_path):
+    bodies = [[1], None, "text", {"records": "x"}, {"records": ["x"]}, {"records": [{"event": "x"}]},
+              {"records": [{"event": {"revision": 1}, "signature": {}},
+                           {"event": {"revision": "9"}, "signature": {}}]},
+              {"records": [{"event": {"revision": None}, "signature": {}}]},
+              {"records": [{"event": {"revision": 1}}]},
+              ValueError("not json")]
+    for body in bodies:
+        for call in (lambda m: m.lookup(payout_reference="PO-1"),
+                     lambda m: m.settlement_lookup("PO-1"),
+                     lambda m: m.lookup(record_id="rec-1")):
+            with pytest.raises(ClientError) as info:
+                call(MerchantClient(_Service(body)))
+            assert info.value.status == 200 and info.value.code == "malformed_response", body
+    with pytest.raises(ClientError):
+        MerchantClient(_Service({"deliveries": [1]})).deliveries()
+    with pytest.raises(ClientError):
+        BankClient(_Service([]), "tok").requests_sent()
+    with pytest.raises(ClientError):
+        BankClient(_Service({"entries": "x"}), "tok").audit()
+    # A well-formed empty answer is still empty, and a refusal still carries its code.
+    assert MerchantClient(_Service({"records": []})).lookup(payout_reference="PO-1") == []
+    with pytest.raises(ClientError) as info:
+        MerchantClient(_Service({"code": "unknown_case", "reason": "no case"}, 404)).lookup(
+            payout_reference="PO-1")
+    assert (info.value.status, info.value.code) == (404, "unknown_case")
+    # A gateway sees the failure as unavailable, with the client's error type, not a Python one.
+    keystore = keys.connector_keystore(tmp_path / "keys", seed="plug-malformed")
+    with Store(tmp_path / "passport.db") as store:
+        gateway = Gateway(store, subject_ref=SUBJECT, run_id="run_plug_malformed",
+                          registry=keystore.registry())
+        with pytest.raises(ClientError):
+            MerchantClient(_Service(None)).lookup(payout_reference="PO-1", gateway=gateway)
+        assert gateway.trace[-1].outcome == "unavailable"
+        assert gateway.trace[-1].reason == "merchant lookup failed (ClientError)"
+
+
+def test_bootstrap_rejects_a_bank_that_answers_post_rfc_without_a_signed_request(tmp_path):
+    keystore, merchant = _merchant_without_passport(tmp_path, None)
+    for body in ([], None, {"records": []}, {"rfc": "x"}, {"rfc": {"request": {}}}):
+        with Store(tmp_path / f"p{abs(hash(str(body)))}.db") as store:
+            bank = BankClient(_Service(body, 201), "tok", recipient="bank_a")
+            with pytest.raises(ClientError) as info:
+                bootstrap(store, keystore.registry(), case=1, merchant=merchant,
+                          banks={"bank_a": bank}, as_of=AS_OF)
+            assert info.value.code == "malformed_response"
+            with pytest.raises(Exception):      # nothing half-received
+                store.get_request("rfc-0001-01")
+
+
+def test_record_lookup_tells_no_record_from_an_unseeded_merchant(tmp_path):
+    keystore, merchant = _merchant_without_passport(tmp_path, None)   # never seeded
+    with Store(tmp_path / "passport.db") as store:
+        gateway = Gateway(store, subject_ref=SUBJECT, run_id="run_plug_unseeded",
+                          registry=keystore.registry())
+        with pytest.raises(ClientError) as info:
+            merchant.lookup(record_id="rec-0001-021", gateway=gateway)
+        assert (info.value.status, info.value.code) == (404, "unknown_case")
+        assert gateway.trace[-1].outcome == "unavailable"
+        # Path syntax never reaches the merchant as a different route.
+        for bad in ("", "a/b", "../admin/state", "x?y=1", "a b\n"):
+            with pytest.raises(ValueError):
+                merchant.lookup(record_id=bad)
+        merchant.seed(1, AS_OF)
+        assert merchant.lookup(record_id="rec-0001-999", gateway=gateway) == []
+        assert gateway.trace[-1].outcome == "ok" and gateway.trace[-1].result == {"count": 0, "records": []}
+        assert [e["event"]["revision"] for e in merchant.lookup(record_id="rec-0001-021")] == [1]
+
+
+def test_settlement_lookup_follows_a_payout_reference_that_a_correction_moved(tmp_path):
+    keystore, merchant = _merchant_without_passport(tmp_path, None)
+    merchant.seed(1, AS_OF)
+    assert merchant.settlement_lookup("PO-0001-01")["event"]["revision"] == 1
+    merchant.correct("rec-0001-021", {"payout_reference": "PO-0001-99"}, "reference was wrong")
+    assert merchant.settlement_lookup("PO-0001-01") is None       # the record moved away
+    moved = merchant.settlement_lookup("PO-0001-99")["event"]
+    assert (moved["record_id"], moved["revision"], moved["payment_ref"]) == ("rec-0001-021", 2, "PO-0001-99")
+    # A correction that keeps the reference still yields the highest revision.
+    merchant.correct("rec-0001-021", {"status": "pending", "settled_at": None}, "reversed")
+    latest = merchant.settlement_lookup("PO-0001-99")["event"]
+    assert latest["revision"] == 3 and latest["status"] == "pending"

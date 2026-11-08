@@ -6,8 +6,9 @@ Every refusal is a 4xx with the body ``{"code": <stable snake_case code>, "reaso
 same way, as ``invalid_request``, so a front end never sees FastAPI's own error shape.
 
 ``Refusal`` is raised anywhere in a route; ``install_refusals(app)`` turns it, request
-validation errors, plain ``ValueError``/``MappingError`` and Starlette's own 404/405 (unknown
-path, wrong method) into that body. Reasons name ids, fields and codes only, never payload
+validation errors, plain ``ValueError``/``TypeError``/``MappingError`` (a request value of the
+wrong shape that reached a route) and Starlette's own 404/405 (unknown path, wrong method) into
+that body. Reasons name ids, fields and codes only, never payload
 contents, paths or credentials.
 """
 
@@ -98,9 +99,12 @@ def install_refusals(app: FastAPI) -> FastAPI:
         return JSONResponse(status_code=400, content=refusal_body("invalid_request", _clip(exc)))
 
     @app.exception_handler(ValueError)
-    async def _value(request: Request, exc: ValueError) -> JSONResponse:  # noqa: ARG001
-        # A plain ValueError from a route is a malformed request, never a server fault. Only
-        # the exception type is echoed: its text may quote request values.
+    @app.exception_handler(TypeError)
+    async def _value(request: Request, exc: Exception) -> JSONResponse:  # noqa: ARG001
+        # A plain ValueError or TypeError from a route is a request value of the wrong shape
+        # (a scalar where a list was expected, say), never a server fault: the demo services
+        # take loosely typed JSON bodies. Only the exception type is echoed: its text may
+        # quote request values.
         return JSONResponse(status_code=400, content=refusal_body(
             "invalid_request", f"the request could not be processed ({type(exc).__name__})"))
 

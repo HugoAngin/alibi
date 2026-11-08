@@ -1,7 +1,7 @@
 # Alibi evaluation handoff
 
 - Arnav assigned `eval` the sealed cases and independent gold. He accepted the case format in `fffa496`. The public format is in `CASE_FORMAT.md`.
-- Use Hugo's 70 public development cases and Mouaad's probe catalogue for development. The separately authored sealed corpus stays outside builder worktrees. The private bundle contains 32 cases across eight families plus 12 adversarial cases, with 92 per-request gold rows. Structural, arithmetic and independent semantic audits passed. The official rules calibration and seal manifest require the published S5 tools.
+- Use Hugo's 80 public development cases and Mouaad's probe catalogue for development. The separately authored private bundle contains 32 cases across eight families plus 12 adversarial cases, with 92 per-request gold rows. Structural, arithmetic and independent semantic audits passed. The official rules authoring calibration was below 100%. The private pack now passes the published seal’s verification in rehearsal. The release manifest still needs the frozen candidate and model configuration.
 - The local sharing flow is a reference for public tests. It exercises 17 of the 47 catalogue probes, with 15 refusals and two accepted controls. Arnav's S2 session owns the app's bank service and verifier, and S4 owns the console.
 - The capture scorer counts missing RFCs, checks links and question evidence, and checks nested package fields and literals when gold specifies privacy restrictions. Run `uv run --frozen python -m pytest -q tools agents/data agents/execution agents/eval` for the local checks.
 - The deterministic settlement matcher, reconciliation, period totals and fixed baseline retrieval are exported in `api.py`. Checks against all 40 public ledgers passed.

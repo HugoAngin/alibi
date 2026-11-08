@@ -62,3 +62,13 @@ uv run --frozen python -m agents.eval.verify_package data/alibi/export.json \
 ```
 
 Use `--at` with the fixture clock for a replay. The output separates package authentication from issuer signatures, redacted extracts and claim status. Use `--subject` when the bank must verify the subject from the export. An extract that omits that binding returns `subject_unverifiable`.
+
+Prepare the evaluator-only release inputs before freeze. Keep the source files and destination outside all Git worktrees.
+
+```bash
+uv run --frozen python -m agents.eval.freeze_pack \
+  --sealed "$SEALED_INPUTS" --adversarial "$ADVERSARIAL_INPUTS" \
+  --gold "$AUTHORED_GOLD" --steps "$ADVERSARIAL_STEPS" --out "$PRIVATE_RELEASE_PACK"
+```
+
+The output contains `cases/` for the official seal and a separate `gold.jsonl` grouped by case. The latter includes the official string-ref answers, the independent per-request revision and privacy checks, and the adversarial step plan. A ref excluded by only one recipient stays in that request’s checks. The case-level field contains refs forbidden to every recipient. The seal commits the grouped file in full. Write the release manifest with the frozen candidate, using `alibi.eval.seal`.

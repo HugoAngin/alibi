@@ -61,6 +61,12 @@ The retry companion passed 50 Worker tests and the Bank Astro check. A separate 
 
 A signed-in local Bank Worker check used the real director, bank service and holder routes with synthetic credentials. Before feed sync, the first send left the holder at 404 and the bank case offered Retry. After sync, the second form submission relayed the same signed RFC, the holder returned 200, the director moved to requested, and the review redirected without Retry. This check ran only on loopback.
 
+## Keyless stage runner on candidate 5
+
+The original shell runner on `3c50476` stopped D1 as soon as the credit entered the feed. With the holder and bank now sharing a clock, the monitor's 24-hour window had just started and the alert was absent. `STAGE_RUNNER_CLOCK.patch` makes D1 follow the director's sequence. It releases the payout on 26 October, syncs the credit at 07:30 UTC on 28 October, then advances to 08:00 UTC on 29 October to raise the alert. D2 and D3 use the two RFCs' fixed issue times. The director uses the fourth port in the same group and all four services stop when the runner exits.
+
+In a disposable archive of `3c50476` with this script patch, two `agents/execution/run_demo.sh --replay --no-open` cycles each raised the alert before the requests, produced both accepted bank receipts and denied cross-bank reads. Quit closed all four listeners. The captured output and logs contained no generated token values. Apply the patch to the execution-owned stage script and update the manual walkthrough's old wall-clock D2 instructions.
+
 ## Recovering an already-recorded request
 
 On a disposable `58bf0d4` stack, an injected first Bank A forwarding refusal returned 201 and left Maya's request page at 404. Running the existing driver on that same signed request returned `reissued: true` and `forwarded.status: accepted` via its direct relay fallback. The holder readback then returned 200 for the same request ID.

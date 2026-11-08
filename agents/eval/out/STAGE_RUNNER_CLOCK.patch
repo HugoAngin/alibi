@@ -1,0 +1,121 @@
+--- a/agents/execution/run_demo.sh
++++ b/agents/execution/run_demo.sh
+@@ -7,11 +7,11 @@
+ # Starts a clean case 1 stack (alibi.demo --reset, ALIBI_MODE=agents), checks it, opens the
+ # holder and Bank A windows, then walks the Driver beats one Enter at a time:
+ #   D1  the £2,160 payout lands in Maya's bank feed and Alibi raises its alert
+-#   D2  both clocks move past real time, then Bank A sends its Request for Context
++#   D2  the demo clock reaches Bank A's issue time and Bank A sends its Request for Context
+ #   D3  Bank B sends its request
+ # After D3, Enter resets everything (a fresh --reset start) and runs the demo again; q quits.
+ #
+-# Options: --replay, --port N (app port; merchant N+1, bank N+2; default 8100),
++# Options: --replay, --port N (app port; merchant N+1, bank N+2, director N+3; default 8100),
+ #          --root DIR (demo data dir; default data/alibi/demo), --auto (no prompts, no
+ #          windows: runs D1-D3 once, then keeps the stack up until Ctrl-C; for rehearsal checks),
+ #          --no-open (print the window URLs but do not open them).
+@@ -40,9 +40,10 @@
+   shift
+ done
+ 
+-app="http://127.0.0.1:$port"
+-merchant="http://127.0.0.1:$((port + 1))"
+-bank="http://127.0.0.1:$((port + 2))"
++ports=("$port" "$((port + 1))" "$((port + 2))" "$((port + 3))")
++app="http://127.0.0.1:${ports[0]}"
++merchant="http://127.0.0.1:${ports[1]}"
++bank="http://127.0.0.1:${ports[2]}"
+ urls=(--app-url "$app" --merchant-url "$merchant" --bank-url "$bank")
+ log="data/alibi/run_demo_$port.log"
+ tokens="data/alibi/bank_tokens.json"
+@@ -57,26 +58,30 @@
+ # stop it (uv and the Python under it) with SIGTERM, then make sure its ports are free again.
+ tree() { local p; for p in $(pgrep -P "$1" 2>/dev/null); do tree "$p"; done; echo "$1"; }
+ stop_stack() {
+-  if [ -n "$stack_pid" ]; then
+-    local pids; pids="$(tree "$stack_pid")"
+-    kill -TERM $pids 2>/dev/null || true
+-    for _ in $(seq 1 40); do kill -0 $pids 2>/dev/null || break; sleep 0.25; done
+-    kill -9 $pids 2>/dev/null || true
+-  fi
++  [ -n "$stack_pid" ] || return 0
++  local pids p; pids="$(tree "$stack_pid")"
++  kill -TERM $pids 2>/dev/null || true
++  for _ in $(seq 1 40); do kill -0 $pids 2>/dev/null || break; sleep 0.25; done
++  kill -9 $pids 2>/dev/null || true
++  wait "$stack_pid" 2>/dev/null || true
+   stack_pid=""
+-  for _ in $(seq 1 40); do
+-    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || break
+-    sleep 0.25
++  for p in "${ports[@]}"; do
++    for _ in $(seq 1 40); do
++      lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 || break
++      sleep 0.25
++    done
+   done
+ }
+ trap 'stop_stack; echo; echo "Stopped."; exit 0' INT TERM
++trap stop_stack EXIT
+ 
+ token_for() {
+   python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' "$tokens" "$1"
+ }
+ 
+ start_stack() {
+-  for p in "$port" "$((port + 1))" "$((port + 2))"; do
++  local p
++  for p in "${ports[@]}"; do
+     if lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1; then
+       fail "Port $p is already in use (another demo running?). Stop it, or use --port $((port + 10))."
+     fi
+@@ -84,7 +89,8 @@
+   mkdir -p data/alibi
+   say "Starting a clean case 1 stack${replay:+ in REPLAY mode} on $app ..."
+   ALIBI_MODE=agents uv run --frozen python -m alibi.demo --timeout 14400 --case 1 --reset \
+-    --app-port "$port" --merchant-port "$((port + 1))" --bank-port "$((port + 2))" \
++    --app-port "${ports[0]}" --merchant-port "${ports[1]}" --bank-port "${ports[2]}" \
++    --director-port "${ports[3]}" \
+     --root "$root" $replay >"$log" 2>&1 &
+   stack_pid=$!
+   for _ in $(seq 1 240); do
+@@ -131,24 +137,31 @@
+   echo "$1" | grep -q '"status": "accepted"' || fail "The request was not accepted by the app (see above)."
+ }
+ 
+-later() { date -u -v+15M +%Y-%m-%dT%H:%M:00Z 2>/dev/null || date -u -d '+15 min' +%Y-%m-%dT%H:%M:00Z; }
+-
+ run_once() {
+   start_stack
+   open_windows
+   pause "0:00  Holder shows Maya, no alerts, no requests. Next: D1 (payout lands, alert raised)."
+-  say "D1  advance to 2026-10-28T07:30:00Z"
++  # Same withdrawal sequence as Director.withdraw. Sync at arrival so the monitor's
++  # 24-hour window starts on Oct 28, then move the shared clock past that window.
++  say "D1  release the payout, sync the credit and advance to the alert window"
++  drive advance --to 2026-10-26T18:05:00Z
+   drive advance --to 2026-10-28T07:30:00Z
++  local monitored
++  monitored="$(drive advance --to 2026-10-29T08:00:00Z)"
++  echo "$monitored"
++  if ! printf '%s\n' "$monitored" | python3 -c 'import json, sys; sys.exit(not json.load(sys.stdin)["feed"]["tick"]["raised"])'; then
++    fail "The holder's monitor did not raise an alert at D1."
++  fi
+   echo "  Holder: reload /passport, open the Unexplained credit alert, then rec-0001-020."
+-  pause "Next: D2 (clock past real time, then Bank A's request)."
+-  local t; t="$(later)"
+-  say "D2  advance to $t, then rfc bank_a"
+-  drive advance --to "$t"
++  pause "Next: D2 (advance to Bank A's request time)."
++  say "D2  advance to 2026-11-02T09:00:00Z, then rfc bank_a"
++  drive advance --to 2026-11-02T09:00:00Z
+   expect_accepted "$(drive rfc bank_a)"
+   echo "  Holder: reload, open the Bank A request, Run investigation, Approve for Bank A, Send."
+   echo "  Bank A: reload the inbox, open the package, record a disposition (Clear)."
+   pause "Next: D3 (Bank B's request)."
+-  say "D3  rfc bank_b"
++  say "D3  advance to 2026-11-04T14:00:00Z, then rfc bank_b"
++  drive advance --to 2026-11-04T14:00:00Z
+   expect_accepted "$(drive rfc bank_b)"
+   echo "  Holder: open the Bank B request, Run, Approve for Bank B, Send. Reload Bank B's inbox."
+ }

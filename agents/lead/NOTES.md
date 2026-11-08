@@ -42,6 +42,7 @@ Turn the task into a plan, keep the agents moving, and own the submission. See `
 - 00:30Z: eval progress (1fff9c2): exclusive RFC scope enforced in evaluator, preview and verifier, 433 tests pass; private 32+12 sealed pack passes 92 request-context checks. Calibration and the 47 live probes still wait on S5b and S2 (already queued for Arnav). No reply needed.
 - 00:48Z: execution done (7e51e7f): 40 policy rules in `agents/execution/out/policy_rules.jsonl` against s3a's `policy_parse.json` schema, vocabulary in `out/policy_material.json`, loader `agents.execution.api.load_policy_rules()`. Injections next. No reply needed; the assignment came from another Knull session.
 - 00:49Z: data done (8b99d67): demo script `agents/data/out/demo_script.md` (four-minute path on case 1, case 2 branch, `ALIBI_REPLAY=1` fallback). Uses FRONTEND.md URLs and UI.md labels since routes are not on main. Case 2's pending payout now lookup-visible only from its `status_as_of` (c339e2a). Queued the five [verify] items and the role list for Arnav; posted fyi.
+- 00:49Z: data done (a8ee960): `agents/data/out/case2_walkthrough.md`, case 1 vs case 2 at each demo mark (pending payout after booking, unmatched, Contradicted, both Bank A questions Unresolved, empty Bank A package, request_more, Bank B unaffected) with gold JSON and fallbacks. No reply needed.
 - `eliohd` keeps repo admin and must make the repo public at submission.
 
 ## For Arnav

@@ -1,0 +1,337 @@
+---
+/**
+ * `/app/banks/<audience>/`: one bank connection. What the bank sees (its account feed), what it has
+ * asked, what was sent to it, and the "Trusted bank" switch: a trusted bank's requests arrive
+ * marked and ready to approve and send in one tap (src/lib/trust.ts). Every disclosure is still
+ * approved by the holder; trust removes steps, not consent.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import AppFrame from '@/components/app/AppFrame.astro';
+import { REQUEST_LABEL, banks, initials, requestHref, requestState } from '@/components/app/home';
+import { day, when } from '@/lib/format';
+import { loadPassport } from '@/lib/passport';
+import { TRUST_COOKIE, parseTrusted } from '@/lib/trust';
+
+export const prerender = false;
+
+const audience = Astro.params.audience ?? '';
+const loaded = await loadPassport();
+const data = loaded.source === 'missing' ? null : loaded.data;
+const bank = data ? banks(data).find((b) => b.audience === audience) : undefined;
+if (!bank) Astro.response.status = 404;
+
+const trusted = parseTrusted(Astro.cookies.get(TRUST_COOKIE)?.value).has(audience);
+const requests = (data?.requests ?? []).filter((r) => (r.audience || r.recipient) === audience);
+const sent = (data?.sharing_history ?? []).filter((s) => (s.audience || s.recipient) === audience);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<BaseLayout title={bank ? bank.name : 'Bank'} view="app">
+  <AppFrame
+    active="home"
+    holder={data?.holder.name}
+    fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
+  >
+    <p class="back">
+      <a href="/app/">← Home</a>
+    </p>
+    {bank ? (
+      <>
+        <header class="bank-head">
+          <span class="mono" aria-hidden="true">
+            {initials(bank.name)}
+          </span>
+          <div>
+            <h1>{bank.name}</h1>
+            <p class="sub">
+              {bank.feed ? 'Account feed connected' : 'Sends you requests'}
+              {trusted && <span class="trusted-tag">Trusted</span>}
+            </p>
+          </div>
+        </header>
+
+        <section class="card trust" aria-labelledby="trust-title">
+          <div>
+            <h2 id="trust-title">Trusted bank</h2>
+            <p>
+              {trusted
+                ? `Requests from ${bank.name} arrive ready to approve and send in one tap. You still see exactly what is shared, and nothing leaves until you tap.`
+                : `Trust ${bank.name} to approve and send its requests in one tap. You still see exactly what is shared, and nothing leaves until you tap.`}
+            </p>
+          </div>
+          <form method="post" action="/app/trust">
+            <input type="hidden" name="audience" value={audience} />
+            <input type="hidden" name="trusted" value={trusted ? '0' : '1'} />
+            <button
+              class="switch"
+              type="submit"
+              role="switch"
+              aria-checked={trusted ? 'true' : 'false'}
+              aria-labelledby="trust-title"
+            >
+              <span class="knob" aria-hidden="true"></span>
+            </button>
+          </form>
+        </section>
+
+        {bank.feed && (
+          <section class="card" aria-labelledby="feed-title">
+            <h2 id="feed-title">Account feed</h2>
+            <dl class="kv">
+              <dt>Connection</dt>
+              <dd>{bank.feed.name}</dd>
+              <dt>Status</dt>
+              <dd>{bank.feed.status}</dd>
+              <dt>Records</dt>
+              <dd>{bank.feed.record_count}</dd>
+              <dt>Last synced</dt>
+              <dd>{when(bank.feed.last_synced_at)}</dd>
+            </dl>
+          </section>
+        )}
+
+        <section class="card" aria-labelledby="req-title">
+          <h2 id="req-title">Requests · {requests.length}</h2>
+          {requests.length === 0 ? (
+            <p class="quiet">{bank.name} has not asked anything yet.</p>
+          ) : (
+            <ul class="rows">
+              {requests.map((r) => {
+                const state = requestState(r.status);
+                return (
+                  <li>
+                    <a href={requestHref(r.request_id)}>
+                      <span>
+                        <b>
+                          {r.question_count === 1 ? '1 question' : `${r.question_count} questions`}
+                        </b>
+                        <span class="meta">
+                          {day(r.received_at)} · <code>{r.request_id}</code>
+                        </span>
+                      </span>
+                      <span class="state">
+                        {trusted && state === 'awaiting'
+                          ? 'Trusted · approve in one tap'
+                          : REQUEST_LABEL[state]}
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        <section class="card" aria-labelledby="sent-title">
+          <h2 id="sent-title">
+            Sent to {bank.name} · {sent.length}
+          </h2>
+          {sent.length === 0 ? (
+            <p class="quiet">Nothing has been shared with {bank.name}.</p>
+          ) : (
+            <ul class="rows">
+              {sent.map((s) => (
+                <li>
+                  <span>
+                    <b>{s.item_count} records</b>
+                    <span class="meta">
+                      {day(s.sent_at)} · <code>{s.package_id}</code>
+                    </span>
+                  </span>
+                  <span class="state">{s.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </>
+    ) : (
+      <>
+        <h1>Bank not found</h1>
+        <p>Your passport has no bank with that id.</p>
+      </>
+    )}
+  </AppFrame>
+</BaseLayout>
+
+<style>
+  .back {
+    margin: 0 0 16px;
+  }
+
+  .back a {
+    color: var(--a-soft);
+    text-decoration: none;
+    font-size: 0.875rem;
+  }
+
+  .bank-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .mono {
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: var(--a-ink);
+    color: var(--s-paper);
+    font: 600 1.25rem/1 var(--a-display);
+  }
+
+  h1 {
+    margin: 0 0 4px;
+    font: 500 1.75rem/1.1 var(--a-display);
+    letter-spacing: -0.02em;
+  }
+
+  .sub {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    color: var(--a-soft);
+    font-size: 0.875rem;
+  }
+
+  .trusted-tag {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--a-accent-soft);
+    color: var(--a-accent);
+    font: 500 0.75rem/1.4 var(--a-body);
+  }
+
+  .card {
+    margin-bottom: 16px;
+    padding: 20px;
+    border: 1px solid var(--a-line);
+    border-radius: 16px;
+    background: #fff;
+  }
+
+  .card h2 {
+    margin: 0 0 12px;
+    font: 600 1rem/1.2 var(--a-display);
+  }
+
+  .trust {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .trust p {
+    margin: 0;
+    color: var(--a-soft);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    max-width: 38rem;
+  }
+
+  .trust form {
+    margin: 0;
+  }
+
+  .switch {
+    position: relative;
+    width: 52px;
+    height: 32px;
+    flex: none;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(31 27 22 / 0.16);
+    cursor: pointer;
+    transition: background-color 200ms var(--s-ease);
+  }
+
+  .switch[aria-checked='true'] {
+    background: var(--a-accent);
+  }
+
+  .knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgb(31 27 22 / 0.2);
+    transition: transform 200ms var(--s-ease);
+  }
+
+  .switch[aria-checked='true'] .knob {
+    transform: translateX(20px);
+  }
+
+  .kv {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    gap: 6px 12px;
+    margin: 0;
+    font-size: 0.875rem;
+  }
+
+  .kv dt {
+    color: var(--a-faint);
+  }
+
+  .kv dd {
+    margin: 0;
+  }
+
+  .rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .rows li,
+  .rows li > a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 10px;
+    border-top: 1px solid var(--a-line);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .rows li > a {
+    width: 100%;
+    border-top: 0;
+    padding-block: 0;
+  }
+
+  .rows li:first-child {
+    border-top: 0;
+  }
+
+  .rows b {
+    display: block;
+    font-weight: 500;
+  }
+
+  .meta {
+    color: var(--a-faint);
+    font-size: 0.8125rem;
+  }
+
+  .state {
+    color: var(--a-soft);
+    font-size: 0.8125rem;
+    text-align: right;
+  }
+
+  .quiet {
+    margin: 0;
+    color: var(--a-faint);
+  }
+</style>

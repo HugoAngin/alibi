@@ -13,6 +13,7 @@ import { requestFixture } from '@/data/fixtures';
 import { loadContext } from '@alibi/ui/api';
 import { isRequestDetail } from '@/lib/api/guards';
 import { ROUTES, backendHeaders, takeFlash } from '@/lib/screens';
+import { TRUST_COOKIE, parseTrusted } from '@/lib/trust';
 
 export const prerender = false;
 
@@ -25,6 +26,7 @@ const loaded = await loadContext({
   headers: backendHeaders(),
 });
 const flash = takeFlash(Astro.cookies);
+const trustedBanks = parseTrusted(Astro.cookies.get(TRUST_COOKIE)?.value);
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 if (loaded.source === 'missing') Astro.response.status = 404;
@@ -44,7 +46,12 @@ if (loaded.source === 'missing') Astro.response.status = 404;
       active="requests"
       fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
     >
-      <RequestView data={loaded.data} flash={flash} live={loaded.source === 'live'} />
+      <RequestView
+        data={loaded.data}
+        flash={flash}
+        live={loaded.source === 'live'}
+        trusted={trustedBanks.has(loaded.data.review.approval.audience)}
+      />
     </AppFrame>
   )}
 </BaseLayout>

@@ -11,6 +11,7 @@ import { ALIBI_API_ORIGIN } from 'astro:env/server';
 import type { PassportHome } from '@/lib/api/types';
 import { day, money } from '@/lib/format';
 import { ROUTES, backendHeaders } from '@/lib/screens';
+import { TRUST_COOKIE, parseTrusted } from '@/lib/trust';
 import { loadContext } from '@alibi/ui/api';
 
 import ActivityRow from './ActivityRow.astro';
@@ -53,6 +54,7 @@ await Promise.all(
   }),
 );
 
+const trusted = parseTrusted(Astro.cookies.get(TRUST_COOKIE)?.value);
 const items = activity(data);
 const recent = items.slice(0, ACTIVITY_ON_HOME);
 const earlier = items.slice(ACTIVITY_ON_HOME);
@@ -76,7 +78,7 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
     {items.length === 0 && <p class="quiet">No requests or alerts yet.</p>}
     <ul class="rows">
       {recent.map((i) => (
-        <ActivityRow item={i} />
+        <ActivityRow item={i} trusted={i.audience ? trusted.has(i.audience) : false} />
       ))}
     </ul>
     {earlier.length > 0 && (
@@ -84,7 +86,7 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
         <summary>Show {earlier.length} more</summary>
         <ul class="rows">
           {earlier.map((i) => (
-            <ActivityRow item={i} />
+            <ActivityRow item={i} trusted={i.audience ? trusted.has(i.audience) : false} />
           ))}
         </ul>
       </details>
@@ -99,19 +101,24 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
       {bankList.length === 0 && <p class="quiet">No bank has contacted your passport yet.</p>}
       <ul class="banks">
         {bankList.map((b) => (
-          <li class="bank">
-            <span class="mono mono--lg mono--ink" aria-hidden="true">
-              {initials(b.name)}
-            </span>
-            <span class="bank-name">{b.name}</span>
-            <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
-            <span class="small">
-              {b.awaiting > 0
-                ? `${b.awaiting} awaiting your review`
-                : b.packagesSent > 0
-                  ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
-                  : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
-            </span>
+          <li>
+            <a class="bank" href={`/app/banks/${encodeURIComponent(b.audience)}/`}>
+              <span class="mono mono--lg mono--ink" aria-hidden="true">
+                {initials(b.name)}
+              </span>
+              <span class="bank-name">
+                {b.name}
+                {trusted.has(b.audience) && <span class="trusted">Trusted</span>}
+              </span>
+              <span class="small">{b.feed ? 'Account feed connected' : 'Sends you requests'}</span>
+              <span class="small">
+                {b.awaiting > 0
+                  ? `${b.awaiting} awaiting your review`
+                  : b.packagesSent > 0
+                    ? `${b.packagesSent} ${b.packagesSent === 1 ? 'package' : 'packages'} sent`
+                    : `${b.requests} ${b.requests === 1 ? 'request' : 'requests'}`}
+              </span>
+            </a>
           </li>
         ))}
       </ul>
@@ -269,6 +276,21 @@ const signed = (m: { minor: number; currency: string }, direction: 'credit' | 'd
 </div>
 
 <style>
+  a.bank {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .trusted {
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--a-accent-soft);
+    color: var(--a-accent);
+    font: 500 0.6875rem/1.5 var(--a-body);
+    vertical-align: middle;
+  }
+
   /* Wide screens: activity beside banks and merchants, the financial context below. */
   @media (min-width: 960px) {
     .dash {

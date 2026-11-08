@@ -4,7 +4,8 @@
  * then sends her back to the screen with the outcome. The backend decides
  * everything; a refusal is shown in its own words (shared/CONTRACTS.md).
  *
- * Approval stays on the review page. Dispatch goes to the receipt or refusal page.
+ * Approval stays on the review page. Dispatch, and a trusted bank's one-tap approve-and-send
+ * (`and_send=1`), go to the receipt or refusal page.
  */
 import type { APIRoute } from 'astro';
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
@@ -36,13 +37,26 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     for (const field of APPROVAL_FIELDS) body[field] = String(form.get(field) ?? '');
   }
 
-  const result = await forwardAction({
+  let result = await forwardAction({
     origin: ALIBI_API_ORIGIN,
     path,
     body,
     encoding: 'form',
     headers: backendHeaders(),
   });
+
+  // A trusted bank's one-tap button (src/lib/trust.ts): the holder's single tap approves, and once
+  // the backend accepts that approval, the same request is sent. A refused approval sends nothing.
+  const andSend = kind === 'approve' && form.get('and_send') === '1' && result.kind === 'ok';
+  if (andSend) {
+    result = await forwardAction({
+      origin: ALIBI_API_ORIGIN,
+      path: `/requests/${id}/dispatch`,
+      body: {},
+      encoding: 'form',
+      headers: backendHeaders(),
+    });
+  }
 
   if (result.kind === 'refused') {
     setFlash(cookies, { kind: 'refused', refusal: result.refusal });
@@ -58,5 +72,5 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     );
   }
 
-  return redirect(kind === 'dispatch' ? `${returnTo}sent/` : returnTo, 303);
+  return redirect(kind === 'dispatch' || andSend ? `${returnTo}sent/` : returnTo, 303);
 };

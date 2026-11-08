@@ -10,9 +10,12 @@ import { initials, type ActivityItem } from './home';
 
 interface Props {
   item: ActivityItem;
+  /** The request comes from a bank the holder trusts: approve and send in one tap. */
+  trusted?: boolean;
 }
 
-const { item } = Astro.props;
+const { item, trusted = false } = Astro.props;
+const oneTap = trusted && item.kind === 'request' && item.state === 'awaiting';
 const Tag = item.href ? 'a' : 'div';
 ---
 
@@ -28,7 +31,7 @@ const Tag = item.href ? 'a' : 'div';
       <span class="title">{item.title}</span>
       <span class="state">
         <span class="dot" aria-hidden="true"></span>
-        {item.label}
+        {oneTap ? 'Trusted · approve in one tap' : item.label}
       </span>
     </span>
     {item.href && (

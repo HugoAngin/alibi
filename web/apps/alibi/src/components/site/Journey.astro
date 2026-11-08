@@ -124,7 +124,7 @@ const chapters = [
   { id: 'banks', title: 'Link your banks', rail: 'Encrypted, read-only bank feeds' },
   { id: 'engine', title: 'The engine knows your story', rail: 'Gemini reasons over your history' },
   { id: 'ask', title: 'A bank asks', rail: 'One button on the bank’s side' },
-  { id: 'decide', title: 'You decide', rail: 'Nothing leaves without you' },
+  { id: 'decide', title: 'You decide', rail: 'Approve, or trust a bank for one tap' },
   { id: 'proof', title: 'Proof, delivered', rail: 'Signed and verifiable' },
 ];
 ---
@@ -378,13 +378,24 @@ const chapters = [
           <h2>You decide</h2>
           <p>
             Alibi shows you exactly what it would send and who would see it. The rest of your
-            financial life stays with you. Nothing leaves until you approve it.
+            financial life stays with you. Bank with NatWest every day? Trust it, and its requests
+            arrive ready to approve and send in one tap.
           </p>
         </div>
         <div class="ch-visual">
           <div class="review">
-            <p class="r-title">Share with NatWest</p>
-            <p class="r-sub">Only NatWest can open this</p>
+            <div class="r-head">
+              <div>
+                <p class="r-title">Share with NatWest</p>
+                <p class="r-sub">Only NatWest can open this</p>
+              </div>
+              <span class="r-trust" style="--i:0">
+                <span class="r-switch" aria-hidden="true">
+                  <span></span>
+                </span>
+                Trusted
+              </span>
+            </div>
             <ul class="r-list">
               {shared.map((s, i) => (
                 <li class="r-yes" style={`--i:${i}`}>
@@ -406,7 +417,7 @@ const chapters = [
               ))}
             </ul>
             <span class="approve">
-              <span class="a-off">Approve and send</span>
+              <span class="a-off">Approve and send in one tap</span>
               <span class="a-on">Approved</span>
             </span>
           </div>
@@ -1350,6 +1361,44 @@ const chapters = [
     border: 1px solid var(--s-line);
     background: var(--s-card);
     box-shadow: 0 24px 56px rgb(31 27 22 / 0.12);
+  }
+
+  .r-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .r-trust {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 999px;
+    background: var(--s-accent-soft);
+    color: var(--s-accent);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .r-switch {
+    position: relative;
+    width: 30px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--s-accent);
+  }
+
+  .r-switch span {
+    position: absolute;
+    top: 2px;
+    left: 14px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
   }
 
   .r-title {

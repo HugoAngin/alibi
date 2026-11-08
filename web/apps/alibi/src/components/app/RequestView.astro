@@ -18,6 +18,8 @@ interface Props {
   live: boolean;
   /** Why actions are off, when `live` is false. */
   offNote?: string;
+  /** The request comes from a bank the holder trusts (src/lib/trust.ts): one tap approves and sends. */
+  trusted?: boolean;
 }
 
 const {
@@ -25,6 +27,7 @@ const {
   flash,
   live,
   offNote = 'Approval needs the backend: it binds your decision to the package’s digest.',
+  trusted = false,
 } = Astro.props;
 const { request: rq, investigation: inv, trace, review } = data;
 const approval = review.approval;
@@ -33,6 +36,12 @@ const includedByQuestion = rq.questions
   .map((q) => ({ q, items: review.included.filter((i) => i.question_id === q.question_id) }))
   .filter((g) => g.items.length > 0);
 const SHOW = 3;
+const oneTap =
+  trusted &&
+  live &&
+  Boolean(approval.digest) &&
+  approval.status !== 'approved' &&
+  rq.status !== 'sent';
 ---
 
 <p class="back">
@@ -43,6 +52,29 @@ const SHOW = 3;
   Received {when(rq.received_at)} · reply by {day(rq.expires_at)} ·
   <Badge kind="status" value={rq.status} />
 </p>
+
+{oneTap && (
+  <section class="one-tap" aria-labelledby="one-tap-title">
+    <div>
+      <p class="one-tap-tag">Trusted bank</p>
+      <h2 id="one-tap-title">Send {approval.recipient} its answer in one tap</h2>
+      <p>
+        {review.counts.included} records answer the questions below; everything else stays private.
+        Check them below if you want, or approve and send now.
+      </p>
+    </div>
+    <form method="post" action="/app/act">
+      <input type="hidden" name="action" value={approval.action} />
+      <input type="hidden" name="digest" value={approval.digest} />
+      <input type="hidden" name="audience" value={approval.audience} />
+      <input type="hidden" name="policy_version" value={approval.policy_version} />
+      <input type="hidden" name="and_send" value="1" />
+      <button class="btn btn--primary btn--wide" type="submit">
+        Approve and send to {approval.recipient}
+      </button>
+    </form>
+  </section>
+)}
 
 {flash?.kind === 'refused' && (
   <section class="refusal" role="alert" aria-labelledby="refusal-title">
@@ -277,6 +309,38 @@ const SHOW = 3;
 </section>
 
 <style>
+  .one-tap {
+    display: grid;
+    gap: 16px;
+    margin: 20px 0 8px;
+    padding: 20px;
+    border-radius: 18px;
+    border: 1px solid rgb(43 69 196 / 0.25);
+    background: var(--a-accent-soft);
+  }
+
+  .one-tap h2 {
+    margin: 0 0 6px;
+    font: 600 1.15rem/1.25 var(--a-display);
+  }
+
+  .one-tap p {
+    margin: 0;
+    color: var(--a-soft);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .one-tap .one-tap-tag {
+    margin-bottom: 6px;
+    color: var(--a-accent);
+    font: 500 0.75rem/1 var(--a-mono);
+  }
+
+  .one-tap form {
+    margin: 0;
+  }
+
   .back {
     margin: 0 0 var(--space-2xs);
     font-size: var(--t-sm);

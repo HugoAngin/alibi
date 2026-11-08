@@ -68,6 +68,8 @@ export interface ActivityItem {
   id: string;
   kind: 'request' | 'alert';
   from: string;
+  /** The bank's id, for requests (trusted banks are marked by id). */
+  audience?: string;
   title: string;
   at: string;
   /** `awaiting` etc. for requests; `open` or `resolved` for alerts. */
@@ -85,6 +87,7 @@ export function activity(data: PassportHome): ActivityItem[] {
       id: r.request_id,
       kind: 'request',
       from: r.recipient,
+      audience: audienceOf(r),
       title: n === 1 ? 'Asks 1 question' : `Asks ${n} questions`,
       at: r.received_at,
       state,

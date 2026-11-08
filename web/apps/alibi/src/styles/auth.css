@@ -9,24 +9,6 @@
   overflow: hidden;
 }
 
-.auth .fields {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(
-      35% 40% at 20% 25%,
-      color-mix(in srgb, var(--s-field-a) 45%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      35% 40% at 80% 70%,
-      color-mix(in srgb, var(--s-field-b) 50%, transparent),
-      transparent 70%
-    );
-  filter: blur(20px);
-  pointer-events: none;
-}
-
 .auth .panel {
   position: relative;
   display: grid;
@@ -36,8 +18,8 @@
 }
 
 .auth h1 {
-  font: 800 clamp(2rem, 1.4rem + 2.4vw, 3.2rem) / 1 var(--s-font-display);
-  letter-spacing: -0.04em;
+  font: 500 clamp(2rem, 1.4rem + 2.4vw, 3rem) / 1.08 var(--s-font-display);
+  letter-spacing: -0.02em;
   margin: 0;
 }
 

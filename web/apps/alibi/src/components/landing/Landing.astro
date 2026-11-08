@@ -26,15 +26,15 @@ const { offerApp = false } = Astro.props;
   <Core />
 
   <section class="simulate s-wrap" aria-labelledby="simulate-title">
-    <div class="simulate-card" data-reveal>
+    <div class="simulate-card">
       <div>
         <p class="s-eyebrow">Simulate</p>
         <h2 id="simulate-title" class="s-h2">
-          Walk through Maya’s case.
+          Walk through Maya’s case
         </h2>
         <p class="s-lede">
-          A student reseller’s bank asks about a £2,160 credit. Watch the passport answer it step by
-          step, on the real app, from the alert to a second bank’s request.
+          A student reseller’s bank asks about a £2,160.00 credit. Watch the passport answer it step
+          by step, on the real app, from the alert to a second bank’s request.
         </p>
       </div>
       <a class="s-btn s-btn--primary" href="/simulate/">
@@ -44,10 +44,10 @@ const { offerApp = false } = Astro.props;
   </section>
 
   <section class="join s-wrap" aria-labelledby="join-title">
-    <h2 id="join-title" class="join-title" data-reveal>
-      Start living with an alibi.
+    <h2 id="join-title" class="join-title">
+      Start living with an alibi
     </h2>
-    <p class="actions" data-reveal style="--reveal-delay: 100ms">
+    <p class="actions">
       <Show when="signed-out">
         <a class="s-btn s-btn--primary" href="/sign-up/">
           Join
@@ -95,8 +95,8 @@ const { offerApp = false } = Astro.props;
   }
 
   .join-title {
-    font: 800 var(--s-t-hero) / 1 var(--s-font-display);
-    letter-spacing: -0.045em;
+    font: 500 var(--s-t-hero) / 1.04 var(--s-font-display);
+    letter-spacing: -0.03em;
     margin: 0 auto 2rem;
     max-width: 16ch;
   }

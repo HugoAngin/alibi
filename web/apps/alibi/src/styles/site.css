@@ -5,34 +5,33 @@
  * ------------------------------------------------------------------------- */
 
 :root {
-  --s-paper: #f6f5f1;
-  --s-paper-2: #efede6;
-  --s-ink: #0f1115;
-  --s-ink-soft: #4a4f57;
-  --s-ink-faint: #6b7079;
-  --s-line: rgb(15 17 21 / 0.09);
-  --s-accent: #2b4cff;
-  --s-accent-soft: #e6eaff;
+  /* Warm paper ramp: a small seller's paperwork, made trustworthy. */
+  --s-paper: #f7f4ee;
+  --s-paper-2: #efe9df;
+  --s-card: #fdfbf7;
+  --s-ink: #1f1b16;
+  --s-ink-soft: #5e554a;
+  --s-ink-faint: #7b7266;
+  --s-line: rgb(31 27 22 / 0.08);
+  /* One accent: the ink-blue of a passport stamp. 7:1 on the paper. */
+  --s-accent: #2b45c4;
+  --s-accent-soft: #e8ebf7;
   --s-ok: #1f7a4a;
   --s-bad: #b4322d;
 
-  /* Colour fields behind the glass, so the refraction has something to bend. */
-  --s-field-a: #8ea2ff;
-  --s-field-b: #ffc2a1;
-  --s-field-c: #a6ecd2;
-
   --s-font-display: 'Inter Tight', 'Inter', system-ui, sans-serif;
   --s-font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --s-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  --s-t-hero: clamp(2.6rem, 1.4rem + 5.2vw, 5.6rem);
-  --s-t-h2: clamp(1.9rem, 1.2rem + 2.6vw, 3.2rem);
-  --s-t-h3: clamp(1.2rem, 1rem + 0.7vw, 1.5rem);
-  --s-t-lede: clamp(1.05rem, 0.95rem + 0.5vw, 1.3rem);
+  --s-t-hero: clamp(2.5rem, 1.4rem + 4.6vw, 4.75rem);
+  --s-t-h2: clamp(1.9rem, 1.3rem + 2.2vw, 3rem);
+  --s-t-h3: clamp(1.5rem, 1.2rem + 1.2vw, 2.25rem);
+  --s-t-lede: clamp(1.0625rem, 0.98rem + 0.4vw, 1.25rem);
 
-  --s-radius-card: 28px;
-  --s-shadow: 0 1px 2px rgb(15 17 21 / 0.04), 0 12px 40px rgb(15 17 21 / 0.08);
-  --s-ease: cubic-bezier(0.2, 0.7, 0.1, 1);
-  --s-section: clamp(5rem, 3rem + 8vw, 10rem);
+  --s-radius-card: 20px;
+  --s-shadow: 0 1px 2px rgb(31 27 22 / 0.05), 0 8px 24px rgb(31 27 22 / 0.06);
+  --s-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --s-section: clamp(5rem, 3rem + 6vw, 8rem);
   --s-max: 72rem;
 }
 
@@ -86,16 +85,14 @@ html.lenis body {
 }
 
 .s-eyebrow {
-  font: 600 0.8rem/1 var(--s-font-body);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 500 0.875rem/1.2 var(--s-font-body);
   color: var(--s-accent);
 }
 
 .s-h2 {
-  font: 700 var(--s-t-h2) / 1.05 var(--s-font-display);
-  letter-spacing: -0.03em;
-  margin: 0.6rem 0 1rem;
+  font: 500 var(--s-t-h2) / 1.08 var(--s-font-display);
+  letter-spacing: -0.02em;
+  margin: 12px 0 16px;
 }
 
 .s-lede {
@@ -108,27 +105,72 @@ html.lenis body {
 .s-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.5em;
+  gap: 8px;
   min-height: 48px;
-  padding: 0 1.4rem;
-  border-radius: 999px;
-  font: 600 1rem/1 var(--s-font-body);
+  padding: 0 20px;
+  border-radius: 10px;
+  font: 500 1rem/1 var(--s-font-body);
   text-decoration: none;
   transition:
-    transform 0.25s var(--s-ease),
-    background 0.25s var(--s-ease);
+    background-color 0.16s var(--s-ease),
+    transform 0.12s var(--s-ease);
 }
-.s-btn:hover {
-  transform: translateY(-1px);
+.s-btn:active {
+  transform: scale(0.98);
 }
 .s-btn--primary {
   background: var(--s-ink);
   color: var(--s-paper);
 }
+.s-btn--primary:hover {
+  background: #352f27;
+}
 .s-btn--ghost {
-  background: rgb(255 255 255 / 0.7);
+  background: var(--s-card);
   color: var(--s-ink);
   border: 1px solid var(--s-line);
+}
+.s-btn--ghost:hover {
+  background: var(--s-paper-2);
+}
+
+/* Signature: a stamped evidence reference, a record ID with its revision. */
+.s-ref {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid rgb(43 69 196 / 0.35);
+  border-radius: 4px;
+  font: 500 0.75rem/1.4 var(--s-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  color: var(--s-accent);
+  white-space: nowrap;
+}
+
+/* The one entrance on load: the hero copy fades and rises once. CSS only, so
+ * the hero is never hidden waiting for a script. */
+@keyframes s-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.s-enter > * {
+  animation: s-enter 0.5s var(--s-ease) both;
+}
+.s-enter > *:nth-child(2) {
+  animation-delay: 50ms;
+}
+.s-enter > *:nth-child(3) {
+  animation-delay: 100ms;
+}
+.s-enter > *:nth-child(4) {
+  animation-delay: 150ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .s-enter > * {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------

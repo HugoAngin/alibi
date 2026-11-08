@@ -1,19 +1,21 @@
 ---
 /**
- * The hero's 3D visual: a frosted-glass passport card, and three evidence
- * tiles from Maya's case (the bank credit, the payout, the sales) that start
- * scattered and dock onto the card as the visitor scrolls. That is the
- * product in one image: evidence gathered before anyone asks.
+ * The hero's 3D visual: Maya's passport as a paper card, and three slips of
+ * her real evidence from case 1 (the bank credit, the payout, the sales) that
+ * start loose and dock onto the card as the visitor scrolls. That is the
+ * product in one image: evidence gathered before anyone asks. Each slip
+ * carries the site's signature, a stamped record reference.
  *
- * three.js loads only on this page, the scene renders only while visible,
- * and a single still frame is drawn when the visitor prefers reduced motion.
+ * The only motion is that scroll-linked docking: no idle loop, no parallax.
+ * three.js loads only on this page, renders only while visible, and draws a
+ * single still frame (docked) when the visitor prefers reduced motion.
  */
 ---
 
 <div class="scene" data-hero-scene>
   <canvas aria-hidden="true"></canvas>
   <noscript>
-    <p class="fallback">Maya’s passport, with her evidence attached.</p>
+    <p class="fallback">Maya’s passport, with her evidence attached</p>
   </noscript>
 </div>
 
@@ -44,17 +46,15 @@
   import {
     ACESFilmicToneMapping,
     CanvasTexture,
-    Color,
+    DirectionalLight,
     Group,
     Mesh,
     MeshBasicMaterial,
-    MeshPhysicalMaterial,
     MeshStandardMaterial,
     PerspectiveCamera,
     PlaneGeometry,
     PMREMGenerator,
     Scene,
-    SphereGeometry,
     SRGBColorSpace,
     Vector3,
     WebGLRenderer,
@@ -62,16 +62,19 @@
   import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
   import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
+  const INK = '#1f1b16';
+  const SOFT = '#5e554a';
+  const STAMP = '#2b45c4';
+  const PAPER = 0xfdfbf7;
+
   const host = document.querySelector<HTMLElement>('[data-hero-scene]');
   const canvas = host?.querySelector('canvas');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /** Draws text onto a transparent canvas for a label plane. */
-  function label(
-    lines: { text: string; font: string; color: string; y: number }[],
-    w: number,
-    h: number,
-  ) {
+  type Line = { text: string; font: string; color: string; y: number; box?: boolean };
+
+  /** Draws text onto a transparent canvas for a label plane; `box` draws a stamp outline. */
+  function label(lines: Line[], w: number, h: number) {
     const c = document.createElement('canvas');
     c.width = w;
     c.height = h;
@@ -80,6 +83,14 @@
       ctx.font = l.font;
       ctx.fillStyle = l.color;
       ctx.fillText(l.text, 48, l.y);
+      if (l.box) {
+        const width = ctx.measureText(l.text).width;
+        ctx.strokeStyle = l.color;
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(36, l.y - 34, width + 24, 46);
+        ctx.globalAlpha = 1;
+      }
     }
     const tex = new CanvasTexture(c);
     tex.colorSpace = SRGBColorSpace;
@@ -98,59 +109,35 @@
     const scene = new Scene();
     const pmrem = new PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const sun = new DirectionalLight(0xfff6e8, 0.6);
+    sun.position.set(-3, 4, 6);
+    scene.add(sun);
 
     const camera = new PerspectiveCamera(32, 1, 0.1, 100);
-    camera.position.set(0, 0, 11);
+    camera.position.set(0, 0, 12.5);
 
-    // Colour behind the glass, so the card visibly refracts.
-    const fields: [number, Vector3, number][] = [
-      [0x8ea2ff, new Vector3(-0.7, 0.9, -1.6), 0.95],
-      [0xffc2a1, new Vector3(0.8, -0.8, -1.9), 1.05],
-      [0xa6ecd2, new Vector3(0.7, 1.4, -2.4), 0.7],
-    ];
-    for (const [color, pos, r] of fields) {
-      const m = new Mesh(
-        new SphereGeometry(r, 48, 48),
-        new MeshStandardMaterial({ color, roughness: 0.6 }),
-      );
-      m.position.copy(pos);
-      scene.add(m);
-    }
-
-    // The passport card.
+    // The passport: a paper card with Maya's details printed on it.
     const card = new Group();
-    const glass = new Mesh(
-      new RoundedBoxGeometry(3.3, 4.5, 0.14, 8, 0.3),
-      new MeshPhysicalMaterial({
-        color: new Color(0xffffff),
-        transmission: 1,
-        roughness: 0.22,
-        thickness: 0.8,
-        ior: 1.35,
-        clearcoat: 1,
-        clearcoatRoughness: 0.1,
-      }),
+    card.add(
+      new Mesh(
+        new RoundedBoxGeometry(3.3, 4.5, 0.08, 8, 0.24),
+        new MeshStandardMaterial({ color: PAPER, roughness: 0.9 }),
+      ),
     );
-    card.add(glass);
     const face = new Mesh(
       new PlaneGeometry(3.3, 4.5),
       new MeshBasicMaterial({
         transparent: true,
         map: label(
           [
-            { text: 'alibi', font: '800 92px "Inter Tight", sans-serif', color: '#0f1115', y: 140 },
-            {
-              text: 'FINANCIAL PASSPORT',
-              font: '600 30px Inter, sans-serif',
-              color: '#4a4f57',
-              y: 200,
-            },
-            { text: 'Maya', font: '700 64px "Inter Tight", sans-serif', color: '#0f1115', y: 1010 },
+            { text: 'alibi', font: '600 88px "Inter Tight", sans-serif', color: INK, y: 136 },
+            { text: 'Financial passport', font: '500 32px Inter, sans-serif', color: SOFT, y: 192 },
+            { text: 'Maya', font: '500 64px "Inter Tight", sans-serif', color: INK, y: 1000 },
             {
               text: 'maya-001 · synthetic',
-              font: '500 30px Inter, sans-serif',
-              color: '#4a4f57',
-              y: 1060,
+              font: '500 28px "IBM Plex Mono", monospace',
+              color: SOFT,
+              y: 1046,
             },
           ],
           792,
@@ -158,20 +145,20 @@
         ),
       }),
     );
-    face.position.z = 0.075;
+    face.position.z = 0.045;
     card.add(face);
     scene.add(card);
 
-    // Evidence tiles from case 1.
-    const tiles = [
-      { title: '£2,160.00 credit', sub: 'Bank feed · 28 Oct', accent: '#2b4cff' },
-      { title: 'Payout PO-0001-01', sub: 'Settled 27 Oct · marketplace', accent: '#1f7a4a' },
-      { title: '8 sales · £2,400.00', sub: 'Less £180 refunds, £60 fees', accent: '#b45f2d' },
+    // Evidence slips from case 1, each with its stamped reference.
+    const slips = [
+      { title: '£2,160.00 credit', ref: 'txn-0001-004 r1' },
+      { title: 'Payout PO-0001-01', ref: 'rec-0001-021 r1' },
+      { title: '8 sales · £2,400.00', ref: '18 records · rec-0001-001…018' },
     ].map((t, i) => {
       const g = new Group();
       const body = new Mesh(
-        new RoundedBoxGeometry(2.5, 0.78, 0.08, 6, 0.18),
-        new MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.35, clearcoat: 0.6 }),
+        new RoundedBoxGeometry(2.5, 0.78, 0.04, 6, 0.12),
+        new MeshStandardMaterial({ color: PAPER, roughness: 0.85 }),
       );
       const text = new Mesh(
         new PlaneGeometry(2.5, 0.78),
@@ -179,25 +166,26 @@
           transparent: true,
           map: label(
             [
+              { text: t.title, font: '500 56px "Inter Tight", sans-serif', color: INK, y: 92 },
               {
-                text: t.title,
-                font: '700 58px "Inter Tight", sans-serif',
-                color: '#0f1115',
-                y: 92,
+                text: t.ref,
+                font: '500 30px "IBM Plex Mono", monospace',
+                color: STAMP,
+                y: 168,
+                box: true,
               },
-              { text: t.sub, font: '500 34px Inter, sans-serif', color: t.accent, y: 148 },
             ],
             800,
             250,
           ),
         }),
       );
-      text.position.z = 0.045;
+      text.position.z = 0.025;
       g.add(body, text);
       scene.add(g);
       return {
         g,
-        // Scattered around the card at the top of the page...
+        // Loose around the card at the top of the page...
         from: [
           new Vector3(-1.75, 1.75, 1.2),
           new Vector3(1.8, 0.35, 1.6),
@@ -208,15 +196,14 @@
           new Vector3(-0.15, -0.55, 0.14),
           new Vector3(0.25, 0.4, 0.12),
         ][i],
-        // ...and docked on its face once the visitor scrolls.
-        to: new Vector3(0, 0.95 - i * 0.92, 0.2),
+        // ...and docked on its face, clear of the printed name, once scrolled.
+        to: new Vector3(0, 1.0 - i * 0.86, 0.12),
       };
     });
 
     let progress = reduced ? 1 : 0;
-    let pointerX = 0;
-    let pointerY = 0;
     let visible = true;
+    let dirty = true;
 
     const resize = () => {
       const { width, height } = host.getBoundingClientRect();
@@ -225,50 +212,47 @@
       // Keep the card comfortably inside narrow frames.
       camera.position.z = width / height < 0.9 ? 15 : 12.5;
       camera.updateProjectionMatrix();
+      dirty = true;
     };
 
     const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    const up = new Vector3(0, 1, 0);
 
-    const render = (time = 0) => {
+    const render = () => {
       const p = ease(progress);
-      const sway = reduced ? 0 : Math.sin(time / 2600) * 0.06;
-      card.rotation.set(-0.08 + pointerY * 0.08, -0.45 * (1 - p) + sway + pointerX * 0.12, 0);
-      for (const t of tiles) {
+      card.rotation.set(-0.06, -0.45 * (1 - p), 0);
+      for (const t of slips) {
         t.g.position.lerpVectors(t.from, t.to, p);
         t.g.rotation.set(
           t.fromRot.x * (1 - p) + card.rotation.x,
           t.fromRot.y * (1 - p) + card.rotation.y,
           t.fromRot.z * (1 - p),
         );
-        // Docked tiles ride on the card's surface.
-        if (p > 0) t.g.position.applyAxisAngle(new Vector3(0, 1, 0), card.rotation.y * p);
+        // Docked slips ride on the card's surface.
+        if (p > 0) t.g.position.applyAxisAngle(up, card.rotation.y * p);
       }
       renderer.render(scene, camera);
+      dirty = false;
     };
 
     resize();
-    window.addEventListener('resize', () => {
-      resize();
-      render(performance.now());
-    });
-
+    window.addEventListener('resize', resize);
+    render();
     if (reduced) {
-      render();
+      window.addEventListener('resize', render);
       return;
     }
 
     window.addEventListener('alibi:scroll', (e) => {
       const { scroll } = (e as CustomEvent<{ scroll: number }>).detail;
       progress = Math.min(1, Math.max(0, scroll / (host.offsetHeight * 0.75)));
-    });
-    window.addEventListener('pointermove', (e) => {
-      pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-      pointerY = (e.clientY / window.innerHeight) * 2 - 1;
+      dirty = true;
     });
     new IntersectionObserver(([entry]) => (visible = entry.isIntersecting)).observe(host);
 
-    const loop = (time: number) => {
-      if (visible) render(time);
+    // Render only when something changed and the scene is on screen.
+    const loop = () => {
+      if (visible && dirty) render();
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);

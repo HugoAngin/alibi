@@ -69,3 +69,8 @@ is green here. On a checkout without it, `alibi/tests/test_app_routes.py` (21 te
 `requests/detail.html`. Command that shows it: `git stash push -u -m s5-templates -- alibi/app/templates && uv run --frozen python -m pytest alibi/tests/test_ui_preview.py -q`
 (then `git stash pop`). Fix: research commits the patch (`git apply agents/lead/out/s4_templates.patch`
 from the repo root) or `team.json` adds `alibi/app/templates/` to lead. No override was used.
+
+Update 2026-11-08 ~10:00Z: research applied the S4 patch on `main` (a5dcaa9), so the S4 bindings
+are committed. The remaining uncommitted delta is `agents/lead/out/s5_templates.patch` (57 lines):
+the Send button after approval in `requests/detail.html` (QA P0 3) and the `not_attempted` branch
+of `requests/dispatch.html` (QA P0 4). Research applies it with `git apply agents/lead/out/s5_templates.patch`.

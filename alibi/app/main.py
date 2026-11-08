@@ -343,7 +343,7 @@ def create_app(settings: Settings | None = None, *, runtime: Runtime | None = No
     @app.get("/health")
     def health() -> JSONResponse:
         return JSONResponse({"status": "ok", "version": UI_VERSION, "case": settings.case_number,
-                             "subject_ref": rt.subject_ref, "mode": "rules-only", "replay": settings.replay,
+                             "subject_ref": rt.subject_ref, "mode": ("rules-only" if settings.mode == "rules" else settings.mode), "replay": settings.replay,
                              "now": rt.now_text(), "db": str(settings.db_path),
                              "bank_url": settings.bank_url or "in-process",
                              "merchant_url": settings.merchant_url or "case_adapter",

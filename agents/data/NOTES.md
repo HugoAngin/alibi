@@ -38,6 +38,9 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 ## Lead work order 4 (01:57Z, post 6715894632)
 - (1) The alert family was already done (11abc05). (2) Deck figures: agents/data/figures.py writes out/figures/fig1-4. (3) Throughput set: 200 cases 101-300 in out/throughput, api.load_throughput. (4) Driver run of demo_script.md twice from a clean clone: after S5 lands.
 
+## Eval rehearsal (02:24Z, post 6716141918)
+- Done: fresh clone at scratchpad/rehearsal (commit 9d0933f), record in agents/data/out/rehearsal_2026-11-08.md. Finding sent to eval: the rules baseline lacks a second-platform mapping (7 linked SP cases come out unmatched). Reuse this clone for the Driver run after S5.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

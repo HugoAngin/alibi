@@ -90,6 +90,10 @@ def build_summary(scores: dict, run: dict, scheduling: dict | None = None) -> di
         original = _dict(_dict(retained.get("usage_by_system")).get(name))
         for key in ("totals", "partial_known_totals", "workers_with_known_values"):
             row[key] = _select(original.get(key), COUNTERS)
+    if "original_run_sha256" in signature and not all(
+            isinstance(scheduling.get(key), dict) and scheduling[key].get("aggregate")
+            for key in ("original", "resume")):
+        raise ValueError("resume export requires original and continuation scheduling")
     config = _select(signature, {"timeout", "workers", "dry", "inherited_llm_cap"})
     config["limits"] = _select(signature.get("limits"), set(SYSTEMS))
     result = {
@@ -128,7 +132,9 @@ def build_summary(scores: dict, run: dict, scheduling: dict | None = None) -> di
             "Only 62 unstarted groups and three publicly reproduced scheduler failures were eligible "
             "for continuation under the original lock and candidate. Original and continuation "
             "attempt counts are separate; combined attempted counts count unique groups. "
-            "Original pause-affected timing is qualified; unknown first-attempt usage is not zero."
+            "Scheduler completed counts returned groups, including candidate failures; per-system "
+            "completed counts groups without a worker failure. Original pause-affected timing is "
+            "qualified; unknown first-attempt usage is not zero."
         )
     return result
 
@@ -158,7 +164,8 @@ def main(argv=None):
     capture = args.capture.resolve()
     if capture.is_relative_to(Path(__file__).resolve().parents[2]):
         parser.error("capture must be external to the source checkout")
-    if args.out and args.out.resolve().is_relative_to(capture):
+    protected_root = capture.parent if (capture / "resume-lock.json").is_file() else capture
+    if args.out and args.out.resolve().is_relative_to(protected_root):
         parser.error("output must be outside the retained capture")
     schedule = capture / "scheduling.json"
     summary = build_summary(_load(capture / "scores.json"), _load(capture / "run.json"),

@@ -94,3 +94,20 @@ def test_resume_discloses_separate_attempts_without_exporting_details():
     assert disclosure["continuation"]["aggregate"]["attempted"] == 65
     assert disclosure["original_run_sha256"] == "d" * 64
     assert "67 original returned groups" in result["interpretation_and_caveats"][-1]
+
+
+def test_resume_missing_scheduling_fails_closed():
+    scores, run, schedule = synthetic()
+    run["input"]["original_run_sha256"] = "d" * 64
+    with pytest.raises(ValueError, match="requires original"):
+        export.build_summary(scores, run, schedule)
+
+
+def test_resume_export_cannot_write_into_original_capture(tmp_path):
+    capture = tmp_path / "original"
+    resume = capture / "resume"
+    resume.mkdir(parents=True)
+    (resume / "resume-lock.json").write_text("{}")
+    with pytest.raises(SystemExit):
+        export.main(["--capture", str(resume), "--out", str(capture / "new.json")])
+    assert not (capture / "new.json").exists()

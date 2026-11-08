@@ -1,0 +1,440 @@
+{
+  "case_number": 157,
+  "family": "alert",
+  "variant": "merchant_unverified",
+  "title": "A card payment to a merchant the registry does not know",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0157",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-06-11T08:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-001",
+        "record_id": "rec-0157-001",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "sale",
+        "occurred_at": "2026-06-11T08:00:00Z",
+        "amount_minor": 12500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-11T08:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-002",
+        "record_id": "rec-0157-002",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "fee",
+        "occurred_at": "2026-06-11T08:01:00Z",
+        "amount_minor": 313,
+        "currency": "GBP",
+        "related_record_id": "rec-0157-001",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-06-12T14:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-003",
+        "record_id": "rec-0157-003",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "sale",
+        "occurred_at": "2026-06-12T14:00:00Z",
+        "amount_minor": 15000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-12T14:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-004",
+        "record_id": "rec-0157-004",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "fee",
+        "occurred_at": "2026-06-12T14:01:00Z",
+        "amount_minor": 375,
+        "currency": "GBP",
+        "related_record_id": "rec-0157-003",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-06-13T20:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-005",
+        "record_id": "rec-0157-005",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "sale",
+        "occurred_at": "2026-06-13T20:00:00Z",
+        "amount_minor": 13500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-13T20:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-006",
+        "record_id": "rec-0157-006",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "fee",
+        "occurred_at": "2026-06-13T20:01:00Z",
+        "amount_minor": 338,
+        "currency": "GBP",
+        "related_record_id": "rec-0157-005",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-06-16T22:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0157-007",
+        "record_id": "rec-0157-007",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0157",
+        "kind": "payout",
+        "occurred_at": "2026-06-16T02:00:00Z",
+        "amount_minor": 39974,
+        "currency": "GBP",
+        "destination": "bank",
+        "payout_reference": "PO-0157-01",
+        "status": "settled",
+        "settled_at": "2026-06-16T22:00:00Z",
+        "covers_record_ids": [
+          "rec-0157-001",
+          "rec-0157-003",
+          "rec-0157-005",
+          "rec-0157-002",
+          "rec-0157-004",
+          "rec-0157-006"
+        ]
+      }
+    }
+  ],
+  "merchant_lookup": [],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-06-06T18:00:00Z",
+      "row": {
+        "txn_id": "txn-0157-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0157",
+        "booked_at": "2026-06-06T17:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-06-08T22:00:00Z",
+      "row": {
+        "txn_id": "txn-0157-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0157",
+        "booked_at": "2026-06-08T21:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-06-10T20:00:00Z",
+      "row": {
+        "txn_id": "txn-0157-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0157",
+        "booked_at": "2026-06-10T19:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-06-17T09:00:00Z",
+      "row": {
+        "txn_id": "txn-0157-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0157",
+        "booked_at": "2026-06-17T08:00:00Z",
+        "amount_minor": 39974,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT PO-0157-01",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": "PO-0157-01"
+      }
+    },
+    {
+      "received_at": "2026-06-20T09:00:00Z",
+      "row": {
+        "txn_id": "txn-0157-005",
+        "revision": 1,
+        "account_ref": "acct-seller-0157",
+        "booked_at": "2026-06-20T08:00:00Z",
+        "amount_minor": -9000,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Payflux Holdings",
+        "payment_reference": null
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0157-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0157",
+      "txn_ids": [
+        "txn-0157-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Provide evidence of where the £399.74 credited to your account on 2026-06-17 came from."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "How does the credit reconcile to your underlying sales, refunds and fees?"
+        }
+      ],
+      "issued_at": "2026-06-22T09:00:00Z",
+      "expires_at": "2026-06-29T09:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0157-004",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 41000,
+      "refunds": 0,
+      "fees": 1026,
+      "net": 39974
+    }
+  },
+  "gold": {
+    "decision_time": "2026-06-22T09:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0157-004",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0157-007"
+        ]
+      }
+    ],
+    "breakdown_minor": {
+      "sales": 41000,
+      "refunds": 0,
+      "fees": 1026,
+      "net": 39974
+    },
+    "claim_status": "supported",
+    "answers": {
+      "rfc-0157-01": {
+        "q.source_of_funds": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "payout_references": [
+              "PO-0157-01"
+            ],
+            "settled_at": [
+              "2026-06-16T22:00:00Z"
+            ]
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0157-004",
+              "merchant:rec-0157-007"
+            ]
+          ]
+        },
+        "q.breakdown": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "breakdown_minor": {
+              "sales": 41000,
+              "refunds": 0,
+              "fees": 1026,
+              "net": 39974
+            }
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0157-004",
+              "merchant:rec-0157-007",
+              "merchant:rec-0157-001",
+              "merchant:rec-0157-003",
+              "merchant:rec-0157-005",
+              "merchant:rec-0157-002",
+              "merchant:rec-0157-004",
+              "merchant:rec-0157-006"
+            ]
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0157-001",
+      "bank:txn-0157-002",
+      "bank:txn-0157-003"
+    ],
+    "source_trust": {
+      "bank:txn-0157-001": "bank_observed",
+      "bank:txn-0157-002": "bank_observed",
+      "bank:txn-0157-003": "bank_observed",
+      "bank:txn-0157-004": "bank_observed",
+      "merchant:rec-0157-001": "issuer_verified",
+      "merchant:rec-0157-002": "issuer_verified",
+      "merchant:rec-0157-003": "issuer_verified",
+      "merchant:rec-0157-004": "issuer_verified",
+      "merchant:rec-0157-005": "issuer_verified",
+      "merchant:rec-0157-006": "issuer_verified",
+      "merchant:rec-0157-007": "issuer_verified"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0157-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0157-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0157-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0157-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0157-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "id": "evt-0157-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "id": "evt-0157-007",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0157-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0157-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0157-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0157-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 4,
+        "id": "txn-0157-005",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "A card payment to a merchant the registry does not know. gold.alerts lists every alert the monitor rules raise before the first request, in order; see agents/data/README.md 'Alert rules'.",
+    "alerts": [
+      {
+        "alert_id": "alrt-0157-01",
+        "kind": "merchant_unverified",
+        "severity": "info",
+        "raised_at": "2026-06-20T09:00:00Z",
+        "subject_ref": "bank:txn-0157-005",
+        "status": "open",
+        "title": "Payflux Holdings is not in the merchant registry",
+        "explanation": "This merchant is unknown to the mock registry. Unknown does not mean fraudulent; it means there is nothing on record to check it against.",
+        "facts": [
+          {
+            "label": "Payment",
+            "value": "£90.00",
+            "source_ref": "bank:txn-0157-005"
+          },
+          {
+            "label": "Payee",
+            "value": "Payflux Holdings",
+            "source_ref": "bank:txn-0157-005"
+          }
+        ],
+        "suggested_checks": [
+          "Look the merchant up before paying it again.",
+          "Keep the receipt."
+        ]
+      }
+    ]
+  },
+  "purpose": "throughput - not for scoring"
+}

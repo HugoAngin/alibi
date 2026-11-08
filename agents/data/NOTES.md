@@ -35,6 +35,9 @@ Draft development case ledgers as JSON in `agents/data/out`: clean, bundled paym
 - (2) Receipts: 12 PNGs plus receipts.json done (10 pushed in da8289f, 11-12 with the second platform).
 - (3) The injection and alert families were already done. (4) Stylesheet patch applied to alibi/app/static/alibi.css after the S4 merge (576 alibi tests pass).
 
+## Lead work order 4 (01:57Z, post 6715894632)
+- (1) The alert family was already done (11abc05). (2) Deck figures: agents/data/figures.py writes out/figures/fig1-4. (3) Throughput set: 200 cases 101-300 in out/throughput, api.load_throughput. (4) Driver run of demo_script.md twice from a clean clone: after S5 lands.
+
 ## Next
 - React to lead/eval/research feedback on the format (eval was due to post its input format by 23:00).
 - Possible: load these cases through `alibi/` connector interfaces once build sessions publish them (SPEC data role); add `parent_request_id` follow-up RFCs.

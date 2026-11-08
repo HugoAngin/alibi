@@ -1,0 +1,780 @@
+{
+  "case_number": 213,
+  "family": "hidden_reference",
+  "variant": "csv_layout",
+  "title": "Reference only in a semicolon statement, without the PO prefix",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0213",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-09-04T10:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-001",
+        "record_id": "rec-0213-001",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-04T10:00:00Z",
+        "amount_minor": 45000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed",
+        "order_number": 1321
+      }
+    },
+    {
+      "received_at": "2026-09-04T10:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-002",
+        "record_id": "rec-0213-002",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-04T10:01:00Z",
+        "amount_minor": 1125,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-001",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-05T16:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-003",
+        "record_id": "rec-0213-003",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-05T16:00:00Z",
+        "amount_minor": 19000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed",
+        "order_number": 1325
+      }
+    },
+    {
+      "received_at": "2026-09-05T16:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-004",
+        "record_id": "rec-0213-004",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-05T16:01:00Z",
+        "amount_minor": 475,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-003",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-06T22:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-005",
+        "record_id": "rec-0213-005",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-06T22:00:00Z",
+        "amount_minor": 32500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3",
+        "status": "completed",
+        "order_number": 1329
+      }
+    },
+    {
+      "received_at": "2026-09-06T22:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-006",
+        "record_id": "rec-0213-006",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-06T22:01:00Z",
+        "amount_minor": 813,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-005",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-13T06:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-008",
+        "record_id": "rec-0213-008",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-13T06:00:00Z",
+        "amount_minor": 21000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed",
+        "order_number": 1332
+      }
+    },
+    {
+      "received_at": "2026-09-13T06:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-009",
+        "record_id": "rec-0213-009",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-13T06:01:00Z",
+        "amount_minor": 525,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-008",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-14T12:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-010",
+        "record_id": "rec-0213-010",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-14T12:00:00Z",
+        "amount_minor": 32000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed",
+        "order_number": 1336
+      }
+    },
+    {
+      "received_at": "2026-09-14T12:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-011",
+        "record_id": "rec-0213-011",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-14T12:01:00Z",
+        "amount_minor": 800,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-010",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-15T18:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-012",
+        "record_id": "rec-0213-012",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-15T18:00:00Z",
+        "amount_minor": 3000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3",
+        "status": "completed",
+        "order_number": 1340
+      }
+    },
+    {
+      "received_at": "2026-09-15T18:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-013",
+        "record_id": "rec-0213-013",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-15T18:01:00Z",
+        "amount_minor": 75,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-012",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-17T00:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-014",
+        "record_id": "rec-0213-014",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-17T00:00:00Z",
+        "amount_minor": 44000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 4",
+        "status": "completed",
+        "order_number": 1342
+      }
+    },
+    {
+      "received_at": "2026-09-17T00:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-015",
+        "record_id": "rec-0213-015",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-17T00:01:00Z",
+        "amount_minor": 1100,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-014",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-18T06:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-016",
+        "record_id": "rec-0213-016",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "sale",
+        "occurred_at": "2026-09-18T06:00:00Z",
+        "amount_minor": 39000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 5",
+        "status": "completed",
+        "order_number": 1343
+      }
+    },
+    {
+      "received_at": "2026-09-18T06:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-017",
+        "record_id": "rec-0213-017",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "fee",
+        "occurred_at": "2026-09-18T06:01:00Z",
+        "amount_minor": 975,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-016",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-09-19T02:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-018",
+        "record_id": "rec-0213-018",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "refund",
+        "occurred_at": "2026-09-19T02:00:00Z",
+        "amount_minor": 500,
+        "currency": "GBP",
+        "related_record_id": "rec-0213-016",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-09-20T12:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-020",
+        "record_id": "rec-0213-020",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "balance_release",
+        "occurred_at": "2026-09-20T12:00:00Z",
+        "amount_minor": 135025,
+        "currency": "GBP",
+        "destination": "platform_balance",
+        "release_reference": "REL-0213-01",
+        "covers_record_ids": [
+          "rec-0213-008",
+          "rec-0213-010",
+          "rec-0213-012",
+          "rec-0213-014",
+          "rec-0213-016",
+          "rec-0213-018",
+          "rec-0213-009",
+          "rec-0213-011",
+          "rec-0213-013",
+          "rec-0213-015",
+          "rec-0213-017"
+        ],
+        "message": "£1,350.25 from your recent sales is now available in your seller balance."
+      }
+    },
+    {
+      "received_at": "2026-09-20T15:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-021",
+        "record_id": "rec-0213-021",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "statement",
+        "occurred_at": "2026-09-20T15:00:00Z",
+        "statement_type": "payout_summary",
+        "text": "Payout No.;Date;Net amount (GBP)\n0213/01;09.09.2026;940,87\n0213/02;20.09.2026;1.350,25\n"
+      }
+    }
+  ],
+  "merchant_lookup": [
+    {
+      "available_from": "2026-09-10T00:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-007",
+        "record_id": "rec-0213-007",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "payout",
+        "occurred_at": "2026-09-09T04:00:00Z",
+        "amount_minor": 94087,
+        "currency": "GBP",
+        "destination": "bank",
+        "payout_reference": "PO-0213-01",
+        "status": "settled",
+        "settled_at": "2026-09-10T00:00:00Z",
+        "covers_record_ids": [
+          "rec-0213-001",
+          "rec-0213-003",
+          "rec-0213-005",
+          "rec-0213-002",
+          "rec-0213-004",
+          "rec-0213-006"
+        ],
+        "withdrawal_id": "W-1382"
+      }
+    },
+    {
+      "available_from": "2026-09-21T10:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0213-019",
+        "record_id": "rec-0213-019",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0213",
+        "kind": "payout",
+        "occurred_at": "2026-09-20T14:00:00Z",
+        "amount_minor": 135025,
+        "currency": "GBP",
+        "destination": "bank",
+        "payout_reference": "PO-0213-02",
+        "status": "settled",
+        "settled_at": "2026-09-21T10:00:00Z",
+        "covers_record_ids": [
+          "rec-0213-008",
+          "rec-0213-010",
+          "rec-0213-012",
+          "rec-0213-014",
+          "rec-0213-016",
+          "rec-0213-018",
+          "rec-0213-009",
+          "rec-0213-011",
+          "rec-0213-013",
+          "rec-0213-015",
+          "rec-0213-017"
+        ],
+        "withdrawal_id": "W-2596"
+      }
+    }
+  ],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-09-05T20:00:00Z",
+      "row": {
+        "txn_id": "txn-0213-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0213",
+        "booked_at": "2026-09-05T19:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-08T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0213-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0213",
+        "booked_at": "2026-09-07T23:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-09T22:00:00Z",
+      "row": {
+        "txn_id": "txn-0213-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0213",
+        "booked_at": "2026-09-09T21:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-10T07:00:00Z",
+      "row": {
+        "txn_id": "txn-0213-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0213",
+        "booked_at": "2026-09-10T06:00:00Z",
+        "amount_minor": 94087,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-22T05:00:00Z",
+      "row": {
+        "txn_id": "txn-0213-005",
+        "revision": 1,
+        "account_ref": "acct-seller-0213",
+        "booked_at": "2026-09-22T04:00:00Z",
+        "amount_minor": 135025,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": null
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0213-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0213",
+      "txn_ids": [
+        "txn-0213-005"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Please explain the source of the credit of £1,350.25 received on 2026-09-22."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "Please show how this amount was calculated."
+        }
+      ],
+      "issued_at": "2026-09-27T04:00:00Z",
+      "expires_at": "2026-10-04T04:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0213-005",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 139000,
+      "refunds": 500,
+      "fees": 3475,
+      "net": 135025
+    }
+  },
+  "gold": {
+    "decision_time": "2026-09-27T04:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0213-005",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0213-019"
+        ]
+      }
+    ],
+    "breakdown_minor": {
+      "sales": 139000,
+      "refunds": 500,
+      "fees": 3475,
+      "net": 135025
+    },
+    "claim_status": "supported",
+    "answers": {
+      "rfc-0213-01": {
+        "q.source_of_funds": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "payout_references": [
+              "PO-0213-02"
+            ],
+            "settled_at": [
+              "2026-09-21T10:00:00Z"
+            ]
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0213-005",
+              "merchant:rec-0213-019"
+            ]
+          ]
+        },
+        "q.breakdown": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "breakdown_minor": {
+              "sales": 139000,
+              "refunds": 500,
+              "fees": 3475,
+              "net": 135025
+            }
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0213-005",
+              "merchant:rec-0213-019",
+              "merchant:rec-0213-008",
+              "merchant:rec-0213-010",
+              "merchant:rec-0213-012",
+              "merchant:rec-0213-014",
+              "merchant:rec-0213-016",
+              "merchant:rec-0213-018",
+              "merchant:rec-0213-009",
+              "merchant:rec-0213-011",
+              "merchant:rec-0213-013",
+              "merchant:rec-0213-015",
+              "merchant:rec-0213-017"
+            ]
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [
+      "rec-0213-019"
+    ],
+    "forbidden_refs": [
+      "bank:txn-0213-001",
+      "bank:txn-0213-002",
+      "bank:txn-0213-003"
+    ],
+    "source_trust": {
+      "bank:txn-0213-001": "bank_observed",
+      "bank:txn-0213-002": "bank_observed",
+      "bank:txn-0213-003": "bank_observed",
+      "bank:txn-0213-005": "bank_observed",
+      "merchant:rec-0213-008": "issuer_verified",
+      "merchant:rec-0213-009": "issuer_verified",
+      "merchant:rec-0213-010": "issuer_verified",
+      "merchant:rec-0213-011": "issuer_verified",
+      "merchant:rec-0213-012": "issuer_verified",
+      "merchant:rec-0213-013": "issuer_verified",
+      "merchant:rec-0213-014": "issuer_verified",
+      "merchant:rec-0213-015": "issuer_verified",
+      "merchant:rec-0213-016": "issuer_verified",
+      "merchant:rec-0213-017": "issuer_verified",
+      "merchant:rec-0213-018": "issuer_verified",
+      "merchant:rec-0213-019": "issuer_verified"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0213-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0213-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0213-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0213-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0213-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "id": "evt-0213-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "id": "evt-0213-008",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 7,
+        "id": "evt-0213-009",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 8,
+        "id": "evt-0213-010",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 9,
+        "id": "evt-0213-011",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 10,
+        "id": "evt-0213-012",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 11,
+        "id": "evt-0213-013",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 12,
+        "id": "evt-0213-014",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 13,
+        "id": "evt-0213-015",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 14,
+        "id": "evt-0213-016",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 15,
+        "id": "evt-0213-017",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 16,
+        "id": "evt-0213-018",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 17,
+        "id": "evt-0213-020",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 18,
+        "id": "evt-0213-021",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0213-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0213-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0213-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0213-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 4,
+        "id": "txn-0213-005",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "Reference only in a semicolon statement, without the PO prefix. The deciding payout is lookup-only; gold.retrieval_path gives api.lookup() keys that fetch it, and gold.clue_refs the pushed or imported document that points there. An earlier payout is a plausible distractor that fails the amount, timing or reference rule.",
+    "retrieval_path": [
+      {
+        "payout_reference": "PO-0213-02"
+      }
+    ],
+    "clue_refs": [
+      "merchant:rec-0213-021"
+    ]
+  },
+  "purpose": "throughput - not for scoring"
+}

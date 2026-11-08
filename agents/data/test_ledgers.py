@@ -534,3 +534,20 @@ def test_second_platform_lookup_by_transfer_ref():
     assert st["kind"] == "weekly_statement" and st["record_id"] in case["gold"]["requires_retrieval"]
     assert api.lookup(case, at, payout_reference=st["statement_no"])[0]["record_id"] == st["record_id"]
     assert api.lookup(case, at, covers_record_id=st["line_record_ids"][0])[0]["record_id"] == st["record_id"]
+
+
+# --------------------------------------------------------------------------
+# throughput set (cases 101-300, not for scoring)
+# --------------------------------------------------------------------------
+
+def test_throughput_set():
+    tp = api.load_throughput()
+    assert len(tp) == 200 and [c["case_number"] for c in tp] == list(range(101, 301))
+    assert all(c["purpose"].startswith("throughput") for c in tp)
+    assert not {c["case_number"] for c in tp} & {c["case_number"] for c in CASES}
+    assert tp == ledgers.build_throughput(), "out/throughput is stale: run python -m agents.data.ledgers --throughput"
+    # every throughput case obeys the same rules as the development cases
+    for case in tp:
+        test_ingest_outcomes(case)
+        test_gold_rederived_at_decision_time(case)
+        test_contract_shapes(case)

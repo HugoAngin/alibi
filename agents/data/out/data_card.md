@@ -18,9 +18,11 @@ The files are `agents/data/out/cases/case_NNNN.json`, indexed in `agents/data/ou
 
   ```bash
   uv run --frozen python -m agents.data.ledgers           # rewrites out/ byte for byte
-  uv run --frozen python -m pytest agents/data            # 388 checks; one asserts out/ equals a fresh build
+  uv run --frozen python -m pytest agents/data            # 389 checks; one asserts out/ equals a fresh build
   ```
 - Names such as "Mock Marketplace Payments", "Synthetic Lettings Ltd" and `mock-marketplace` are invented.
+
+**Throughput set.** 200 more generated cases (numbers 101–300, seed 20261208) in `agents/data/out/throughput/` measure adapter speed and cost only. They are excluded from every count and score here.
 
 **Separation from the evaluation set.**
 - The development cases are numbered below `lockbox_from = 1000` (`shared/splits.json`). Every loader filters through `tools.lockbox.visible`.

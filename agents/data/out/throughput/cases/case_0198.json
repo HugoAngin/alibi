@@ -1,0 +1,179 @@
+{
+  "case_number": 198,
+  "family": "missing_proof",
+  "variant": "no_merchant_data",
+  "title": "Credit with no merchant records at all",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0198",
+  "merchant_deliveries": [],
+  "merchant_lookup": [],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-07-05T22:00:00Z",
+      "row": {
+        "txn_id": "txn-0198-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0198",
+        "booked_at": "2026-07-05T21:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-07-08T02:00:00Z",
+      "row": {
+        "txn_id": "txn-0198-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0198",
+        "booked_at": "2026-07-08T01:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-07-10T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0198-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0198",
+        "booked_at": "2026-07-09T23:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-07-16T13:00:00Z",
+      "row": {
+        "txn_id": "txn-0198-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0198",
+        "booked_at": "2026-07-16T12:00:00Z",
+        "amount_minor": 148198,
+        "currency": "GBP",
+        "description": "FASTER PAYMENT",
+        "counterparty_name": "Synthetic Sender",
+        "payment_reference": null
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0198-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0198",
+      "txn_ids": [
+        "txn-0198-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Provide evidence of where the £1,481.98 credited to your account on 2026-07-16 came from."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "How does the credit reconcile to your underlying sales, refunds and fees?"
+        }
+      ],
+      "issued_at": "2026-07-21T12:00:00Z",
+      "expires_at": "2026-07-28T12:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0198-004",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 152000,
+      "refunds": 0,
+      "fees": 3802,
+      "net": 148198
+    }
+  },
+  "gold": {
+    "decision_time": "2026-07-21T12:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0198-004",
+        "state": "unmatched",
+        "payout_record_ids": []
+      }
+    ],
+    "breakdown_minor": null,
+    "claim_status": "unresolved",
+    "answers": {
+      "rfc-0198-01": {
+        "q.source_of_funds": {
+          "status": "unresolved",
+          "gap": "no_merchant_records",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        },
+        "q.breakdown": {
+          "status": "unresolved",
+          "gap": "no_merchant_records",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0198-001",
+      "bank:txn-0198-002",
+      "bank:txn-0198-003"
+    ],
+    "source_trust": {
+      "bank:txn-0198-001": "bank_observed",
+      "bank:txn-0198-002": "bank_observed",
+      "bank:txn-0198-003": "bank_observed"
+    },
+    "ingest": [
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0198-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0198-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0198-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0198-004",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "The holder's explanation has no records behind it. Alibi must not invent support."
+  },
+  "purpose": "throughput - not for scoring"
+}

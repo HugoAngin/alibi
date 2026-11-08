@@ -1,0 +1,576 @@
+{
+  "case_number": 297,
+  "family": "second_platform",
+  "variant": "statement_by_lookup",
+  "title": "Second platform: only an earnings update is pushed; the statement needs a lookup",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0297",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-09-08T10:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-001",
+        "record_id": "rec-0297-001",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "order_completed",
+        "occurred_at": "2026-09-08T10:00:00Z",
+        "order_ref": "SPO-0297000",
+        "item_title": "Pre-loved item 1",
+        "value_pence": 6700,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-08T10:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-002",
+        "record_id": "rec-0297-002",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "service_charge",
+        "occurred_at": "2026-09-08T10:02:00Z",
+        "order_ref": "SPO-0297000",
+        "charge_label": "Service charge 4%",
+        "value_pence": 268,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-08T21:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-003",
+        "record_id": "rec-0297-003",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "order_completed",
+        "occurred_at": "2026-09-08T21:00:00Z",
+        "order_ref": "SPO-0297002",
+        "item_title": "Pre-loved item 2",
+        "value_pence": 7000,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-08T21:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-004",
+        "record_id": "rec-0297-004",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "service_charge",
+        "occurred_at": "2026-09-08T21:02:00Z",
+        "order_ref": "SPO-0297002",
+        "charge_label": "Service charge 4%",
+        "value_pence": 280,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-09T19:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-005",
+        "record_id": "rec-0297-005",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "order_completed",
+        "occurred_at": "2026-09-09T19:00:00Z",
+        "order_ref": "SPO-0297004",
+        "item_title": "Pre-loved item 3",
+        "value_pence": 8400,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-09T19:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-006",
+        "record_id": "rec-0297-006",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "service_charge",
+        "occurred_at": "2026-09-09T19:02:00Z",
+        "order_ref": "SPO-0297004",
+        "charge_label": "Service charge 4%",
+        "value_pence": 336,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-13T02:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-007",
+        "record_id": "rec-0297-007",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "order_completed",
+        "occurred_at": "2026-09-13T02:00:00Z",
+        "order_ref": "SPO-0297006",
+        "item_title": "Pre-loved item 4",
+        "value_pence": 5500,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-13T02:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-008",
+        "record_id": "rec-0297-008",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "service_charge",
+        "occurred_at": "2026-09-13T02:02:00Z",
+        "order_ref": "SPO-0297006",
+        "charge_label": "Service charge 4%",
+        "value_pence": 220,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-13T06:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-009",
+        "record_id": "rec-0297-009",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "order_completed",
+        "occurred_at": "2026-09-13T06:00:00Z",
+        "order_ref": "SPO-0297008",
+        "item_title": "Pre-loved item 5",
+        "value_pence": 7900,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-13T06:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-010",
+        "record_id": "rec-0297-010",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "service_charge",
+        "occurred_at": "2026-09-13T06:02:00Z",
+        "order_ref": "SPO-0297008",
+        "charge_label": "Service charge 4%",
+        "value_pence": 316,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-13T11:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-011",
+        "record_id": "rec-0297-011",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "order_completed",
+        "occurred_at": "2026-09-13T11:00:00Z",
+        "order_ref": "SPO-0297010",
+        "item_title": "Pre-loved item 6",
+        "value_pence": 1300,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-13T11:07:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-012",
+        "record_id": "rec-0297-012",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "service_charge",
+        "occurred_at": "2026-09-13T11:02:00Z",
+        "order_ref": "SPO-0297010",
+        "charge_label": "Service charge 4%",
+        "value_pence": 52,
+        "currency_code": "GBP"
+      }
+    },
+    {
+      "received_at": "2026-09-14T06:35:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-014",
+        "record_id": "rec-0297-014",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "earnings_update",
+        "occurred_at": "2026-09-14T06:30:00Z",
+        "text": "Your earnings for week 37 are on their way to your bank. Your statement is available in the app."
+      }
+    }
+  ],
+  "merchant_lookup": [
+    {
+      "available_from": "2026-09-15T09:05:00Z",
+      "event": {
+        "schema_version": "sp-2.1",
+        "event_id": "evt-0297-013",
+        "record_id": "rec-0297-013",
+        "revision": 1,
+        "issuer_id": "second-platform",
+        "subject_ref": "seller-0297",
+        "kind": "weekly_statement",
+        "occurred_at": "2026-09-14T06:00:00Z",
+        "statement_no": "WS-2026-W37-0297",
+        "week": "2026-W37",
+        "period_start": "2026-09-07T00:00:00Z",
+        "period_end": "2026-09-14T00:00:00Z",
+        "line_record_ids": [
+          "rec-0297-001",
+          "rec-0297-003",
+          "rec-0297-005",
+          "rec-0297-007",
+          "rec-0297-009",
+          "rec-0297-011",
+          "rec-0297-002",
+          "rec-0297-004",
+          "rec-0297-006",
+          "rec-0297-008",
+          "rec-0297-010",
+          "rec-0297-012"
+        ],
+        "gross_sales_pence": 36800,
+        "returns_pence": 0,
+        "charges_pence": 1472,
+        "net_payable_pence": 35328,
+        "currency_code": "GBP",
+        "transfer_status": "paid",
+        "paid_at": "2026-09-15T09:00:00Z",
+        "transfer_ref": "SPLAT W37 5191"
+      }
+    }
+  ],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-09-05T10:00:00Z",
+      "row": {
+        "txn_id": "txn-0297-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0297",
+        "booked_at": "2026-09-05T09:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-07T14:00:00Z",
+      "row": {
+        "txn_id": "txn-0297-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0297",
+        "booked_at": "2026-09-07T13:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-09T12:00:00Z",
+      "row": {
+        "txn_id": "txn-0297-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0297",
+        "booked_at": "2026-09-09T11:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-09-16T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0297-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0297",
+        "booked_at": "2026-09-15T23:00:00Z",
+        "amount_minor": 35328,
+        "currency": "GBP",
+        "description": "SECOND PLATFORM LTD SPLAT W37 5191",
+        "counterparty_name": "Second Platform Payouts",
+        "payment_reference": "SPLAT W37 5191"
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0297-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0297",
+      "txn_ids": [
+        "txn-0297-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "What is the origin of the incoming payment of £353.28 booked on 2026-09-15?"
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "How does the credit reconcile to your underlying sales, refunds and fees?"
+        }
+      ],
+      "issued_at": "2026-09-19T23:00:00Z",
+      "expires_at": "2026-09-26T23:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0297-004",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 36800,
+      "refunds": 0,
+      "fees": 1472,
+      "net": 35328
+    }
+  },
+  "gold": {
+    "decision_time": "2026-09-19T23:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0297-004",
+        "state": "linked",
+        "payout_record_ids": [
+          "rec-0297-013"
+        ]
+      }
+    ],
+    "breakdown_minor": {
+      "sales": 36800,
+      "refunds": 0,
+      "fees": 1472,
+      "net": 35328
+    },
+    "claim_status": "supported",
+    "answers": {
+      "rfc-0297-01": {
+        "q.source_of_funds": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "payout_references": [
+              "SPLAT W37 5191"
+            ],
+            "settled_at": [
+              "2026-09-15T09:00:00Z"
+            ]
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0297-004",
+              "merchant:rec-0297-013"
+            ]
+          ]
+        },
+        "q.breakdown": {
+          "status": "supported",
+          "gap": null,
+          "facts": {
+            "breakdown_minor": {
+              "sales": 36800,
+              "refunds": 0,
+              "fees": 1472,
+              "net": 35328
+            }
+          },
+          "evidence_sets": [
+            [
+              "bank:txn-0297-004",
+              "merchant:rec-0297-013",
+              "merchant:rec-0297-001",
+              "merchant:rec-0297-003",
+              "merchant:rec-0297-005",
+              "merchant:rec-0297-007",
+              "merchant:rec-0297-009",
+              "merchant:rec-0297-011",
+              "merchant:rec-0297-002",
+              "merchant:rec-0297-004",
+              "merchant:rec-0297-006",
+              "merchant:rec-0297-008",
+              "merchant:rec-0297-010",
+              "merchant:rec-0297-012"
+            ]
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [
+      "rec-0297-013"
+    ],
+    "forbidden_refs": [
+      "bank:txn-0297-001",
+      "bank:txn-0297-002",
+      "bank:txn-0297-003"
+    ],
+    "source_trust": {
+      "bank:txn-0297-001": "bank_observed",
+      "bank:txn-0297-002": "bank_observed",
+      "bank:txn-0297-003": "bank_observed",
+      "bank:txn-0297-004": "bank_observed",
+      "merchant:rec-0297-001": "issuer_verified",
+      "merchant:rec-0297-002": "issuer_verified",
+      "merchant:rec-0297-003": "issuer_verified",
+      "merchant:rec-0297-004": "issuer_verified",
+      "merchant:rec-0297-005": "issuer_verified",
+      "merchant:rec-0297-006": "issuer_verified",
+      "merchant:rec-0297-007": "issuer_verified",
+      "merchant:rec-0297-008": "issuer_verified",
+      "merchant:rec-0297-009": "issuer_verified",
+      "merchant:rec-0297-010": "issuer_verified",
+      "merchant:rec-0297-011": "issuer_verified",
+      "merchant:rec-0297-012": "issuer_verified",
+      "merchant:rec-0297-013": "issuer_verified"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0297-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0297-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0297-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0297-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0297-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "id": "evt-0297-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "id": "evt-0297-007",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 7,
+        "id": "evt-0297-008",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 8,
+        "id": "evt-0297-009",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 9,
+        "id": "evt-0297-010",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 10,
+        "id": "evt-0297-011",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 11,
+        "id": "evt-0297-012",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 12,
+        "id": "evt-0297-014",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0297-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0297-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0297-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0297-004",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "Second platform: only an earnings update is pushed; the statement needs a lookup. Field mapping to the contract is in agents/data/README.md 'Second platform' and api.to_contract().",
+    "retrieval_path": [
+      {
+        "payout_reference": "SPLAT W37 5191"
+      }
+    ]
+  },
+  "purpose": "throughput - not for scoring"
+}

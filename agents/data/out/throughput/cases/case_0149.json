@@ -1,0 +1,350 @@
+{
+  "case_number": 149,
+  "family": "alert",
+  "variant": "unexplained_credit",
+  "title": "A £100+ credit with no marketplace record behind it",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0149",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-08-16T12:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0149-001",
+        "record_id": "rec-0149-001",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0149",
+        "kind": "sale",
+        "occurred_at": "2026-08-16T12:00:00Z",
+        "amount_minor": 2500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-08-16T12:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0149-002",
+        "record_id": "rec-0149-002",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0149",
+        "kind": "fee",
+        "occurred_at": "2026-08-16T12:01:00Z",
+        "amount_minor": 63,
+        "currency": "GBP",
+        "related_record_id": "rec-0149-001",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-08-17T18:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0149-003",
+        "record_id": "rec-0149-003",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0149",
+        "kind": "sale",
+        "occurred_at": "2026-08-17T18:00:00Z",
+        "amount_minor": 6000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-08-17T18:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0149-004",
+        "record_id": "rec-0149-004",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0149",
+        "kind": "fee",
+        "occurred_at": "2026-08-17T18:01:00Z",
+        "amount_minor": 150,
+        "currency": "GBP",
+        "related_record_id": "rec-0149-003",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-08-20T20:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0149-005",
+        "record_id": "rec-0149-005",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0149",
+        "kind": "payout",
+        "occurred_at": "2026-08-20T00:00:00Z",
+        "amount_minor": 8287,
+        "currency": "GBP",
+        "destination": "bank",
+        "payout_reference": "PO-0149-01",
+        "status": "settled",
+        "settled_at": "2026-08-20T20:00:00Z",
+        "covers_record_ids": [
+          "rec-0149-001",
+          "rec-0149-003",
+          "rec-0149-002",
+          "rec-0149-004"
+        ]
+      }
+    }
+  ],
+  "merchant_lookup": [],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-08-11T22:00:00Z",
+      "row": {
+        "txn_id": "txn-0149-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0149",
+        "booked_at": "2026-08-11T21:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-08-14T02:00:00Z",
+      "row": {
+        "txn_id": "txn-0149-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0149",
+        "booked_at": "2026-08-14T01:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-08-16T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0149-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0149",
+        "booked_at": "2026-08-15T23:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-08-21T12:00:00Z",
+      "row": {
+        "txn_id": "txn-0149-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0149",
+        "booked_at": "2026-08-21T11:00:00Z",
+        "amount_minor": 8287,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT PO-0149-01",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": "PO-0149-01"
+      }
+    },
+    {
+      "received_at": "2026-08-24T21:00:00Z",
+      "row": {
+        "txn_id": "txn-0149-005",
+        "revision": 1,
+        "account_ref": "acct-seller-0149",
+        "booked_at": "2026-08-24T20:00:00Z",
+        "amount_minor": 92500,
+        "currency": "GBP",
+        "description": "FASTER PAYMENT",
+        "counterparty_name": "Synthetic Sender",
+        "payment_reference": null
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0149-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0149",
+      "txn_ids": [
+        "txn-0149-005"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Please explain the source of the credit of £925.00 received on 2026-08-24."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "Please show how this amount was calculated."
+        }
+      ],
+      "issued_at": "2026-08-27T21:00:00Z",
+      "expires_at": "2026-09-03T21:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0149-005",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 92500,
+      "refunds": 0,
+      "fees": 0,
+      "net": 92500
+    }
+  },
+  "gold": {
+    "decision_time": "2026-08-27T21:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0149-005",
+        "state": "unmatched",
+        "payout_record_ids": []
+      }
+    ],
+    "breakdown_minor": null,
+    "claim_status": "unresolved",
+    "answers": {
+      "rfc-0149-01": {
+        "q.source_of_funds": {
+          "status": "unresolved",
+          "gap": "settlement_not_found",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        },
+        "q.breakdown": {
+          "status": "unresolved",
+          "gap": "settlement_not_found",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0149-001",
+      "bank:txn-0149-002",
+      "bank:txn-0149-003"
+    ],
+    "source_trust": {
+      "bank:txn-0149-001": "bank_observed",
+      "bank:txn-0149-002": "bank_observed",
+      "bank:txn-0149-003": "bank_observed"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0149-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0149-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0149-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0149-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0149-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0149-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0149-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0149-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0149-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 4,
+        "id": "txn-0149-005",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "A £100+ credit with no marketplace record behind it. gold.alerts lists every alert the monitor rules raise before the first request, in order; see agents/data/README.md 'Alert rules'.",
+    "alerts": [
+      {
+        "alert_id": "alrt-0149-01",
+        "kind": "unexplained_credit",
+        "severity": "warning",
+        "raised_at": "2026-08-25T21:00:00Z",
+        "subject_ref": "bank:txn-0149-005",
+        "status": "open",
+        "title": "Credit of £925.00 has no matching record",
+        "explanation": "No marketplace payout or other record on file matches this credit's amount and timing.",
+        "facts": [
+          {
+            "label": "Credit",
+            "value": "£925.00",
+            "source_ref": "bank:txn-0149-005"
+          },
+          {
+            "label": "Sender",
+            "value": "Synthetic Sender",
+            "source_ref": "bank:txn-0149-005"
+          }
+        ],
+        "suggested_checks": [
+          "Add a receipt or statement that explains it, or check with the sender."
+        ]
+      }
+    ]
+  },
+  "purpose": "throughput - not for scoring"
+}

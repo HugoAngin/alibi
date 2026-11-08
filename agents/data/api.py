@@ -179,3 +179,11 @@ def merchant_lookup(query: str, checked_at: str) -> dict:
             "notes": (f"Registered merchant, category: {hit['category']}." if hit else
                       "Not in the mock registry. Unverified means unknown to the registry, "
                       "not fraudulent.")}
+
+
+def load_throughput() -> list[dict]:
+    """200 fresh-seed cases (numbers 101-300) for adapter throughput and cost per case.
+    NOT for scoring: they are neither development nor sealed data."""
+    folder = OUT / "throughput"
+    rows = json.loads((folder / "index.json").read_text())["cases"]
+    return [json.loads((folder / r["file"]).read_text()) for r in rows]

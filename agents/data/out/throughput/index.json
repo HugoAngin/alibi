@@ -1,0 +1,1209 @@
+{
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "purpose": "Throughput and cost measurement only. Not for scoring, not development data, not the sealed set.",
+  "seed": 20261208,
+  "count": 200,
+  "rebuild": "uv run --frozen python -m agents.data.ledgers --throughput",
+  "cases": [
+    {
+      "case_number": 101,
+      "family": "clean",
+      "variant": "a",
+      "file": "cases/case_0101.json"
+    },
+    {
+      "case_number": 102,
+      "family": "clean",
+      "variant": "b",
+      "file": "cases/case_0102.json"
+    },
+    {
+      "case_number": 103,
+      "family": "clean",
+      "variant": "c",
+      "file": "cases/case_0103.json"
+    },
+    {
+      "case_number": 104,
+      "family": "clean",
+      "variant": "d",
+      "file": "cases/case_0104.json"
+    },
+    {
+      "case_number": 105,
+      "family": "clean",
+      "variant": "e",
+      "file": "cases/case_0105.json"
+    },
+    {
+      "case_number": 106,
+      "family": "clean",
+      "variant": "omits_refunds_fees",
+      "file": "cases/case_0106.json"
+    },
+    {
+      "case_number": 107,
+      "family": "bundled_payment",
+      "variant": "a",
+      "file": "cases/case_0107.json"
+    },
+    {
+      "case_number": 108,
+      "family": "bundled_payment",
+      "variant": "b",
+      "file": "cases/case_0108.json"
+    },
+    {
+      "case_number": 109,
+      "family": "bundled_payment",
+      "variant": "c",
+      "file": "cases/case_0109.json"
+    },
+    {
+      "case_number": 110,
+      "family": "bundled_payment",
+      "variant": "later_same_amount",
+      "file": "cases/case_0110.json"
+    },
+    {
+      "case_number": 111,
+      "family": "bundled_payment",
+      "variant": "two_candidates",
+      "file": "cases/case_0111.json"
+    },
+    {
+      "case_number": 112,
+      "family": "balance_vs_settlement",
+      "variant": "settled",
+      "file": "cases/case_0112.json"
+    },
+    {
+      "case_number": 113,
+      "family": "balance_vs_settlement",
+      "variant": "settled_via_lookup",
+      "file": "cases/case_0113.json"
+    },
+    {
+      "case_number": 114,
+      "family": "balance_vs_settlement",
+      "variant": "settled_via_lookup",
+      "file": "cases/case_0114.json"
+    },
+    {
+      "case_number": 115,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "file": "cases/case_0115.json"
+    },
+    {
+      "case_number": 116,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "file": "cases/case_0116.json"
+    },
+    {
+      "case_number": 117,
+      "family": "balance_vs_settlement",
+      "variant": "settles_after_credit",
+      "file": "cases/case_0117.json"
+    },
+    {
+      "case_number": 118,
+      "family": "balance_vs_settlement",
+      "variant": "pending_at_booking",
+      "file": "cases/case_0118.json"
+    },
+    {
+      "case_number": 119,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "file": "cases/case_0119.json"
+    },
+    {
+      "case_number": 120,
+      "family": "pending_correction",
+      "variant": "sale_adjusted",
+      "file": "cases/case_0120.json"
+    },
+    {
+      "case_number": 121,
+      "family": "pending_correction",
+      "variant": "stale_redelivery",
+      "file": "cases/case_0121.json"
+    },
+    {
+      "case_number": 122,
+      "family": "pending_correction",
+      "variant": "holder_uses_old",
+      "file": "cases/case_0122.json"
+    },
+    {
+      "case_number": 123,
+      "family": "pending_correction",
+      "variant": "payout_status_corrected",
+      "file": "cases/case_0123.json"
+    },
+    {
+      "case_number": 124,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "file": "cases/case_0124.json"
+    },
+    {
+      "case_number": 125,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "file": "cases/case_0125.json"
+    },
+    {
+      "case_number": 126,
+      "family": "duplicate_record",
+      "variant": "conflicting_bytes",
+      "file": "cases/case_0126.json"
+    },
+    {
+      "case_number": 127,
+      "family": "duplicate_record",
+      "variant": "bank_row_redelivery",
+      "file": "cases/case_0127.json"
+    },
+    {
+      "case_number": 128,
+      "family": "duplicate_record",
+      "variant": "double_count_trap",
+      "file": "cases/case_0128.json"
+    },
+    {
+      "case_number": 129,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "file": "cases/case_0129.json"
+    },
+    {
+      "case_number": 130,
+      "family": "missing_proof",
+      "variant": "no_merchant_data",
+      "file": "cases/case_0130.json"
+    },
+    {
+      "case_number": 131,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "file": "cases/case_0131.json"
+    },
+    {
+      "case_number": 132,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "file": "cases/case_0132.json"
+    },
+    {
+      "case_number": 133,
+      "family": "missing_proof",
+      "variant": "missing_covered_record",
+      "file": "cases/case_0133.json"
+    },
+    {
+      "case_number": 134,
+      "family": "missing_proof",
+      "variant": "late_record",
+      "file": "cases/case_0134.json"
+    },
+    {
+      "case_number": 135,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "file": "cases/case_0135.json"
+    },
+    {
+      "case_number": 136,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "file": "cases/case_0136.json"
+    },
+    {
+      "case_number": 137,
+      "family": "self_supplied_import",
+      "variant": "export_only",
+      "file": "cases/case_0137.json"
+    },
+    {
+      "case_number": 138,
+      "family": "self_supplied_import",
+      "variant": "export_only",
+      "file": "cases/case_0138.json"
+    },
+    {
+      "case_number": 139,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "file": "cases/case_0139.json"
+    },
+    {
+      "case_number": 140,
+      "family": "hidden_reference",
+      "variant": "orders_and_weekday",
+      "file": "cases/case_0140.json"
+    },
+    {
+      "case_number": 141,
+      "family": "hidden_reference",
+      "variant": "date_only",
+      "file": "cases/case_0141.json"
+    },
+    {
+      "case_number": 142,
+      "family": "hidden_reference",
+      "variant": "alias_statement",
+      "file": "cases/case_0142.json"
+    },
+    {
+      "case_number": 143,
+      "family": "hidden_reference",
+      "variant": "alias_import",
+      "file": "cases/case_0143.json"
+    },
+    {
+      "case_number": 144,
+      "family": "hidden_reference",
+      "variant": "email_layout",
+      "file": "cases/case_0144.json"
+    },
+    {
+      "case_number": 145,
+      "family": "hidden_reference",
+      "variant": "csv_layout",
+      "file": "cases/case_0145.json"
+    },
+    {
+      "case_number": 146,
+      "family": "hidden_reference",
+      "variant": "two_refs_amount",
+      "file": "cases/case_0146.json"
+    },
+    {
+      "case_number": 147,
+      "family": "hidden_reference",
+      "variant": "two_refs_timing",
+      "file": "cases/case_0147.json"
+    },
+    {
+      "case_number": 148,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "file": "cases/case_0148.json"
+    },
+    {
+      "case_number": 149,
+      "family": "alert",
+      "variant": "unexplained_credit",
+      "file": "cases/case_0149.json"
+    },
+    {
+      "case_number": 150,
+      "family": "alert",
+      "variant": "unexplained_until_lookup",
+      "file": "cases/case_0150.json"
+    },
+    {
+      "case_number": 151,
+      "family": "alert",
+      "variant": "unusual_inflow_explained",
+      "file": "cases/case_0151.json"
+    },
+    {
+      "case_number": 152,
+      "family": "alert",
+      "variant": "unusual_inflow_unexplained",
+      "file": "cases/case_0152.json"
+    },
+    {
+      "case_number": 153,
+      "family": "alert",
+      "variant": "unusual_outflow",
+      "file": "cases/case_0153.json"
+    },
+    {
+      "case_number": 154,
+      "family": "alert",
+      "variant": "amount_discrepancy",
+      "file": "cases/case_0154.json"
+    },
+    {
+      "case_number": 155,
+      "family": "alert",
+      "variant": "settled_not_received",
+      "file": "cases/case_0155.json"
+    },
+    {
+      "case_number": 156,
+      "family": "alert",
+      "variant": "pending_at_booking",
+      "file": "cases/case_0156.json"
+    },
+    {
+      "case_number": 157,
+      "family": "alert",
+      "variant": "merchant_unverified",
+      "file": "cases/case_0157.json"
+    },
+    {
+      "case_number": 158,
+      "family": "alert",
+      "variant": "quiet_control",
+      "file": "cases/case_0158.json"
+    },
+    {
+      "case_number": 159,
+      "family": "second_platform",
+      "variant": "weekly_paid",
+      "file": "cases/case_0159.json"
+    },
+    {
+      "case_number": 160,
+      "family": "second_platform",
+      "variant": "two_weeks",
+      "file": "cases/case_0160.json"
+    },
+    {
+      "case_number": 161,
+      "family": "second_platform",
+      "variant": "statement_by_lookup",
+      "file": "cases/case_0161.json"
+    },
+    {
+      "case_number": 162,
+      "family": "second_platform",
+      "variant": "scheduled_at_booking",
+      "file": "cases/case_0162.json"
+    },
+    {
+      "case_number": 163,
+      "family": "second_platform",
+      "variant": "net_mismatch",
+      "file": "cases/case_0163.json"
+    },
+    {
+      "case_number": 164,
+      "family": "second_platform",
+      "variant": "omits_charges",
+      "file": "cases/case_0164.json"
+    },
+    {
+      "case_number": 165,
+      "family": "second_platform",
+      "variant": "order_corrected",
+      "file": "cases/case_0165.json"
+    },
+    {
+      "case_number": 166,
+      "family": "second_platform",
+      "variant": "statement_redelivered",
+      "file": "cases/case_0166.json"
+    },
+    {
+      "case_number": 167,
+      "family": "second_platform",
+      "variant": "both_platforms_ask_mock",
+      "file": "cases/case_0167.json"
+    },
+    {
+      "case_number": 168,
+      "family": "second_platform",
+      "variant": "both_platforms_ask_second",
+      "file": "cases/case_0168.json"
+    },
+    {
+      "case_number": 169,
+      "family": "clean",
+      "variant": "a",
+      "file": "cases/case_0169.json"
+    },
+    {
+      "case_number": 170,
+      "family": "clean",
+      "variant": "b",
+      "file": "cases/case_0170.json"
+    },
+    {
+      "case_number": 171,
+      "family": "clean",
+      "variant": "c",
+      "file": "cases/case_0171.json"
+    },
+    {
+      "case_number": 172,
+      "family": "clean",
+      "variant": "d",
+      "file": "cases/case_0172.json"
+    },
+    {
+      "case_number": 173,
+      "family": "clean",
+      "variant": "e",
+      "file": "cases/case_0173.json"
+    },
+    {
+      "case_number": 174,
+      "family": "clean",
+      "variant": "omits_refunds_fees",
+      "file": "cases/case_0174.json"
+    },
+    {
+      "case_number": 175,
+      "family": "bundled_payment",
+      "variant": "a",
+      "file": "cases/case_0175.json"
+    },
+    {
+      "case_number": 176,
+      "family": "bundled_payment",
+      "variant": "b",
+      "file": "cases/case_0176.json"
+    },
+    {
+      "case_number": 177,
+      "family": "bundled_payment",
+      "variant": "c",
+      "file": "cases/case_0177.json"
+    },
+    {
+      "case_number": 178,
+      "family": "bundled_payment",
+      "variant": "later_same_amount",
+      "file": "cases/case_0178.json"
+    },
+    {
+      "case_number": 179,
+      "family": "bundled_payment",
+      "variant": "two_candidates",
+      "file": "cases/case_0179.json"
+    },
+    {
+      "case_number": 180,
+      "family": "balance_vs_settlement",
+      "variant": "settled",
+      "file": "cases/case_0180.json"
+    },
+    {
+      "case_number": 181,
+      "family": "balance_vs_settlement",
+      "variant": "settled_via_lookup",
+      "file": "cases/case_0181.json"
+    },
+    {
+      "case_number": 182,
+      "family": "balance_vs_settlement",
+      "variant": "settled_via_lookup",
+      "file": "cases/case_0182.json"
+    },
+    {
+      "case_number": 183,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "file": "cases/case_0183.json"
+    },
+    {
+      "case_number": 184,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "file": "cases/case_0184.json"
+    },
+    {
+      "case_number": 185,
+      "family": "balance_vs_settlement",
+      "variant": "settles_after_credit",
+      "file": "cases/case_0185.json"
+    },
+    {
+      "case_number": 186,
+      "family": "balance_vs_settlement",
+      "variant": "pending_at_booking",
+      "file": "cases/case_0186.json"
+    },
+    {
+      "case_number": 187,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "file": "cases/case_0187.json"
+    },
+    {
+      "case_number": 188,
+      "family": "pending_correction",
+      "variant": "sale_adjusted",
+      "file": "cases/case_0188.json"
+    },
+    {
+      "case_number": 189,
+      "family": "pending_correction",
+      "variant": "stale_redelivery",
+      "file": "cases/case_0189.json"
+    },
+    {
+      "case_number": 190,
+      "family": "pending_correction",
+      "variant": "holder_uses_old",
+      "file": "cases/case_0190.json"
+    },
+    {
+      "case_number": 191,
+      "family": "pending_correction",
+      "variant": "payout_status_corrected",
+      "file": "cases/case_0191.json"
+    },
+    {
+      "case_number": 192,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "file": "cases/case_0192.json"
+    },
+    {
+      "case_number": 193,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "file": "cases/case_0193.json"
+    },
+    {
+      "case_number": 194,
+      "family": "duplicate_record",
+      "variant": "conflicting_bytes",
+      "file": "cases/case_0194.json"
+    },
+    {
+      "case_number": 195,
+      "family": "duplicate_record",
+      "variant": "bank_row_redelivery",
+      "file": "cases/case_0195.json"
+    },
+    {
+      "case_number": 196,
+      "family": "duplicate_record",
+      "variant": "double_count_trap",
+      "file": "cases/case_0196.json"
+    },
+    {
+      "case_number": 197,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "file": "cases/case_0197.json"
+    },
+    {
+      "case_number": 198,
+      "family": "missing_proof",
+      "variant": "no_merchant_data",
+      "file": "cases/case_0198.json"
+    },
+    {
+      "case_number": 199,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "file": "cases/case_0199.json"
+    },
+    {
+      "case_number": 200,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "file": "cases/case_0200.json"
+    },
+    {
+      "case_number": 201,
+      "family": "missing_proof",
+      "variant": "missing_covered_record",
+      "file": "cases/case_0201.json"
+    },
+    {
+      "case_number": 202,
+      "family": "missing_proof",
+      "variant": "late_record",
+      "file": "cases/case_0202.json"
+    },
+    {
+      "case_number": 203,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "file": "cases/case_0203.json"
+    },
+    {
+      "case_number": 204,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "file": "cases/case_0204.json"
+    },
+    {
+      "case_number": 205,
+      "family": "self_supplied_import",
+      "variant": "export_only",
+      "file": "cases/case_0205.json"
+    },
+    {
+      "case_number": 206,
+      "family": "self_supplied_import",
+      "variant": "export_only",
+      "file": "cases/case_0206.json"
+    },
+    {
+      "case_number": 207,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "file": "cases/case_0207.json"
+    },
+    {
+      "case_number": 208,
+      "family": "hidden_reference",
+      "variant": "orders_and_weekday",
+      "file": "cases/case_0208.json"
+    },
+    {
+      "case_number": 209,
+      "family": "hidden_reference",
+      "variant": "date_only",
+      "file": "cases/case_0209.json"
+    },
+    {
+      "case_number": 210,
+      "family": "hidden_reference",
+      "variant": "alias_statement",
+      "file": "cases/case_0210.json"
+    },
+    {
+      "case_number": 211,
+      "family": "hidden_reference",
+      "variant": "alias_import",
+      "file": "cases/case_0211.json"
+    },
+    {
+      "case_number": 212,
+      "family": "hidden_reference",
+      "variant": "email_layout",
+      "file": "cases/case_0212.json"
+    },
+    {
+      "case_number": 213,
+      "family": "hidden_reference",
+      "variant": "csv_layout",
+      "file": "cases/case_0213.json"
+    },
+    {
+      "case_number": 214,
+      "family": "hidden_reference",
+      "variant": "two_refs_amount",
+      "file": "cases/case_0214.json"
+    },
+    {
+      "case_number": 215,
+      "family": "hidden_reference",
+      "variant": "two_refs_timing",
+      "file": "cases/case_0215.json"
+    },
+    {
+      "case_number": 216,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "file": "cases/case_0216.json"
+    },
+    {
+      "case_number": 217,
+      "family": "alert",
+      "variant": "unexplained_credit",
+      "file": "cases/case_0217.json"
+    },
+    {
+      "case_number": 218,
+      "family": "alert",
+      "variant": "unexplained_until_lookup",
+      "file": "cases/case_0218.json"
+    },
+    {
+      "case_number": 219,
+      "family": "alert",
+      "variant": "unusual_inflow_explained",
+      "file": "cases/case_0219.json"
+    },
+    {
+      "case_number": 220,
+      "family": "alert",
+      "variant": "unusual_inflow_unexplained",
+      "file": "cases/case_0220.json"
+    },
+    {
+      "case_number": 221,
+      "family": "alert",
+      "variant": "unusual_outflow",
+      "file": "cases/case_0221.json"
+    },
+    {
+      "case_number": 222,
+      "family": "alert",
+      "variant": "amount_discrepancy",
+      "file": "cases/case_0222.json"
+    },
+    {
+      "case_number": 223,
+      "family": "alert",
+      "variant": "settled_not_received",
+      "file": "cases/case_0223.json"
+    },
+    {
+      "case_number": 224,
+      "family": "alert",
+      "variant": "pending_at_booking",
+      "file": "cases/case_0224.json"
+    },
+    {
+      "case_number": 225,
+      "family": "alert",
+      "variant": "merchant_unverified",
+      "file": "cases/case_0225.json"
+    },
+    {
+      "case_number": 226,
+      "family": "alert",
+      "variant": "quiet_control",
+      "file": "cases/case_0226.json"
+    },
+    {
+      "case_number": 227,
+      "family": "second_platform",
+      "variant": "weekly_paid",
+      "file": "cases/case_0227.json"
+    },
+    {
+      "case_number": 228,
+      "family": "second_platform",
+      "variant": "two_weeks",
+      "file": "cases/case_0228.json"
+    },
+    {
+      "case_number": 229,
+      "family": "second_platform",
+      "variant": "statement_by_lookup",
+      "file": "cases/case_0229.json"
+    },
+    {
+      "case_number": 230,
+      "family": "second_platform",
+      "variant": "scheduled_at_booking",
+      "file": "cases/case_0230.json"
+    },
+    {
+      "case_number": 231,
+      "family": "second_platform",
+      "variant": "net_mismatch",
+      "file": "cases/case_0231.json"
+    },
+    {
+      "case_number": 232,
+      "family": "second_platform",
+      "variant": "omits_charges",
+      "file": "cases/case_0232.json"
+    },
+    {
+      "case_number": 233,
+      "family": "second_platform",
+      "variant": "order_corrected",
+      "file": "cases/case_0233.json"
+    },
+    {
+      "case_number": 234,
+      "family": "second_platform",
+      "variant": "statement_redelivered",
+      "file": "cases/case_0234.json"
+    },
+    {
+      "case_number": 235,
+      "family": "second_platform",
+      "variant": "both_platforms_ask_mock",
+      "file": "cases/case_0235.json"
+    },
+    {
+      "case_number": 236,
+      "family": "second_platform",
+      "variant": "both_platforms_ask_second",
+      "file": "cases/case_0236.json"
+    },
+    {
+      "case_number": 237,
+      "family": "clean",
+      "variant": "a",
+      "file": "cases/case_0237.json"
+    },
+    {
+      "case_number": 238,
+      "family": "clean",
+      "variant": "b",
+      "file": "cases/case_0238.json"
+    },
+    {
+      "case_number": 239,
+      "family": "clean",
+      "variant": "c",
+      "file": "cases/case_0239.json"
+    },
+    {
+      "case_number": 240,
+      "family": "clean",
+      "variant": "d",
+      "file": "cases/case_0240.json"
+    },
+    {
+      "case_number": 241,
+      "family": "clean",
+      "variant": "e",
+      "file": "cases/case_0241.json"
+    },
+    {
+      "case_number": 242,
+      "family": "clean",
+      "variant": "omits_refunds_fees",
+      "file": "cases/case_0242.json"
+    },
+    {
+      "case_number": 243,
+      "family": "bundled_payment",
+      "variant": "a",
+      "file": "cases/case_0243.json"
+    },
+    {
+      "case_number": 244,
+      "family": "bundled_payment",
+      "variant": "b",
+      "file": "cases/case_0244.json"
+    },
+    {
+      "case_number": 245,
+      "family": "bundled_payment",
+      "variant": "c",
+      "file": "cases/case_0245.json"
+    },
+    {
+      "case_number": 246,
+      "family": "bundled_payment",
+      "variant": "later_same_amount",
+      "file": "cases/case_0246.json"
+    },
+    {
+      "case_number": 247,
+      "family": "bundled_payment",
+      "variant": "two_candidates",
+      "file": "cases/case_0247.json"
+    },
+    {
+      "case_number": 248,
+      "family": "balance_vs_settlement",
+      "variant": "settled",
+      "file": "cases/case_0248.json"
+    },
+    {
+      "case_number": 249,
+      "family": "balance_vs_settlement",
+      "variant": "settled_via_lookup",
+      "file": "cases/case_0249.json"
+    },
+    {
+      "case_number": 250,
+      "family": "balance_vs_settlement",
+      "variant": "settled_via_lookup",
+      "file": "cases/case_0250.json"
+    },
+    {
+      "case_number": 251,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "file": "cases/case_0251.json"
+    },
+    {
+      "case_number": 252,
+      "family": "balance_vs_settlement",
+      "variant": "release_only",
+      "file": "cases/case_0252.json"
+    },
+    {
+      "case_number": 253,
+      "family": "balance_vs_settlement",
+      "variant": "settles_after_credit",
+      "file": "cases/case_0253.json"
+    },
+    {
+      "case_number": 254,
+      "family": "balance_vs_settlement",
+      "variant": "pending_at_booking",
+      "file": "cases/case_0254.json"
+    },
+    {
+      "case_number": 255,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "file": "cases/case_0255.json"
+    },
+    {
+      "case_number": 256,
+      "family": "pending_correction",
+      "variant": "sale_adjusted",
+      "file": "cases/case_0256.json"
+    },
+    {
+      "case_number": 257,
+      "family": "pending_correction",
+      "variant": "stale_redelivery",
+      "file": "cases/case_0257.json"
+    },
+    {
+      "case_number": 258,
+      "family": "pending_correction",
+      "variant": "holder_uses_old",
+      "file": "cases/case_0258.json"
+    },
+    {
+      "case_number": 259,
+      "family": "pending_correction",
+      "variant": "payout_status_corrected",
+      "file": "cases/case_0259.json"
+    },
+    {
+      "case_number": 260,
+      "family": "pending_correction",
+      "variant": "refund_completed",
+      "file": "cases/case_0260.json"
+    },
+    {
+      "case_number": 261,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "file": "cases/case_0261.json"
+    },
+    {
+      "case_number": 262,
+      "family": "duplicate_record",
+      "variant": "conflicting_bytes",
+      "file": "cases/case_0262.json"
+    },
+    {
+      "case_number": 263,
+      "family": "duplicate_record",
+      "variant": "bank_row_redelivery",
+      "file": "cases/case_0263.json"
+    },
+    {
+      "case_number": 264,
+      "family": "duplicate_record",
+      "variant": "double_count_trap",
+      "file": "cases/case_0264.json"
+    },
+    {
+      "case_number": 265,
+      "family": "duplicate_record",
+      "variant": "exact_redelivery",
+      "file": "cases/case_0265.json"
+    },
+    {
+      "case_number": 266,
+      "family": "missing_proof",
+      "variant": "no_merchant_data",
+      "file": "cases/case_0266.json"
+    },
+    {
+      "case_number": 267,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "file": "cases/case_0267.json"
+    },
+    {
+      "case_number": 268,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "file": "cases/case_0268.json"
+    },
+    {
+      "case_number": 269,
+      "family": "missing_proof",
+      "variant": "missing_covered_record",
+      "file": "cases/case_0269.json"
+    },
+    {
+      "case_number": 270,
+      "family": "missing_proof",
+      "variant": "late_record",
+      "file": "cases/case_0270.json"
+    },
+    {
+      "case_number": 271,
+      "family": "missing_proof",
+      "variant": "no_payout",
+      "file": "cases/case_0271.json"
+    },
+    {
+      "case_number": 272,
+      "family": "missing_proof",
+      "variant": "amount_mismatch",
+      "file": "cases/case_0272.json"
+    },
+    {
+      "case_number": 273,
+      "family": "self_supplied_import",
+      "variant": "export_only",
+      "file": "cases/case_0273.json"
+    },
+    {
+      "case_number": 274,
+      "family": "self_supplied_import",
+      "variant": "export_only",
+      "file": "cases/case_0274.json"
+    },
+    {
+      "case_number": 275,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "file": "cases/case_0275.json"
+    },
+    {
+      "case_number": 276,
+      "family": "hidden_reference",
+      "variant": "orders_and_weekday",
+      "file": "cases/case_0276.json"
+    },
+    {
+      "case_number": 277,
+      "family": "hidden_reference",
+      "variant": "date_only",
+      "file": "cases/case_0277.json"
+    },
+    {
+      "case_number": 278,
+      "family": "hidden_reference",
+      "variant": "alias_statement",
+      "file": "cases/case_0278.json"
+    },
+    {
+      "case_number": 279,
+      "family": "hidden_reference",
+      "variant": "alias_import",
+      "file": "cases/case_0279.json"
+    },
+    {
+      "case_number": 280,
+      "family": "hidden_reference",
+      "variant": "email_layout",
+      "file": "cases/case_0280.json"
+    },
+    {
+      "case_number": 281,
+      "family": "hidden_reference",
+      "variant": "csv_layout",
+      "file": "cases/case_0281.json"
+    },
+    {
+      "case_number": 282,
+      "family": "hidden_reference",
+      "variant": "two_refs_amount",
+      "file": "cases/case_0282.json"
+    },
+    {
+      "case_number": 283,
+      "family": "hidden_reference",
+      "variant": "two_refs_timing",
+      "file": "cases/case_0283.json"
+    },
+    {
+      "case_number": 284,
+      "family": "hidden_reference",
+      "variant": "decoy_in_release",
+      "file": "cases/case_0284.json"
+    },
+    {
+      "case_number": 285,
+      "family": "alert",
+      "variant": "unexplained_credit",
+      "file": "cases/case_0285.json"
+    },
+    {
+      "case_number": 286,
+      "family": "alert",
+      "variant": "unexplained_until_lookup",
+      "file": "cases/case_0286.json"
+    },
+    {
+      "case_number": 287,
+      "family": "alert",
+      "variant": "unusual_inflow_explained",
+      "file": "cases/case_0287.json"
+    },
+    {
+      "case_number": 288,
+      "family": "alert",
+      "variant": "unusual_inflow_unexplained",
+      "file": "cases/case_0288.json"
+    },
+    {
+      "case_number": 289,
+      "family": "alert",
+      "variant": "unusual_outflow",
+      "file": "cases/case_0289.json"
+    },
+    {
+      "case_number": 290,
+      "family": "alert",
+      "variant": "amount_discrepancy",
+      "file": "cases/case_0290.json"
+    },
+    {
+      "case_number": 291,
+      "family": "alert",
+      "variant": "settled_not_received",
+      "file": "cases/case_0291.json"
+    },
+    {
+      "case_number": 292,
+      "family": "alert",
+      "variant": "pending_at_booking",
+      "file": "cases/case_0292.json"
+    },
+    {
+      "case_number": 293,
+      "family": "alert",
+      "variant": "merchant_unverified",
+      "file": "cases/case_0293.json"
+    },
+    {
+      "case_number": 294,
+      "family": "alert",
+      "variant": "quiet_control",
+      "file": "cases/case_0294.json"
+    },
+    {
+      "case_number": 295,
+      "family": "second_platform",
+      "variant": "weekly_paid",
+      "file": "cases/case_0295.json"
+    },
+    {
+      "case_number": 296,
+      "family": "second_platform",
+      "variant": "two_weeks",
+      "file": "cases/case_0296.json"
+    },
+    {
+      "case_number": 297,
+      "family": "second_platform",
+      "variant": "statement_by_lookup",
+      "file": "cases/case_0297.json"
+    },
+    {
+      "case_number": 298,
+      "family": "second_platform",
+      "variant": "scheduled_at_booking",
+      "file": "cases/case_0298.json"
+    },
+    {
+      "case_number": 299,
+      "family": "second_platform",
+      "variant": "net_mismatch",
+      "file": "cases/case_0299.json"
+    },
+    {
+      "case_number": 300,
+      "family": "second_platform",
+      "variant": "omits_charges",
+      "file": "cases/case_0300.json"
+    }
+  ]
+}

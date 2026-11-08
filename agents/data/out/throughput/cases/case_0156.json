@@ -1,0 +1,380 @@
+{
+  "case_number": 156,
+  "family": "alert",
+  "variant": "pending_at_booking",
+  "title": "The credit names a payout that was still pending",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0156",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-07-13T12:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-001",
+        "record_id": "rec-0156-001",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "sale",
+        "occurred_at": "2026-07-13T12:00:00Z",
+        "amount_minor": 9500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-07-13T12:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-002",
+        "record_id": "rec-0156-002",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "fee",
+        "occurred_at": "2026-07-13T12:01:00Z",
+        "amount_minor": 238,
+        "currency": "GBP",
+        "related_record_id": "rec-0156-001",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-07-14T18:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-003",
+        "record_id": "rec-0156-003",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "sale",
+        "occurred_at": "2026-07-14T18:00:00Z",
+        "amount_minor": 29500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-07-14T18:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-004",
+        "record_id": "rec-0156-004",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "fee",
+        "occurred_at": "2026-07-14T18:01:00Z",
+        "amount_minor": 738,
+        "currency": "GBP",
+        "related_record_id": "rec-0156-003",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-07-16T00:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-005",
+        "record_id": "rec-0156-005",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "sale",
+        "occurred_at": "2026-07-16T00:00:00Z",
+        "amount_minor": 30500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-07-16T00:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-006",
+        "record_id": "rec-0156-006",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "fee",
+        "occurred_at": "2026-07-16T00:01:00Z",
+        "amount_minor": 763,
+        "currency": "GBP",
+        "related_record_id": "rec-0156-005",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-07-19T18:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0156-007",
+        "record_id": "rec-0156-007",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0156",
+        "kind": "payout",
+        "occurred_at": "2026-07-18T06:00:00Z",
+        "amount_minor": 67761,
+        "currency": "GBP",
+        "destination": "bank",
+        "payout_reference": "PO-0156-01",
+        "status": "pending",
+        "settled_at": null,
+        "covers_record_ids": [
+          "rec-0156-001",
+          "rec-0156-003",
+          "rec-0156-005",
+          "rec-0156-002",
+          "rec-0156-004",
+          "rec-0156-006"
+        ],
+        "status_as_of": "2026-07-19T18:00:00Z"
+      }
+    }
+  ],
+  "merchant_lookup": [],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-07-08T22:00:00Z",
+      "row": {
+        "txn_id": "txn-0156-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0156",
+        "booked_at": "2026-07-08T21:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-07-11T02:00:00Z",
+      "row": {
+        "txn_id": "txn-0156-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0156",
+        "booked_at": "2026-07-11T01:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-07-13T00:00:00Z",
+      "row": {
+        "txn_id": "txn-0156-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0156",
+        "booked_at": "2026-07-12T23:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-07-19T07:00:00Z",
+      "row": {
+        "txn_id": "txn-0156-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0156",
+        "booked_at": "2026-07-19T06:00:00Z",
+        "amount_minor": 67761,
+        "currency": "GBP",
+        "description": "MOCK MARKETPLACE PAYOUT PO-0156-01",
+        "counterparty_name": "Mock Marketplace Payments",
+        "payment_reference": "PO-0156-01"
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0156-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0156",
+      "txn_ids": [
+        "txn-0156-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Provide evidence of where the £677.61 credited to your account on 2026-07-19 came from."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "How does the credit reconcile to your underlying sales, refunds and fees?"
+        }
+      ],
+      "issued_at": "2026-07-21T18:05:00Z",
+      "expires_at": "2026-07-28T18:05:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0156-004",
+    "explanation": "marketplace_payout",
+    "payout_reference": "PO-0156-01",
+    "stated_minor": {
+      "sales": 69500,
+      "refunds": 0,
+      "fees": 1739,
+      "net": 67761
+    }
+  },
+  "gold": {
+    "decision_time": "2026-07-21T18:05:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0156-004",
+        "state": "unmatched",
+        "payout_record_ids": []
+      }
+    ],
+    "breakdown_minor": null,
+    "claim_status": "contradicted",
+    "answers": {
+      "rfc-0156-01": {
+        "q.source_of_funds": {
+          "status": "unresolved",
+          "gap": "settlement_pending_at_booking",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        },
+        "q.breakdown": {
+          "status": "unresolved",
+          "gap": "settlement_pending_at_booking",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0156-001",
+      "bank:txn-0156-002",
+      "bank:txn-0156-003"
+    ],
+    "source_trust": {
+      "bank:txn-0156-001": "bank_observed",
+      "bank:txn-0156-002": "bank_observed",
+      "bank:txn-0156-003": "bank_observed"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0156-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0156-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0156-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0156-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0156-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "id": "evt-0156-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "id": "evt-0156-007",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0156-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0156-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0156-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0156-004",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "The credit names a payout that was still pending. gold.alerts lists every alert the monitor rules raise before the first request, in order; see agents/data/README.md 'Alert rules'.",
+    "alerts": [
+      {
+        "alert_id": "alrt-0156-01",
+        "kind": "settlement_discrepancy",
+        "severity": "high",
+        "raised_at": "2026-07-19T18:05:00Z",
+        "subject_ref": "bank:txn-0156-004",
+        "status": "open",
+        "title": "Credit names payout PO-0156-01, which was still pending",
+        "explanation": "The marketplace says this payout had not settled when the credit was booked, so the payout cannot explain the credit even though the amounts match.",
+        "facts": [
+          {
+            "label": "Credit booked",
+            "value": "2026-07-19T06:00:00Z",
+            "source_ref": "bank:txn-0156-004"
+          },
+          {
+            "label": "Payout status",
+            "value": "pending as of 2026-07-19T18:00:00Z",
+            "source_ref": "merchant:rec-0156-007"
+          }
+        ],
+        "suggested_checks": [
+          "Find out where this credit came from.",
+          "Ask the marketplace about PO-0156-01."
+        ]
+      }
+    ]
+  },
+  "purpose": "throughput - not for scoring"
+}

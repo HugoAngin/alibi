@@ -1,0 +1,374 @@
+{
+  "case_number": 251,
+  "family": "balance_vs_settlement",
+  "variant": "release_only",
+  "title": "Released to platform balance, never settled to the bank",
+  "label": "SYNTHETIC - labelled test data, not a real person, account or institution",
+  "subject_ref": "seller-0251",
+  "merchant_deliveries": [
+    {
+      "received_at": "2026-06-08T08:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-001",
+        "record_id": "rec-0251-001",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "sale",
+        "occurred_at": "2026-06-08T08:00:00Z",
+        "amount_minor": 31500,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 1",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-08T08:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-002",
+        "record_id": "rec-0251-002",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "fee",
+        "occurred_at": "2026-06-08T08:01:00Z",
+        "amount_minor": 788,
+        "currency": "GBP",
+        "related_record_id": "rec-0251-001",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-06-09T04:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-003",
+        "record_id": "rec-0251-003",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "refund",
+        "occurred_at": "2026-06-09T04:00:00Z",
+        "amount_minor": 4500,
+        "currency": "GBP",
+        "related_record_id": "rec-0251-001",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-09T14:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-004",
+        "record_id": "rec-0251-004",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "sale",
+        "occurred_at": "2026-06-09T14:00:00Z",
+        "amount_minor": 42000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 2",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-09T14:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-005",
+        "record_id": "rec-0251-005",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "fee",
+        "occurred_at": "2026-06-09T14:01:00Z",
+        "amount_minor": 1050,
+        "currency": "GBP",
+        "related_record_id": "rec-0251-004",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-06-10T20:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-006",
+        "record_id": "rec-0251-006",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "sale",
+        "occurred_at": "2026-06-10T20:00:00Z",
+        "amount_minor": 41000,
+        "currency": "GBP",
+        "item": "second-hand clothing lot 3",
+        "status": "completed"
+      }
+    },
+    {
+      "received_at": "2026-06-10T20:06:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-007",
+        "record_id": "rec-0251-007",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "fee",
+        "occurred_at": "2026-06-10T20:01:00Z",
+        "amount_minor": 1025,
+        "currency": "GBP",
+        "related_record_id": "rec-0251-006",
+        "fee_type": "commission"
+      }
+    },
+    {
+      "received_at": "2026-06-13T02:05:00Z",
+      "event": {
+        "schema_version": "1",
+        "event_id": "evt-0251-008",
+        "record_id": "rec-0251-008",
+        "revision": 1,
+        "issuer_id": "mock-marketplace",
+        "subject_ref": "seller-0251",
+        "kind": "balance_release",
+        "occurred_at": "2026-06-13T02:00:00Z",
+        "amount_minor": 107137,
+        "currency": "GBP",
+        "destination": "platform_balance",
+        "release_reference": "REL-0251-01",
+        "covers_record_ids": [
+          "rec-0251-001",
+          "rec-0251-004",
+          "rec-0251-006",
+          "rec-0251-003",
+          "rec-0251-002",
+          "rec-0251-005",
+          "rec-0251-007"
+        ],
+        "message": "Good news! £1,071.37 from your recent sales is now available in your seller balance."
+      }
+    }
+  ],
+  "merchant_lookup": [],
+  "imports": [],
+  "bank_deliveries": [
+    {
+      "received_at": "2026-06-09T18:00:00Z",
+      "row": {
+        "txn_id": "txn-0251-001",
+        "revision": 1,
+        "account_ref": "acct-seller-0251",
+        "booked_at": "2026-06-09T17:00:00Z",
+        "amount_minor": -65000,
+        "currency": "GBP",
+        "description": "RENT",
+        "counterparty_name": "Synthetic Lettings Ltd",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-06-11T22:00:00Z",
+      "row": {
+        "txn_id": "txn-0251-002",
+        "revision": 1,
+        "account_ref": "acct-seller-0251",
+        "booked_at": "2026-06-11T21:00:00Z",
+        "amount_minor": -1240,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Grocer",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-06-13T20:00:00Z",
+      "row": {
+        "txn_id": "txn-0251-003",
+        "revision": 1,
+        "account_ref": "acct-seller-0251",
+        "booked_at": "2026-06-13T19:00:00Z",
+        "amount_minor": -2350,
+        "currency": "GBP",
+        "description": "CARD",
+        "counterparty_name": "Synthetic Pharmacy",
+        "payment_reference": null
+      }
+    },
+    {
+      "received_at": "2026-06-15T03:00:00Z",
+      "row": {
+        "txn_id": "txn-0251-004",
+        "revision": 1,
+        "account_ref": "acct-seller-0251",
+        "booked_at": "2026-06-15T02:00:00Z",
+        "amount_minor": 107137,
+        "currency": "GBP",
+        "description": "FASTER PAYMENT",
+        "counterparty_name": "Synthetic Sender",
+        "payment_reference": null
+      }
+    }
+  ],
+  "rfcs": [
+    {
+      "request_id": "rfc-0251-01",
+      "parent_request_id": null,
+      "audience": "bank_a",
+      "subject_ref": "seller-0251",
+      "txn_ids": [
+        "txn-0251-004"
+      ],
+      "period": null,
+      "question_ids": [
+        "q.source_of_funds",
+        "q.breakdown"
+      ],
+      "questions": [
+        {
+          "question_id": "q.source_of_funds",
+          "text": "Please explain the source of the credit of £1,071.37 received on 2026-06-15."
+        },
+        {
+          "question_id": "q.breakdown",
+          "text": "Please show how this amount was calculated."
+        }
+      ],
+      "issued_at": "2026-06-20T02:00:00Z",
+      "expires_at": "2026-06-27T02:00:00Z"
+    }
+  ],
+  "holder_claim": {
+    "txn_id": "txn-0251-004",
+    "explanation": "marketplace_payout",
+    "payout_reference": null,
+    "stated_minor": {
+      "sales": 114500,
+      "refunds": 4500,
+      "fees": 2863,
+      "net": 107137
+    }
+  },
+  "gold": {
+    "decision_time": "2026-06-20T02:00:00Z",
+    "links": [
+      {
+        "txn_id": "txn-0251-004",
+        "state": "unmatched",
+        "payout_record_ids": []
+      }
+    ],
+    "breakdown_minor": null,
+    "claim_status": "unresolved",
+    "answers": {
+      "rfc-0251-01": {
+        "q.source_of_funds": {
+          "status": "unresolved",
+          "gap": "balance_release_not_settlement",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        },
+        "q.breakdown": {
+          "status": "unresolved",
+          "gap": "balance_release_not_settlement",
+          "facts": {},
+          "evidence_sets": [
+            []
+          ]
+        }
+      }
+    },
+    "requires_retrieval": [],
+    "forbidden_refs": [
+      "bank:txn-0251-001",
+      "bank:txn-0251-002",
+      "bank:txn-0251-003"
+    ],
+    "source_trust": {
+      "bank:txn-0251-001": "bank_observed",
+      "bank:txn-0251-002": "bank_observed",
+      "bank:txn-0251-003": "bank_observed"
+    },
+    "ingest": [
+      {
+        "connector": "merchant",
+        "index": 0,
+        "id": "evt-0251-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 1,
+        "id": "evt-0251-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 2,
+        "id": "evt-0251-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 3,
+        "id": "evt-0251-004",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 4,
+        "id": "evt-0251-005",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 5,
+        "id": "evt-0251-006",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 6,
+        "id": "evt-0251-007",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "merchant",
+        "index": 7,
+        "id": "evt-0251-008",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 0,
+        "id": "txn-0251-001",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 1,
+        "id": "txn-0251-002",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 2,
+        "id": "txn-0251-003",
+        "outcome": "accepted"
+      },
+      {
+        "connector": "bank",
+        "index": 3,
+        "id": "txn-0251-004",
+        "outcome": "accepted"
+      }
+    ],
+    "notes": "A release to the platform balance with the same amount is not a bank settlement. No payout exists, so the credit's origin is unresolved."
+  },
+  "purpose": "throughput - not for scoring"
+}

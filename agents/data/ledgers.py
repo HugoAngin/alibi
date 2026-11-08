@@ -1397,12 +1397,60 @@ def write(cases: list[dict], out: Path = OUT) -> None:
 
 
 def main() -> None:
+    import sys
+    if "--throughput" in sys.argv:
+        tp = build_throughput()
+        write_throughput(tp)
+        print(json.dumps({"throughput_cases": len(tp)}))
+        return
     cases = build_cases()
     write(cases)
     fams: dict[str, int] = {}
     for c in cases:
         fams[c["family"]] = fams.get(c["family"], 0) + 1
     print(json.dumps({"cases": len(cases), "families": fams}))
+
+
+
+# --------------------------------------------------------------------------
+# throughput set: 200 extra cases with fresh seeds, NOT for scoring
+# --------------------------------------------------------------------------
+
+THROUGHPUT_DIR = OUT / "throughput"
+THROUGHPUT_SEED = 20261208
+THROUGHPUT_FIRST, THROUGHPUT_COUNT = 101, 200
+
+
+def build_throughput(seed: int = THROUGHPUT_SEED, count: int = THROUGHPUT_COUNT) -> list[dict]:
+    """Fresh-seed cases cycling through every generated family (no demo or injection copies),
+    numbered 101-300 so they never collide with development (1-80) or sealed (>= 1000) cases.
+    For measuring adapter cases per minute and cost per case; gold is kept but not for scoring."""
+    plan = [(fn, v) for fn, vs in PLAN if fn is not demo for v in vs]
+    plan += [(alert_case, v) for v in ALERT_VARIANTS] + [(sp_case, v) for v in SP_VARIANTS]
+    rng = random.Random(seed)
+    out = []
+    for k in range(count):
+        fn, v = plan[k % len(plan)]
+        case = fn(THROUGHPUT_FIRST + k, v, random.Random(rng.random()))
+        case["purpose"] = "throughput - not for scoring"
+        out.append(case)
+    return out
+
+
+def write_throughput(cases: list[dict], folder: Path = THROUGHPUT_DIR) -> None:
+    (folder / "cases").mkdir(parents=True, exist_ok=True)
+    for old in (folder / "cases").glob("case_*.json"):
+        old.unlink()
+    index = []
+    for case in cases:
+        name = f"case_{case['case_number']:04d}.json"
+        (folder / "cases" / name).write_text(dumps(case))
+        index.append({"case_number": case["case_number"], "family": case["family"],
+                      "variant": case["variant"], "file": f"cases/{name}"})
+    (folder / "index.json").write_text(dumps({
+        "label": LABEL, "purpose": "Throughput and cost measurement only. Not for scoring, not "
+        "development data, not the sealed set.", "seed": THROUGHPUT_SEED, "count": len(index),
+        "rebuild": "uv run --frozen python -m agents.data.ledgers --throughput", "cases": index}))
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ There are 80 synthetic, labelled development cases, numbered 1–80, all below t
 
 ```bash
 uv run --frozen python -m agents.data.ledgers          # regenerate out/ (deterministic, seed 20261107)
-uv run --frozen python -m pytest agents/data           # 388 checks, including an independent re-derivation of all gold and alerts
+uv run --frozen python -m pytest agents/data           # 389 checks, including an independent re-derivation of all gold and alerts
 ```
 
 ```python
@@ -191,6 +191,23 @@ The raw events never carry contract field names, which a test enforces, so an ad
 | rcpt-12 | Second-platform weekly statement, case 71 |
 
 `test_receipts.py` checks every linked image's amount, date and reference against the case record.
+
+## Deck figures
+
+`uv run --frozen python -m agents.data.figures` redraws four 16:9 PNGs (1600×900) from the committed cases into `out/figures/`, and prints the numbers behind them as one JSON line:
+
+| File | Shows |
+| --- | --- |
+| `fig1_families.png` | 80 cases across 12 families |
+| `fig2_outcomes.png` | Gold claim status by family: supported, contradicted, unresolved, with counts on each segment |
+| `fig3_hidden_reference.png` | Regex retrieval 40/40 on cases 1–40 against 6/10 on the hidden-reference cases, next to the pinned rules with every record retrieved (an upper bound that equals gold by construction) |
+| `fig4_second_platform.png` | Scenario coverage grid: mock marketplace, second platform, both platforms |
+
+The palette is the dataviz reference instance: three categorical slots validated all-pairs on the light surface, plus a blue sequential ramp. Every value is direct-labelled, so no figure relies on colour alone. The regex probe is data's guard, not the team's rules baseline; the sealed-set comparison of the three systems comes from eval.
+
+## Throughput set (not for scoring)
+
+`out/throughput/` holds 200 extra cases, numbered 101–300, from fresh seeds (`20261208`). They cycle through every generated family (no demo or injection copies). They exist so S5 can report adapter cases per minute and cost per case. They are neither development data nor the sealed set, and must never be scored. Load them with `api.load_throughput()`; rebuild with `uv run --frozen python -m agents.data.ledgers --throughput`. A test checks that they match a fresh build and obey the same gold rules.
 
 ## Hardness check
 

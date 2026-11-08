@@ -1,6 +1,7 @@
 """Exercise the runner and its capture-once replay without opening the lockbox."""
 
 import json
+import os
 
 import pytest
 
@@ -112,6 +113,33 @@ def test_missing_provider_key_does_not_start_a_capture(tmp_path, monkeypatch, ca
         run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
                                  blocked=(tmp_path,), probes=candidate_probes, lock=lock)
     assert not lock.exists() and not output.exists()
+
+
+def test_detached_capture_loads_evaluator_dotenv_and_denies_it_to_workers(tmp_path, monkeypatch):
+    output = tmp_path / "capture"
+    credential_file = tmp_path / "evaluator" / ".env"
+    credential_file.parent.mkdir()
+    credential_file.write_text("GEMINI_API_KEY=synthetic-run-key\n")
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("ALIBI_EVAL_ENV_FILE", str(credential_file))
+    seen = []
+
+    def preflight(paths):
+        assert credential_file.resolve() in paths
+        assert os.environ["GEMINI_API_KEY"] == "synthetic-run-key"
+        seen.append("preflight")
+
+    def worker(case, mode, *, blocked, **_options):
+        assert credential_file.resolve() in blocked
+        assert os.environ["GEMINI_API_KEY"] == "synthetic-run-key"
+        seen.append(mode)
+        return rules_reference.predictions_for([case])
+
+    monkeypatch.setattr(run_sealed, "verify_adapter", preflight)
+    monkeypatch.setattr(run_sealed, "run_case_worker", worker)
+    run_sealed._capture_once(output, [canonical_case()], {"commit": "candidate"}, dry=False, timeout=15,
+                             blocked=(output,), probes=None)
+    assert seen == ["preflight", *run_sealed.MODES]
 
 
 @pytest.mark.parametrize("problem", ["missing receipt", "wrong commit", "changed outcome"])

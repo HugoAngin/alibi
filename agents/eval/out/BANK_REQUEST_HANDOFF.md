@@ -13,3 +13,15 @@ git apply agents/eval/out/bank-request-delivery.patch
 ```
 
 Verified with 14 Bank Worker action tests and the Bank Astro check in a disposable copy.
+
+## Recovering an already-recorded request
+
+On a disposable `58bf0d4` stack, an injected first Bank A forwarding refusal returned 201 and left Maya's request page at 404. Running the existing driver on that same signed request returned `reissued: true` and `forwarded.status: accepted` via its direct relay fallback. The holder readback then returned 200 for the same request ID.
+
+If the hosted analyst confirms this state, Research can run the existing driver inside the Modal container from `/root/repo` and verify the same holder readback. The deployment owner supplies access to that container.
+
+```bash
+python -m alibi.demo rfc bank_a --request-id rfc-0001-01 \
+  --app-url http://127.0.0.1:8100 --bank-url http://127.0.0.1:8102 \
+  --tokens /tmp/alibi/bank_tokens.json
+```

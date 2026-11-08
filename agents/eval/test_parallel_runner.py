@@ -159,7 +159,7 @@ def test_pinned_candidate_requires_tag_and_clean_evaluator(monkeypatch):
         run_sealed._pinned_candidate("sealed-candidate")
 
 
-@pytest.mark.parametrize("tag", ["sealed-candidate-2", "sealed-candidate-3"])
+@pytest.mark.parametrize("tag", ["sealed-candidate-2", "sealed-candidate-3", "sealed-candidate-4"])
 def test_refrozen_candidate_is_bound_to_its_own_approved_tag(monkeypatch, tag):
     commands = []
     responses = iter(["", "candidate2", "candidate2", "evaluator"])
@@ -171,6 +171,34 @@ def test_refrozen_candidate_is_bound_to_its_own_approved_tag(monkeypatch, tag):
     monkeypatch.setattr(run_sealed.subprocess, "check_output", git)
     assert run_sealed._pinned_candidate(tag) == ("candidate2", "evaluator")
     assert commands[2][-1] == f"refs/tags/{tag}^{{commit}}"
+
+
+def test_second_look_preserves_the_original_lock_and_binds_its_config(tmp_path):
+    original = tmp_path / "original"
+    original.mkdir()
+    lock = tmp_path / "capture-original.json"
+    common.write_json(lock, {"run": str(original)})
+    manifest = {"set_sha256": "pack", "model_config": {"sha256": "config"}}
+    original_manifest = tmp_path / "original-manifest.json"
+    common.write_json(original_manifest, manifest)
+    marker = original / "run.json"
+    common.write_json(marker, {"input": {"commit": "58bf0d4a199f5ad3833fa9bde751d31140219975",
+                                         "manifest": run_sealed._digest(original_manifest)}})
+
+    second_lock, original_hash = run_sealed._second_look_lock(lock, original_manifest, manifest)
+    assert second_lock == tmp_path / "capture-original-candidate-4.json"
+    assert original_hash == run_sealed._digest(marker)
+    assert common.load_json(lock) == {"run": str(original)}
+    assert not second_lock.exists()
+    with pytest.raises(ValueError, match="original capture, pack and model configuration"):
+        run_sealed._second_look_lock(lock, original_manifest, {**manifest, "model_config": {"sha256": "other"}})
+
+
+def test_candidate_four_cannot_use_the_original_capture_route(capsys):
+    with pytest.raises(SystemExit) as error:
+        run_sealed.main(["--candidate-ref", "sealed-candidate-4"])
+    assert error.value.code == 2
+    assert "require --post-fix-second-look" in capsys.readouterr().err
 
 
 def test_public_cli_signature_binds_candidate_and_evaluator_separately(tmp_path, monkeypatch):

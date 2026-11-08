@@ -27,10 +27,13 @@ from tools.lockbox import is_open
 PREDICTION_FILES = {mode: f"{mode}.jsonl" for mode in MODES}
 PROBE_FILE = "probes.jsonl"
 PROBE_RECEIPT = probe_receipt_path(Path(PROBE_FILE)).name
+SECOND_LOOK_TAG = "sealed-candidate-4"
+SECOND_LOOK_DEADLINE = datetime(2026, 11, 8, 13, tzinfo=timezone.utc)
 REPORT_HEADINGS = {
     "public_rehearsal": "Public rehearsal, stubbed model and drafts only",
     "public_live": "Public live adapter check",
     "frozen": "Frozen comparison",
+    "post_fix_second_look": "Post-fix second look on reused held-out cases",
 }
 SP47_SCOPE = (
     "SP-47 covers the passport store only. In the S4/S2 rehearsal, the app's "
@@ -303,6 +306,8 @@ def score_saved(output: Path, cases: list[dict], adversarial: list[dict], *, kin
     ) + " |"
     coverage = None
     report = scorer.markdown_report(official)
+    if kind == "post_fix_second_look":
+        report = f"# {REPORT_HEADINGS[kind]}\n\n{report}"
     scope = ("Headline correctness measures investigation (draft-evidence) claims. "
              "It does not establish recipient correctness after policy review. "
              "The frozen baselines have unequal retrieval access.")
@@ -379,11 +384,24 @@ def _pinned_candidate(ref: str) -> tuple[str, str]:
     if status:
         raise ValueError("the evaluator checkout must be clean")
     candidate = git("rev-parse", "--verify", f"{ref}^{{commit}}")
-    approved_tag = ref if ref in ("sealed-candidate-2", "sealed-candidate-3") else "sealed-candidate"
+    approved_tag = ref if ref in ("sealed-candidate-2", "sealed-candidate-3", SECOND_LOOK_TAG) else "sealed-candidate"
     tagged = git("rev-parse", "--verify", f"refs/tags/{approved_tag}^{{commit}}")
     if candidate != tagged:
         raise ValueError(f"candidate-ref must resolve to the {approved_tag} tag")
     return candidate, git("rev-parse", "HEAD")
+
+
+def _second_look_lock(original_lock: Path, original_manifest: Path, manifest: dict) -> tuple[Path, str]:
+    """Bind the authorized second look to the original pack and model configuration."""
+    original_path = Path(common.load_json(original_lock)["run"]) / "run.json"
+    original_run = common.load_json(original_path)["input"]
+    first_manifest = common.load_json(original_manifest)
+    if (original_run.get("commit") != "58bf0d4a199f5ad3833fa9bde751d31140219975"
+            or original_run.get("manifest") != _digest(original_manifest)
+            or first_manifest["set_sha256"] != manifest["set_sha256"]
+            or first_manifest["model_config"]["sha256"] != manifest["model_config"]["sha256"]):
+        raise ValueError("the second look requires the original capture, pack and model configuration")
+    return original_lock.with_name(f"{original_lock.stem}-candidate-4.json"), _digest(original_path)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -394,6 +412,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--case", type=int, action="append", help="public case selection")
     parser.add_argument("--timeout", type=float, default=90, help="seconds per case and system")
     parser.add_argument("--candidate-ref", help="run a declared sealed-candidate tag with isolated workers")
+    parser.add_argument("--post-fix-second-look", action="store_true",
+                        help="run the one authorized candidate-4 comparison on the reused pack")
+    parser.add_argument("--original-manifest", type=Path, help="first capture's manifest for candidate 4")
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     parser.add_argument("--deadline", type=_aware_deadline, help="aware ISO deadline for new captures")
     parser.add_argument("--checkpoint-at", type=_aware_deadline,
@@ -401,6 +422,13 @@ def main(argv: list[str] | None = None) -> None:
     for option in ("out", "cases", "gold", "manifest", "model_config", "private_root", "probes"):
         _path_argument(parser, option)
     args = parser.parse_args(argv)
+    if args.post_fix_second_look:
+        if (args.candidate_ref != SECOND_LOOK_TAG or args.dry_run or args.public_live
+                or args.original_manifest is None or args.workers != 4
+                or args.deadline != SECOND_LOOK_DEADLINE or args.checkpoint_at is not None):
+            parser.error("the candidate-4 second look requires its tag, original manifest, four workers and 13:00 UTC deadline")
+    elif args.original_manifest is not None or (args.candidate_ref == SECOND_LOOK_TAG and not args.public_live):
+        parser.error("candidate-4 sealed captures require --post-fix-second-look")
     if args.checkpoint_at is not None and (not args.candidate_ref or args.dry_run or args.public_live):
         parser.error("checkpoint-at requires an isolated frozen capture")
     if args.out is None or not (0 < args.timeout < 3600):
@@ -470,6 +498,13 @@ def main(argv: list[str] | None = None) -> None:
         verify_file_isolation(blocked, gold_path)
         signature = {"dry": False, "commit": commit, "manifest": _digest(args.manifest), "timeout": args.timeout}
         lock = gold_path.parent / f"capture-{manifest['set_sha256']}.json"
+        if args.post_fix_second_look:
+            try:
+                lock, original_digest = _second_look_lock(lock, _private_path(args.original_manifest), manifest)
+            except (common.EvalError, OSError, ValueError, KeyError, TypeError) as exc:
+                parser.error(f"candidate-4 original capture verification failed ({type(exc).__name__})")
+            kind = "post_fix_second_look"
+            signature.update(kind=kind, original_run_sha256=original_digest)
         if isolation is not None and args.checkpoint_at is not None:
             isolation.update(checkpoint_at=args.checkpoint_at, gold_path=gold_path, adversarial_ids=attack_ids)
 
@@ -482,7 +517,7 @@ def main(argv: list[str] | None = None) -> None:
             signature["checkpoint_at"] = args.checkpoint_at.isoformat()
     _capture_once(output, cases, signature, dry=args.dry_run, timeout=args.timeout, blocked=blocked,
                   probes=args.probes, lock=lock, isolation=isolation)
-    if kind == "frozen":
+    if kind in ("frozen", "post_fix_second_look"):
         problems, _ = seal.verify_manifest(args.manifest, input_path, gold_path, args.model_config)
         if problems or _digest(args.manifest) != signature["manifest"]:
             parser.error("frozen commitments changed during capture")

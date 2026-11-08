@@ -20,6 +20,21 @@ The Modal launcher issues Bank B at startup and leaves Bank A for the analyst to
 
 On a disposable rules-only stack at `2026-11-05T09:00:00Z`, the frozen `58bf0d4` services ran behind the same router source (`4fb85f2`) and the current Bank Worker source (`19f0a56`). Before sign-in, Bank B returned 200, Bank A returned 404 and the Bank A inbox had no sent requests. A signed-in analyst opened case `FC-0147` and submitted the request via the Worker's `/act/`. The Worker returned 303, the bank inbox then listed `rfc-0001-01`, and the holder's authenticated readback through the router returned 200. The hosted analyst session still needs its own send and readback.
 
+## Where the two RFC probes failed
+
+On a fresh archive of `58bf0d4` with the same clock and router, the public Case 1 probe bodies produced these results. Each row created a sent record in the authenticated bank's inbox.
+
+| Input to `/bank/rfc` | Bank response | Signed issuer and audience | Holder forwarding | Holder readback |
+|---|---|---|---|---|
+| SP-23 control, own transaction | 201 | Bank A | Accepted | 200 |
+| SP-23, foreign transaction | 201 | Bank A | Refused, `rfc_refused` | 404 |
+| SP-24 control, matching issuer | 201 | Bank B | Accepted | 200 |
+| SP-24, Bank B credential declaring Bank A issuer | 201 | Bank B | Accepted | 200 |
+
+The SP-24 request was absent from Bank A's inbox. The bank replaced the declared issuer with Bank B before signing. The contract still requires a refusal for that mismatched declaration. For SP-23, the holder blocked delivery, but the bank had already signed the request and still recorded it as sent.
+
+The bank-service fix belongs in `BankService.issue_request` before it calls `_issue`. Check any declared issuer and audience against the authenticated bank before filling defaults, and use the account-scoped feed at the current clock to validate custom transaction IDs. Return the contract's `issuer_mismatch` or `txn_out_of_feed` response before signing, forwarding or recording a sent request. Keep the two positive controls when checking a fix. The original probe results still record both bank-intake failures.
+
 ## Recovering an already-recorded request
 
 On a disposable `58bf0d4` stack, an injected first Bank A forwarding refusal returned 201 and left Maya's request page at 404. Running the existing driver on that same signed request returned `reissued: true` and `forwarded.status: accepted` via its direct relay fallback. The holder readback then returned 200 for the same request ID.

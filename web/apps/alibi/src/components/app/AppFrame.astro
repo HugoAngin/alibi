@@ -3,11 +3,14 @@
  * The dashboard's frame: one responsive web app for desktop and phone. On a desktop a top bar
  * carries the wordmark, the two sections (Home, Account) and the account avatar; on a phone the
  * sections move to a floating liquid-glass dock at the bottom. A one-line notice says when the
- * screen is not showing live backend data, and `/simulate/` adds a bar saying the visitor is
- * looking at Maya's dashboard, read-only, with a way to start their own.
+ * screen is not showing live backend data, and `/simulate/` (every screen, on a simulated site)
+ * adds a bar saying whose dashboard this is, with Reset demo when the visitor can act as Maya.
  */
-import { ALIBI_SIMULATE_ACTIONS } from 'astro:env/server';
 import { LiquidGlassSurface } from '@rawr-labs/liquid-glass/astro';
+
+import SimGuide from '@alibi/ui/SimGuide.astro';
+import { isSimulated } from '@alibi/ui/sim/context';
+import { simulationActs } from '@/lib/simulationActs';
 
 interface Props {
   holder?: string;
@@ -21,9 +24,12 @@ interface Props {
   simulation?: boolean;
 }
 
-const { holder = 'Maya', fixtureReason, active, wide = false, simulation = false } = Astro.props;
-// The live demo (ALIBI_SIMULATE_ACTIONS=1): the presenter acts as Maya here and can reset the demo.
-const demoControls = simulation && ALIBI_SIMULATE_ACTIONS === '1';
+const { holder = 'Maya', fixtureReason, active, wide = false } = Astro.props;
+// On a simulated site every app screen is Maya's, in the visitor's own run of the recorded demo.
+const recorded = isSimulated();
+const simulation = Astro.props.simulation === true || recorded;
+// The visitor (simulated site) or the presenter (local live demo) acts as Maya and can reset.
+const demoControls = simulation && simulationActs();
 const tab = active === 'account' || active === 'settings' ? 'account' : 'home';
 const sections = [
   {
@@ -37,13 +43,14 @@ const sections = [
 ---
 
 <div class="app" class:list={{ wide }}>
-  {simulation && (
+  {recorded && <SimGuide resetAction="/simulate/reset/" />}
+  {simulation && !recorded && (
     <div class="sim-bar">
       <p>
         <span class="sim-dot" aria-hidden="true"></span>
         {demoControls
           ? 'Live demo: you’re acting as Maya'
-          : 'You’re viewing Maya’s dashboard, live and read-only'}
+          : 'You’re viewing Maya’s dashboard, read-only'}
       </p>
       {demoControls ? (
         <form
@@ -56,14 +63,14 @@ const sections = [
           </button>
         </form>
       ) : (
-        <a href="/sign-up/">Start your own</a>
+        <a href="/">About Alibi</a>
       )}
     </div>
   )}
 
   <header class="app-header">
     <div class="bar">
-      <a href="/app/" class="mark">
+      <a href="/" class="mark" aria-label="Alibi home">
         alibi
       </a>
       <nav class="tabs" aria-label="Dashboard">

@@ -1,0 +1,52 @@
+---
+/** Analyst sign-in for the simulated bank console (demo passcode, synthetic data only). */
+import { ANALYST_PASSCODE, BANK_SESSION_SECRET } from 'astro:env/server';
+
+import { isSimulated } from '@alibi/ui/sim/context';
+
+import ConsoleLayout from '@/bank/layouts/ConsoleLayout.astro';
+
+export const prerender = false;
+
+// The simulation needs no sign-in: every visitor is the analyst (src/lib/analyst.ts).
+if (isSimulated()) return Astro.redirect('/bank/', 303);
+const enabled = Boolean(ANALYST_PASSCODE && BANK_SESSION_SECRET);
+const failed = Astro.url.searchParams.get('failed') === '1';
+---
+
+<ConsoleLayout title="Analyst sign-in" section="sign-in">
+  <h1>Analyst sign-in</h1>
+  {enabled ? (
+    <form method="post" action="/bank/session/" class="panel">
+      {failed && <p role="alert">That passcode was not accepted.</p>}
+      <label for="passcode">Demo analyst passcode</label>
+      <input
+        id="passcode"
+        name="passcode"
+        type="password"
+        autocomplete="current-password"
+        required
+      />
+      <button type="submit">Sign in</button>
+    </form>
+  ) : (
+    <p>
+      Sign-in is not configured on this deployment, so the console shows the built-in preview only
+      and cannot record decisions.
+    </p>
+  )}
+</ConsoleLayout>
+
+<style>
+  h1 {
+    font-size: var(--t-lg);
+  }
+  .panel {
+    display: grid;
+    gap: var(--space-xs);
+    max-width: var(--measure);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    padding: var(--space-md);
+  }
+</style>

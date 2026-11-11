@@ -1,11 +1,10 @@
 ---
 /**
  * The site header: a large "alibi" wordmark pressed into the paper at the top of the page, with
- * Simulate and Join on the right. It sits in the page and scrolls away with it; it is not
- * sticky. Signed-in visitors see "Dashboard" and their account instead of Join.
- * In the local demo, Join opens the demo sign-in as Maya.
+ * Simulate on the right. It sits in the page and scrolls away with it; it is not sticky.
+ * In the local live demo (src/lib/demoHolder.ts), Join opens the demo sign-in as Maya, and a
+ * signed-in presenter sees "Dashboard" and Sign out instead.
  */
-import { Show, UserButton } from '@clerk/astro/components';
 
 interface Props {
   /** Which link is current, if any. */
@@ -15,7 +14,7 @@ interface Props {
 }
 
 const { current, overlay = false } = Astro.props;
-// Local demo (src/lib/demoHolder.ts): no Clerk widgets, a plain sign-out instead.
+// Local live demo only; everywhere else the site has no accounts, only the simulation.
 const demo =
   Astro.locals.demoHolder === undefined ? null : { signedIn: Boolean(Astro.locals.demoHolder) };
 ---
@@ -25,9 +24,11 @@ const demo =
     alibi
   </a>
   <nav class="links" aria-label="Main">
-    <a class="link" href="/simulate/" aria-current={current === 'simulate' ? 'page' : undefined}>
-      Simulate
-    </a>
+    {demo && (
+      <a class="link" href="/simulate/" aria-current={current === 'simulate' ? 'page' : undefined}>
+        Simulate
+      </a>
+    )}
     {demo ? (
       demo.signedIn ? (
         <>
@@ -46,25 +47,13 @@ const demo =
         </a>
       )
     ) : (
-      <>
-        <Show when="signed-out">
-          <a
-            class="s-btn s-btn--primary"
-            href="/sign-up/"
-            aria-current={current === 'join' ? 'page' : undefined}
-          >
-            Join
-          </a>
-        </Show>
-        <Show when="signed-in">
-          <a class="s-btn s-btn--primary" href="/app/">
-            Dashboard
-          </a>
-          <span class="account">
-            <UserButton />
-          </span>
-        </Show>
-      </>
+      <a
+        class="s-btn s-btn--primary"
+        href="/simulate/"
+        aria-current={current === 'simulate' ? 'page' : undefined}
+      >
+        Simulate
+      </a>
     )}
   </nav>
 </header>

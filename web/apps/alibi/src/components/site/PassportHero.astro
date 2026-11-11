@@ -12,10 +12,17 @@
  *
  * Facts come from case 1 (holder `maya-001`, accounts ••4417 and ••0921, 1,284 records since 2022).
  */
-import { Show } from '@clerk/astro/components';
-
 import PassportFolio from '@/components/passport/PassportFolio.astro';
 import { FOLIO_TINTS, type FolioContents } from '@/lib/passportFolio';
+
+/** The team, first names, each linking to their GitHub profile. */
+const team = [
+  { name: 'Arnav', github: 'Knull' },
+  { name: 'Hugo', github: 'HugoAngin' },
+  { name: 'Elio', github: 'eliohd' },
+  { name: 'Mouaad', github: 'sirExile44' },
+  { name: 'Tamim', github: 't7acct' },
+];
 
 const maya: FolioContents = {
   holder: 'Maya',
@@ -58,23 +65,26 @@ const maya: FolioContents = {
 
 <header class="pf s-wrap" data-pf>
   <div class="pf-copy s-enter">
+    <p class="pf-team">
+      Built by{' '}
+      {team.map((m, i) => [
+        // set:text keeps the link's text free of the whitespace a line break would add.
+        <a
+          href={`https://github.com/${m.github}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          set:text={m.name}
+        />,
+        i < team.length - 2 ? ', ' : i === team.length - 2 ? ' and ' : '',
+      ])}
+    </p>
     <h1 id="journey-title">Your financial passport</h1>
     <p class="pf-lede">
       Alibi gathers the proof behind every payment you receive, from the places that pay you and the
       banks that hold it, so when a bank asks, you answer in minutes.
     </p>
     <p class="pf-actions">
-      <Show when="signed-out">
-        <a class="s-btn s-btn--primary" href="/sign-up/">
-          Join
-        </a>
-      </Show>
-      <Show when="signed-in">
-        <a class="s-btn s-btn--primary" href="/app/">
-          Open your dashboard
-        </a>
-      </Show>
-      <a class="s-btn s-btn--ghost" href="/simulate/">
+      <a class="s-btn s-btn--primary" href="/simulate/">
         Simulate a case
       </a>
     </p>
@@ -111,6 +121,32 @@ const maya: FolioContents = {
     min-height: 100vh;
     /* Starts just under the site header, which sits over the top of the hero on wide screens. */
     padding-block: calc(var(--s-head-h) + clamp(20px, 4vh, 64px)) 56px;
+  }
+
+  .pf-team {
+    align-self: flex-start;
+    margin: 0 0 20px;
+    padding: 6px 14px;
+    border: 1px solid var(--s-line);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.55);
+    color: var(--s-ink-soft);
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+
+  .pf-team a {
+    color: var(--s-ink);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: rgb(31 27 22 / 0.25);
+    text-underline-offset: 3px;
+  }
+
+  .pf-team a:hover,
+  .pf-team a:focus-visible {
+    color: var(--s-accent);
+    text-decoration-color: currentColor;
   }
 
   h1 {
@@ -306,12 +342,20 @@ const maya: FolioContents = {
 
       window.addEventListener('alibi:scroll', measure);
       window.addEventListener('scroll', measure, { passive: true });
-      window.addEventListener('resize', () => {
+      const refit = () => {
         fit();
         measure();
-      });
-      fit();
-      measure();
+      };
+      window.addEventListener('resize', refit);
+      // The offset that centres the folio on the copy depends on the copy's layout, which changes
+      // after first paint on a first visit: the web fonts arrive, images load and the entrance
+      // animation settles. Measure again each time, not only once at start.
+      document.fonts?.ready.then(refit);
+      window.addEventListener('load', refit, { once: true });
+      copyTop?.parentElement?.addEventListener('animationend', refit);
+      new ResizeObserver(refit).observe(scene);
+      if (copyTop?.parentElement) new ResizeObserver(refit).observe(copyTop.parentElement);
+      refit();
       p = target;
       start();
     }

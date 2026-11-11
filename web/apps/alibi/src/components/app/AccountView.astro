@@ -1,18 +1,18 @@
 ---
 /**
- * The Account screen, for `/app/account/` (the signed-in holder) and `/simulate/account/` (Maya's,
- * shown to a visitor read-only, or acted as by the presenter in the live demo). Who is signed in
- * (Clerk), the holder's financial passport, exporting their data, and the way back to the website.
- * In the simulation there is nobody to sign in or out and no export; links stay in the simulation
- * (src/lib/simulation.ts).
+ * The Account screen, for `/app/account/` (the local live demo's signed-in holder) and
+ * `/simulate/account/` (Maya's: acted as by the visitor on a simulated site or by the presenter in
+ * the live demo, else read-only). The holder, their financial passport, exporting their data, and
+ * the way back to the website. In the simulation there is nobody to sign in or out and no export;
+ * links stay in the simulation (src/lib/simulation.ts).
  */
-import { ALIBI_SIMULATE_ACTIONS } from 'astro:env/server';
-import { SignOutButton } from '@clerk/astro/components';
+import { isSimulated } from '@alibi/ui/sim/context';
 
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import AppFrame from '@/components/app/AppFrame.astro';
 import PassportShowcase from '@/components/app/PassportShowcase.astro';
 import { loadPassport } from '@/lib/passport';
+import { simulationActs } from '@/lib/simulationActs';
 
 interface Props {
   /** `/simulate/account/`: Maya's account, read-only, for any visitor. */
@@ -20,32 +20,24 @@ interface Props {
 }
 
 const { simulation = false } = Astro.props;
-// The live demo (ALIBI_SIMULATE_ACTIONS=1): the presenter acts as Maya, so it is not read-only.
-const liveDemo = simulation && ALIBI_SIMULATE_ACTIONS === '1';
+// The visitor (simulated site) or the presenter (live demo) acts as Maya: not read-only.
+const recorded = isSimulated();
+const liveDemo = simulation && simulationActs();
 const loaded = await loadPassport();
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-// Local demo (demo holder mode, src/middleware.ts): no Clerk at all, a signed Maya session instead.
+// Local live demo (demo holder mode, src/middleware.ts): a signed Maya session.
 const demo = !simulation && Astro.locals.demoHolder !== undefined;
-let user: Awaited<ReturnType<typeof Astro.locals.currentUser>> = null;
-if (!demo && !simulation) {
-  try {
-    user = (await Astro.locals.currentUser?.()) ?? null;
-  } catch {
-    user = null;
-  }
-}
 
 const holder = loaded.source === 'missing' ? 'Maya' : loaded.data.holder.name;
-const name = user?.fullName || user?.username || holder;
-const email = user?.primaryEmailAddress?.emailAddress ?? null;
+const name = holder;
 const sub = simulation
   ? liveDemo
-    ? 'Live demo · acting as Maya'
+    ? `${recorded ? 'Simulation' : 'Live demo'} · acting as Maya`
     : 'Simulation · read-only'
   : demo
     ? 'Local demo session'
-    : (email ?? (user ? 'Signed in' : 'Not signed in'));
+    : 'Not signed in';
 const chevron = 'M9 6l6 6-6 6';
 ---
 
@@ -57,13 +49,9 @@ const chevron = 'M9 6l6 6-6 6';
     fixtureReason={loaded.source === 'fixture' ? loaded.reason : undefined}
   >
     <section class="profile">
-      {user?.imageUrl ? (
-        <img class="photo" src={user.imageUrl} alt="" width="64" height="64" />
-      ) : (
-        <span class="photo photo--letter" aria-hidden="true">
-          {name.slice(0, 1).toUpperCase()}
-        </span>
-      )}
+      <span class="photo photo--letter" aria-hidden="true">
+        {name.slice(0, 1).toUpperCase()}
+      </span>
       <h1 class="name">{name}</h1>
       <p class="sub">{sub}</p>
     </section>
@@ -84,12 +72,12 @@ const chevron = 'M9 6l6 6-6 6';
       <ul class="rows">
         {simulation ? (
           <li>
-            <a class="row" href="/sign-up/" target="_top">
+            <a class="row" href="/" target="_top">
               <span>
-                Start your own alibi
+                About Alibi
                 <small>
                   {liveDemo
-                    ? `You’re acting as ${holder} in the live demo`
+                    ? `You’re acting as ${holder} in the ${recorded ? 'simulation' : 'live demo'}`
                     : `This is ${holder}’s account; nothing here can be changed`}
                 </small>
               </span>
@@ -106,34 +94,7 @@ const chevron = 'M9 6l6 6-6 6';
               </button>
             </form>
           </li>
-        ) : user ? (
-          <>
-            <li>
-              <a class="row" href="/app/account/profile/">
-                <span>Profile and security</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d={chevron} />
-                </svg>
-              </a>
-            </li>
-            <li>
-              <SignOutButton redirectUrl="/">
-                <button class="row row--button" type="button">
-                  <span>Sign out</span>
-                </button>
-              </SignOutButton>
-            </li>
-          </>
-        ) : (
-          <li>
-            <a class="row" href="/sign-in/" target="_top">
-              <span>Sign in</span>
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d={chevron} />
-              </svg>
-            </a>
-          </li>
-        )}
+        ) : null}
       </ul>
     </section>
 

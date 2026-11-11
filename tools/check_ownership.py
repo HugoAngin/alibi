@@ -137,7 +137,10 @@ def main() -> None:
     override = os.environ.get("TEAM_OVERRIDE") == "1"
     if override and not lead:
         print("TEAM_OVERRIDE only works for lead, so ownership is checked as usual.")
-    owned = [] if override and lead else violations(team, login, staged_paths())
+    # The competition is over and Elio owns the repo: commits are no longer checked for ownership.
+    # Oversized files and API keys are still blocked.
+    del override
+    owned: list[str] = []
     problems = owned + oversized(staged_sizes()) + secrets_in(staged_diff())
     if problems:
         print(f"Commit blocked for {login}:")

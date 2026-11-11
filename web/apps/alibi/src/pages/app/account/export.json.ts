@@ -7,6 +7,8 @@
  */
 import type { APIRoute } from 'astro';
 
+import { isSimulated } from '@alibi/ui/sim/context';
+
 import { holderSignedIn } from '@/components/app/home';
 import { loadPassport } from '@/lib/passport';
 
@@ -27,7 +29,7 @@ const text = (body: string, status: number) =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 
 export const GET: APIRoute = async ({ locals }) => {
-  if (!holderSignedIn(locals)) return text('Sign in first.', 401);
+  if (!holderSignedIn(locals, isSimulated())) return text('Sign in first.', 401);
   const loaded = await loadPassport();
   if (loaded.source !== 'live') {
     return text(`Nothing to export: ${loaded.reason}`, 503);

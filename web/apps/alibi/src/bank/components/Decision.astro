@@ -1,0 +1,182 @@
+---
+/**
+ * The analyst's human decision and the follow-up request (WEB_BANK_NOTES.md items 4-7).
+ * - The analyst name is shown read-only; the backend takes identity from the credential.
+ * - A reason is required. Clear and escalate are final for the package.
+ * - A follow-up keeps the parent request's scope; asking about more is a new request.
+ * Forms post to /act/ with a fixed kind and an ID; the server builds the Bank A path and requires a
+ * signed analyst session (src/lib/actions.ts). With the built-in preview (no backend) the forms are
+ * shown but disabled, and say why.
+ */
+import type { AnalystPackage } from '@/bank/lib/types';
+import { DECISION_LABEL, actionEnabled, followupScope, isFinal } from '@/bank/lib/view';
+
+interface Props {
+  pkg: AnalystPackage;
+  returnTo: string;
+}
+
+const { pkg, returnTo } = Astro.props;
+const form = pkg.disposition_form;
+const current = form.current;
+const final = isFinal(current);
+const canDecide = actionEnabled(form.action) && !final;
+const follow = pkg.followup_form;
+const canFollow = actionEnabled(follow.action) && !final;
+const scope = followupScope(pkg);
+---
+
+<section class="card" aria-labelledby="decision-title">
+  <h2 id="decision-title">Decision</h2>
+  {current && (
+    <dl class="current">
+      <dt>Recorded</dt>
+      <dd>
+        <strong>{DECISION_LABEL[current.disposition]}</strong>
+      </dd>
+      <dt>Analyst</dt>
+      <dd>{current.analyst_name}</dd>
+      <dt>At</dt>
+      <dd>
+        <code>{current.recorded_at}</code>
+      </dd>
+      <dt>Reason</dt>
+      <dd>{current.note || '—'}</dd>
+    </dl>
+  )}
+  {final ? (
+    <p class="final">Final for this package. A new package needs a new decision.</p>
+  ) : (
+    <form method="post" action="/bank/act/">
+      <input type="hidden" name="kind" value="decision" />
+      <input type="hidden" name="package_id" value={pkg.package.package_id} />
+      <input type="hidden" name="return_to" value={returnTo} />
+      <fieldset disabled={!canDecide}>
+        <legend>Your decision</legend>
+        {form.options.map((o) => (
+          <label class="choice">
+            <input type="radio" name="disposition" value={o.value} required />
+            {DECISION_LABEL[o.value] ?? o.label}
+          </label>
+        ))}
+        <p>
+          Analyst: <strong>{form.analyst_name}</strong>{' '}
+          <span class="small">(from your sign-in)</span>
+        </p>
+        <label for="decision-reason">Reason (required)</label>
+        <textarea
+          id="decision-reason"
+          name="note"
+          required
+          minlength="3"
+          maxlength="300"
+          rows="3"
+        ></textarea>
+        <p class="human">
+          This records a human decision. It does not change the customer's account.
+        </p>
+        <button type="submit">Record decision</button>
+      </fieldset>
+      {!canDecide && (
+        <p class="small">
+          Not connected to the bank service: this is the built-in preview, so nothing can be
+          recorded.
+        </p>
+      )}
+    </form>
+  )}
+</section>
+
+{!final && (
+  <section class="card" aria-labelledby="followup-title">
+    <h2 id="followup-title">Request more from the customer</h2>
+    <p class="consent">{follow.consent_note}</p>
+    <form method="post" action="/bank/act/">
+      <input type="hidden" name="kind" value="followup" />
+      <input type="hidden" name="return_to" value={returnTo} />
+      <input type="hidden" name="package_id" value={pkg.package.package_id} />
+      <fieldset disabled={!canFollow}>
+        <legend>Follow-up</legend>
+        <p>
+          Parent request <code>{follow.parent_request_id}</code>. Scope:{' '}
+          {scope === null ? (
+            'same as the parent request'
+          ) : scope.kind === 'txn_ids' ? (
+            <>
+              same transaction{scope.txn_ids.length > 1 ? 's' : ''}{' '}
+              {scope.txn_ids.map((t) => (
+                <code>{t}</code>
+              ))}
+            </>
+          ) : (
+            <>
+              same period <code>{scope.from}</code> to <code>{scope.to}</code>
+            </>
+          )}
+          .
+        </p>
+        <p class="small">
+          A follow-up cannot widen the scope. To ask about anything else, send a new request from
+          the case.
+        </p>
+        <label for="followup-question">What else do you need?</label>
+        <textarea
+          id="followup-question"
+          name="question"
+          required
+          rows="3"
+        >{follow.question_prefill}</textarea>
+        <button type="submit">Send follow-up through the bank connection</button>
+      </fieldset>
+      {!canFollow && (
+        <p class="small">
+          Not connected to the bank service: this is the built-in preview, so nothing is sent.
+        </p>
+      )}
+    </form>
+  </section>
+)}
+
+<style>
+  .card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    padding: var(--space-sm);
+    margin-block: var(--space-sm);
+  }
+  fieldset {
+    border: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-xs);
+  }
+  .choice {
+    display: flex;
+    gap: var(--space-xs);
+    align-items: baseline;
+  }
+  textarea {
+    width: 100%;
+    font: inherit;
+  }
+  .human,
+  .consent {
+    font-weight: 600;
+  }
+  .final {
+    font-weight: 700;
+    border-left: 4px solid var(--c-ink);
+    padding-left: var(--space-xs);
+  }
+  .current {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-3xs) var(--space-sm);
+  }
+  .current dd {
+    margin: 0;
+  }
+  .small {
+    font-size: var(--t-sm);
+  }
+</style>

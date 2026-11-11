@@ -4,7 +4,7 @@ Decided by Elio (research's human) on 2026-11-08. This is the source of truth fo
 
 ## The decision
 
-- **The product front end is the Astro workspace in `web/`, deployed on Cloudflare.** It renders every screen people see: the Alibi landing page, Maya's app (the same URL on a phone, `/phone/` on a desktop), the bank's analyst console (`apps/bank`) and the merchant (`apps/merchant`).
+- **The product front end is the Astro workspace in `web/`, deployed on Cloudflare.** It renders every screen people see: the Alibi landing page, Maya's app (the same URL on a phone, `/phone/` on a desktop), the bank's analyst console (`/bank/`, `apps/alibi/src/bank`) and the merchant (`/shop/`, `apps/alibi/src/shop`).
 - **The Python app in `alibi/` is the backend.** It owns connectors, the passport store, the four agents, arithmetic, policy, consent, signing, verification, delivery and recipient isolation. Every decision stays there; the front end only displays results and sends user actions.
 - **The Jinja templates in `alibi/app/templates/` stay working as a fallback and debug view.** Research keeps them from breaking but builds no new product screens there.
 
@@ -13,7 +13,7 @@ Decided by Elio (research's human) on 2026-11-08. This is the source of truth fo
 | Part        | Choice                                                                                                                               |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Framework   | Astro 6, TypeScript strict, no client framework. Plain JS only for small interactions.                                               |
-| Workspace   | pnpm 10, Node 22.12 or newer. `apps/alibi`, `apps/merchant`, `apps/bank`, `packages/ui`.                                             |
+| Workspace   | pnpm 10, Node 22.12 or newer. `apps/alibi` (with the bank and merchant inside), `packages/ui`.                                       |
 | Hosting     | Cloudflare Workers. Alibi uses `@astrojs/cloudflare` (on-demand pages where a request is read); merchant and bank are static assets. |
 | Shared UI   | `packages/ui`: tokens, logomark, "Connect to my Alibi", "Request customer's Alibi", URL contracts (tested).                          |
 | Checks      | `pnpm verify`: prettier, eslint, `astro check`, vitest, build.                                                                       |
@@ -24,7 +24,7 @@ Decided by Elio (research's human) on 2026-11-08. This is the source of truth fo
 1. **JSON for every screen.** Each route returns its full context as JSON on `Accept: application/json`, with the same names and shapes as `alibi/app/UI.md`. Lead has already planned this in S4. Keep names stable and give the JSON a version field.
 2. **JSON for every action.** Every form action also accepts JSON and answers with JSON: success data, or a refusal `{code, reason}` with the backend's reason verbatim and a 4xx status. The validation must be identical to the HTML path, so a refusal shown in Astro is the backend's, not ours. The actions are: run investigation, remove item, approve, dispatch, export; analyst disposition and follow-up; and the two below.
 3. **Two entry points the other sites call.**
-   - The bank's "Send request" (`apps/bank`, case request screen) creates an RFC: audience, `txn_ids` or period, `question_ids`, expiry. It goes to the mock bank service, which delivers it to the holder.
+   - The bank's "Send request" (`/bank/`, case request screen) creates an RFC: audience, `txn_ids` or period, `question_ids`, expiry. It goes to the mock bank service, which delivers it to the holder.
    - Alibi's `/connect` "Connect" button creates the merchant connection for the holder after consent: `merchant_id` and `context`.
 4. **Identity.** The holder session and the two recipient credentials (`bank_a`, `bank_b`) are documented as bearer tokens or cookies. Astro forwards them on the server. Recipient scope is enforced by the backend only; the front end never decides who may see what.
 5. **One fixture.** Data's case 1 everywhere (`txn-0001-004`, `PO-0001-01`, `rfc-0001-01`, 240000 − 18000 − 6000 = 216000).

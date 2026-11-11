@@ -1,0 +1,479 @@
+---
+/**
+ * Shell for the simulated marketplace. It overrides the shared tokens so the
+ * shop looks like someone else's product; the Alibi button keeps Alibi's
+ * colours, as an embedded third-party button would. `checkout` swaps the full
+ * header for the pared-down one shops use once you are paying.
+ */
+import '@alibi/ui/base.css';
+import ReplayBanner from '@alibi/ui/ReplayBanner.astro';
+import SimGuide from '@alibi/ui/SimGuide.astro';
+import { isSimulated } from '@alibi/ui/sim/context';
+
+import { categories, shop } from '@/shop/data/shop';
+import { BASKET_COOKIE, parseBasket } from '@/shop/lib/basket';
+
+interface Props {
+  title?: string;
+  checkout?: boolean;
+}
+
+const { title, checkout = false } = Astro.props;
+const pageTitle = title ? `${title} · ${shop.name}` : `${shop.name} · ${shop.tagline}`;
+const basketCount = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value).length;
+const q = Astro.url.pathname === '/shop/' ? (Astro.url.searchParams.get('q') ?? '') : '';
+const category = Astro.url.pathname === '/shop/' ? Astro.url.searchParams.get('c') : null;
+---
+
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{pageTitle}</title>
+    <link rel="icon" href="/shop/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <ReplayBanner />
+    <a class="skip-link" href="#main">
+      Skip to content
+    </a>
+    {isSimulated() ? (
+      <SimGuide home />
+    ) : (
+      <p class="simulated">Simulated marketplace for the Alibi demo. Synthetic data only.</p>
+    )}
+
+    <header class:list={['top', { checkout }]}>
+      <div class="bar">
+        <a class="brand" href="/shop/" aria-label={`${shop.name} home`}>
+          <span class="brand-mark" aria-hidden="true">
+            m
+          </span>
+          <span class="brand-name">mock marketplace</span>
+        </a>
+
+        {checkout ? (
+          <span class="secure">
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+            </svg>
+            Secure checkout
+          </span>
+        ) : (
+          <>
+            <form class="search" action="/shop/" role="search">
+              <label class="visually-hidden" for="q">
+                Search
+              </label>
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-4-4" />
+              </svg>
+              <input id="q" name="q" type="search" placeholder="Search for items" value={q} />
+            </form>
+            <nav class="actions" aria-label="Account">
+              <a class="sell" href="/shop/seller/">
+                Sell
+              </a>
+              <a class="icon" href="/shop/account/settings/" aria-label="Account">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" />
+                </svg>
+              </a>
+              <a class="icon" href="/shop/basket/" aria-label={`Basket, ${basketCount} items`}>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8Z" />
+                  <path d="M9 8V6.5a3 3 0 0 1 6 0V8" />
+                </svg>
+                {basketCount > 0 && <span class="count">{basketCount}</span>}
+              </a>
+            </nav>
+          </>
+        )}
+      </div>
+
+      {!checkout && (
+        <nav class="cats" aria-label="Categories">
+          <a
+            href="/shop/"
+            aria-current={Astro.url.pathname === '/shop/' && !category && !q ? 'page' : undefined}
+          >
+            All
+          </a>
+          {categories.map((c) => (
+            <a href={`/?c=${c.id}`} aria-current={category === c.id ? 'page' : undefined}>
+              {c.label}
+            </a>
+          ))}
+        </nav>
+      )}
+    </header>
+
+    <main id="main" class="shop-main">
+      <slot />
+    </main>
+
+    <footer class="foot">
+      <div>
+        <span class="brand-name">mock marketplace</span>
+        <p>{shop.tagline}</p>
+      </div>
+      <nav aria-label="Footer">
+        <a href="/shop/">Shop</a>
+        <a href="/shop/seller/">Sell</a>
+        <a href="/shop/account/settings/">Account</a>
+      </nav>
+      <p class="fine">A simulated shop for the Alibi demo. No real orders or payments.</p>
+    </footer>
+    <script>
+      import { startLive } from '@alibi/ui/live';
+      startLive();
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --c-bg: #ffffff;
+    --c-surface: #ffffff;
+    --c-soft: #f6f5f3;
+    --c-line: #e9e8e5;
+    --c-ink: #141414;
+    --c-ink-soft: #55554f;
+    --c-ink-faint: #6f6f6a;
+    --c-shop: #b5462f;
+    --radius-md: 10px;
+    --page-max: 76rem;
+  }
+
+  .simulated {
+    background: var(--c-soft);
+    color: var(--c-ink-faint);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Buttons the shop pages share. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5em;
+    min-height: 48px;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--c-ink);
+    border-radius: var(--radius-pill);
+    background: var(--c-ink);
+    color: #fff;
+    font: 600 var(--t-base) / 1 var(--font-sans);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .btn:hover {
+    background: #333;
+  }
+
+  .btn.ghost {
+    background: #fff;
+    color: var(--c-ink);
+    border-color: var(--c-line);
+  }
+
+  .btn.ghost:hover {
+    border-color: var(--c-ink);
+  }
+
+  .btn.wide {
+    width: 100%;
+  }
+
+  .btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+</style>
+
+<style>
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgb(255 255 255 / 0.94);
+    backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--c-line);
+  }
+
+  .bar,
+  .cats,
+  .shop-main,
+  .foot {
+    max-width: var(--page-max);
+    margin-inline: auto;
+    padding-inline: var(--gutter);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: 64px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--c-ink);
+    text-decoration: none;
+    flex: none;
+  }
+
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9px;
+    background: var(--c-ink);
+    color: #fff;
+    font-weight: 800;
+    font-size: 1.15rem;
+    line-height: 1;
+    padding-bottom: 0.15rem;
+  }
+
+  .brand-name {
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    font-size: 1.1rem;
+  }
+
+  .search {
+    position: relative;
+    flex: 1;
+    max-width: 36rem;
+    margin-inline: auto;
+    color: var(--c-ink-faint);
+  }
+
+  .search svg {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    translate: 0 -50%;
+  }
+
+  .search input {
+    width: 100%;
+    height: 42px;
+    padding: 0 1rem 0 2.6rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    background: var(--c-soft);
+    font: inherit;
+    color: var(--c-ink);
+  }
+
+  .search input:focus {
+    outline: none;
+    border-color: var(--c-ink);
+    background: #fff;
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3xs);
+    flex: none;
+  }
+
+  .actions a {
+    text-decoration: none;
+    color: var(--c-ink);
+  }
+
+  .sell {
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+    font-size: var(--t-sm);
+    margin-right: var(--space-3xs);
+  }
+
+  .sell:hover {
+    border-color: var(--c-ink);
+  }
+
+  .icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+  }
+
+  .icon:hover {
+    background: var(--c-soft);
+  }
+
+  .count {
+    position: absolute;
+    top: 3px;
+    right: 1px;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    padding-inline: 0.25rem;
+    border-radius: var(--radius-pill);
+    background: var(--c-shop);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.15rem;
+    text-align: center;
+  }
+
+  .secure {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
+  }
+
+  .cats {
+    display: flex;
+    gap: var(--space-md);
+    overflow-x: auto;
+    scrollbar-width: none;
+    font-size: var(--t-sm);
+  }
+
+  .cats a {
+    padding: 0.6rem 0;
+    color: var(--c-ink-soft);
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+  }
+
+  .cats a:hover {
+    color: var(--c-ink);
+  }
+
+  .cats a[aria-current='page'] {
+    color: var(--c-ink);
+    font-weight: 600;
+    border-bottom-color: var(--c-ink);
+  }
+
+  .shop-main {
+    padding-block: var(--space-lg) var(--space-2xl);
+  }
+
+  .foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-sm) var(--space-lg);
+    padding-block: var(--space-lg);
+    border-top: 1px solid var(--c-line);
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
+  }
+
+  .foot p {
+    margin: 0.25rem 0 0;
+  }
+
+  .foot nav {
+    display: flex;
+    gap: var(--space-md);
+  }
+
+  .foot nav a {
+    text-decoration: none;
+  }
+
+  .foot nav a:hover {
+    text-decoration: underline;
+  }
+
+  .foot .fine {
+    flex-basis: 100%;
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+  }
+
+  @media (max-width: 640px) {
+    .bar {
+      flex-wrap: wrap;
+      padding-block: var(--space-2xs);
+    }
+
+    .top:not(.checkout) .actions {
+      margin-left: auto;
+    }
+
+    .search {
+      order: 3;
+      flex-basis: 100%;
+      max-width: none;
+    }
+
+    .sell {
+      display: none;
+    }
+  }
+</style>

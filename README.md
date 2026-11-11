@@ -1,13 +1,11 @@
 <p align="center">
-  <a href="https://www.alibi-app.workers.dev/"><b>Live demo: alibi-app.workers.dev</b></a>
-  &nbsp;·&nbsp;
-  <a href="https://www.alibi-app.workers.dev/simulate/">Open Maya’s dashboard</a>
+  <a href="https://alibi.eliohaddad.workers.dev/"><b>Live demo: alibi.eliohaddad.workers.dev</b></a>
   &nbsp;·&nbsp;
   <a href="https://youtu.be/CPnbEoRS-OY">Watch the demo video</a>
 </p>
 
 <p align="center">
-  <a href="https://www.alibi-app.workers.dev/"><img src="agents/research/out/readme/hero.png" alt="alibi, your financial passport: the landing page" width="100%"></a>
+  <a href="https://alibi.eliohaddad.workers.dev/"><img src="agents/research/out/readme/hero.png" alt="alibi, your financial passport: the landing page" width="100%"></a>
 </p>
 
 <h3 align="center">Your money’s alibi, ready before anyone asks.</h3>
@@ -82,7 +80,7 @@ Today she has two bad options: send screenshots that prove nothing, or hand over
 
 ## Inside the live demo
 
-[Open Maya’s dashboard](https://www.alibi-app.workers.dev/simulate/). It is live and read-only, so you can click around freely.
+[Open Maya’s dashboard](https://alibi.eliohaddad.workers.dev/simulate/). It is live and read-only, so you can click around freely.
 
 <p align="center">
   <img src="agents/research/out/readme/demo_dashboard.png" alt="Maya's dashboard: the unexplained-credit alert, Bank A's request, the connected marketplace and the explained £2,160 payout" width="100%">

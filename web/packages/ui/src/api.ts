@@ -1,6 +1,7 @@
 /**
  * Server-side client for the Python backend (web/docs/backend-integration.md),
- * shared by the Alibi site and the bank console.
+ * shared by the Alibi site and the bank console. On a simulated site (ALIBI_SIMULATION=1) the
+ * same calls are answered from the recorded demo (src/sim/), with no network.
  * Runs in the Worker or dev server, never the browser, so the backend needs no
  * CORS. Pure apart from the injected `fetch`, so it is unit tested with a fake.
  *
@@ -14,6 +15,9 @@
  * passed through unchanged. Being unable to reach the backend is reported
  * separately and is never dressed up as a refusal.
  */
+
+import { SIM_ORIGIN } from './sim/backend';
+import { currentSimulation } from './sim/context';
 
 /** A backend refusal (shared/CONTRACTS.md, Refusals): shown verbatim, never reworded. */
 export interface Refusal {
@@ -47,12 +51,15 @@ export async function loadContext<T>(opts: LoadOptions<T>): Promise<Loaded<T>> {
     return data ? { source: 'fixture', data, reason } : { source: 'missing', reason };
   };
 
-  if (!opts.origin) return fallback('The backend is not configured (ALIBI_API_ORIGIN).');
+  // A simulated site (src/sim/) answers from the recorded demo, whatever origin is configured.
+  const sim = currentSimulation();
+  const origin = sim ? SIM_ORIGIN : opts.origin;
+  if (!origin) return fallback('The backend is not configured (ALIBI_API_ORIGIN).');
 
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? sim?.fetch ?? fetch;
   let response: Response;
   try {
-    response = await fetchImpl(new URL(opts.path, opts.origin), {
+    response = await fetchImpl(new URL(opts.path, origin), {
       headers: { Accept: 'application/json', ...opts.headers },
       signal: AbortSignal.timeout(opts.timeoutMs ?? 4000),
     });
@@ -102,15 +109,17 @@ export function isBackendPath(path: string): boolean {
 }
 
 export async function forwardAction(opts: ActionOptions): Promise<ActionResult> {
-  if (!opts.origin)
+  const sim = currentSimulation();
+  const origin = sim ? SIM_ORIGIN : opts.origin;
+  if (!origin)
     return { kind: 'unavailable', message: 'The backend is not connected, so nothing was sent.' };
   if (!isBackendPath(opts.path))
     return { kind: 'unavailable', message: 'That action is not a backend path.' };
 
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? sim?.fetch ?? fetch;
   let response: Response;
   try {
-    response = await fetchImpl(new URL(opts.path, opts.origin), {
+    response = await fetchImpl(new URL(opts.path, origin), {
       method: 'POST',
       headers: {
         Accept: 'application/json',

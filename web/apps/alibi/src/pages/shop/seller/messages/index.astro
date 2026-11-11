@@ -1,0 +1,45 @@
+---
+/** Messages the marketplace sent Maya. The balance-release note is the one the demo turns on. */
+import ShopLayout from '@/shop/layouts/ShopLayout.astro';
+import SellerNav from '@/shop/components/SellerNav.astro';
+import { notifications, when } from '@/shop/data/account';
+---
+
+<ShopLayout title="Messages">
+  <h1>Messages</h1>
+  <SellerNav current="messages" />
+  <ul class="inbox">
+    {notifications.map((n) => (
+      <li>
+        <h2>{n.title}</h2>
+        <p class="meta">{when(n.sentAt)}</p>
+        <p>{n.body}</p>
+      </li>
+    ))}
+  </ul>
+</ShopLayout>
+
+<style>
+  .inbox {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-width: var(--measure);
+  }
+
+  li {
+    padding: var(--space-md);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+  }
+
+  h2 {
+    font-size: var(--t-md);
+  }
+
+  .meta {
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+</style>

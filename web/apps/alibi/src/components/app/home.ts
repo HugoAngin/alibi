@@ -12,16 +12,13 @@ import { day as dayOf, money } from '../../lib/format';
 type Request = PassportHome['requests'][number];
 
 /**
- * Whether the holder is signed in: the demo holder session on a local demo,
- * Clerk otherwise. The export endpoints refuse anyone else.
+ * Whether someone may act as the holder: every visitor on a simulated site (they act as Maya in
+ * the recorded demo), the signed demo session on the local live demo, nobody otherwise. The
+ * export endpoints refuse anyone else.
  */
-export function holderSignedIn(locals: App.Locals): boolean {
-  if (locals.demoHolder !== undefined) return Boolean(locals.demoHolder);
-  try {
-    return Boolean(locals.auth?.().userId);
-  } catch {
-    return false;
-  }
+export function holderSignedIn(locals: App.Locals, simulated: boolean): boolean {
+  if (simulated) return true;
+  return Boolean(locals.demoHolder);
 }
 
 // ------------------------------------------------------------- requests --

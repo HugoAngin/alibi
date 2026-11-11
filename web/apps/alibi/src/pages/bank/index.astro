@@ -1,0 +1,16 @@
+---
+/** The case queue. Cases open in a slide-over panel (src/components/CaseQueue.astro). */
+import CaseQueue from '@/bank/components/CaseQueue.astro';
+import ConsoleLayout from '@/bank/layouts/ConsoleLayout.astro';
+import { loadQueue } from '@/bank/lib/queue';
+
+export const prerender = false;
+
+const loaded = await loadQueue(Astro.cookies);
+if ('redirect' in loaded) return Astro.redirect(loaded.redirect, 303);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<ConsoleLayout title="Cases" section="cases" wide>
+  <CaseQueue queue={loaded.queue} />
+</ConsoleLayout>

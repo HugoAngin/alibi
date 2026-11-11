@@ -1,34 +1,9 @@
 ---
 /**
- * `/sign-up/`: Join. Clerk's sign-up, on the product site's frame. After
- * signing up, people land in their passport.
+ * `/sign-up/` (Join): there are no Alibi accounts in this build. The local live demo signs in as
+ * Maya at /demo-sign-in/; everywhere else the visitor goes to Maya's simulated dashboard.
  */
-import { SignUp } from '@clerk/astro/components';
+export const prerender = false;
 
-import BaseLayout from '@/layouts/BaseLayout.astro';
-import SiteHeader from '@/components/site/SiteHeader.astro';
-import { clerkAppearance } from '@/lib/clerk';
-
-// Local demo (src/lib/demoHolder.ts): no Clerk, sign in as Maya instead.
-if (Astro.locals.demoHolder !== undefined) return Astro.redirect('/demo-sign-in/', 303);
+return Astro.redirect(Astro.locals.demoHolder !== undefined ? '/demo-sign-in/' : '/simulate/', 303);
 ---
-
-<BaseLayout title="Join" description="Create your Alibi account.">
-  <SiteHeader current="join" />
-  <main id="main" class="auth">
-    <div class="panel">
-      <h1>Start living with an alibi</h1>
-      <p>Create your account. You can explore Maya’s demo passport straight away.</p>
-      <SignUp
-        appearance={clerkAppearance}
-        routing="hash"
-        signInUrl="/sign-in/"
-        fallbackRedirectUrl="/app/"
-      />
-    </div>
-  </main>
-</BaseLayout>
-
-<style>
-  @import '../styles/auth.css';
-</style>

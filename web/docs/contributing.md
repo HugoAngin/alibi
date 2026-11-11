@@ -10,8 +10,8 @@ Stage only what you changed: `git add web/<path>`.
 
 ## Rules that keep us out of each other's way
 
-- **Run `pnpm verify` from `web/` before every commit.** It formats, lints, type-checks all three apps, runs the tests and builds everything.
-- **Check shared files when you change them.** The `web/` root (`package.json`, `pnpm-lock.yaml`, configs) and `web/packages/ui/` affect all three apps, so `pnpm verify` must pass for all of them. Post an `fyi` when you change them.
+- **Run `pnpm verify` from `web/` before every commit.** It formats, lints, type-checks the app, runs the tests and builds everything.
+- **Check shared files when you change them.** The `web/` root (`package.json`, `pnpm-lock.yaml`, configs) and `web/packages/ui/` affect the whole site, so `pnpm verify` must pass for all of them. Post an `fyi` when you change them.
 - **If a rebase conflicts, keep your teammate's change** and redo yours on top. Never force-push.
 - **Pushing is not deploying.** The Workers deploy from Elio's Cloudflare account, so a push does not change what is live. See `web/README.md`.
 
@@ -19,12 +19,10 @@ Stage only what you changed: `git add web/<path>`.
 
 ```bash
 cd web && pnpm install
-pnpm dev:bank        # http://localhost:4323
-pnpm dev:merchant    # http://localhost:4322
-pnpm dev:alibi       # http://localhost:4321 (the Connect button lands here)
+pnpm dev             # http://localhost:4321: Alibi, the bank at /bank/, the marketplace at /shop/
 ```
 
-To work against the backend, set `ALIBI_API_ORIGIN`, for example `ALIBI_API_ORIGIN=http://127.0.0.1:8100 pnpm dev:bank`. Unset, your screens must still work on built-in data.
+The site runs the recorded simulation by default. To work against the backend instead, use `pnpm demo` (alibi/RUNBOOK.md), which sets `ALIBI_SIMULATION=0`.
 
 ## Talking to the backend
 

@@ -1,0 +1,76 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bank-ui-preview",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "/private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/bank-ui/web/apps/bank",
+        "exec",
+        "astro",
+        "dev",
+        "--port",
+        "4324"
+      ],
+      "port": 4324
+    },
+    {
+      "name": "bank-ui-live",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "python3 /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/fake_bank.py 8198 & BANK_API_ORIGIN=http://127.0.0.1:8198 BANK_A_TOKEN=test-token ANALYST_PASSCODE=demo-pass BANK_SESSION_SECRET=local-test-secret-0123456789 pnpm --dir /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/bank-ui/web/apps/bank exec astro dev --port 4325"
+      ],
+      "port": 4325
+    },
+    {
+      "name": "landing-preview",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "ALIBI_DEMO_HOLDER=1 HOLDER_SESSION_SECRET=local-landing-preview-secret-0123 pnpm --dir /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/landing-preview/web/apps/alibi exec astro dev --host 127.0.0.1 --port 4326"
+      ],
+      "port": 4326,
+      "url": "http://127.0.0.1:4326"
+    },
+    {
+      "name": "alibi-main",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "/Users/eliohaddad/Desktop/winthrutheory/web/apps/alibi",
+        "exec",
+        "astro",
+        "dev",
+        "--port",
+        "4327"
+      ],
+      "port": 4327
+    },
+    {
+      "name": "trust-e2e",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/eliohaddad/Desktop/winthrutheory && ALIBI_NOW=2026-11-05T09:00:00Z uv run --frozen python -m alibi.demo --case 1 --reset --as-of 2026-11-05T09:00:00Z --app-port 8180 --merchant-port 8181 --bank-port 8182 --root /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/s5stack/demo --keys /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/s5stack/keys --tokens /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/s5stack/tokens.json > /private/tmp/claude-501/-Users-eliohaddad-Desktop-winthrutheory/13c95c0f-5c92-470f-a693-09ddafa65fe8/scratchpad/s5stack.log 2>&1 & sleep 1; ALIBI_API_ORIGIN=http://127.0.0.1:8180 ALIBI_DEMO_HOLDER=1 HOLDER_SESSION_SECRET=local-trust-e2e-secret-0123456789abcdef pnpm --dir /Users/eliohaddad/Desktop/winthrutheory/web/apps/alibi exec astro dev --host 127.0.0.1 --port 4328"
+      ],
+      "port": 4328,
+      "url": "http://127.0.0.1:4328"
+    },
+    {
+      "name": "sim-alibi",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "/Users/eliohaddad/Desktop/winthrutheory/web/apps/alibi",
+        "exec",
+        "astro",
+        "dev",
+        "--port",
+        "4321"
+      ],
+      "port": 4321
+    }
+  ]
+}

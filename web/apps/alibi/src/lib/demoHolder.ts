@@ -1,16 +1,16 @@
 /**
- * Demo holder mode: the judged local demo signs in as Maya without Clerk. `pnpm demo` turns it on
+ * Demo holder mode: the local live demo signs in as Maya. `pnpm demo` turns it on
  * (ALIBI_DEMO_HOLDER=1 plus a fresh HOLDER_SESSION_SECRET) and binds the dev server to 127.0.0.1.
  * The middleware then refuses any non-loopback host, and every holder route needs a session: an
  * HMAC-SHA256-signed cookie `<holder>.<expiry>.<sig>`, issued by POST /demo-session/ (the bank
- * console's scheme). Deployed builds never set these variables, so they keep Clerk.
+ * console's scheme). Deployed builds never set these variables; they run the simulation.
  */
 
 export const HOLDER_COOKIE = 'alibi_demo_holder';
 export const HOLDER_TTL_MS = 8 * 60 * 60 * 1000;
 /** The only holder the demo signs in as (case 1). */
 export const DEMO_HOLDER = 'maya';
-/** Clerk-shaped user id for the signed-in demo holder, so `<Show>` works without Clerk. */
+/** User id of the signed-in demo holder. */
 export const DEMO_USER_ID = 'demo_maya';
 
 /** On only when both variables are set, so a stray flag without a secret cannot open anything. */

@@ -4,8 +4,6 @@
  * six chapters and a recap), a way into the case study, and Join.
  * Composition only; copy lives in src/data/product.ts.
  */
-import { Show } from '@clerk/astro/components';
-
 import SiteHeader from '@/components/site/SiteHeader.astro';
 import Journey from '@/components/site/Journey.astro';
 import SiteFooter from '@/components/site/SiteFooter.astro';
@@ -24,8 +22,9 @@ import SiteFooter from '@/components/site/SiteFooter.astro';
           Open Maya’s dashboard
         </h2>
         <p class="s-lede">
-          See the real dashboard, live: two banks’ requests, the investigation behind each answer,
-          and exactly what Maya chose to share. Read-only, so look around freely.
+          Act as Maya in a recorded run of the whole demo: withdraw her payout, answer the bank’s
+          request, see the investigation behind each answer and exactly what she shares. Reset it
+          any time.
         </p>
       </div>
       <a class="s-btn s-btn--primary" href="/simulate/">
@@ -39,19 +38,9 @@ import SiteFooter from '@/components/site/SiteFooter.astro';
       Start living with an alibi
     </h2>
     <p class="actions">
-      <Show when="signed-out">
-        <a class="s-btn s-btn--primary" href="/sign-up/">
-          Join
-        </a>
-        <a class="s-btn s-btn--ghost" href="/simulate/">
-          Simulate
-        </a>
-      </Show>
-      <Show when="signed-in">
-        <a class="s-btn s-btn--primary" href="/app/">
-          Open your dashboard
-        </a>
-      </Show>
+      <a class="s-btn s-btn--primary" href="/simulate/">
+        Simulate a case
+      </a>
     </p>
   </section>
 </main>

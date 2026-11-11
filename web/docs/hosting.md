@@ -1,48 +1,35 @@
-# Hosting plan
+# Hosting
 
-Decided by Elio on 2026-11-08. The demo runs live: the merchant, Alibi and the bank talk to each other in real time, on the internet.
+Since 2026-11-11 the public demo is a **recorded simulation** on one Cloudflare Worker, with no backend, no API keys, no secrets and no accounts. The live setup used for judging (Python backend on Modal, Gemini, Clerk, three Workers on `alibi-app.workers.dev`) is retired; its history is in git.
 
-## Where each part runs
+## Where it runs
 
-| Part                                                                    | Host                                   | Notes                                                                                                                                 |
-| ----------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Alibi site and app (`web/apps/alibi`)                                   | Cloudflare Worker                      | Astro with `@astrojs/cloudflare`. Clerk accounts (`alibi-app`).                                                                       |
-| Mock merchant site (`web/apps/merchant`)                                | Cloudflare Worker                      | Static today; becomes on-demand where it calls the backend.                                                                           |
-| Bank console (`web/apps/bank`)                                          | Cloudflare Worker                      | Becomes on-demand: inbox, package view, "Send request".                                                                               |
-| Python backend (`alibi/`): app 8100, mock merchant 8101, mock bank 8102 | **Modal**, Elio's account ($51 credit) | One CPU container, as in eval's `agents/eval/out/MODAL_REPLAY.md`, but live: Gemini on.                                               |
-| Web-side state                                                          | Cloudflare D1 (SQLite)                 | Only what the web needs: Clerk-linked accounts, merchant connection status, the bank's case queue. The passport stays in the backend. |
+| Part                             | Address                                    |
+| -------------------------------- | ------------------------------------------ |
+| Alibi (landing page, Maya's app) | https://alibi.eliohaddad.workers.dev/      |
+| Marketplace (simulated)          | https://alibi.eliohaddad.workers.dev/shop/ |
+| Bank console (simulated)         | https://alibi.eliohaddad.workers.dev/bank/ |
 
-## Live addresses
+One Worker, `alibi` (`apps/alibi/wrangler.jsonc`), on the account's workers.dev subdomain, `eliohaddad`. Its only setting is `ALIBI_SIMULATION="1"`. A custom domain can be added later as a route in `wrangler.jsonc`; the site needs no change for it.
 
-| Site                 | URL                                                     |
-| -------------------- | ------------------------------------------------------- |
-| Alibi                | https://www.alibi-app.workers.dev                       |
-| Merchant (simulated) | https://merchant.alibi-app.workers.dev                  |
-| Bank (simulated)     | https://bank.alibi-app.workers.dev                      |
-| Backend (Modal)      | https://eliohd--alibi-backend-backend.us-east.modal.run |
+## How the simulation works
 
-Each site's `deploy` script sets these origins at build time, so redeploys keep them pointing at each other. The Alibi Worker reads `ALIBI_API_ORIGIN` at runtime (`wrangler.jsonc` vars) and `CLERK_SECRET_KEY` from a Worker secret; the build runs with `CLERK_SECRET_KEY` empty so the key is never in the bundle. Clerk uses the development instance of `alibi-app`; a production instance needs a domain we own.
+`pnpm record:simulation` (from `web/`) starts the real Python stack once on this machine, with recorded Gemini answers (`ALIBI_REPLAY=1`, no key), walks every path the site can take through Maya's case, and saves what each backend route answered at each step to `packages/ui/src/sim/recording.json`: a graph of backend states joined by the site's actions. Run it again only if the backend or the case changes.
 
-## The backend on Modal
+At run time the middleware serves each request against that recording (`packages/ui/src/sim/`): the same backend clients (`@alibi/ui/api`, `@alibi/ui/demo`) answer from the recording instead of the network, so the screens, converters and refusals run unchanged. A visitor's place in the demo lives in one cookie, `alibi_sim`: withdrawing at `/shop/` shows at `/bank/`, requesting at `/bank/` shows in Maya's dashboard. Each visitor runs their own copy, and Reset demo starts it over. A step the recording does not have is refused with a plain message, and nothing changes.
 
-This follows Tamim's topology (`agents/eval/out/MODAL_REPLAY.md`), with three changes for the live demo:
+What a visitor can do: withdraw, request, run the investigation, remove one item and restore it, approve and send (or see the send refused after a change), and, as the analyst, clear, escalate or ask a follow-up question, which Maya can answer. The analyst's reasons and question are the visitor's own words, kept in the cookie.
 
-1. **Live, not replay.** `GEMINI_API_KEY` and `ALIBI_MASTER_KEY` come from a Modal Secret that Elio creates in the Modal dashboard. Nobody pastes them into chat or code.
-2. **All three services reachable.** The bank and merchant Workers need the bank service (`POST /rfc`, inboxes, analyst actions) and the merchant service, not only the app. A small router in the same container publishes one HTTPS endpoint (`@modal.web_server`) and forwards `/merchant/*` to 8101, `/bank/*` to 8102 and everything else to 8100. Loopback-only routes (seed, reset) stay unreachable from outside.
-3. **Kept warm for the judging window.** One container, `min_containers=1` during review, so the SQLite store persists between requests. A restart reseeds from case 1, as in Tamim's plan.
+## Deploy
 
-Service start commands, environment variables and readiness checks come from S5's `alibi/RUNBOOK.md` (due about 03:30). The deploy file lives in `agents/research/deploy/modal_app.py` and is deployed from Elio's Modal account with `modal deploy`.
+With a Cloudflare account logged in (`pnpm exec wrangler login` from `apps/alibi`):
 
-## How the Workers reach it
+```bash
+pnpm --filter @alibi/site run deploy
+```
 
-Each Worker calls the Modal URL from the server only, with `ALIBI_API_ORIGIN` (and the bank and merchant equivalents) set as Worker variables. Bank tokens and any backend credential are Worker secrets (`wrangler secret put`), never in the browser bundle, as lead asked.
+The recording adds about 0.5 MB (gzipped) to the Worker, well inside the free plan's limit.
 
-## Fallbacks
+## The local live demo
 
-- If Modal is down: run the backend on the presenter's laptop and expose it with a Cloudflare Tunnel; the Workers only change `ALIBI_API_ORIGIN`.
-- If the network is down: everything local (Astro dev server plus the three services), as in lead's original plan.
-- The Jinja screens stay the verified fallback for the product UI.
-
-## Cost
-
-One small CPU container kept warm for a few hours costs a few dollars at most, well inside the $51 credit. Gemini calls are billed to the Gemini key, not Modal. Stop the app with `modal app stop` after judging.
+The real backend still runs locally, for re-recording or for a live demo on one laptop: start `uv run --frozen python -m alibi.demo --case 1 --reset` and then `pnpm demo`, which turns the simulation off (`ALIBI_SIMULATION=0`) and points the site at the local services (`alibi/RUNBOOK.md`).

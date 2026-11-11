@@ -1,30 +1,9 @@
 ---
-/** `/sign-in/`: Clerk's sign-in on the product site's frame. */
-import { SignIn } from '@clerk/astro/components';
+/**
+ * `/sign-in/`: there are no Alibi accounts in this build. The local live demo signs in as Maya at
+ * /demo-sign-in/; everywhere else the visitor goes to Maya's simulated dashboard.
+ */
+export const prerender = false;
 
-import BaseLayout from '@/layouts/BaseLayout.astro';
-import SiteHeader from '@/components/site/SiteHeader.astro';
-import { clerkAppearance } from '@/lib/clerk';
-
-// Local demo (src/lib/demoHolder.ts): no Clerk, sign in as Maya instead.
-if (Astro.locals.demoHolder !== undefined) return Astro.redirect('/demo-sign-in/', 303);
+return Astro.redirect(Astro.locals.demoHolder !== undefined ? '/demo-sign-in/' : '/simulate/', 303);
 ---
-
-<BaseLayout title="Sign in" description="Sign in to Alibi.">
-  <SiteHeader />
-  <main id="main" class="auth">
-    <div class="panel">
-      <h1>Sign in to Alibi</h1>
-      <SignIn
-        appearance={clerkAppearance}
-        routing="hash"
-        signUpUrl="/sign-up/"
-        fallbackRedirectUrl="/app/"
-      />
-    </div>
-  </main>
-</BaseLayout>
-
-<style>
-  @import '../styles/auth.css';
-</style>

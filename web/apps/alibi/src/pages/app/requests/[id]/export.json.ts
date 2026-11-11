@@ -1,11 +1,14 @@
 /**
  * `/app/requests/<id>/export.json`: downloads the signed package the backend
  * sent for this request (`GET /requests/<id>/export.json`, UI.md), unchanged,
- * so the bytes match its digest. 404 before the package has been sent.
+ * so the bytes match its digest. 404 before the package has been sent. On a
+ * simulated site the package is the recorded one.
  */
 import type { APIRoute } from 'astro';
 import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
+import { SIM_ORIGIN } from '@alibi/ui/sim/backend';
+import { currentSimulation } from '@alibi/ui/sim/context';
 import { holderSignedIn } from '@/components/app/home';
 import { ROUTES, backendHeaders } from '@/lib/screens';
 
@@ -15,15 +18,17 @@ const text = (body: string, status: number) =>
   new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 
 export const GET: APIRoute = async ({ params, locals }) => {
-  if (!holderSignedIn(locals)) return text('Sign in first.', 401);
+  const sim = currentSimulation();
+  if (!holderSignedIn(locals, sim !== null)) return text('Sign in first.', 401);
   const id = params.id ?? '';
   // A request id starts with a letter or digit, so `.` and `..` can never reach the backend path.
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) return text('Unknown request.', 404);
-  if (!ALIBI_API_ORIGIN) return text('The backend is not connected, so there is no package.', 503);
+  const origin = sim ? SIM_ORIGIN : ALIBI_API_ORIGIN;
+  if (!origin) return text('The backend is not connected, so there is no package.', 503);
 
   let upstream: Response;
   try {
-    upstream = await fetch(new URL(ROUTES.exportJson(id), ALIBI_API_ORIGIN), {
+    upstream = await (sim?.fetch ?? fetch)(new URL(ROUTES.exportJson(id), origin), {
       headers: backendHeaders(),
       signal: AbortSignal.timeout(8000),
     });

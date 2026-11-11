@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * One command for the presenter's laptop: the three Astro apps, pointed at the local backend.
+ * One command for the presenter's laptop: the Alibi site (with the bank at /bank/ and the
+ * marketplace at /shop/), pointed at the local backend
+ * instead of the recorded simulation they run by default (`pnpm dev`, the deployed sites).
  *
  *   cd web && pnpm demo                  # live: app 8100, merchant 8101, bank 8102
  *   cd web && ALIBI_REPLAY=1 pnpm demo   # recorded replay: every page shows a replay banner
  *
- * Opens nothing itself; prints the three local addresses. Each app falls back to its built-in
+ * Opens nothing itself; prints the local address. Each screen falls back to its built-in
  * case 1 data and says so if its backend is not answering, so a missing service never shows a
  * blank screen. Overrides: ALIBI_APP_URL, ALIBI_MERCHANT_URL, ALIBI_BANK_URL, BANK_A_TOKEN,
  * ANALYST_PASSCODE, BANK_SESSION_SECRET, ALIBI_DEMO_HOST, ALIBI_DEMO_ORIGIN (the demo director,
- * default :8103), ALIBI_DEMO_TOKEN (default: the admin entry of data/alibi/bank_tokens.json). Stop with Ctrl-C (all three stop).
+ * default :8103), ALIBI_DEMO_TOKEN (default: the admin entry of data/alibi/bank_tokens.json). Stop with Ctrl-C.
  *
  * The apps listen on 127.0.0.1 only (ALIBI_DEMO_HOST may name another loopback address; anything
  * else is refused). The holder app runs in demo holder mode (apps/alibi/src/lib/demoHolder.ts):
@@ -77,6 +79,7 @@ const sessionSecret = env.BANK_SESSION_SECRET || randomBytes(32).toString('hex')
 const holderSecret = randomBytes(32).toString('hex');
 const { token, from: tokenFrom } = bankToken();
 
+// One site: Alibi, with the bank console under /bank/ and the marketplace under /shop/.
 const apps = [
   {
     name: 'alibi',
@@ -89,22 +92,7 @@ const apps = [
       HOLDER_SESSION_SECRET: holderSecret,
       // The presenter acts as Maya on /simulate/ and can reset the demo there.
       ALIBI_SIMULATE_ACTIONS: '1',
-      ...demoEnv,
-    },
-  },
-  {
-    name: 'merchant',
-    pkg: '@alibi/merchant',
-    originVar: 'MERCHANT_ORIGIN',
-    port: 4322,
-    env: { ALIBI_API_ORIGIN: backend.merchant, PUBLIC_ALIBI_ORIGIN: local(4321), ...demoEnv },
-  },
-  {
-    name: 'bank',
-    pkg: '@alibi/bank',
-    originVar: 'BANK_ORIGIN',
-    port: 4323,
-    env: {
+      // The bank console (/bank/) talks to the mock bank service with Bank A's credential.
       BANK_API_ORIGIN: backend.bank,
       BANK_A_TOKEN: token,
       ANALYST_PASSCODE: passcode,
@@ -123,13 +111,17 @@ async function reachable(url) {
   }
 }
 
-// Debugger flags in NODE_OPTIONS (e.g. --inspect) would make all three dev servers fight over one
-// port, so the children start without them.
+// Debugger flags in NODE_OPTIONS (e.g. --inspect) are dropped, so the dev server starts cleanly.
 const nodeOptions = (env.NODE_OPTIONS ?? '')
   .split(/\s+/)
   .filter((o) => o && !o.startsWith('--inspect'))
   .join(' ');
-const shared = { PUBLIC_ALIBI_REPLAY: replay ? '1' : '', NODE_OPTIONS: nodeOptions };
+// The live demo talks to the real backend, so the recorded simulation (wrangler.jsonc) is off.
+const shared = {
+  PUBLIC_ALIBI_REPLAY: replay ? '1' : '',
+  NODE_OPTIONS: nodeOptions,
+  ALIBI_SIMULATION: '0',
+};
 const children = [];
 
 function stopAll(code = 0) {

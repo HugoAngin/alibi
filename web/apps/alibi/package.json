@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro build && wrangler dev --port 4321",
     "check": "astro check",
-    "deploy": "CLERK_SECRET_KEY= ALIBI_ORIGIN=https://www.alibi-app.workers.dev astro build && wrangler deploy"
+    "deploy": "ALIBI_ORIGIN=https://alibi.eliohaddad.workers.dev astro build && wrangler deploy"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
@@ -19,7 +19,6 @@
   "dependencies": {
     "@alibi/ui": "workspace:*",
     "@astrojs/cloudflare": "^13.7.0",
-    "@clerk/astro": "^4.1.22",
     "@rawr-labs/liquid-glass": "^0.2.1",
     "astro": "^6.4.8",
     "lenis": "^1.3.27",

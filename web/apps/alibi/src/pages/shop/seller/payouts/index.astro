@@ -1,0 +1,149 @@
+---
+/** Payouts to Maya's bank account, with what each one covers. */
+import ShopLayout from '@/shop/layouts/ShopLayout.astro';
+import SellerNav from '@/shop/components/SellerNav.astro';
+import { formatGBP } from '@/shop/data/shop';
+import { orders, payouts, refunds, totals, when } from '@/shop/data/account';
+import WithdrawCard from '@/shop/components/WithdrawCard.astro';
+import { payoutDemo } from '@/shop/lib/demo';
+
+export const prerender = false;
+
+const demo = await payoutDemo(Astro.cookies);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<ShopLayout title="Payouts">
+  <h1>Payouts</h1>
+  <SellerNav current="payouts" />
+
+  {demo.message && (
+    <p class="withdraw-message" role="status">
+      {demo.message}
+    </p>
+  )}
+
+  {demo.available && (
+    <section class="payout" aria-label="Seller balance">
+      <WithdrawCard returnTo="/shop/seller/payouts/" />
+    </section>
+  )}
+
+  {!demo.available &&
+    payouts.map((p) => (
+      <article class="payout" aria-labelledby={`p-${p.payoutRef}`}>
+        <h2 id={`p-${p.payoutRef}`}>
+          {formatGBP(p.amountMinor)} <code>{p.payoutRef}</code>
+        </h2>
+        <p class="status-paid">✓ {p.status}</p>
+        <dl>
+          <dt>Requested</dt>
+          <dd>{when(p.requestedAt)}</dd>
+          <dt>Arrived</dt>
+          <dd>{when(p.settledAt)}</dd>
+          <dt>Paid to</dt>
+          <dd>{p.destination}</dd>
+        </dl>
+        <h3>What it covers</h3>
+        <table>
+          <tbody>
+            <tr>
+              <td>{orders.length} orders</td>
+              <td class="num">{formatGBP(totals.salesMinor)}</td>
+            </tr>
+            <tr>
+              <td>{refunds.length} refunds</td>
+              <td class="num">−{formatGBP(totals.refundsMinor)}</td>
+            </tr>
+            <tr>
+              <td>Seller fees</td>
+              <td class="num">−{formatGBP(totals.feesMinor)}</td>
+            </tr>
+            <tr class="total">
+              <td>Paid out</td>
+              <td class="num">{formatGBP(totals.netMinor)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="meta">Orders {p.coversOrderRefs.join(', ')}.</p>
+      </article>
+    ))}
+
+  <p class="meta">
+    Money from a sale first becomes available in your seller balance. A payout is the transfer from
+    that balance to your bank account.
+  </p>
+</ShopLayout>
+
+<style>
+  .withdraw-message {
+    max-width: var(--measure);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-md);
+    background: var(--c-soft);
+    font-weight: 600;
+  }
+
+  .payout {
+    padding: var(--space-md);
+    background: var(--c-surface);
+    border: 1px solid var(--c-line);
+    border-radius: var(--radius-md);
+    max-width: var(--measure);
+  }
+
+  h2 {
+    font-size: var(--t-lg);
+    margin-bottom: var(--space-2xs);
+  }
+
+  h3 {
+    font-size: var(--t-base);
+    margin-top: var(--space-md);
+  }
+
+  .status-paid {
+    color: var(--c-ok);
+    font-weight: 700;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-3xs) var(--space-sm);
+  }
+
+  dt {
+    color: var(--c-ink-soft);
+  }
+
+  dd {
+    margin: 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  td {
+    padding: var(--space-3xs) 0;
+    border-bottom: 1px solid var(--c-line);
+  }
+
+  .total td {
+    font-weight: 800;
+    border-top: 2px solid var(--c-ink);
+    border-bottom: 0;
+  }
+
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meta {
+    color: var(--c-ink-soft);
+    font-size: var(--t-sm);
+  }
+</style>

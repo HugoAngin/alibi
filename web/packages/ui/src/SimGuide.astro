@@ -1,0 +1,164 @@
+---
+/**
+ * The simulation's step guide, at the top of every page of the demo (Alibi, /bank/, /shop/) while
+ * it runs the recording (@alibi/ui/sim): which of the four steps the visitor's run is at, a link to
+ * where the next one happens, and Reset demo where that part of the site has it. Renders nothing
+ * outside the simulation.
+ */
+import { demoState } from './demo';
+import { isSimulated } from './sim/context';
+import { guideStep } from './sim/guide';
+
+interface Props {
+  /** This part of the site's own Reset demo endpoint, if it has one. */
+  resetAction?: string;
+  /** Show the "alibi" wordmark, linking to the landing page (the bank and the marketplace). */
+  home?: boolean;
+}
+
+const { resetAction, home = false } = Astro.props;
+const on = isSimulated();
+const state = on ? await demoState({ origin: undefined, token: undefined }) : null;
+const step = guideStep(state?.stage, state?.request_id ?? 'rfc-0001-01', state?.package_id ?? null);
+// On the step's own page, offer its follow-on link if it has one (step 3: from Maya's dashboard to
+// the request); elsewhere, the step's page itself. Nothing when there is nowhere further to go.
+const here = Astro.url.pathname === step.path;
+const link = here ? step.then : { path: step.path, cta: step.cta };
+---
+
+{on && (
+  <div class="sim-guide" role="region" aria-label="Simulation guide">
+    {home && (
+      <a class="sim-guide__home" href="/" aria-label="Alibi home">
+        alibi
+      </a>
+    )}
+    <p class="sim-guide__text">
+      <span class="sim-guide__dot" aria-hidden="true" />
+      <span>
+        <strong>
+          Simulation · Step {step.number} of {step.of}:
+        </strong>{' '}
+        {step.text}
+      </span>
+    </p>
+    <span class="sim-guide__actions">
+      {link && (
+        <a class="sim-guide__go" href={link.path}>
+          {link.cta} <span aria-hidden="true">→</span>
+        </a>
+      )}
+      {/* No confirm(): a reset only touches this visitor's own run, and some browsers block the
+          dialog, which silently cancelled the reset. */}
+      {resetAction && (
+        <form method="post" action={resetAction}>
+          <button type="submit" class="sim-guide__reset">
+            Reset demo
+          </button>
+        </form>
+      )}
+    </span>
+  </div>
+)}
+
+<style>
+  .sim-guide {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 10px 16px;
+    background: #15171a;
+    color: #f7f5f0;
+    font:
+      400 0.875rem/1.4 Inter,
+      system-ui,
+      sans-serif;
+  }
+
+  .sim-guide__home {
+    color: #f7f5f0;
+    font:
+      600 1.05rem/1 'Inter Tight',
+      Inter,
+      system-ui,
+      sans-serif;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+
+  .sim-guide__home:hover {
+    color: #fff;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .sim-guide__text {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    max-width: 52rem;
+  }
+
+  .sim-guide__text strong {
+    font-weight: 600;
+  }
+
+  .sim-guide__dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6fd39b;
+    box-shadow: 0 0 0 3px rgb(111 211 155 / 0.25);
+    transform: translateY(-1px);
+  }
+
+  .sim-guide__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sim-guide__actions form {
+    margin: 0;
+  }
+
+  .sim-guide__go,
+  .sim-guide__reset {
+    padding: 4px 12px;
+    border-radius: 999px;
+    font: inherit;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .sim-guide__go {
+    background: #f7f5f0;
+    color: #15171a;
+    text-decoration: none;
+  }
+
+  .sim-guide__go:hover {
+    background: #fff;
+  }
+
+  .sim-guide__reset {
+    border: 1px solid rgb(247 245 240 / 0.7);
+    background: transparent;
+    color: #f7f5f0;
+    cursor: pointer;
+  }
+
+  .sim-guide__reset:hover {
+    border-color: #f7f5f0;
+  }
+
+  .sim-guide a:focus-visible,
+  .sim-guide button:focus-visible {
+    outline: 2px solid #6fd39b;
+    outline-offset: 2px;
+  }
+</style>

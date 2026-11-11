@@ -1,42 +1,54 @@
 /**
- * Deployed: Clerk on every request, and the holder app (`/app/*`) needs a signed-in Clerk user, so
- * nobody else can see or approve for Maya (eval gate b): a signed-out GET goes to /sign-in/,
- * anything else gets 401. Local demo (`pnpm demo`, src/lib/demoHolder.ts): Clerk is not called at
- * all, so no Clerk key is needed; requests for any non-loopback host are refused, and every holder
- * route needs the signed demo session (sign in at /demo-sign-in/ as Maya).
+ * The whole demo is this one site: Alibi, the bank console under /bank/ and the marketplace under
+ * /shop/. Three ways it runs, chosen by the environment:
  *
- * Either way, `/simulate/` stays open: Maya's dashboard for any visitor, read-only (every action
- * disabled). Its links into the app are kept inside the simulation (src/lib/simulation.ts).
+ * - Simulated (ALIBI_SIMULATION=1: the deployed site and `pnpm dev`). Every backend call is
+ *   answered from the recorded demo (@alibi/ui/sim), per visitor, with no backend, key or account.
+ *   The visitor acts as Maya: `/simulate/` is her dashboard, `/app/` pages with a simulation twin
+ *   redirect to it, and the other `/app/` pages (merchants, banks, exports) show her data in place.
+ * - The local live demo (`pnpm demo`, src/lib/demoHolder.ts): the real backend on this machine.
+ *   Requests for any non-loopback host are refused, and every holder route needs the signed demo
+ *   session (sign in at /demo-sign-in/ as Maya).
+ * - Neither: there is no sign-in, so `/app/` is closed and sends visitors to `/simulate/`.
+ *
+ * Either way, links inside `/simulate/` pages are kept inside the simulation (src/lib/simulation.ts).
  */
-import { clerkMiddleware } from '@clerk/astro/server';
-import type { AuthFn } from '@clerk/astro/server';
 import { defineMiddleware } from 'astro:middleware';
 import type { APIContext, MiddlewareNext } from 'astro';
-import { ALIBI_DEMO_HOLDER, HOLDER_SESSION_SECRET } from 'astro:env/server';
+import { ALIBI_DEMO_HOLDER, ALIBI_SIMULATION, HOLDER_SESSION_SECRET } from 'astro:env/server';
 
+import { runSimulated } from '@alibi/ui/sim/context';
 import {
-  DEMO_USER_ID,
   HOLDER_COOKIE,
   demoHolderEnabled,
   isHolderRoute,
   isLoopback,
   verifyHolderSession,
 } from '@/lib/demoHolder';
-import { isSimulationRoute, simulationLinks } from '@/lib/simulation';
+import { isSimulationRoute, simulationLinks, simulationTwin } from '@/lib/simulation';
 
-/** The holder app's pages and endpoints (Clerk 4.1 has no createRouteMatcher). */
 function isAppRoute(pathname: string): boolean {
   return pathname === '/app' || pathname.startsWith('/app/');
 }
 
-const clerk = clerkMiddleware((auth, context, next) => {
-  if (isAppRoute(context.url.pathname) && !auth().userId) {
-    if (context.request.method === 'GET' || context.request.method === 'HEAD')
-      return context.redirect('/sign-in/', 303);
-    return new Response('Sign in first.', { status: 401 });
-  }
-  return next();
-});
+const isRead = (context: APIContext) =>
+  context.request.method === 'GET' || context.request.method === 'HEAD';
+
+/** `/app/` without the live demo: the simulation twin when there is one, else Maya's dashboard. */
+function toSimulation(context: APIContext): Response {
+  const twin = simulationTwin(context.url.pathname) ?? '/simulate/';
+  return context.redirect(twin + context.url.search, 303);
+}
+
+async function simulated(context: APIContext, next: MiddlewareNext): Promise<Response> {
+  return runSimulated(context, () => {
+    if (isAppRoute(context.url.pathname) && isRead(context)) {
+      const twin = simulationTwin(context.url.pathname);
+      if (twin) return Promise.resolve(context.redirect(twin + context.url.search, 303));
+    }
+    return next();
+  });
+}
 
 async function demoHolder(context: APIContext, next: MiddlewareNext): Promise<Response> {
   if (!isLoopback(context.url.hostname)) {
@@ -49,14 +61,9 @@ async function demoHolder(context: APIContext, next: MiddlewareNext): Promise<Re
     Date.now(),
   );
   context.locals.demoHolder = holder;
-  // Enough of Clerk's auth() for <Show when="signed-in|signed-out">; nothing else reads it.
-  context.locals.auth = (() => ({
-    userId: holder ? DEMO_USER_ID : null,
-    has: () => false,
-  })) as unknown as AuthFn;
 
   if (isHolderRoute(context.url.pathname) && !holder) {
-    if (context.request.method === 'GET' || context.request.method === 'HEAD') {
+    if (isRead(context)) {
       const back = context.url.pathname + context.url.search;
       return context.redirect(`/demo-sign-in/?next=${encodeURIComponent(back)}`, 303);
     }
@@ -65,11 +72,18 @@ async function demoHolder(context: APIContext, next: MiddlewareNext): Promise<Re
   return next();
 }
 
+function closed(context: APIContext, next: MiddlewareNext): Promise<Response> | Response {
+  if (!isAppRoute(context.url.pathname)) return next();
+  return isRead(context) ? toSimulation(context) : new Response('Not available.', { status: 404 });
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
-  const response = demoHolderEnabled(ALIBI_DEMO_HOLDER, HOLDER_SESSION_SECRET)
-    ? await demoHolder(context, next)
-    : // Clerk's handler is typed loosely (void | Response) but always returns the response.
-      ((await clerk(context, next)) as Response);
+  const response =
+    ALIBI_SIMULATION === '1'
+      ? await simulated(context, next)
+      : demoHolderEnabled(ALIBI_DEMO_HOLDER, HOLDER_SESSION_SECRET)
+        ? await demoHolder(context, next)
+        : await closed(context, next);
 
   if (
     !isSimulationRoute(context.url.pathname) ||

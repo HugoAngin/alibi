@@ -1,19 +1,22 @@
-// Cloudflare Worker for the Alibi site. `main` and the static-assets binding
-// are filled in by @astrojs/cloudflare at build time. Deploy with
-// `pnpm --filter @alibi/site deploy` once a Cloudflare account is configured.
+// The whole demo on one Cloudflare Worker: Alibi, the simulated bank (/bank/) and the simulated
+// marketplace (/shop/). `main` and the static-assets binding are filled in by @astrojs/cloudflare at
+// build time. Deploy with `pnpm --filter @alibi/site run deploy`.
 //
-// Secrets are never in this file: set CLERK_SECRET_KEY with
-// `pnpm exec wrangler secret put CLERK_SECRET_KEY` (web/docs/hosting.md).
+// No secrets: the site runs the recorded simulation (ALIBI_SIMULATION below).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "www",
+  "name": "alibi",
   "compatibility_date": "2026-04-15",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // Served at https://alibi.eliohaddad.workers.dev: the Worker's name on the account's workers.dev
+  // subdomain. No per-version preview URLs.
+  "workers_dev": true,
+  "preview_urls": false,
   "vars": {
-    // The live backend on Modal (agents/research/deploy/modal_app.py). Called
-    // server-side only; the screens fall back to labelled case 1 data while
-    // its services are not running.
-    "ALIBI_API_ORIGIN": "https://eliohd--alibi-backend-backend.us-east.modal.run",
+    // The demo runs as a recording (web/packages/ui/src/sim/, made by
+    // `pnpm record:simulation`): no backend, no API keys, no secrets. Each
+    // visitor gets their own run, kept in a cookie.
+    "ALIBI_SIMULATION": "1",
   },
 }

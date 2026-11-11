@@ -3,17 +3,19 @@
  * `/simulate/requests/<id>/`: one of Maya's bank requests, live, for any visitor: the question,
  * the investigation trace and her private review. Every action is shown but disabled
  * (RequestView `live={false}`), so nothing can be approved or sent from the simulation, unless the
- * site runs the live demo (ALIBI_SIMULATE_ACTIONS=1): then they post to /simulate/act.
+ * site is simulated or runs the live demo (src/lib/simulation.ts): then they post to /simulate/act.
  */
-import { ALIBI_API_ORIGIN, ALIBI_SIMULATE_ACTIONS } from 'astro:env/server';
+import { ALIBI_API_ORIGIN } from 'astro:env/server';
 
 import BaseLayout from '@/layouts/BaseLayout.astro';
 import AppFrame from '@/components/app/AppFrame.astro';
 import RequestView from '@/components/app/RequestView.astro';
 import { requestFixture } from '@/data/fixtures';
 import { loadContext } from '@alibi/ui/api';
+import { isSimulated } from '@alibi/ui/sim/context';
 import { isRequestDetail } from '@/lib/api/guards';
 import { ROUTES, backendHeaders, takeFlash } from '@/lib/screens';
+import { simulationActs } from '@/lib/simulationActs';
 
 export const prerender = false;
 
@@ -26,9 +28,11 @@ const loaded = await loadContext({
   headers: backendHeaders(),
 });
 
-// The live demo (ALIBI_SIMULATE_ACTIONS=1) lets the presenter act as Maya from here.
-const actions = ALIBI_SIMULATE_ACTIONS === '1' && loaded.source === 'live';
+// The visitor (simulated site) or the presenter (live demo) acts as Maya from here.
+const actions = simulationActs() && loaded.source === 'live';
 const flash = actions ? takeFlash(Astro.cookies) : null;
+// After Reset demo the visitor's run has no such request yet: back to Maya's dashboard.
+if (loaded.source === 'missing' && isSimulated()) return Astro.redirect('/simulate/', 303);
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 if (loaded.source === 'missing') Astro.response.status = 404;
 ---

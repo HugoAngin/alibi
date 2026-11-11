@@ -4,8 +4,6 @@
  * onto it. The copy is always rendered visible; its one entrance is CSS
  * (`.s-enter`), so it never waits on a script.
  */
-import { Show } from '@clerk/astro/components';
-
 import { product } from '@/data/product';
 import HeroScene from './HeroScene.astro';
 ---
@@ -17,17 +15,7 @@ import HeroScene from './HeroScene.astro';
       <h1 id="hero-title">{product.tagline}</h1>
       <p class="s-lede">{product.lede}</p>
       <p class="actions">
-        <Show when="signed-out">
-          <a class="s-btn s-btn--primary" href="/sign-up/">
-            Join
-          </a>
-        </Show>
-        <Show when="signed-in">
-          <a class="s-btn s-btn--primary" href="/app/">
-            Open your passport
-          </a>
-        </Show>
-        <a class="s-btn s-btn--ghost" href="/simulate/">
+        <a class="s-btn s-btn--primary" href="/simulate/">
           Simulate a case
         </a>
       </p>

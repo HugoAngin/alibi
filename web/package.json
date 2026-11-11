@@ -9,9 +9,8 @@
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "demo": "node scripts/demo.mjs",
+    "record:simulation": "node scripts/record-simulation.mjs",
     "dev:alibi": "pnpm --filter @alibi/site dev",
-    "dev:merchant": "pnpm --filter @alibi/merchant dev",
-    "dev:bank": "pnpm --filter @alibi/bank dev",
     "build": "pnpm --recursive --workspace-concurrency=1 --filter \"./apps/*\" build",
     "check": "pnpm --recursive --workspace-concurrency=1 --filter \"./apps/*\" check",
     "test": "vitest run",

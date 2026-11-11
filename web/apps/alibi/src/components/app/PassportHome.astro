@@ -13,6 +13,7 @@ import { day, money, when } from '@/lib/format';
 import { ROUTES, backendHeaders } from '@/lib/screens';
 import { TRUST_COOKIE, parseTrusted } from '@/lib/trust';
 import { loadContext } from '@alibi/ui/api';
+import { simulationActs } from '@/lib/simulationActs';
 
 import ActivityRow from './ActivityRow.astro';
 import DashboardSection from './DashboardSection.astro';
@@ -78,7 +79,9 @@ const latest = context[0];
 const timeline = byMonth(context);
 const evidence = data.evidence_status;
 
-const readOnly = `Read-only. Nothing here can approve or send for ${holder}.`;
+// Read-only only when nobody can act as Maya here (the visitor can on a simulated site).
+const readOnly = simulation && !simulationActs();
+const readOnlyNote = `Read-only. Nothing here can approve or send for ${holder}.`;
 const noChange = 'Opening this list changes nothing. Approval happens on each request’s page.';
 const possessive = (name: string) => `${name}’s`;
 const signed = (m: Money, direction: 'credit' | 'debit') =>
@@ -110,7 +113,7 @@ const requestsOf = (audience: string) =>
         : 'Nothing needs your review'
     }
     lead="Bank requests and Alibi alerts, those waiting first, soonest reply first."
-    note={simulation ? readOnly : noChange}
+    note={readOnly ? readOnlyNote : noChange}
     class="card-activity"
   >
     <Fragment slot="preview">
@@ -172,7 +175,7 @@ const requestsOf = (audience: string) =>
         : 'No bank is waiting on you';
     })()}
     lead="Banks that asked about your transactions, and the account feeds you connected."
-    note={simulation ? readOnly : noChange}
+    note={readOnly ? readOnlyNote : noChange}
     class="card-banks"
   >
     <Fragment slot="preview">

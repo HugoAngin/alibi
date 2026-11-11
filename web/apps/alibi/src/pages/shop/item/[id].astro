@@ -1,0 +1,241 @@
+---
+/** One listing: picture, price, size and condition, seller, and add to basket. */
+import ShopLayout from '@/shop/layouts/ShopLayout.astro';
+import ProductArt from '@/shop/components/ProductArt.astro';
+import ProductCard from '@/shop/components/ProductCard.astro';
+import { categories, findListing, formatGBP, listings } from '@/shop/data/shop';
+import { BASKET_COOKIE, buyerProtectionMinor, parseBasket } from '@/shop/lib/basket';
+
+const item = findListing(Astro.params.id ?? '');
+if (!item) return Astro.rewrite('/404');
+
+const inBasket = parseBasket(Astro.cookies.get(BASKET_COOKIE)?.value).includes(item.id);
+const category = categories.find((c) => c.id === item.category)!;
+const more = listings.filter((l) => l.id !== item.id && l.seller === item.seller).slice(0, 4);
+---
+
+<ShopLayout title={item.title}>
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/shop/">Shop</a> <span aria-hidden="true">/</span>
+    <a href={`/?c=${category.id}`}>{category.label}</a>
+  </nav>
+
+  <div class="product">
+    <div class="gallery">
+      <ProductArt kind={item.art} tone={item.tone} />
+    </div>
+
+    <div class="info">
+      <h1>{item.title}</h1>
+      <p class="price">{formatGBP(item.priceMinor)}</p>
+      <p class="incl">
+        {formatGBP(item.priceMinor + buyerProtectionMinor(item.priceMinor))} incl. buyer protection
+      </p>
+
+      <dl class="facts">
+        <div>
+          <dt>Size</dt>
+          <dd>{item.size}</dd>
+        </div>
+        <div>
+          <dt>Condition</dt>
+          <dd>{item.condition}</dd>
+        </div>
+      </dl>
+
+      <form method="post" action="/shop/basket/" class="buy">
+        <input type="hidden" name="id" value={item.id} />
+        <button class="btn wide" name="action" value="buy">
+          Buy now
+        </button>
+        {inBasket ? (
+          <a class="btn ghost wide" href="/shop/basket/">
+            In your basket · View basket
+          </a>
+        ) : (
+          <button class="btn ghost wide" name="action" value="add">
+            Add to basket
+          </button>
+        )}
+      </form>
+
+      <p class="desc">{item.description}</p>
+
+      <div class="seller">
+        <span class="avatar" aria-hidden="true">
+          {item.seller.charAt(0).toUpperCase()}
+        </span>
+        <span>
+          <strong>@{item.seller}</strong>
+          <br />
+          <span class="muted">Usually ships within 2 days</span>
+        </span>
+      </div>
+
+      <ul class="perks">
+        <li>Buyer protection on every order: refund if it doesn’t arrive or isn’t as described.</li>
+        <li>Delivery from £2.99. Express available at checkout.</li>
+      </ul>
+    </div>
+  </div>
+
+  {more.length > 0 && (
+    <section class="more" aria-labelledby="more-title">
+      <h2 id="more-title">More from @{item.seller}</h2>
+      <ul class="grid">
+        {more.map((l) => (
+          <li>
+            <ProductCard
+              href={`/shop/item/${l.id}/`}
+              title={l.title}
+              priceMinor={l.priceMinor}
+              meta={`${l.size} · ${l.condition}`}
+              art={l.art}
+              tone={l.tone}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+</ShopLayout>
+
+<style>
+  .crumbs {
+    font-size: var(--t-sm);
+    color: var(--c-ink-faint);
+    margin-bottom: var(--space-sm);
+  }
+
+  .crumbs a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .crumbs a:hover {
+    color: var(--c-ink);
+  }
+
+  .product {
+    display: grid;
+    gap: var(--space-lg);
+  }
+
+  @media (min-width: 820px) {
+    .product {
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: var(--space-xl);
+      align-items: start;
+    }
+
+    .info {
+      position: sticky;
+      top: 140px;
+    }
+  }
+
+  h1 {
+    font-size: var(--t-lg);
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-2xs);
+  }
+
+  .price {
+    font-size: var(--t-lg);
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .incl {
+    font-size: var(--t-sm);
+    color: var(--c-ink-faint);
+  }
+
+  .facts {
+    display: flex;
+    gap: var(--space-lg);
+    margin: 0 0 var(--space-md);
+    padding: var(--space-sm) 0;
+    border-block: 1px solid var(--c-line);
+  }
+
+  .facts dt {
+    font-size: var(--t-xs);
+    color: var(--c-ink-faint);
+  }
+
+  .facts dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .buy {
+    display: grid;
+    gap: var(--space-2xs);
+    margin-bottom: var(--space-md);
+  }
+
+  .desc {
+    color: var(--c-ink-soft);
+  }
+
+  .seller {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-sm);
+    background: var(--c-soft);
+    border-radius: var(--radius-md);
+    font-size: var(--t-sm);
+    line-height: 1.35;
+  }
+
+  .avatar {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: #fff;
+    font-weight: 700;
+  }
+
+  .muted {
+    color: var(--c-ink-faint);
+  }
+
+  .perks {
+    margin: var(--space-md) 0 0;
+    padding-left: 1.1rem;
+    font-size: var(--t-sm);
+    color: var(--c-ink-soft);
+  }
+
+  .perks li + li {
+    margin-top: var(--space-3xs);
+  }
+
+  .more {
+    margin-top: var(--space-2xl);
+  }
+
+  .more h2 {
+    font-size: var(--t-md);
+  }
+
+  .grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-lg) var(--space-sm);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (min-width: 720px) {
+    .grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+</style>

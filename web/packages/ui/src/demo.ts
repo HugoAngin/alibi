@@ -3,12 +3,15 @@
  * its three steps (withdraw, request, reset). Runs in the Worker or dev server only; the demo
  * bearer never reaches a browser.
  *
- * Configuration, per app: `ALIBI_DEMO_ORIGIN` (local: http://127.0.0.1:8103; hosted: the Modal
- * address, whose router forwards /demo/*) and `ALIBI_DEMO_TOKEN`. Unset means no live demo: every
- * screen keeps working exactly as before.
+ * Configuration, per app: `ALIBI_DEMO_ORIGIN` (local: http://127.0.0.1:8103) and
+ * `ALIBI_DEMO_TOKEN`. Unset means no live demo: every screen keeps working exactly as before. On a
+ * simulated site (ALIBI_SIMULATION=1) the demo is always on and answered from the recording
+ * (src/sim/), with no director and no credential.
  */
 
 import { forwardAction, type ActionResult } from './api';
+import { SIM_ORIGIN } from './sim/backend';
+import { currentSimulation } from './sim/context';
 
 export type DemoStage = 'ready' | 'withdrawn' | 'flagged' | 'requested' | 'received';
 
@@ -30,7 +33,8 @@ export interface DemoTarget {
   token: string | undefined;
 }
 
-export const demoEnabled = (t: DemoTarget): boolean => Boolean(t.origin && t.token);
+export const demoEnabled = (t: DemoTarget): boolean =>
+  currentSimulation() !== null || Boolean(t.origin && t.token);
 
 export function isDemoState(v: unknown): v is DemoState {
   if (typeof v !== 'object' || v === null) return false;
@@ -51,8 +55,9 @@ export async function demoState(
   fetchImpl: typeof fetch = fetch,
 ): Promise<DemoState | null> {
   if (!demoEnabled(t)) return null;
+  const sim = currentSimulation();
   try {
-    const r = await fetchImpl(new URL('/demo/state', t.origin), {
+    const r = await (sim?.fetch ?? fetchImpl)(new URL('/demo/state', sim ? SIM_ORIGIN : t.origin), {
       headers: { Accept: 'application/json', ...auth(t) },
       signal: AbortSignal.timeout(3000),
     });
